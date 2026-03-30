@@ -1,15 +1,27 @@
 import "./SideDrawer.css";
 
 const pages = [
-  { id: "home", label: "Home" },
-  { id: "event-calendar", label: "Event/Competition Calendar" },
-  { id: "range-usage", label: "Range Usage" },
-  { id: "feedback-form", label: "Feedback Form" },
-  { id: "ideas-form", label: "Ideas Form" },
-  { id: "coaching-calendar", label: "Coaching Calendar" },
-  { id: "committee-org-chart", label: "Committee Org Chart" },
-  { id: "general-info", label: "General Info" },
-  { id: "lost-and-found", label: "Lost and Found" },
+  { id: "home", label: "Home", path: "/" },
+  {
+    id: "event-calendar",
+    label: "Event/Competition Calendar",
+    path: "/event-calendar",
+  },
+  { id: "range-usage", label: "Range Usage", path: "/range-usage" },
+  { id: "feedback-form", label: "Feedback Form", path: "/feedback-form" },
+  { id: "ideas-form", label: "Ideas Form", path: "/ideas-form" },
+  {
+    id: "coaching-calendar",
+    label: "Coaching Calendar",
+    path: "/coaching-calendar",
+  },
+  {
+    id: "committee-org-chart",
+    label: "Committee Org Chart",
+    path: "/committee-org-chart",
+  },
+  { id: "general-info", label: "General Info", path: "/general-info" },
+  { id: "lost-and-found", label: "Lost and Found", path: "/lost-and-found" },
 ];
 
 export function SideDrawer({ open, onClose, selectedPage, onSelectPage }) {

@@ -1,0 +1,91 @@
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.34);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-in-out;
+  z-index: 1000;
+}
+
+.drawer-backdrop.open {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.side-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(300px, 90vw);
+  transform: translateX(-105%);
+  background: #000;
+  color: #fff;
+  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.46);
+  transition: transform 0.25s ease;
+  z-index: 1001;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+
+.side-drawer.open {
+  transform: translateX(0);
+}
+
+.drawer-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #ddd;
+  padding: 14px;
+}
+
+.drawer-logo {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.drawer-close {
+  border: none;
+  background: transparent;
+  font-size: 1.6rem;
+  cursor: pointer;
+}
+
+.side-drawer nav {
+  padding: 12px 6px;
+}
+
+.side-drawer ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.side-drawer button {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.side-drawer button:hover,
+.side-drawer button.active {
+  background: rgba(255, 221, 0, 0.2);
+}
+
+.side-drawer {
+  color: #000;
+}
+
+.drawer-logo {
+  color: #000;
+}

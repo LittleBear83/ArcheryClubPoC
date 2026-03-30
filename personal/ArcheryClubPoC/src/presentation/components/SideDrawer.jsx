@@ -1,4 +1,5 @@
 import "./SideDrawer.css";
+import selbyLogo from "../../assets/selby_archers_logo.svg";
 
 const pages = [
   { id: "home", label: "Home", path: "/" },
@@ -33,13 +34,16 @@ export function SideDrawer({ open, onClose, selectedPage, onSelectPage }) {
       />
       <aside className={`side-drawer ${open ? "open" : ""}`}>
         <div className="drawer-header">
-          <div className="drawer-logo">LOGO</div>
           <button
-            className="drawer-close"
+            className="drawer-logo-button"
             onClick={onClose}
             aria-label="Close menu"
           >
-            ×
+            <img
+              src={selbyLogo}
+              alt="Selby Archers Logo"
+              className="drawer-logo"
+            />
           </button>
         </div>
         <nav>

@@ -31,10 +31,41 @@ body {
   background: #101010;
   border-bottom: 1px solid var(--border);
   color: #fff;
-  min-height: 180px;
-  height: 240px;
+  min-height: 90px;
+  height: 120px;
   padding: 0;
 }
+
+.target-arch-banner .menu-button {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 4;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.target-arch-banner .menu-button:hover {
+  background: transparent;
+  outline: none;
+}
+
+.target-arch-banner .menu-button-logo {
+  width: 72px;
+  height: 72px;
+  display: block;
+}
+
+
 
 .archery-banner-img {
   position: absolute;
@@ -67,19 +98,6 @@ body {
   pointer-events: none;
   text-shadow: 0 0 8px rgba(0, 0, 0, 0.75);
   max-width: 58%;
-}
-
-.target-arch-banner .menu-button {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  z-index: 4;
-  padding: 8px 12px;
-  border-radius: 6px;
-  background: rgba(255, 221, 0, 0.2);
-  color: #fff;
-  border: 1px solid #ffdd00;
-  cursor: pointer;
 }
 
 .target-arch-banner h1 {

@@ -3,6 +3,7 @@ import { useLocation, useNavigate, Routes, Route } from "react-router-dom";
 import { useMembers } from "../state/useMembers";
 import { SideDrawer } from "../components/SideDrawer";
 import archeryBanner from "../../assets/archery_banner.svg";
+import selbyLogo from "../../assets/selby_archers_logo.svg";
 import { HomeSection } from "./HomeSection";
 import { LostAndFoundPage } from "./LostAndFoundPage";
 import { FeedbackFormPage } from "./FeedbackFormPage";
@@ -74,8 +75,16 @@ export function HomePage({ getMembersUseCase, addMemberUseCase }) {
           alt="Archery banner"
           className="archery-banner-img"
         />
-        <button className="menu-button" onClick={() => setDrawerOpen(true)}>
-          ☰ Menu
+        <button
+          className="menu-button"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open menu"
+        >
+          <img
+            src={selbyLogo}
+            alt="Selby Archers Logo"
+            className="menu-button-logo"
+          />
         </button>
         <div className="heading-wrap">
           <h1>{pageTitleMap[activePage] || "Archery Club"}</h1>

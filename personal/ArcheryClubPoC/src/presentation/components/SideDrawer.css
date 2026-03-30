@@ -36,21 +36,23 @@
 
 .drawer-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   border-bottom: 1px solid #ddd;
   padding: 14px;
 }
 
 .drawer-logo {
-  font-size: 1.1rem;
-  font-weight: 700;
+  display: block;
+  width: 72px;
+  height: 72px;
 }
 
-.drawer-close {
+.drawer-logo-button {
+  width: auto;
   border: none;
   background: transparent;
-  font-size: 1.6rem;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -77,15 +79,13 @@
   transition: background 0.15s;
 }
 
+.side-drawer .drawer-logo-button {
+  width: auto;
+  padding: 0;
+  border-radius: 0;
+}
+
 .side-drawer button:hover,
 .side-drawer button.active {
-  background: rgba(255, 221, 0, 0.2);
-}
-
-.side-drawer {
-  color: #000;
-}
-
-.drawer-logo {
-  color: #000;
+  background: transparent;
 }

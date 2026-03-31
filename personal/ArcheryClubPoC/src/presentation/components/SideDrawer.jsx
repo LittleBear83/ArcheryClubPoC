@@ -1,5 +1,5 @@
 import "./SideDrawer.css";
-import selbyLogo from "../../assets/selby_archers_logo.svg";
+import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 
 const pages = [
   { id: "home", label: "Home", path: "/" },
@@ -25,7 +25,13 @@ const pages = [
   { id: "lost-and-found", label: "Lost and Found", path: "/lost-and-found" },
 ];
 
-export function SideDrawer({ open, onClose, selectedPage, onSelectPage }) {
+export function SideDrawer({
+  open,
+  onClose,
+  selectedPage,
+  onSelectPage,
+  onLogout,
+}) {
   return (
     <>
       <div
@@ -63,6 +69,18 @@ export function SideDrawer({ open, onClose, selectedPage, onSelectPage }) {
             ))}
           </ul>
         </nav>
+        <div className="drawer-footer">
+          <button
+            className="drawer-logout-button"
+            type="button"
+            onClick={() => {
+              onClose();
+              onLogout();
+            }}
+          >
+            Log Out
+          </button>
+        </div>
       </aside>
     </>
   );

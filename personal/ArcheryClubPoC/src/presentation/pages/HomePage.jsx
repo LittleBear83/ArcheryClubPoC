@@ -1,15 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate, Routes, Route } from "react-router-dom";
-import { useMembers } from "../state/useMembers";
 import { SideDrawer } from "../components/SideDrawer";
 import archeryBanner from "../../assets/archery_banner.svg";
-import selbyLogo from "../../assets/selby_archers_logo.svg";
+import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { HomeSection } from "./HomeSection";
 import { LostAndFoundPage } from "./LostAndFoundPage";
 import { FeedbackFormPage } from "./FeedbackFormPage";
 import { IdeasFormPage } from "./IdeasFormPage";
 import { EventCalendarPage } from "./EventCalendarPage";
 import { CoachingCalendarPage } from "./CoachingCalendarPage";
+import { RangeUsagePage } from "./RangeUsagePage";
 import { PlaceholderPage } from "./PlaceholderPage";
 
 const pageTitleMap = {
@@ -41,16 +41,68 @@ const pageIdToPath = Object.entries(pathToPageId).reduce(
   {},
 );
 
-export function HomePage({ getMembersUseCase, addMemberUseCase }) {
-  const { members } = useMembers({
-    getMembersUseCase,
-    addMemberUseCase,
-  });
+export function HomePage({ currentUser, onLogout }) {
+  const [members, setMembers] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
   const activePage = pathToPageId[location.pathname] || "home";
+  const membersAtRange = currentUser
+    ? (() => {
+        const currentMember = {
+          username: currentUser.username,
+          firstName: currentUser.firstName,
+          surname: currentUser.surname,
+          archeryGbMembershipNumber: currentUser.archeryGbMembershipNumber,
+          userType: currentUser.userType,
+        };
+
+        const alreadyIncluded = members.some((member) => {
+          if (currentMember.username && member.username) {
+            return member.username === currentMember.username;
+          }
+
+          return (
+            member.firstName === currentMember.firstName &&
+            member.surname === currentMember.surname &&
+            member.archeryGbMembershipNumber ===
+              currentMember.archeryGbMembershipNumber
+          );
+        });
+
+        return alreadyIncluded ? members : [currentMember, ...members];
+      })()
+    : members;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadRangeMembers = async () => {
+      try {
+        const response = await fetch("/api/range-members");
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          return;
+        }
+
+        if (isMounted) {
+          setMembers(result.members);
+        }
+      } catch {
+        if (isMounted) {
+          setMembers([]);
+        }
+      }
+    };
+
+    loadRangeMembers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleNavigate = (pageId) => {
     const target = pageIdToPath[pageId] || "/";
@@ -63,6 +115,7 @@ export function HomePage({ getMembersUseCase, addMemberUseCase }) {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         selectedPage={activePage}
+        onLogout={onLogout}
         onSelectPage={(pageId) => {
           handleNavigate(pageId);
           setDrawerOpen(false);
@@ -100,10 +153,16 @@ export function HomePage({ getMembersUseCase, addMemberUseCase }) {
       >
         <section style={{ marginBottom: 24 }}>
           <h2>{pageTitleMap[activePage] || "Archery Club"}</h2>
+          {activePage === "home" ? (
+            <p className="welcome-message">
+              Welcome {currentUser?.firstName} {currentUser?.surname}
+            </p>
+          ) : null}
 
           <Routes>
-            <Route path="/" element={<HomeSection members={members} />} />
+            <Route path="/" element={<HomeSection members={membersAtRange} />} />
             <Route path="/event-calendar" element={<EventCalendarPage />} />
+            <Route path="/range-usage" element={<RangeUsagePage />} />
             <Route
               path="/coaching-calendar"
               element={<CoachingCalendarPage />}

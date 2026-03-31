@@ -58,6 +58,7 @@
 
 .side-drawer nav {
   padding: 12px 6px;
+  flex: 1;
 }
 
 .side-drawer ul {
@@ -88,4 +89,22 @@
 .side-drawer button:hover,
 .side-drawer button.active {
   background: transparent;
+}
+
+.drawer-footer {
+  margin-top: auto;
+  padding: 14px;
+  border-top: 1px solid #ddd;
+}
+
+.side-drawer .drawer-logout-button {
+  background: var(--accent);
+  color: #111;
+  border-radius: 999px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.side-drawer .drawer-logout-button:hover {
+  background: #ffe45c;
 }

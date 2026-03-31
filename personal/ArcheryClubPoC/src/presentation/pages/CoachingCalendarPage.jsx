@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
+import { formatDate } from "../../utils/dateTime";
 
 export function CoachingCalendarPage() {
   const today = new Date();
@@ -71,7 +72,7 @@ export function CoachingCalendarPage() {
       />
       {selectedDate && (
         <p>
-          Selected date: <strong>{selectedDate}</strong>
+          Selected date: <strong>{formatDate(selectedDate)}</strong>
           {sessionsByDate[selectedDate] &&
             ` (${sessionsByDate[selectedDate].length} session(s))`}
         </p>
@@ -124,7 +125,7 @@ export function CoachingCalendarPage() {
         <ul>
           {sessions.map((s) => (
             <li key={s.id}>
-              {s.date}: {s.topic} at {s.location}
+              {formatDate(s.date)}: {s.topic} at {s.location}
             </li>
           ))}
         </ul>

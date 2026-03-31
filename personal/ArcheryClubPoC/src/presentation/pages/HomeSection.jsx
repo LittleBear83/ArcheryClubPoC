@@ -1,8 +1,30 @@
-export function HomeSection({ members }) {
+import { formatDate } from "../../utils/dateTime";
+
+function SignedUpEventsList({ events }) {
   return (
-    <>
-      <p>Members at the range</p>
-      <ul className="range-members-list">
+    <section className="home-panel">
+      <h3 className="home-panel-title">Your Club Events List</h3>
+      <ul className="home-info-list">
+        {events.length > 0 ? (
+          events.map((event) => (
+            <li key={event.id}>
+              <strong>{formatDate(event.date)}</strong>
+              {`: ${event.title}`}
+            </li>
+          ))
+        ) : (
+          <li>No signed-up events yet.</li>
+        )}
+      </ul>
+    </section>
+  );
+}
+
+function MembersAtRangeList({ members }) {
+  return (
+    <section className="home-panel">
+      <h3 className="home-panel-title">Current Members At The Range</h3>
+      <ul className="home-info-list">
         {members.length > 0 ? (
           members.map((member) => (
             <li
@@ -23,6 +45,15 @@ export function HomeSection({ members }) {
           <li>No members have logged in within the last 2 hours</li>
         )}
       </ul>
-    </>
+    </section>
+  );
+}
+
+export function HomeSection({ members, signedUpEvents }) {
+  return (
+    <div className="home-split-view">
+      <MembersAtRangeList members={members} />
+      <SignedUpEventsList events={signedUpEvents} />
+    </div>
   );
 }

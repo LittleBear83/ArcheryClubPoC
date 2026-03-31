@@ -223,6 +223,34 @@ const guestLoginsByHourInRange = db.prepare(`
   GROUP BY hour
 `);
 
+const memberLoginsByWeekdayInRange = db.prepare(`
+  SELECT CAST(strftime('%w', logged_in_at) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
+  FROM login_events
+  WHERE logged_in_at >= ? AND logged_in_at < ?
+  GROUP BY dayOfWeek
+`);
+
+const guestLoginsByWeekdayInRange = db.prepare(`
+  SELECT CAST(strftime('%w', logged_in_at) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
+  FROM guest_login_events
+  WHERE logged_in_at >= ? AND logged_in_at < ?
+  GROUP BY dayOfWeek
+`);
+
+const memberLoginsByDateInRange = db.prepare(`
+  SELECT strftime('%Y-%m-%d', logged_in_at) AS usageDate, COUNT(*) AS count
+  FROM login_events
+  WHERE logged_in_at >= ? AND logged_in_at < ?
+  GROUP BY usageDate
+`);
+
+const guestLoginsByDateInRange = db.prepare(`
+  SELECT strftime('%Y-%m-%d', logged_in_at) AS usageDate, COUNT(*) AS count
+  FROM guest_login_events
+  WHERE logged_in_at >= ? AND logged_in_at < ?
+  GROUP BY usageDate
+`);
+
 const app = express();
 
 app.use(express.json());
@@ -278,6 +306,108 @@ function buildHourlyBreakdown(startIso, endIsoExclusive) {
   return hours;
 }
 
+function buildWeekdayBreakdown(startIso, endIsoExclusive) {
+  const memberRows = memberLoginsByWeekdayInRange.all(startIso, endIsoExclusive);
+  const guestRows = guestLoginsByWeekdayInRange.all(startIso, endIsoExclusive);
+  const weekdays = [
+    { dayOfWeek: 1, label: "Mon", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 2, label: "Tue", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 3, label: "Wed", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 4, label: "Thu", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 5, label: "Fri", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 6, label: "Sat", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 0, label: "Sun", members: 0, guests: 0, total: 0 },
+  ];
+  const rowByDay = new Map(weekdays.map((row) => [row.dayOfWeek, row]));
+
+  for (const row of memberRows) {
+    const weekday = rowByDay.get(row.dayOfWeek);
+
+    if (!weekday) {
+      continue;
+    }
+
+    weekday.members = row.count;
+    weekday.total += row.count;
+  }
+
+  for (const row of guestRows) {
+    const weekday = rowByDay.get(row.dayOfWeek);
+
+    if (!weekday) {
+      continue;
+    }
+
+    weekday.guests = row.count;
+    weekday.total += row.count;
+  }
+
+  return weekdays;
+}
+
+function buildDailyBreakdown(startDate, endDateExclusive) {
+  const startIso = startDate.toISOString();
+  const endIso = endDateExclusive.toISOString();
+  const memberRows = memberLoginsByDateInRange.all(startIso, endIso);
+  const guestRows = guestLoginsByDateInRange.all(startIso, endIso);
+  const rows = [];
+  const rowByDate = new Map();
+
+  for (
+    let date = new Date(startDate);
+    date.getTime() < endDateExclusive.getTime();
+    date = addUtcDays(date, 1)
+  ) {
+    const usageDate = toUtcDateString(date);
+    const row = {
+      usageDate,
+      label: String(date.getUTCDate()),
+      fullLabel: usageDate,
+      members: 0,
+      guests: 0,
+      total: 0,
+    };
+
+    rows.push(row);
+    rowByDate.set(usageDate, row);
+  }
+
+  for (const row of memberRows) {
+    const day = rowByDate.get(row.usageDate);
+
+    if (!day) {
+      continue;
+    }
+
+    day.members = row.count;
+    day.total += row.count;
+  }
+
+  for (const row of guestRows) {
+    const day = rowByDate.get(row.usageDate);
+
+    if (!day) {
+      continue;
+    }
+
+    day.guests = row.count;
+    day.total += row.count;
+  }
+
+  return rows;
+}
+
+function buildMonthDailyBreakdown(anchorDate) {
+  const monthStart = new Date(
+    Date.UTC(anchorDate.getUTCFullYear(), anchorDate.getUTCMonth(), 1),
+  );
+  const nextMonthStart = new Date(
+    Date.UTC(anchorDate.getUTCFullYear(), anchorDate.getUTCMonth() + 1, 1),
+  );
+
+  return buildDailyBreakdown(monthStart, nextMonthStart);
+}
+
 function buildUsageWindow(label, startDate, endDateExclusive) {
   return {
     label,
@@ -288,6 +418,12 @@ function buildUsageWindow(label, startDate, endDateExclusive) {
       startDate.toISOString(),
       endDateExclusive.toISOString(),
     ),
+    weekday: buildWeekdayBreakdown(
+      startDate.toISOString(),
+      endDateExclusive.toISOString(),
+    ),
+    daily: buildDailyBreakdown(startDate, endDateExclusive),
+    monthDaily: buildMonthDailyBreakdown(startDate),
   };
 }
 

@@ -1,4 +1,5 @@
 import React from "react";
+import { formatDate } from "../../utils/dateTime";
 
 function getMonthDays(year, month) {
   const first = new Date(year, month, 1);
@@ -30,6 +31,7 @@ export function Calendar({
   onNextMonth,
   itemsByDate = {},
   renderItem,
+  renderDayMeta,
   selectedDate,
   onDayClick,
 }) {
@@ -47,10 +49,9 @@ export function Calendar({
       >
         <button onClick={onPrevMonth}>◀</button>
         <strong>
-          {new Date(year, month, 1).toLocaleString("default", {
-            month: "long",
-          })}{" "}
-          {year}
+          {formatDate(
+            `${year}-${String(month + 1).padStart(2, "0")}-01`,
+          )}
         </strong>
         <button onClick={onNextMonth}>▶</button>
       </div>
@@ -109,17 +110,22 @@ export function Calendar({
                       cursor: dateKey ? "pointer" : "default",
                     }}
                   >
-                    <div style={{ fontWeight: "700" }}>{day || ""}</div>
-                    {items?.map((item) => (
-                      <div
-                        key={item.id}
-                        style={{ fontSize: "0.76rem", color: "#ffdd00" }}
-                      >
-                        {renderItem
-                          ? renderItem(item)
-                          : item.title || item.topic || ""}
-                      </div>
-                    ))}
+                    <div className="calendar-day-header">
+                      <div style={{ fontWeight: "700" }}>{day || ""}</div>
+                      {dateKey && items?.length && renderDayMeta
+                        ? renderDayMeta(items, dateKey)
+                        : null}
+                    </div>
+                    {renderItem
+                      ? items?.map((item) => (
+                          <div
+                            key={item.id}
+                            style={{ fontSize: "0.76rem", color: "#ffdd00" }}
+                          >
+                            {renderItem(item)}
+                          </div>
+                        ))
+                      : null}
                   </td>
                 );
               })}

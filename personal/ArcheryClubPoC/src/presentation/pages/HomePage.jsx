@@ -41,6 +41,21 @@ const pageIdToPath = Object.entries(pathToPageId).reduce(
   {},
 );
 
+const signedUpEventsByUser = {
+  Cfleetham: [
+    { id: "cf-1", date: "2026-04-06", title: "County Outdoor Practice" },
+    { id: "cf-2", date: "2026-04-12", title: "York Handicap Shoot" },
+    { id: "cf-3", date: "2026-04-26", title: "Club Spring Open" },
+  ],
+  LTaylor: [
+    { id: "lt-1", date: "2026-04-04", title: "Coaches Planning Session" },
+    { id: "lt-2", date: "2026-04-19", title: "Regional Field Shoot" },
+  ],
+  "guest": [
+    { id: "guest-1", date: "2026-04-10", title: "Beginner Welcome Session" },
+  ],
+};
+
 export function HomePage({ currentUser, onLogout }) {
   const [members, setMembers] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -74,6 +89,9 @@ export function HomePage({ currentUser, onLogout }) {
         return alreadyIncluded ? members : [currentMember, ...members];
       })()
     : members;
+  const signedUpEvents = [...(signedUpEventsByUser[currentUser?.username] ??
+    signedUpEventsByUser[currentUser?.userType] ??
+    [])].sort((left, right) => left.date.localeCompare(right.date));
 
   useEffect(() => {
     let isMounted = true;
@@ -160,7 +178,15 @@ export function HomePage({ currentUser, onLogout }) {
           ) : null}
 
           <Routes>
-            <Route path="/" element={<HomeSection members={membersAtRange} />} />
+            <Route
+              path="/"
+              element={
+                <HomeSection
+                  members={membersAtRange}
+                  signedUpEvents={signedUpEvents}
+                />
+              }
+            />
             <Route path="/event-calendar" element={<EventCalendarPage />} />
             <Route path="/range-usage" element={<RangeUsagePage />} />
             <Route

@@ -1,4 +1,9 @@
 import { useEffect, useState } from "react";
+import {
+  formatDate,
+  formatDateRangeLabel,
+  formatHourLabel,
+} from "../../utils/dateTime";
 
 function getUtcDateString(date) {
   return new Date(
@@ -22,17 +27,46 @@ function normalizeUsageWindow(windowData, fallbackLabel = "") {
       guests: 0,
       total: 0,
       hourly: [],
+      weekday: [],
+      daily: [],
+      monthDaily: [],
     };
   }
 
+  const startDate = windowData.startDate ?? "";
+  const endDate = windowData.endDate ?? "";
+  const label =
+    startDate && endDate
+      ? formatDateRangeLabel(startDate, endDate)
+      : windowData.label ?? fallbackLabel;
+
   return {
-    label: windowData.label ?? fallbackLabel,
-    startDate: windowData.startDate ?? "",
-    endDate: windowData.endDate ?? "",
+    label,
+    startDate,
+    endDate,
     members: windowData.members ?? 0,
     guests: windowData.guests ?? 0,
     total: windowData.total ?? 0,
-    hourly: Array.isArray(windowData.hourly) ? windowData.hourly : [],
+    hourly: Array.isArray(windowData.hourly)
+      ? windowData.hourly.map((row) => ({
+          ...row,
+          label: formatHourLabel(row.hour),
+          fullLabel: formatHourLabel(row.hour),
+        }))
+      : [],
+    weekday: Array.isArray(windowData.weekday) ? windowData.weekday : [],
+    daily: Array.isArray(windowData.daily)
+      ? windowData.daily.map((row) => ({
+          ...row,
+          fullLabel: formatDate(row.usageDate),
+        }))
+      : [],
+    monthDaily: Array.isArray(windowData.monthDaily)
+      ? windowData.monthDaily.map((row) => ({
+          ...row,
+          fullLabel: formatDate(row.usageDate),
+        }))
+      : [],
   };
 }
 
@@ -64,14 +98,27 @@ function UsageCard({ active, data, onClick, title }) {
 }
 
 function HourlyUsageGraph({ rows }) {
+  return <UsageGraph rows={rows} keyField="hour" />;
+}
+
+function WeekdayUsageGraph({ rows }) {
+  return <UsageGraph rows={rows} keyField="dayOfWeek" className="usage-graph-week" />;
+}
+
+function DailyUsageGraph({ rows }) {
+  return <UsageGraph rows={rows} keyField="usageDate" className="usage-graph-date" />;
+}
+
+function UsageGraph({ rows, keyField, className = "" }) {
   if (!rows.length) {
     return <p className="usage-empty-state">No range usage data for this period.</p>;
   }
 
   const maxTotal = Math.max(...rows.map((row) => row.total), 1);
+  const graphClassName = ["usage-graph", className].filter(Boolean).join(" ");
 
   return (
-    <div className="usage-graph">
+    <div className={graphClassName}>
       {rows.map((row) => {
         const totalHeight = `${(row.total / maxTotal) * 100}%`;
         const memberHeight =
@@ -80,13 +127,13 @@ function HourlyUsageGraph({ rows }) {
           row.total > 0 ? `${(row.guests / row.total) * 100}%` : "0%";
 
         return (
-          <div key={row.hour} className="usage-graph-column">
+          <div key={row[keyField]} className="usage-graph-column">
             <span className="usage-graph-total">{row.total}</span>
             <div className="usage-graph-track">
               <div
                 className="usage-graph-stack"
                 style={{ height: totalHeight }}
-                title={`${row.label}: ${row.members} members, ${row.guests} guests`}
+                title={`${row.fullLabel ?? row.label}: ${row.members} members, ${row.guests} guests`}
               >
                 <div
                   className="usage-graph-segment usage-graph-members"
@@ -140,7 +187,7 @@ export function RangeUsagePage() {
             currentWeek: normalizeUsageWindow(result.currentWeek, "Current week"),
             filteredRange: normalizeUsageWindow(
               result.filteredRange,
-              `${startDate} to ${endDate}`,
+              formatDateRangeLabel(startDate, endDate),
             ),
           });
           setError("");
@@ -234,6 +281,32 @@ export function RangeUsagePage() {
               <HourlyUsageGraph
                 key={`${activeView}-${activeData.startDate}-${activeData.endDate}`}
                 rows={activeData.hourly}
+              />
+            ) : null}
+          </section>
+
+          <section className="usage-hourly-panel">
+            <div className="usage-hourly-header">
+              <h3>Usage By Day Of Week</h3>
+              <p>Monday to Sunday for {activeData?.label}</p>
+            </div>
+            {activeData ? (
+              <WeekdayUsageGraph
+                key={`weekday-${activeView}-${activeData.startDate}-${activeData.endDate}`}
+                rows={activeData.weekday}
+              />
+            ) : null}
+          </section>
+
+          <section className="usage-hourly-panel">
+            <div className="usage-hourly-header">
+              <h3>Usage By Date In Month</h3>
+              <p>Fixed calendar dates from the 1st to the last day of the month</p>
+            </div>
+            {activeData ? (
+              <DailyUsageGraph
+                key={`daily-${activeView}-${activeData.startDate}-${activeData.endDate}`}
+                rows={activeData.monthDaily}
               />
             ) : null}
           </section>

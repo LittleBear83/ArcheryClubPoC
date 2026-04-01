@@ -25,6 +25,86 @@ const TOURNAMENT_TYPE_OPTIONS = [
   { value: "wa720", label: "WA 720" },
   { value: "head-to-head", label: "Head-to-head Knockout" },
 ];
+const COMMITTEE_ROLE_SEED = [
+  {
+    roleKey: "chairman",
+    title: "Chairman",
+    summary: "Leads the committee, chairs meetings, and sets the club direction.",
+    displayOrder: 1,
+  },
+  {
+    roleKey: "captain",
+    title: "Captain",
+    summary: "Leads shooting activities, represents members on the shooting line, and supports club standards.",
+    displayOrder: 2,
+  },
+  {
+    roleKey: "vice-captain",
+    title: "Vice Captain",
+    summary: "Supports the captain and steps in when the captain is unavailable.",
+    displayOrder: 3,
+  },
+  {
+    roleKey: "secretary",
+    title: "Secretary",
+    summary: "Manages committee records, meeting notes, and club correspondence.",
+    displayOrder: 4,
+  },
+  {
+    roleKey: "treasurer",
+    title: "Treasurer",
+    summary: "Oversees finances, budgets, fee tracking, and financial reporting.",
+    displayOrder: 5,
+  },
+  {
+    roleKey: "membership-secretary",
+    title: "Membership Secretary",
+    summary: "Looks after member records, renewals, and new member administration.",
+    displayOrder: 6,
+  },
+  {
+    roleKey: "records-officer",
+    title: "Records Officer",
+    summary: "Maintains club records, scores, classifications, and achievement history.",
+    displayOrder: 7,
+  },
+  {
+    roleKey: "tournament-officer",
+    title: "Tournament Officer",
+    summary: "Coordinates tournaments, entries, fixtures, and competition logistics.",
+    displayOrder: 8,
+  },
+  {
+    roleKey: "safeguarding-officer",
+    title: "Safeguarding Officer",
+    summary: "Supports welfare, safeguarding processes, and member wellbeing matters.",
+    displayOrder: 9,
+  },
+  {
+    roleKey: "equipment-officer",
+    title: "Equipment Officer",
+    summary: "Oversees club equipment, maintenance, and issue or return processes.",
+    displayOrder: 10,
+  },
+  {
+    roleKey: "coaching-representative",
+    title: "Coaching Representative",
+    summary: "Represents coaching activity, development pathways, and training needs.",
+    displayOrder: 11,
+  },
+  {
+    roleKey: "ordinary-committee-member",
+    title: "Ordinary Committee Member",
+    summary: "Supports committee decisions and contributes to club governance tasks.",
+    displayOrder: 12,
+  },
+  {
+    roleKey: "associate-member",
+    title: "Associate Member",
+    summary: "Attends in a supporting capacity and contributes where invited by the committee.",
+    displayOrder: 13,
+  },
+];
 
 mkdirSync(dataDirectory, { recursive: true });
 
@@ -203,6 +283,18 @@ db.exec(`
     PRIMARY KEY (tournament_id, round_number, member_username),
     FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
     FOREIGN KEY (member_username) REFERENCES users(username)
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS committee_roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    display_order INTEGER NOT NULL,
+    assigned_username TEXT,
+    FOREIGN KEY (assigned_username) REFERENCES users(username)
   )
 `);
 
@@ -564,6 +656,27 @@ const insertUserDiscipline = db.prepare(`
   VALUES (?, ?)
 `);
 
+const upsertCommitteeRole = db.prepare(`
+  INSERT INTO committee_roles (
+    role_key,
+    title,
+    summary,
+    display_order,
+    assigned_username
+  )
+  VALUES (
+    @roleKey,
+    @title,
+    @summary,
+    @displayOrder,
+    NULL
+  )
+  ON CONFLICT(role_key) DO UPDATE SET
+    title = excluded.title,
+    summary = excluded.summary,
+    display_order = excluded.display_order
+`);
+
 for (const user of seedUsers) {
   upsertUser.run({
     ...user,
@@ -575,6 +688,10 @@ for (const user of seedUsers) {
   for (const discipline of user.disciplines) {
     insertUserDiscipline.run(user.username, discipline);
   }
+}
+
+for (const role of COMMITTEE_ROLE_SEED) {
+  upsertCommitteeRole.run(role);
 }
 
 const findUserByCredentials = db.prepare(`
@@ -632,6 +749,41 @@ const listAllUsers = db.prepare(`
   FROM users
   INNER JOIN user_types ON user_types.username = users.username
   ORDER BY users.surname ASC, users.first_name ASC
+`);
+
+const listCommitteeRoles = db.prepare(`
+  SELECT
+    committee_roles.id,
+    committee_roles.role_key,
+    committee_roles.title,
+    committee_roles.summary,
+    committee_roles.display_order,
+    committee_roles.assigned_username,
+    users.first_name AS assigned_first_name,
+    users.surname AS assigned_surname,
+    user_types.user_type AS assigned_user_type
+  FROM committee_roles
+  LEFT JOIN users ON users.username = committee_roles.assigned_username
+  LEFT JOIN user_types ON user_types.username = users.username
+  ORDER BY committee_roles.display_order ASC, committee_roles.title ASC
+`);
+
+const findCommitteeRoleById = db.prepare(`
+  SELECT
+    id,
+    role_key,
+    title,
+    summary,
+    display_order,
+    assigned_username
+  FROM committee_roles
+  WHERE id = ?
+`);
+
+const updateCommitteeRoleAssignment = db.prepare(`
+  UPDATE committee_roles
+  SET assigned_username = ?
+  WHERE id = ?
 `);
 
 const findLoanBowByUsername = db.prepare(`
@@ -1346,6 +1498,23 @@ function buildClubEvent(event, bookings = [], actorUsername = null) {
       actorUsername &&
         bookings.some((booking) => booking.username === actorUsername),
     ),
+  };
+}
+
+function buildCommitteeRole(role) {
+  return {
+    id: role.id,
+    roleKey: role.role_key,
+    title: role.title,
+    summary: role.summary,
+    displayOrder: role.display_order,
+    assignedMember: role.assigned_username
+      ? {
+          username: role.assigned_username,
+          fullName: `${role.assigned_first_name} ${role.assigned_surname}`,
+          userType: role.assigned_user_type,
+        }
+      : null,
   };
 }
 
@@ -2272,6 +2441,79 @@ app.get("/api/tournament-options", (req, res) => {
   res.json({
     success: true,
     tournamentTypes: TOURNAMENT_TYPE_OPTIONS,
+  });
+});
+
+app.get("/api/committee-roles", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    roles: listCommitteeRoles.all().map(buildCommitteeRole),
+    members:
+      actor.user_type === "admin"
+        ? listAllUsers.all().map((user) => ({
+            username: user.username,
+            fullName: `${user.first_name} ${user.surname}`,
+            userType: user.user_type,
+          }))
+        : [],
+  });
+});
+
+app.put("/api/committee-roles/:id", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || actor.user_type !== "admin") {
+    res.status(403).json({
+      success: false,
+      message: "Only admin users can update committee roles.",
+    });
+    return;
+  }
+
+  const role = findCommitteeRoleById.get(req.params.id);
+
+  if (!role) {
+    res.status(404).json({
+      success: false,
+      message: "Committee role not found.",
+    });
+    return;
+  }
+
+  const assignedUsernameRaw = req.body?.assignedUsername;
+  const assignedUsername =
+    typeof assignedUsernameRaw === "string" && assignedUsernameRaw.trim()
+      ? assignedUsernameRaw.trim()
+      : null;
+
+  if (assignedUsername && !findUserByUsername.get(assignedUsername)) {
+    res.status(404).json({
+      success: false,
+      message: "Assigned member not found.",
+    });
+    return;
+  }
+
+  updateCommitteeRoleAssignment.run(assignedUsername, role.id);
+
+  const updatedRole = listCommitteeRoles
+    .all()
+    .map(buildCommitteeRole)
+    .find((entry) => entry.id === role.id);
+
+  res.json({
+    success: true,
+    role: updatedRole,
   });
 });
 

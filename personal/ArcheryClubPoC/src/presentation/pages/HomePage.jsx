@@ -15,6 +15,7 @@ import { PlaceholderPage } from "./PlaceholderPage";
 import { ProfilePage } from "./ProfilePage";
 import { UserCreationPage } from "./UserCreationPage";
 import { LoanBowRegisterPage } from "./LoanBowRegisterPage";
+import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
 import {
   isSameUserProfile,
   normalizeUserProfile,
@@ -120,7 +121,7 @@ export function HomePage({
       setMembers(result.members.map((member) => normalizeUserProfile(member)));
     } catch {
       if (!signal?.aborted) {
-        setMembers([]);
+        return;
       }
     }
   }, []);
@@ -250,12 +251,14 @@ export function HomePage({
     const intervalId = window.setInterval(refreshAll, 30000);
 
     window.addEventListener("member-bookings-updated", refreshAll);
+    window.addEventListener("member-session-updated", refreshAll);
     window.addEventListener("tournament-data-updated", refreshAll);
 
     return () => {
       abortController.abort();
       window.clearInterval(intervalId);
       window.removeEventListener("member-bookings-updated", refreshAll);
+      window.removeEventListener("member-session-updated", refreshAll);
       window.removeEventListener("tournament-data-updated", refreshAll);
     };
   }, [
@@ -391,6 +394,12 @@ export function HomePage({
                   onTournamentActivity={refreshHomeActivity}
                   showSetupForm
                 />
+              }
+            />
+            <Route
+              path="/committee-org-chart"
+              element={
+                <CommitteeOrgChartPage currentUserProfile={currentUserProfile} />
               }
             />
             <Route path="/feedback-form" element={<FeedbackFormPage />} />

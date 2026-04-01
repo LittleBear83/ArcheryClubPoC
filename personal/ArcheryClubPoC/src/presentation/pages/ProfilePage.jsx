@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MemberProfileForm } from "../components/MemberProfileForm";
 import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
 
@@ -9,7 +9,20 @@ function buildHeaders(currentUserProfile) {
   };
 }
 
+async function readJsonResponse(response) {
+  const responseText = await response.text();
+
+  try {
+    return responseText ? JSON.parse(responseText) : {};
+  } catch {
+    throw new Error(
+      "Unable to load the profile page. If the server was already running, restart it and try again.",
+    );
+  }
+}
+
 export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) {
+  const hasLoadedProfileRef = useRef(false);
   const [editableProfile, setEditableProfile] = useState(null);
   const [memberOptions, setMemberOptions] = useState([]);
   const [selectedUsername, setSelectedUsername] = useState(
@@ -17,7 +30,8 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
   );
   const [disciplineOptions, setDisciplineOptions] = useState([]);
   const [roleOptions, setRoleOptions] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -28,75 +42,150 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
   const isAdmin = currentUserProfile?.membership?.role === "admin";
   const isGuest = currentUserProfile?.accountType === "guest";
 
-  const loadInitialData = useEffectEvent(async (signal) => {
-    if (isGuest) {
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
+  useEffect(() => {
+    hasLoadedProfileRef.current = false;
+    setEditableProfile(null);
+    setMemberOptions([]);
+    setSelectedUsername(currentUserProfile?.auth?.username ?? "");
+    setIsInitialLoading(true);
+    setIsRefreshingProfile(false);
     setError("");
+    setMessage("");
+  }, [currentUserProfile?.auth?.username]);
 
-    try {
-      const profileResponse = await fetch(
-        `/api/user-profiles/${currentUserProfile.auth.username}`,
-        {
+  const loadProfile = useCallback(
+    async (username, { signal, isBackgroundRefresh = false } = {}) => {
+      if (isGuest || !username) {
+        setIsInitialLoading(false);
+        return;
+      }
+
+      if (isBackgroundRefresh) {
+        setIsRefreshingProfile(true);
+      } else {
+        setIsInitialLoading(true);
+      }
+
+      setError("");
+
+      try {
+        const response = await fetch(`/api/user-profiles/${username}`, {
           headers: buildHeaders(currentUserProfile),
           signal,
-        },
-      );
-      const profileResult = await profileResponse.json();
+          cache: "no-store",
+        });
+        const result = await readJsonResponse(response);
 
-      if (!profileResponse.ok || !profileResult.success) {
-        throw new Error(profileResult.message ?? "Unable to load your profile.");
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.message ??
+              (username === currentUserProfile?.auth?.username
+                ? "Unable to load your profile."
+                : "Unable to load member profile."),
+          );
+        }
+
+        if (signal?.aborted) {
+          return;
+        }
+
+        setEditableProfile(result.editableProfile);
+        setRoleOptions((current) => result.userTypes ?? current);
+        setDisciplineOptions((current) => result.disciplines ?? current);
+        setMessage("");
+        hasLoadedProfileRef.current = true;
+      } catch (loadError) {
+        if (!signal?.aborted) {
+          setError(loadError.message);
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setIsInitialLoading(false);
+          setIsRefreshingProfile(false);
+        }
       }
+    },
+    [currentUserProfile, isGuest],
+  );
 
-      if (signal?.aborted) {
+  const loadInitialData = useCallback(
+    async (signal) => {
+      if (isGuest) {
+        setIsInitialLoading(false);
         return;
       }
 
-      setEditableProfile(profileResult.editableProfile);
-      setRoleOptions(profileResult.userTypes ?? []);
-      setDisciplineOptions(profileResult.disciplines ?? []);
+      const initialUsername = isAdmin
+        ? selectedUsername || currentUserProfile?.auth?.username
+        : currentUserProfile?.auth?.username;
 
-      if (!isAdmin) {
-        setSelectedUsername(profileResult.editableProfile.username);
-        setIsLoading(false);
+      if (!initialUsername) {
+        setIsInitialLoading(false);
         return;
       }
 
-      const optionsResponse = await fetch("/api/profile-options", {
-        headers: buildHeaders(currentUserProfile),
-        signal,
-      });
-      const optionsResult = await optionsResponse.json();
-
-      if (!optionsResponse.ok || !optionsResult.success) {
-        throw new Error(optionsResult.message ?? "Unable to load member options.");
+      if (hasLoadedProfileRef.current) {
+        setIsRefreshingProfile(true);
+      } else {
+        setIsInitialLoading(true);
       }
 
-      if (signal?.aborted) {
-        return;
-      }
+      setError("");
 
-      setMemberOptions(optionsResult.members ?? []);
-      setRoleOptions(optionsResult.userTypes ?? profileResult.userTypes ?? []);
-      setDisciplineOptions(
-        optionsResult.disciplines ?? profileResult.disciplines ?? [],
-      );
-      setSelectedUsername(profileResult.editableProfile.username);
-      setIsLoading(false);
-    } catch (loadError) {
-      if (!signal?.aborted) {
-        setError(loadError.message);
-        setIsLoading(false);
+      try {
+        if (isAdmin) {
+          const optionsResponse = await fetch("/api/profile-options", {
+            headers: buildHeaders(currentUserProfile),
+            signal,
+            cache: "no-store",
+          });
+          const optionsResult = await readJsonResponse(optionsResponse);
+
+          if (!optionsResponse.ok || !optionsResult.success) {
+            throw new Error(
+              optionsResult.message ?? "Unable to load member options.",
+            );
+          }
+
+          if (signal?.aborted) {
+            return;
+          }
+
+          setMemberOptions(optionsResult.members ?? []);
+          setRoleOptions(optionsResult.userTypes ?? []);
+          setDisciplineOptions(optionsResult.disciplines ?? []);
+        }
+
+        await loadProfile(initialUsername, {
+          signal,
+          isBackgroundRefresh: hasLoadedProfileRef.current,
+        });
+
+        if (!signal?.aborted) {
+          setSelectedUsername(initialUsername);
+        }
+      } catch (loadError) {
+        if (!signal?.aborted) {
+          setError(loadError.message);
+          setIsInitialLoading(false);
+          setIsRefreshingProfile(false);
+        }
       }
-    }
-  });
+    },
+    [
+      currentUserProfile,
+      isAdmin,
+      isGuest,
+      loadProfile,
+      selectedUsername,
+    ],
+  );
 
   useEffect(() => {
     const abortController = new AbortController();
-    const refresh = () => loadInitialData(abortController.signal);
+    const refresh = () => {
+      loadInitialData(abortController.signal);
+    };
 
     refresh();
     window.addEventListener("profile-data-updated", refresh);
@@ -107,58 +196,28 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
       window.removeEventListener("profile-data-updated", refresh);
       window.removeEventListener("loan-bow-data-updated", refresh);
     };
-  }, [currentUserProfile, isAdmin, isGuest, loadInitialData]);
-
-  const loadSelectedProfile = useEffectEvent(async (signal) => {
-    if (!isAdmin || isGuest) {
-      return;
-    }
-
-    if (!selectedUsername) {
-      return;
-    }
-
-    setIsLoading(true);
-    setError("");
-
-    try {
-      const response = await fetch(`/api/user-profiles/${selectedUsername}`, {
-        headers: buildHeaders(currentUserProfile),
-        signal,
-      });
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to load member profile.");
-      }
-
-      if (signal?.aborted) {
-        return;
-      }
-
-      setEditableProfile(result.editableProfile);
-      setRoleOptions((current) => result.userTypes ?? current);
-      setDisciplineOptions((current) => result.disciplines ?? current);
-      setMessage("");
-    } catch (loadError) {
-      if (!signal?.aborted) {
-        setError(loadError.message);
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
-    }
-  });
+  }, [loadInitialData]);
 
   useEffect(() => {
+    if (!isAdmin || isGuest || !selectedUsername) {
+      return undefined;
+    }
+
+    if (!editableProfile) {
+      return undefined;
+    }
+
+    if (editableProfile.username === selectedUsername) {
+      return undefined;
+    }
+
     const abortController = new AbortController();
-    loadSelectedProfile(abortController.signal);
+    loadProfile(selectedUsername, { signal: abortController.signal });
 
     return () => {
       abortController.abort();
     };
-  }, [currentUserProfile, isAdmin, isGuest, selectedUsername, loadSelectedProfile]);
+  }, [editableProfile, isAdmin, isGuest, loadProfile, selectedUsername]);
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
@@ -328,7 +387,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
             <select
               value={selectedUsername}
               onChange={(event) => setSelectedUsername(event.target.value)}
-              disabled={isLoading || isSaving}
+              disabled={isInitialLoading || isRefreshingProfile || isSaving}
             >
               {memberOptions.map((member) => (
                 <option key={member.username} value={member.username}>
@@ -340,11 +399,14 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
         </section>
       ) : null}
 
-      {isLoading ? <p>Loading profile...</p> : null}
+      {isInitialLoading ? <p>Loading profile...</p> : null}
+      {isRefreshingProfile && !isInitialLoading ? (
+        <p>Refreshing profile details...</p>
+      ) : null}
       {error ? <p className="profile-error">{error}</p> : null}
       {message ? <p className="profile-success">{message}</p> : null}
 
-      {!isLoading && editableProfile ? (
+      {!isInitialLoading && editableProfile ? (
         <MemberProfileForm
           editableProfile={editableProfile}
           handleChange={handleChange}
@@ -362,9 +424,15 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
             setIsReturnModalOpen(true);
           }}
           isCreatingNew={false}
-          isSaving={isSaving}
+          isSaving={isSaving || isRefreshingProfile}
           onSubmit={handleSave}
-          submitLabel={isSaving ? "Saving profile..." : "Save profile"}
+          submitLabel={
+            isSaving
+              ? "Saving profile..."
+              : isRefreshingProfile
+                ? "Refreshing profile..."
+                : "Save profile"
+          }
         />
       ) : null}
 

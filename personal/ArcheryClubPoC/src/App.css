@@ -1334,6 +1334,50 @@ textarea {
   margin-bottom: 0;
 }
 
+.committee-roles-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.committee-roles-title {
+  text-align: center;
+}
+
+.committee-roles-table-wrap {
+  overflow-x: auto;
+}
+
+.committee-roles-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.committee-roles-table th,
+.committee-roles-table td {
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  text-align: left;
+  vertical-align: top;
+}
+
+.committee-roles-table th {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--accent);
+}
+
+.committee-roles-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.committee-role-assignment {
+  display: block;
+  min-width: 220px;
+}
+
+.committee-role-assignment select {
+  width: 100%;
+}
+
 @media (max-width: 820px) {
   .tournament-bracket-graphic {
     gap: 28px;

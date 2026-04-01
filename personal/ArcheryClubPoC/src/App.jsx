@@ -53,6 +53,7 @@ function App() {
     window.history.replaceState({}, "", "/");
     setIsAuthenticated(true);
     setCurrentUserProfile(storedUserProfile);
+    window.dispatchEvent(new Event("member-session-updated"));
   };
 
   const handleCurrentUserProfileUpdate = (userProfile) => {

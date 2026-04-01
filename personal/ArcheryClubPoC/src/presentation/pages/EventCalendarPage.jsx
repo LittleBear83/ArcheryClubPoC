@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
@@ -8,26 +8,8 @@ const EVENT_TYPE_OPTIONS = [
   { value: "social", label: "Social event", className: "event-type-social" },
   { value: "range-closed", label: "Range closed", className: "event-type-range-closed" },
 ];
-
-function buildFirstMondayClosure(year, month) {
-  const firstDay = new Date(year, month, 1);
-  const firstDayOfWeek = firstDay.getDay();
-  const daysUntilMonday = (8 - firstDayOfWeek) % 7;
-  const firstMonday = 1 + daysUntilMonday;
-
-  return {
-    id: `range-closed-${year}-${String(month + 1).padStart(2, "0")}`,
-    date: `${year}-${String(month + 1).padStart(2, "0")}-${String(firstMonday).padStart(2, "0")}`,
-    startTime: "09:00",
-    title: "Range closed until 12:00",
-    type: "range-closed",
-    system: true,
-  };
-}
-
-export function EventCalendarPage() {
+export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
   const today = new Date();
-  const currentYear = today.getFullYear();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
 
@@ -36,91 +18,137 @@ export function EventCalendarPage() {
     today.toISOString().slice(0, 10),
   );
   const [newEventStartTime, setNewEventStartTime] = useState("09:00");
+  const [newEventEndTime, setNewEventEndTime] = useState("10:00");
   const [newEventType, setNewEventType] = useState("competition");
   const [events, setEvents] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [bookingModalMode, setBookingModalMode] = useState("");
   const [selectedDate, setSelectedDate] = useState(null);
   const [bookingMessage, setBookingMessage] = useState("");
   const [eventFormError, setEventFormError] = useState("");
+  const canCreateEvents = currentUserProfile?.membership?.role === "admin";
+  const actorUsername = currentUserProfile?.auth?.username ?? "";
+  const canManageBookings = Boolean(actorUsername);
 
   const getEventTypeDetails = (type) =>
     EVENT_TYPE_OPTIONS.find((option) => option.value === type) ??
     EVENT_TYPE_OPTIONS[0];
 
-  const recurringClosures = useMemo(() => {
-    const yearsToBuild = [...new Set([currentYear, year])];
+  const loadEvents = useCallback(async (signal) => {
+    try {
+      const response = await fetch("/api/events", {
+        headers: actorUsername
+          ? { "x-actor-username": actorUsername }
+          : undefined,
+        cache: "no-store",
+        signal,
+      });
+      const result = await response.json();
 
-    return yearsToBuild.flatMap((targetYear) =>
-      Array.from({ length: 12 }, (_, monthIndex) =>
-        buildFirstMondayClosure(targetYear, monthIndex),
-      ),
-    );
-  }, [currentYear, year]);
+      if (!response.ok || !result.success || signal?.aborted) {
+        return;
+      }
 
-  const combinedEvents = useMemo(
-    () =>
-      [...recurringClosures, ...events].sort((left, right) => {
-        const byDate = left.date.localeCompare(right.date);
+      setEvents(result.events ?? []);
+    } catch {
+      if (!signal?.aborted) {
+        setEvents([]);
+      }
+    }
+  }, [actorUsername]);
 
-        if (byDate !== 0) {
-          return byDate;
-        }
+  useEffect(() => {
+    const abortController = new AbortController();
+    const refresh = () => loadEvents(abortController.signal);
 
-        return left.startTime.localeCompare(right.startTime);
-      }),
-    [events, recurringClosures],
-  );
+    refresh();
 
-  const addEvent = (e) => {
+    const intervalId = window.setInterval(refresh, 30000);
+    window.addEventListener("event-data-updated", refresh);
+    window.addEventListener("member-bookings-updated", refresh);
+
+    return () => {
+      abortController.abort();
+      window.clearInterval(intervalId);
+      window.removeEventListener("event-data-updated", refresh);
+      window.removeEventListener("member-bookings-updated", refresh);
+    };
+  }, [actorUsername, loadEvents]);
+
+  const addEvent = async (e) => {
     e.preventDefault();
     if (!newEvent.trim()) return;
 
-    const hasTimeConflict = combinedEvents.some(
-      (event) =>
-        event.date === newEventDate && event.startTime === newEventStartTime,
-    );
+    try {
+      const response = await fetch("/api/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-actor-username": currentUserProfile?.auth?.username ?? "",
+        },
+        cache: "no-store",
+        body: JSON.stringify({
+          date: newEventDate,
+          startTime: newEventStartTime,
+          endTime: newEventEndTime,
+          title: newEvent.trim(),
+          type: newEventType,
+        }),
+      });
+      const result = await response.json();
 
-    if (hasTimeConflict) {
-      setEventFormError(
-        `There is already an event booked on ${formatDate(newEventDate)} at ${formatClockTime(newEventStartTime)}.`,
+      if (!response.ok || !result.success) {
+        setEventFormError(result.message ?? "Unable to save event.");
+        return;
+      }
+
+      setEvents((prev) =>
+        [...prev, result.event].sort((left, right) => {
+          const byDate = left.date.localeCompare(right.date);
+
+          if (byDate !== 0) {
+            return byDate;
+          }
+
+          return left.startTime.localeCompare(right.startTime);
+        }),
       );
-      return;
+      setNewEvent("");
+      setNewEventStartTime("09:00");
+      setNewEventEndTime("10:00");
+      setNewEventType("competition");
+      setEventFormError("");
+      setIsModalOpen(false);
+      window.dispatchEvent(new Event("event-data-updated"));
+    } catch {
+      setEventFormError("Unable to save event.");
     }
-
-    setEvents((prev) => [
-      ...prev,
-      {
-        id: Date.now(),
-        date: newEventDate,
-        startTime: newEventStartTime,
-        title: newEvent.trim(),
-        type: newEventType,
-      },
-    ]);
-    setNewEvent("");
-    setNewEventStartTime("09:00");
-    setNewEventType("competition");
-    setEventFormError("");
-    setIsModalOpen(false);
   };
 
   const eventsByDate = useMemo(
     () =>
-      [...combinedEvents]
+      [...events]
         .sort((left, right) => left.startTime.localeCompare(right.startTime))
         .reduce((acc, evt) => {
           (acc[evt.date] = acc[evt.date] || []).push(evt);
           return acc;
         }, {}),
-    [combinedEvents],
+    [events],
   );
 
   const selectedEvents = selectedDate ? eventsByDate[selectedDate] || [] : [];
-  const primarySelectedEvent = selectedEvents[0] || null;
+  const bookableSelectedEvents = selectedEvents.filter(
+    (event) => event.type !== "range-closed",
+  );
+  const bookedSelectedEvents = bookableSelectedEvents.filter((event) => event.isBookedOn);
+  const availableToBookSelectedEvents = bookableSelectedEvents.filter(
+    (event) => !event.isBookedOn,
+  );
 
   const handleDateSelect = (dateString) => {
     setSelectedDate(dateString);
     setBookingMessage("");
+    setBookingModalMode("");
   };
 
   const handleOpenModal = () => {
@@ -128,12 +156,104 @@ export function EventCalendarPage() {
     setIsModalOpen(true);
   };
 
-  const handleBookOn = () => {
-    if (!selectedDate) return;
-    const eventTitle = primarySelectedEvent?.title || "this event date";
-    setBookingMessage(
-      `Booking request started for ${eventTitle} on ${formatDate(selectedDate)} at ${formatClockTime(primarySelectedEvent?.startTime)}.`,
+  const updateEventInState = (updatedEvent) => {
+    setEvents((current) =>
+      current.map((event) => (event.id === updatedEvent.id ? updatedEvent : event)),
     );
+  };
+
+  const startBookingForEvent = async (event) => {
+    if (!selectedDate || !event) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/events/${event.id}/book`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-actor-username": actorUsername,
+        },
+        cache: "no-store",
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message ?? "Unable to book onto this event.");
+      }
+
+      updateEventInState(result.event);
+      setBookingMessage(
+        `Booked onto ${event.title} on ${formatDate(selectedDate)} at ${formatClockTime(event.startTime)}.`,
+      );
+      onBookingsChanged?.();
+      window.dispatchEvent(new Event("member-bookings-updated"));
+      window.dispatchEvent(new Event("event-data-updated"));
+      setBookingModalMode("");
+    } catch (bookingError) {
+      setBookingMessage(bookingError.message);
+      setBookingModalMode("");
+    }
+  };
+
+  const leaveEvent = async (event) => {
+    if (!selectedDate || !event) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/events/${event.id}/booking`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "x-actor-username": actorUsername,
+        },
+        cache: "no-store",
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message ?? "Unable to leave this event.");
+      }
+
+      updateEventInState(result.event);
+      setBookingMessage(
+        `You have left ${event.title} on ${formatDate(selectedDate)}.`,
+      );
+      onBookingsChanged?.();
+      window.dispatchEvent(new Event("member-bookings-updated"));
+      window.dispatchEvent(new Event("event-data-updated"));
+      setBookingModalMode("");
+    } catch (leaveError) {
+      setBookingMessage(leaveError.message);
+      setBookingModalMode("");
+    }
+  };
+
+  const handleBookOn = () => {
+    if (!selectedDate || availableToBookSelectedEvents.length === 0) {
+      return;
+    }
+
+    if (availableToBookSelectedEvents.length === 1) {
+      startBookingForEvent(availableToBookSelectedEvents[0]);
+      return;
+    }
+
+    setBookingModalMode("book");
+  };
+
+  const handleLeaveEvent = () => {
+    if (!selectedDate || bookedSelectedEvents.length === 0) {
+      return;
+    }
+
+    if (bookedSelectedEvents.length === 1) {
+      leaveEvent(bookedSelectedEvents[0]);
+      return;
+    }
+
+    setBookingModalMode("leave");
   };
 
   return (
@@ -219,7 +339,9 @@ export function EventCalendarPage() {
                         >
                           {getEventTypeDetails(evt.type).label}
                         </span>{" "}
-                        {formatClockTime(evt.startTime)} - {evt.title}
+                        {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)} - {evt.title}
+                        {evt.type === "range-closed" ? " (not bookable)" : ""}
+                        {evt.isBookedOn ? " (booked on)" : ""}
                       </li>
                     ))}
                   </ul>
@@ -228,11 +350,22 @@ export function EventCalendarPage() {
               <button
                 type="button"
                 className="event-book-button"
-                disabled={selectedEvents.length === 0}
+                disabled={
+                  !canManageBookings || availableToBookSelectedEvents.length === 0
+                }
                 onClick={handleBookOn}
               >
                 Book on
               </button>
+              {canManageBookings && bookedSelectedEvents.length > 0 ? (
+                <button
+                  type="button"
+                  className="event-cancel-button"
+                  onClick={handleLeaveEvent}
+                >
+                  Leave event
+                </button>
+              ) : null}
               {bookingMessage && (
                 <p className="event-booking-message">{bookingMessage}</p>
               )}
@@ -241,12 +374,14 @@ export function EventCalendarPage() {
         </aside>
       </section>
 
-      <button
-        onClick={handleOpenModal}
-        style={{ marginBottom: "12px" }}
-      >
-        Add event
-      </button>
+      {canCreateEvents ? (
+        <button
+          onClick={handleOpenModal}
+          style={{ marginBottom: "12px" }}
+        >
+          Add event
+        </button>
+      ) : null}
 
       <Modal
         open={isModalOpen}
@@ -285,6 +420,15 @@ export function EventCalendarPage() {
             />
           </label>
           <label>
+            End time
+            <input
+              type="time"
+              value={newEventEndTime}
+              onChange={(e) => setNewEventEndTime(e.target.value)}
+              required
+            />
+          </label>
+          <label>
             Event type
             <select
               value={newEventType}
@@ -300,6 +444,58 @@ export function EventCalendarPage() {
           {eventFormError ? <p className="event-form-error">{eventFormError}</p> : null}
           <button type="submit">Save Event</button>
         </form>
+      </Modal>
+
+      <Modal
+        open={bookingModalMode === "book" || bookingModalMode === "leave"}
+        onClose={() => setBookingModalMode("")}
+        title={
+          bookingModalMode === "leave"
+            ? "Choose Event To Leave"
+            : "Choose Event To Book"
+        }
+      >
+        <div className="event-booking-picker">
+          <p>
+            {bookingModalMode === "leave"
+              ? `Select the event you want to leave for ${formatDate(selectedDate)}.`
+              : `Select the event you want to book onto for ${formatDate(selectedDate)}.`}
+          </p>
+          <div className="event-booking-option-list">
+            {(bookingModalMode === "leave"
+              ? bookedSelectedEvents
+              : availableToBookSelectedEvents
+            ).map((event) => (
+              <button
+                key={event.id}
+                type="button"
+                className="event-booking-option"
+                onClick={() =>
+                  bookingModalMode === "leave"
+                    ? leaveEvent(event)
+                    : startBookingForEvent(event)
+                }
+              >
+                <span
+                  className={`event-type-badge ${getEventTypeDetails(event.type).className}`}
+                >
+                  {getEventTypeDetails(event.type).label}
+                </span>
+                <strong>{event.title}</strong>
+                <span>
+                  {formatClockTime(event.startTime)} to {formatClockTime(event.endTime)}
+                </span>
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => setBookingModalMode("")}
+          >
+            Cancel
+          </button>
+        </div>
       </Modal>
     </div>
   );

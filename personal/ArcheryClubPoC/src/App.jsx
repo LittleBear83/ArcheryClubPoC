@@ -7,6 +7,7 @@ import { InMemoryMemberDataSource } from "./data/sources/InMemoryMemberDataSourc
 import { MemberRepositoryImpl } from "./data/repositories/MemberRepositoryImpl";
 import { GetMembersUseCase } from "./usecases/GetMembersUseCase";
 import { AddMemberUseCase } from "./usecases/AddMemberUseCase";
+import { normalizeUserProfile } from "./utils/userProfile";
 
 const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
@@ -18,42 +19,44 @@ const memberRepository = new MemberRepositoryImpl({ dataSource });
 const getMembersUseCase = new GetMembersUseCase({ memberRepository });
 const addMemberUseCase = new AddMemberUseCase({ memberRepository });
 
+function loadStoredUserProfile() {
+  const storedUser = window.localStorage.getItem(AUTH_USER_STORAGE_KEY);
+
+  if (!storedUser) {
+    return null;
+  }
+
+  try {
+    return normalizeUserProfile(JSON.parse(storedUser));
+  } catch {
+    return null;
+  }
+}
+
 function App() {
   const inactivityTimeoutRef = useRef(null);
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return window.localStorage.getItem(AUTH_STORAGE_KEY) === "true";
   });
-  const [currentUser, setCurrentUser] = useState(() => {
-    const storedUser = window.localStorage.getItem(AUTH_USER_STORAGE_KEY);
+  const [currentUserProfile, setCurrentUserProfile] = useState(() =>
+    loadStoredUserProfile(),
+  );
 
-    if (!storedUser) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(storedUser);
-    } catch {
-      return null;
-    }
-  });
-
-  const persistAuthenticatedUser = (user) => {
-    const storedUser = {
-      username: user.username,
-      firstName: user.firstName,
-      surname: user.surname,
-      userType: user.userType,
-      archeryGbMembershipNumber: user.archeryGbMembershipNumber ?? null,
-    };
+  const persistAuthenticatedUser = (userProfile) => {
+    const storedUserProfile = normalizeUserProfile(userProfile);
 
     window.localStorage.setItem(AUTH_STORAGE_KEY, "true");
     window.localStorage.setItem(
       AUTH_USER_STORAGE_KEY,
-      JSON.stringify(storedUser),
+      JSON.stringify(storedUserProfile),
     );
     window.history.replaceState({}, "", "/");
     setIsAuthenticated(true);
-    setCurrentUser(storedUser);
+    setCurrentUserProfile(storedUserProfile);
+  };
+
+  const handleCurrentUserProfileUpdate = (userProfile) => {
+    persistAuthenticatedUser(userProfile);
   };
 
   const handleLogin = async ({ username, password }) => {
@@ -75,9 +78,9 @@ function App() {
         };
       }
 
-      persistAuthenticatedUser(result.user);
+      persistAuthenticatedUser(result.userProfile);
 
-      return { success: true, username: result.user.username };
+      return { success: true, username: result.userProfile.auth.username };
     } catch {
       return {
         success: false,
@@ -95,7 +98,7 @@ function App() {
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
     window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
     setIsAuthenticated(false);
-    setCurrentUser(null);
+    setCurrentUserProfile(null);
   };
 
   const handleRfidLogin = async (rfidTag) => {
@@ -117,11 +120,11 @@ function App() {
         };
       }
 
-      persistAuthenticatedUser(result.user);
+      persistAuthenticatedUser(result.userProfile);
 
       return {
         success: true,
-        username: result.user.username,
+        username: result.userProfile.auth.username,
       };
     } catch {
       return {
@@ -158,7 +161,7 @@ function App() {
         };
       }
 
-      persistAuthenticatedUser(result.user);
+      persistAuthenticatedUser(result.userProfile);
 
       return {
         success: true,
@@ -170,6 +173,12 @@ function App() {
       };
     }
   };
+
+  useEffect(() => {
+    if (isAuthenticated && !currentUserProfile) {
+      handleLogout();
+    }
+  }, [currentUserProfile, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -233,7 +242,8 @@ function App() {
             <HomePage
               getMembersUseCase={getMembersUseCase}
               addMemberUseCase={addMemberUseCase}
-              currentUser={currentUser}
+              currentUserProfile={currentUserProfile}
+              onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
               onLogout={handleLogout}
             />
           }

@@ -21,6 +21,7 @@ body {
 }
 
 .login-shell {
+  position: relative;
   min-height: 100svh;
   display: flex;
   align-items: center;
@@ -31,7 +32,127 @@ body {
     linear-gradient(180deg, #111111 0%, #050505 100%);
 }
 
+.login-arrow-field {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.login-flying-arrow {
+  position: absolute;
+  left: -18vw;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  opacity: 0.42;
+  filter: drop-shadow(0 0 12px rgba(255, 221, 0, 0.12));
+  animation: login-arrow-flight linear infinite;
+}
+
+.login-flying-arrow-line {
+  width: 150px;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.1), rgba(255, 221, 0, 0.9));
+}
+
+.login-flying-arrow-head {
+  width: 0;
+  height: 0;
+  border-left: 18px solid #ffdd00;
+  border-top: 6px solid transparent;
+  border-bottom: 6px solid transparent;
+}
+
+.login-flying-arrow-fletching {
+  position: absolute;
+  left: 10px;
+  width: 18px;
+  height: 18px;
+}
+
+.login-flying-arrow-fletching::before,
+.login-flying-arrow-fletching::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  width: 10px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.8);
+  transform-origin: left center;
+}
+
+.login-flying-arrow-fletching::before {
+  top: 5px;
+  transform: rotate(32deg);
+}
+
+.login-flying-arrow-fletching::after {
+  top: 11px;
+  transform: rotate(-32deg);
+}
+
+.login-flying-arrow-1 {
+  top: 10%;
+  animation-duration: 14s;
+  animation-delay: -2s;
+}
+
+.login-flying-arrow-2 {
+  top: 18%;
+  animation-duration: 18s;
+  animation-delay: -8s;
+}
+
+.login-flying-arrow-3 {
+  top: 30%;
+  animation-duration: 16s;
+  animation-delay: -5s;
+}
+
+.login-flying-arrow-4 {
+  top: 42%;
+  animation-duration: 20s;
+  animation-delay: -12s;
+}
+
+.login-flying-arrow-5 {
+  top: 55%;
+  animation-duration: 17s;
+  animation-delay: -6s;
+}
+
+.login-flying-arrow-6 {
+  top: 66%;
+  animation-duration: 15s;
+  animation-delay: -10s;
+}
+
+.login-flying-arrow-7 {
+  top: 78%;
+  animation-duration: 19s;
+  animation-delay: -14s;
+}
+
+.login-flying-arrow-8 {
+  top: 88%;
+  animation-duration: 13s;
+  animation-delay: -4s;
+}
+
+@keyframes login-arrow-flight {
+  from {
+    transform: translateX(0) translateY(0) rotate(-10deg);
+  }
+
+  to {
+    transform: translateX(130vw) translateY(-16px) rotate(-10deg);
+  }
+}
+
 .login-card {
+  position: relative;
+  z-index: 1;
   width: min(960px, 100%);
   padding: 32px;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -41,9 +162,17 @@ body {
   text-align: left;
 }
 
+.login-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
 .login-logo {
-  width: 88px;
-  height: 88px;
+  width: 100px;
+  height: 100px;
   display: block;
   margin-bottom: 16px;
 }
@@ -57,7 +186,7 @@ body {
 }
 
 .login-title {
-  margin: 0 0 10px;
+  margin: 0 0 20px;
   color: #fff;
   font-size: clamp(2rem, 4vw, 2.8rem);
 }
@@ -225,6 +354,43 @@ body {
   padding: 0;
 }
 
+.admin-warning-ticker {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255, 221, 0, 0.35);
+  background: linear-gradient(90deg, #4b0000 0%, #7c0909 48%, #4b0000 100%);
+  color: #fff6c5;
+}
+
+.admin-warning-ticker-track {
+  display: inline-flex;
+  gap: 48px;
+  min-width: max-content;
+  padding: 10px 0;
+  white-space: nowrap;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  animation: admin-warning-scroll 24s linear infinite;
+}
+
+.admin-warning-ticker-track span {
+  display: inline-flex;
+  align-items: center;
+}
+
+@keyframes admin-warning-scroll {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
 .target-arch-banner .menu-button {
   position: absolute;
   top: 10px;
@@ -253,8 +419,6 @@ body {
   height: 72px;
   display: block;
 }
-
-
 
 .archery-banner-img {
   position: absolute;
@@ -293,6 +457,19 @@ body {
   font-size: 2rem;
   margin: 0;
   line-height: 1.1;
+}
+
+.page-shell {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 24px 10px 40px;
+  font-family: system-ui, sans-serif;
+}
+
+.page-content {
+  width: 100%;
+  margin-bottom: 24px;
 }
 
 a {
@@ -362,7 +539,8 @@ textarea {
 }
 
 .left-align-form input,
-.left-align-form textarea {
+.left-align-form textarea,
+.left-align-form select {
   width: 100%;
   box-sizing: border-box;
 }
@@ -390,7 +568,7 @@ textarea {
 
 .home-split-view {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
   align-items: start;
 }
@@ -400,6 +578,165 @@ textarea {
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.04);
+}
+
+.profile-page {
+  display: grid;
+  gap: 18px;
+}
+
+.profile-admin-panel,
+.profile-form {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.profile-section-title {
+  margin: 0 0 14px;
+}
+
+.profile-member-select {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.profile-form-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.profile-discipline-fieldset {
+  width: 100%;
+  margin: 0;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+}
+
+.profile-discipline-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.loan-bow-fieldset {
+  display: grid;
+  gap: 16px;
+}
+
+.loan-bow-status {
+  display: grid;
+  gap: 8px;
+}
+
+.loan-bow-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.loan-bow-status-active {
+  background: rgba(255, 221, 0, 0.16);
+  color: #ffe45c;
+  border: 1px solid rgba(255, 221, 0, 0.45);
+}
+
+.loan-bow-status-returned {
+  background: rgba(95, 197, 118, 0.16);
+  color: #9de38a;
+  border: 1px solid rgba(95, 197, 118, 0.45);
+}
+
+.loan-bow-status-copy {
+  margin: 0;
+}
+
+.loan-bow-grid,
+.loan-bow-boolean-grid {
+  margin-top: 4px;
+}
+
+.loan-bow-returned-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.loan-bow-returned-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(95, 197, 118, 0.14);
+  border: 1px solid rgba(95, 197, 118, 0.35);
+  color: #d6f5d0;
+  font-size: 0.82rem;
+}
+
+.loan-bow-return-button,
+.secondary-button {
+  width: fit-content;
+}
+
+.loan-bow-return-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.secondary-button {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+.secondary-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.profile-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+  width: auto;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.profile-checkbox-field {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.profile-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.profile-checkbox span {
+  margin-left: 6px;
+}
+
+.profile-error {
+  margin: 0;
+  color: #ff9f9f;
+}
+
+.profile-success {
+  margin: 0;
+  color: #9de38a;
 }
 
 .event-calendar-layout {
@@ -425,14 +762,42 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.94rem;
+  font-size: 0.98rem;
+  font-weight: 700;
 }
 
 .event-key-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+.coaching-key-item {
+  gap: 10px;
+}
+
+.coaching-key-icon-wrap,
+.coaching-day-key-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1f1700;
+  background: rgb(255, 217, 0);
+  border: 2px solid rgb(255, 231, 109);
+}
+
+.coaching-key-icon-wrap {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+.coaching-key-icon {
   width: 14px;
   height: 14px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.24);
 }
 
 .calendar-day-header {
@@ -451,10 +816,22 @@ textarea {
 }
 
 .calendar-day-key-dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+.coaching-day-key-icon-wrap {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border-width: 1px;
+}
+
+.coaching-day-key-icon {
+  width: 9px;
+  height: 9px;
 }
 
 .event-summary-panel {
@@ -463,21 +840,37 @@ textarea {
 }
 
 .event-summary-panel h3 {
-  margin-top: 0;
+  margin: 0 0 18px;
+}
+
+.event-summary-panel h4 {
+  margin: 18px 0 10px;
+}
+
+.event-summary-panel p {
+  margin: 0 0 12px;
+}
+
+.event-summary-panel > *:last-child {
+  margin-bottom: 0;
 }
 
 .event-summary-date {
-  margin-bottom: 10px;
+  margin-bottom: 14px;
   color: var(--accent);
 }
 
 .event-summary-list {
-  margin: 0 0 16px;
+  margin: 4px 0 18px;
   padding-left: 20px;
 }
 
 .event-summary-list li {
   margin-bottom: 8px;
+}
+
+.event-summary-panel .profile-member-select {
+  margin-bottom: 16px;
 }
 
 .calendar-event-pill,
@@ -495,19 +888,44 @@ textarea {
   margin-top: 4px;
 }
 
+.coaching-summary-heading {
+  margin-bottom: 14px;
+}
+
+.coaching-session-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(255, 217, 0);
+  color: #1f1700;
+  border: 1px solid rgb(255, 231, 109);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.coaching-badge-icon {
+  width: 14px;
+  height: 14px;
+}
+
 .event-type-competition {
-  background: rgba(255, 215, 0, 0.18);
-  color: #ffd54a;
+  background: rgb(255, 217, 0);
+  color: #1f1700;
+  border-color: rgb(255, 231, 109);
 }
 
 .event-type-social {
-  background: rgba(255, 86, 86, 0.18);
-  color: #ff7b7b;
+  background: rgba(252, 36, 36);
+  color: #fff5f5;
+  border-color: rgb(252, 36, 36);
 }
 
 .event-type-range-closed {
-  background: rgba(64, 149, 255, 0.2);
-  color: #7db8ff;
+  background: rgb(10, 114, 241);
+  color: #f5f9ff;
+  border-color: rgb(10, 114, 241);
 }
 
 .event-book-button {
@@ -529,9 +947,57 @@ textarea {
   cursor: not-allowed;
 }
 
+.event-cancel-button {
+  margin-top: 12px;
+  padding: 12px 18px;
+  border: 1px solid rgba(255, 120, 120, 0.45);
+  border-radius: 999px;
+  background: rgba(255, 84, 84, 0.12);
+  color: #ffb1b1;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.event-cancel-button:hover {
+  background: rgba(255, 84, 84, 0.2);
+}
+
+.event-cancel-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .event-booking-message {
   margin: 14px 0 0;
   color: var(--accent);
+}
+
+.event-booking-picker {
+  display: grid;
+  gap: 14px;
+}
+
+.event-booking-option-list {
+  display: grid;
+  gap: 12px;
+}
+
+.event-booking-option {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+  text-align: left;
+}
+
+.event-booking-option:hover {
+  background: rgba(255, 221, 0, 0.08);
+  border-color: rgba(255, 221, 0, 0.35);
 }
 
 .event-form-error {
@@ -553,6 +1019,343 @@ textarea {
 .home-info-list li {
   margin-bottom: 10px;
   color: var(--text);
+}
+
+.tournament-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.6fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.tournament-list-panel,
+.tournament-summary-card,
+.tournament-registrations-card,
+.tournament-score-card,
+.tournament-bracket-card {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tournament-list-panel,
+.tournament-detail-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.tournament-list {
+  display: grid;
+  gap: 12px;
+}
+
+.tournament-list-item {
+  width: 100%;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.2);
+  color: #fff;
+  text-align: left;
+}
+
+.tournament-list-item.active,
+.tournament-list-item:hover {
+  border-color: rgba(255, 221, 0, 0.4);
+  background: rgba(255, 221, 0, 0.08);
+}
+
+.tournament-action-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tournament-primary-button,
+.tournament-secondary-button {
+  min-width: 190px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.tournament-primary-button {
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #111;
+}
+
+.tournament-primary-button:hover {
+  background: #ffe45c;
+}
+
+.tournament-primary-button:disabled,
+.tournament-secondary-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.tournament-secondary-button {
+  border: 1px solid rgba(255, 221, 0, 0.45);
+  background: rgba(255, 221, 0, 0.14);
+  color: #ffe45c;
+}
+
+.tournament-secondary-button:hover {
+  background: rgba(255, 221, 0, 0.22);
+}
+
+.tournament-registration-note {
+  color: var(--muted);
+}
+
+.tournament-setup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  text-align: center;
+  justify-content: center;
+}
+
+.tournament-setup-copy {
+  margin: 0;
+  color: var(--muted);
+}
+
+.tournament-setup-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tournament-setup-button {
+  min-width: 180px;
+  justify-content: center;
+}
+
+.tournament-setup-button-create,
+.tournament-setup-button-save,
+.tournament-setup-button.event-cancel-button,
+.tournament-setup-button.secondary-button {
+  min-width: 180px;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.tournament-setup-button-create {
+  border: 1px solid rgba(255, 221, 0, 0.45);
+  background: var(--accent);
+  color: #111;
+}
+
+.tournament-setup-button-create:hover {
+  background: #ffe45c;
+}
+
+.tournament-setup-button-save {
+  border: 1px solid rgba(88, 171, 255, 0.45);
+  background: rgba(44, 129, 255, 0.18);
+  color: #d8ebff;
+}
+
+.tournament-setup-button-save:hover {
+  background: rgba(44, 129, 255, 0.28);
+}
+
+.tournament-setup-button.event-cancel-button {
+  margin-top: 0;
+}
+
+.tournament-admin-hint {
+  color: var(--accent);
+  font-size: 0.82rem;
+}
+
+.tournament-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 40;
+}
+
+.tournament-modal {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 20px;
+  background: #0f0f0f;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+.tournament-modal-header {
+  margin-bottom: 16px;
+}
+
+.tournament-bracket-graphic {
+  display: flex;
+  gap: 48px;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding: 6px 8px 14px 2px;
+}
+
+.tournament-bracket-column {
+  min-width: 240px;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 14px;
+}
+
+.tournament-bracket-column h5 {
+  margin: 0;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.82rem;
+}
+
+.tournament-bracket-column-matches {
+  display: grid;
+  gap: var(--tournament-match-gap, 18px);
+  padding-top: var(--tournament-column-padding, 0);
+}
+
+.tournament-bracket-match {
+  position: relative;
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 240px;
+  min-height: 92px;
+}
+
+.tournament-bracket-player {
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 0 12px 0 0;
+  border-radius: 0;
+  border-top: 3px solid rgba(255, 255, 255, 0.88);
+  background: transparent;
+}
+
+.tournament-bracket-player.winner {
+  border-top-color: var(--accent);
+  color: var(--accent);
+}
+
+.tournament-bracket-seed {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.tournament-bracket-name {
+  text-align: left;
+}
+
+.tournament-bracket-score {
+  min-width: 18px;
+  text-align: right;
+  font-weight: 700;
+}
+
+.tournament-bracket-match::before {
+  position: absolute;
+  content: "";
+  top: 25%;
+  right: 0;
+  height: 50%;
+  border-right: 3px solid rgba(255, 255, 255, 0.88);
+}
+
+.tournament-bracket-match::after {
+  position: absolute;
+  content: "";
+  top: 50%;
+  right: -48px;
+  width: 48px;
+  border-top: 3px solid rgba(255, 255, 255, 0.88);
+  transform: translateY(-50%);
+}
+
+.tournament-match-completed::before,
+.tournament-match-completed::after {
+  border-color: rgba(255, 221, 0, 0.92);
+}
+
+.tournament-match-bye::before,
+.tournament-match-bye::after {
+  border-color: rgba(255, 221, 0, 0.7);
+}
+
+.tournament-bracket-winner-column {
+  min-width: 180px;
+}
+
+.tournament-bracket-winner-card {
+  position: relative;
+  min-height: 72px;
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 12px;
+  margin-top: var(--tournament-winner-offset, 0);
+  border: 1px solid rgba(255, 221, 0, 0.35);
+  background: rgba(255, 221, 0, 0.06);
+}
+
+.tournament-bracket-winner-card::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: -48px;
+  width: 48px;
+  border-top: 3px solid rgba(255, 221, 0, 0.92);
+  transform: translateY(-50%);
+}
+
+.tournament-bracket-card p {
+  margin-bottom: 0;
+}
+
+@media (max-width: 820px) {
+  .tournament-bracket-graphic {
+    gap: 28px;
+  }
+
+  .tournament-bracket-column,
+  .tournament-bracket-match {
+    min-width: 210px;
+  }
+
+  .tournament-bracket-match::after,
+  .tournament-bracket-winner-card::before {
+    width: 28px;
+  }
+
+  .tournament-bracket-match::after {
+    right: -28px;
+  }
+
+  .tournament-bracket-winner-card::before {
+    left: -28px;
+  }
 }
 
 .range-usage-dashboard {
@@ -760,7 +1563,18 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .profile-form-grid,
+  .profile-discipline-grid,
+  .loan-bow-grid,
+  .loan-bow-boolean-grid {
+    grid-template-columns: 1fr;
+  }
+
   .event-calendar-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .tournament-layout {
     grid-template-columns: 1fr;
   }
 

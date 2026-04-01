@@ -76,31 +76,55 @@ export function LoginPage({
 
   return (
     <main className="login-shell">
-      <section className="login-card" aria-labelledby="login-title">
-        <img src={selbyLogo} alt="Selby Archers Logo" className="login-logo" />
-        <p className="login-eyebrow">Selby Archers</p>
-        <h1 id="login-title" className="login-title">
-          Member Login
-        </h1>
-        <p className="login-copy">Sign in to access the club portal.</p>
+      <div className="login-arrow-field" aria-hidden="true">
+        {Array.from({ length: 8 }, (_, index) => (
+          <span
+            key={`arrow-${index + 1}`}
+            className={`login-flying-arrow login-flying-arrow-${index + 1}`}
+          >
+            <span className="login-flying-arrow-line" />
+            <span className="login-flying-arrow-head" />
+            <span className="login-flying-arrow-fletching" />
+          </span>
+        ))}
+      </div>
 
-        {error ? (
-          <p className="login-error login-error-banner" role="alert">
-            {error}
-          </p>
-        ) : null}
+      <section className="login-card" aria-labelledby="login-title">
+        <div className="login-header">
+          <img
+            src={selbyLogo}
+            alt="Selby Archers Logo"
+            className="login-logo"
+          />
+          <p className="login-eyebrow">Selby Archers</p>
+          <h1 id="login-title" className="login-title">
+            Member Login
+          </h1>
+          <p className="login-copy">Sign in to access the club portal.</p>
+
+          {error ? (
+            <p className="login-error login-error-banner" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </div>
 
         <div className="login-sections">
           <section className="member-panel" aria-label="Member sign in">
             <p className="section-title">Member Sign In</p>
-            <form className="login-form" onSubmit={handleSubmit}>
+            <form
+              className="login-form"
+              onSubmit={handleSubmit}
+              autoComplete="off"
+            >
               <label>
                 Username
                 <input
                   type="text"
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
-                  autoComplete="username"
+                  autoComplete="off"
+                  name="member-login-username"
                   disabled={isSubmitting}
                 />
               </label>
@@ -111,7 +135,8 @@ export function LoginPage({
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  autoComplete="current-password"
+                  autoComplete="new-password"
+                  name="member-login-password"
                   disabled={isSubmitting}
                 />
               </label>
@@ -148,13 +173,19 @@ export function LoginPage({
               Record a guest visit with their name and Archery GB membership
               number.
             </p>
-            <form className="login-form" onSubmit={handleGuestSubmit}>
+            <form
+              className="login-form"
+              onSubmit={handleGuestSubmit}
+              autoComplete="off"
+            >
               <label>
                 First name
                 <input
                   type="text"
                   value={guestFirstName}
                   onChange={(event) => setGuestFirstName(event.target.value)}
+                  autoComplete="off"
+                  name="guest-first-name"
                   disabled={isSubmitting}
                 />
               </label>
@@ -165,6 +196,8 @@ export function LoginPage({
                   type="text"
                   value={guestSurname}
                   onChange={(event) => setGuestSurname(event.target.value)}
+                  autoComplete="off"
+                  name="guest-surname"
                   disabled={isSubmitting}
                 />
               </label>
@@ -178,6 +211,8 @@ export function LoginPage({
                     setGuestMembershipNumber(event.target.value)
                   }
                   inputMode="numeric"
+                  autoComplete="off"
+                  name="guest-membership-number"
                   disabled={isSubmitting}
                 />
               </label>

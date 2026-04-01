@@ -42,6 +42,12 @@
   padding: 14px;
 }
 
+.drawer-header-content {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .drawer-logo {
   display: block;
   width: 72px;
@@ -54,6 +60,30 @@
   background: transparent;
   padding: 0;
   cursor: pointer;
+}
+
+.drawer-user-meta {
+  display: grid;
+  gap: 4px;
+}
+
+.drawer-user-label,
+.drawer-user-name {
+  margin: 0;
+}
+
+.drawer-user-label {
+  color: #cfcfcf;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.drawer-user-name {
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.2;
 }
 
 .side-drawer nav {

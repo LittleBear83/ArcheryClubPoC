@@ -1,4 +1,5 @@
 import { formatDate } from "../../utils/dateTime";
+import { getUserProfileKey } from "../../utils/userProfile";
 
 function SignedUpEventsList({ events }) {
   return (
@@ -20,6 +21,26 @@ function SignedUpEventsList({ events }) {
   );
 }
 
+function TournamentRemindersList({ reminders }) {
+  return (
+    <section className="home-panel">
+      <h3 className="home-panel-title">Tournament Reminders</h3>
+      <ul className="home-info-list">
+        {reminders.length > 0 ? (
+          reminders.map((reminder) => (
+            <li key={reminder.id}>
+              <strong>{formatDate(reminder.date)}</strong>
+              {`: ${reminder.title}`}
+            </li>
+          ))
+        ) : (
+          <li>No tournament reminders right now.</li>
+        )}
+      </ul>
+    </section>
+  );
+}
+
 function MembersAtRangeList({ members }) {
   return (
     <section className="home-panel">
@@ -27,16 +48,11 @@ function MembersAtRangeList({ members }) {
       <ul className="home-info-list">
         {members.length > 0 ? (
           members.map((member) => (
-            <li
-              key={
-                member.username ??
-                `${member.firstName}-${member.surname}-${member.archeryGbMembershipNumber ?? "guest"}`
-              }
-            >
-              {member.firstName} {member.surname}
-              {member.disciplines?.length
-                ? ` - ${member.disciplines.join(", ")}`
-                : member.userType === "guest"
+            <li key={getUserProfileKey(member)}>
+              {member.personal.fullName}
+              {member.membership.disciplines?.length
+                ? ` - ${member.membership.disciplines.join(", ")}`
+                : member.accountType === "guest"
                   ? " - Guest"
                   : ""}
             </li>
@@ -49,11 +65,12 @@ function MembersAtRangeList({ members }) {
   );
 }
 
-export function HomeSection({ members, signedUpEvents }) {
+export function HomeSection({ members, signedUpEvents, tournamentReminders }) {
   return (
     <div className="home-split-view">
       <MembersAtRangeList members={members} />
       <SignedUpEventsList events={signedUpEvents} />
+      <TournamentRemindersList reminders={tournamentReminders} />
     </div>
   );
 }

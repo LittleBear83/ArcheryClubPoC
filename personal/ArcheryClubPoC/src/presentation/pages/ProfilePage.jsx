@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MemberProfileForm } from "../components/MemberProfileForm";
 import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
+import { hasPermission } from "../../utils/userProfile";
 
 function buildHeaders(currentUserProfile) {
   return {
@@ -39,7 +40,10 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
   const [returnError, setReturnError] = useState("");
   const [isSavingReturn, setIsSavingReturn] = useState(false);
 
-  const isAdmin = currentUserProfile?.membership?.role === "admin";
+  const canManageMembers = hasPermission(
+    currentUserProfile,
+    "manage_members",
+  );
   const isGuest = currentUserProfile?.accountType === "guest";
 
   useEffect(() => {
@@ -115,7 +119,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
         return;
       }
 
-      const initialUsername = isAdmin
+      const initialUsername = canManageMembers
         ? selectedUsername || currentUserProfile?.auth?.username
         : currentUserProfile?.auth?.username;
 
@@ -133,7 +137,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
       setError("");
 
       try {
-        if (isAdmin) {
+        if (canManageMembers) {
           const optionsResponse = await fetch("/api/profile-options", {
             headers: buildHeaders(currentUserProfile),
             signal,
@@ -174,7 +178,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     },
     [
       currentUserProfile,
-      isAdmin,
+      canManageMembers,
       isGuest,
       loadProfile,
       selectedUsername,
@@ -199,7 +203,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
   }, [loadInitialData]);
 
   useEffect(() => {
-    if (!isAdmin || isGuest || !selectedUsername) {
+    if (!canManageMembers || isGuest || !selectedUsername) {
       return undefined;
     }
 
@@ -212,12 +216,15 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     }
 
     const abortController = new AbortController();
-    loadProfile(selectedUsername, { signal: abortController.signal });
+    loadProfile(selectedUsername, {
+      signal: abortController.signal,
+      isBackgroundRefresh: hasLoadedProfileRef.current,
+    });
 
     return () => {
       abortController.abort();
     };
-  }, [editableProfile, isAdmin, isGuest, loadProfile, selectedUsername]);
+  }, [canManageMembers, editableProfile, isGuest, loadProfile, selectedUsername]);
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
@@ -302,7 +309,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
       setEditableProfile(result.editableProfile);
       setMessage("Profile updated successfully.");
 
-      if (isAdmin) {
+      if (canManageMembers) {
         const nextOptions = memberOptions.map((member) =>
           member.username === result.editableProfile.username
             ? {
@@ -379,7 +386,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     <div className="profile-page">
       <p>Manage your member profile and account details.</p>
 
-      {isAdmin ? (
+      {canManageMembers ? (
         <section className="profile-admin-panel">
           <h3 className="profile-section-title">Admin Member Update</h3>
           <label className="profile-member-select">
@@ -399,14 +406,14 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
         </section>
       ) : null}
 
-      {isInitialLoading ? <p>Loading profile...</p> : null}
+      {isInitialLoading && !editableProfile ? <p>Loading profile...</p> : null}
       {isRefreshingProfile && !isInitialLoading ? (
         <p>Refreshing profile details...</p>
       ) : null}
       {error ? <p className="profile-error">{error}</p> : null}
       {message ? <p className="profile-success">{message}</p> : null}
 
-      {!isInitialLoading && editableProfile ? (
+      {editableProfile ? (
         <MemberProfileForm
           editableProfile={editableProfile}
           handleChange={handleChange}
@@ -416,9 +423,9 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
           toggleLoanBowField={toggleLoanBowField}
           disciplineOptions={disciplineOptions}
           roleOptions={roleOptions}
-          isAdmin={isAdmin}
-          canEditLoanBow={isAdmin}
-          canReturnLoanBow={isAdmin && editableProfile.loanBow.hasLoanBow}
+          isAdmin={canManageMembers}
+          canEditLoanBow={canManageMembers}
+          canReturnLoanBow={canManageMembers && editableProfile.loanBow.hasLoanBow}
           onReturnLoanBow={() => {
             setReturnError("");
             setIsReturnModalOpen(true);

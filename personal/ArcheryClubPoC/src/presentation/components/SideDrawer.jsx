@@ -1,5 +1,6 @@
 import "./SideDrawer.css";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
+import { hasPermission } from "../../utils/userProfile";
 
 const pages = [
   { id: "home", label: "Home", path: "/" },
@@ -8,13 +9,19 @@ const pages = [
     id: "user-creation",
     label: "User Creation",
     path: "/user-creation",
-    adminOnly: true,
+    permission: "manage_members",
+  },
+  {
+    id: "role-permissions",
+    label: "Roles & Permissions",
+    path: "/role-permissions",
+    permission: "manage_roles_permissions",
   },
   {
     id: "loan-bow-register",
     label: "Loan Bow Register",
     path: "/loan-bow-register",
-    roles: ["admin", "coach"],
+    permission: "manage_loan_bows",
   },
   {
     id: "event-calendar",
@@ -38,7 +45,7 @@ const pages = [
     id: "tournament-setup",
     label: "Tournament Setup",
     path: "/tournament-setup",
-    adminOnly: true,
+    permission: "manage_tournaments",
   },
   {
     id: "committee-org-chart",
@@ -63,9 +70,7 @@ export function SideDrawer({
     "Member";
 
   const visiblePages = pages.filter(
-    (page) =>
-      (!page.adminOnly || currentUserProfile?.membership?.role === "admin") &&
-      (!page.roles || page.roles.includes(currentUserProfile?.membership?.role)),
+    (page) => !page.permission || hasPermission(currentUserProfile, page.permission),
   );
 
   return (

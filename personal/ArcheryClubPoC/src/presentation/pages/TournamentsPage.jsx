@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatDate } from "../../utils/dateTime";
+import { hasPermission } from "../../utils/userProfile";
 
 const BRACKET_MATCH_HEIGHT = 92;
 const BRACKET_BASE_GAP = 18;
@@ -145,6 +146,7 @@ export function TournamentsPage({
   const [form, setForm] = useState(createEmptyTournamentForm(today));
   const [createForm, setCreateForm] = useState(createEmptyTournamentForm(today));
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedTournaments, setHasLoadedTournaments] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmittingScore, setIsSubmittingScore] = useState(false);
   const [message, setMessage] = useState("");
@@ -152,10 +154,15 @@ export function TournamentsPage({
   const [isEditingTournament, setIsEditingTournament] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const isAdmin = currentUserProfile?.membership?.role === "admin";
+  const canManageTournaments = hasPermission(
+    currentUserProfile,
+    "manage_tournaments",
+  );
 
   const loadTournaments = async () => {
-    setIsLoading(true);
+    if (!hasLoadedTournaments) {
+      setIsLoading(true);
+    }
     setError("");
 
     try {
@@ -207,6 +214,7 @@ export function TournamentsPage({
 
         return result.tournaments?.[0]?.id ?? null;
       });
+      setHasLoadedTournaments(true);
     } catch (loadError) {
       setError(loadError.message);
     } finally {
@@ -247,7 +255,7 @@ export function TournamentsPage({
   }, [selectedTournament]);
 
   useEffect(() => {
-    if (!showSetupForm || !isAdmin) {
+    if (!showSetupForm || !canManageTournaments) {
       return;
     }
 
@@ -267,7 +275,7 @@ export function TournamentsPage({
       createEmptyTournamentForm(today, tournamentTypes[0]?.value ?? "portsmouth"),
     );
   }, [
-    isAdmin,
+    canManageTournaments,
     isEditingTournament,
     selectedTournament,
     showSetupForm,
@@ -565,7 +573,7 @@ export function TournamentsPage({
           : "Registered members can track the live bracket, register during the window, and submit scores during the active score window."}
       </p>
 
-      {showSetupForm && isAdmin ? (
+      {showSetupForm && canManageTournaments ? (
         <section className="profile-admin-panel">
           <div className="tournament-setup-header">
             <div>
@@ -713,7 +721,7 @@ export function TournamentsPage({
         </section>
       ) : null}
 
-      {showSetupForm && isAdmin && isCreateModalOpen ? (
+      {showSetupForm && canManageTournaments && isCreateModalOpen ? (
         <div className="tournament-modal-backdrop" role="presentation">
           <div
             className="tournament-modal"
@@ -850,11 +858,11 @@ export function TournamentsPage({
         </div>
       ) : null}
 
-      {isLoading ? <p>Loading tournaments...</p> : null}
+      {isLoading && !hasLoadedTournaments ? <p>Loading tournaments...</p> : null}
       {error ? <p className="profile-error">{error}</p> : null}
       {message ? <p className="profile-success">{message}</p> : null}
 
-      {!isLoading ? (
+      {hasLoadedTournaments ? (
         <section className="tournament-layout">
           <div className="tournament-list-panel">
             <h3 className="profile-section-title">Tournaments</h3>
@@ -871,7 +879,7 @@ export function TournamentsPage({
                     }`}
                     onClick={() => {
                       setSelectedTournamentId(tournament.id);
-                      if (showSetupForm && isAdmin) {
+                      if (showSetupForm && canManageTournaments) {
                         setIsEditingTournament(true);
                       }
                     }}
@@ -882,7 +890,7 @@ export function TournamentsPage({
                       Registration: {formatDate(tournament.registrationWindow.startDate)} to{" "}
                       {formatDate(tournament.registrationWindow.endDate)}
                     </span>
-                    {showSetupForm && isAdmin ? (
+                    {showSetupForm && canManageTournaments ? (
                       <span className="tournament-admin-hint">Select to amend or delete</span>
                     ) : null}
                   </button>

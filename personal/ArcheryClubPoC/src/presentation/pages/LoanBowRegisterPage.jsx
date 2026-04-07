@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import { LoanBowSection } from "../components/LoanBowSection";
 import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
+import { hasPermission } from "../../utils/userProfile";
 
 function buildHeaders(currentUserProfile) {
   return {
@@ -14,6 +15,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
   const [selectedUsername, setSelectedUsername] = useState("");
   const [loanBow, setLoanBow] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedLoanBow, setHasLoadedLoanBow] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -21,9 +23,11 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
   const [isSavingReturn, setIsSavingReturn] = useState(false);
   const [returnError, setReturnError] = useState("");
 
-  const canManageLoanBow = ["admin", "coach"].includes(
-    currentUserProfile?.membership?.role,
+  const canManageLoanBow = hasPermission(
+    currentUserProfile,
+    "manage_loan_bows",
   );
+  const actorUsername = currentUserProfile?.auth?.username ?? "";
 
   const loadMembers = useEffectEvent(async (signal) => {
     if (!canManageLoanBow) {
@@ -31,7 +35,9 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
       return;
     }
 
-    setIsLoading(true);
+    if (!memberOptions.length) {
+      setIsLoading(true);
+    }
     setError("");
 
     try {
@@ -74,7 +80,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
       window.removeEventListener("profile-data-updated", refresh);
       window.removeEventListener("loan-bow-data-updated", refresh);
     };
-  }, [canManageLoanBow, currentUserProfile, loadMembers]);
+  }, [actorUsername, canManageLoanBow]);
 
   const loadLoanBow = useEffectEvent(async (signal) => {
     if (!canManageLoanBow || !selectedUsername) {
@@ -82,7 +88,9 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
       return;
     }
 
-    setIsLoading(true);
+    if (!hasLoadedLoanBow) {
+      setIsLoading(true);
+    }
     setError("");
 
     try {
@@ -101,6 +109,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
       }
 
       setLoanBow(result.loanBow);
+      setHasLoadedLoanBow(true);
       setMessage("");
     } catch (loadError) {
       if (!signal?.aborted) {
@@ -120,7 +129,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
     return () => {
       abortController.abort();
     };
-  }, [canManageLoanBow, currentUserProfile, selectedUsername, loadLoanBow]);
+  }, [actorUsername, canManageLoanBow, hasLoadedLoanBow, selectedUsername]);
 
   const handleLoanBowFieldChange = (field) => (event) => {
     const value = event.target.value;
@@ -198,7 +207,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
   };
 
   if (!canManageLoanBow) {
-    return <p>Only admin and coach users can manage loan bow records.</p>;
+    return <p>You do not have permission to manage loan bow records.</p>;
   }
 
   return (
@@ -212,7 +221,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
           <select
             value={selectedUsername}
             onChange={(event) => setSelectedUsername(event.target.value)}
-            disabled={isLoading || isSaving}
+            disabled={isSaving || memberOptions.length === 0}
           >
             {memberOptions.map((member) => (
               <option key={member.username} value={member.username}>
@@ -223,17 +232,17 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
         </label>
       </section>
 
-      {isLoading ? <p>Loading loan bow details...</p> : null}
+      {isLoading && !hasLoadedLoanBow ? <p>Loading loan bow details...</p> : null}
       {error ? <p className="profile-error">{error}</p> : null}
       {message ? <p className="profile-success">{message}</p> : null}
 
-      {!isLoading && loanBow ? (
+      {loanBow ? (
         <form onSubmit={handleSave} className="left-align-form profile-form">
           <LoanBowSection
             loanBow={loanBow}
             onLoanBowFieldChange={handleLoanBowFieldChange}
             onLoanBowToggle={toggleLoanBowField}
-            disabled={isSaving}
+            disabled={isSaving || isLoading}
             showReturnButton={loanBow.hasLoanBow}
             onReturnClick={() => {
               setReturnError("");
@@ -241,7 +250,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
             }}
           />
 
-          <button type="submit" disabled={isSaving}>
+          <button type="submit" disabled={isSaving || isLoading}>
             {isSaving ? "Saving loan bow details..." : "Save loan bow details"}
           </button>
         </form>

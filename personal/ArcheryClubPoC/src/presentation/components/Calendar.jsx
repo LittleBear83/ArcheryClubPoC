@@ -16,8 +16,11 @@ function getMonthDays(year, month) {
       week = [];
     }
   }
+
   if (week.length > 0) {
-    while (week.length < 7) week.push(null);
+    while (week.length < 7) {
+      week.push(null);
+    }
     days.push(week);
   }
 
@@ -39,100 +42,84 @@ export function Calendar({
 
   return (
     <>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          marginBottom: "12px",
-        }}
-      >
-        <button onClick={onPrevMonth}>◀</button>
-        <strong>
-          {formatDate(
-            `${year}-${String(month + 1).padStart(2, "0")}-01`,
-          )}
+      <div className="calendar-toolbar">
+        <button
+          type="button"
+          className="calendar-nav-button"
+          onClick={onPrevMonth}
+        >
+          Previous
+        </button>
+        <strong className="calendar-toolbar-title">
+          {formatDate(`${year}-${String(month + 1).padStart(2, "0")}-01`)}
         </strong>
-        <button onClick={onNextMonth}>▶</button>
+        <button
+          type="button"
+          className="calendar-nav-button"
+          onClick={onNextMonth}
+        >
+          Next
+        </button>
       </div>
 
-      <table
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-          marginBottom: "16px",
-        }}
-      >
-        <thead>
-          <tr>
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-              <th
-                key={d}
-                style={{
-                  padding: "6px",
-                  border: "1px solid #444",
-                  background: "#111",
-                }}
-              >
-                {d}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {calendar.map((week, wi) => (
-            <tr key={wi}>
-              {week.map((day, di) => {
-                const dateKey = day
-                  ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-                  : null;
-                const items = dateKey ? itemsByDate[dateKey] : undefined;
-                return (
-                  <td
-                    key={di}
-                    onClick={() => {
-                      if (dateKey && onDayClick) onDayClick(dateKey);
-                    }}
-                    style={{
-                      minHeight: "68px",
-                      verticalAlign: "top",
-                      border:
-                        selectedDate === dateKey
-                          ? "2px solid #ffdd00"
-                          : "1px solid #444",
-                      padding: "4px",
-                      background:
-                        selectedDate === dateKey
-                          ? "rgba(255, 221, 0, 0.3)"
-                          : items?.length
-                            ? "rgba(255,221,0,0.18)"
-                            : "transparent",
-                      cursor: dateKey ? "pointer" : "default",
-                    }}
-                  >
-                    <div className="calendar-day-header">
-                      <div style={{ fontWeight: "700" }}>{day || ""}</div>
-                      {dateKey && items?.length && renderDayMeta
-                        ? renderDayMeta(items, dateKey)
-                        : null}
-                    </div>
-                    {renderItem
-                      ? items?.map((item) => (
-                          <div
-                            key={item.id}
-                            style={{ fontSize: "0.76rem", color: "#ffdd00" }}
-                          >
-                            {renderItem(item)}
-                          </div>
-                        ))
-                      : null}
-                  </td>
-                );
-              })}
+      <div className="calendar-table-wrap">
+        <table className="calendar-table">
+          <thead>
+            <tr>
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((dayLabel) => (
+                <th key={dayLabel}>{dayLabel}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {calendar.map((week, weekIndex) => (
+              <tr key={weekIndex}>
+                {week.map((day, dayIndex) => {
+                  const dateKey = day
+                    ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+                    : null;
+                  const items = dateKey ? itemsByDate[dateKey] : undefined;
+                  const isSelected = selectedDate === dateKey;
+                  const hasItems = Boolean(items?.length);
+
+                  return (
+                    <td
+                      key={dayIndex}
+                      className={[
+                        "calendar-day-cell",
+                        isSelected ? "selected" : "",
+                        hasItems ? "has-items" : "",
+                        dateKey ? "is-clickable" : "is-empty",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onClick={() => {
+                        if (dateKey && onDayClick) {
+                          onDayClick(dateKey);
+                        }
+                      }}
+                    >
+                      <div className="calendar-day-header">
+                        <div className="calendar-day-number">{day || ""}</div>
+                        {dateKey && hasItems && renderDayMeta
+                          ? renderDayMeta(items, dateKey)
+                          : null}
+                      </div>
+                      {renderItem
+                        ? items?.map((item) => (
+                            <div key={item.id} className="calendar-day-item">
+                              {renderItem(item)}
+                            </div>
+                          ))
+                        : null}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }

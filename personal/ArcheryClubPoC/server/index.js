@@ -10,7 +10,77 @@ const dataDirectory = path.join(__dirname, "data");
 const databasePath = path.join(dataDirectory, "auth.sqlite");
 const distDirectory = path.join(__dirname, "..", "dist");
 const PORT = Number(process.env.PORT ?? 3001);
-const ALLOWED_USER_TYPES = ["general", "admin", "developer", "coach"];
+const PERMISSIONS = {
+  MANAGE_MEMBERS: "manage_members",
+  MANAGE_ROLES_PERMISSIONS: "manage_roles_permissions",
+  MANAGE_COMMITTEE_ROLES: "manage_committee_roles",
+  MANAGE_EVENTS: "manage_events",
+  MANAGE_COACHING_SESSIONS: "manage_coaching_sessions",
+  MANAGE_LOAN_BOWS: "manage_loan_bows",
+  MANAGE_TOURNAMENTS: "manage_tournaments",
+};
+const PERMISSION_DEFINITIONS = [
+  {
+    key: PERMISSIONS.MANAGE_MEMBERS,
+    label: "Manage Members",
+    description: "Create and update member profiles.",
+  },
+  {
+    key: PERMISSIONS.MANAGE_ROLES_PERMISSIONS,
+    label: "Manage Roles And Permissions",
+    description: "Create roles and assign permission sets.",
+  },
+  {
+    key: PERMISSIONS.MANAGE_COMMITTEE_ROLES,
+    label: "Manage Committee Roles",
+    description: "Assign members to committee positions.",
+  },
+  {
+    key: PERMISSIONS.MANAGE_EVENTS,
+    label: "Manage Events",
+    description: "Create and maintain events and competitions.",
+  },
+  {
+    key: PERMISSIONS.MANAGE_COACHING_SESSIONS,
+    label: "Manage Coaching Sessions",
+    description: "Create and cancel coaching sessions.",
+  },
+  {
+    key: PERMISSIONS.MANAGE_LOAN_BOWS,
+    label: "Manage Loan Bows",
+    description: "Update loan bow records and returns.",
+  },
+  {
+    key: PERMISSIONS.MANAGE_TOURNAMENTS,
+    label: "Manage Tournaments",
+    description: "Create, amend, and delete tournaments.",
+  },
+];
+const SYSTEM_ROLE_DEFINITIONS = [
+  {
+    roleKey: "general",
+    title: "General",
+    permissions: [],
+  },
+  {
+    roleKey: "admin",
+    title: "Admin",
+    permissions: PERMISSION_DEFINITIONS.map((permission) => permission.key),
+  },
+  {
+    roleKey: "developer",
+    title: "Developer",
+    permissions: PERMISSION_DEFINITIONS.map((permission) => permission.key),
+  },
+  {
+    roleKey: "coach",
+    title: "Coach",
+    permissions: [
+      PERMISSIONS.MANAGE_COACHING_SESSIONS,
+      PERMISSIONS.MANAGE_LOAN_BOWS,
+    ],
+  },
+];
 const ALLOWED_DISCIPLINES = [
   "Long Bow",
   "Flat Bow",
@@ -109,6 +179,115 @@ const COMMITTEE_ROLE_SEED = [
 mkdirSync(dataDirectory, { recursive: true });
 
 const db = new Database(databasePath);
+const LOGIN_EVENTS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS login_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL,
+    login_method TEXT NOT NULL CHECK (login_method IN ('password', 'rfid')),
+    logged_in_date TEXT NOT NULL,
+    logged_in_time TEXT NOT NULL,
+    FOREIGN KEY (username) REFERENCES users(username)
+  )
+`;
+const GUEST_LOGIN_EVENTS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS guest_login_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    first_name TEXT NOT NULL,
+    surname TEXT NOT NULL,
+    archery_gb_membership_number TEXT NOT NULL,
+    logged_in_date TEXT NOT NULL,
+    logged_in_time TEXT NOT NULL
+  )
+`;
+const COACHING_SESSIONS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS coaching_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    coach_username TEXT NOT NULL,
+    session_date TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    available_slots INTEGER NOT NULL DEFAULT 1,
+    topic TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    venue TEXT NOT NULL CHECK (venue IN ('indoor', 'outdoor')),
+    created_at_date TEXT NOT NULL,
+    created_at_time TEXT NOT NULL,
+    FOREIGN KEY (coach_username) REFERENCES users(username)
+  )
+`;
+const COACHING_SESSION_BOOKINGS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS coaching_session_bookings (
+    coaching_session_id INTEGER NOT NULL,
+    member_username TEXT NOT NULL,
+    booked_at_date TEXT NOT NULL,
+    booked_at_time TEXT NOT NULL,
+    PRIMARY KEY (coaching_session_id, member_username),
+    FOREIGN KEY (coaching_session_id) REFERENCES coaching_sessions(id),
+    FOREIGN KEY (member_username) REFERENCES users(username)
+  )
+`;
+const CLUB_EVENTS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS club_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_date TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    title TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('competition', 'social', 'range-closed')),
+    created_at_date TEXT NOT NULL,
+    created_at_time TEXT NOT NULL
+  )
+`;
+const EVENT_BOOKINGS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS event_bookings (
+    club_event_id INTEGER NOT NULL,
+    member_username TEXT NOT NULL,
+    booked_at_date TEXT NOT NULL,
+    booked_at_time TEXT NOT NULL,
+    PRIMARY KEY (club_event_id, member_username),
+    FOREIGN KEY (club_event_id) REFERENCES club_events(id),
+    FOREIGN KEY (member_username) REFERENCES users(username)
+  )
+`;
+const TOURNAMENTS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS tournaments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    tournament_type TEXT NOT NULL,
+    registration_start_date TEXT NOT NULL,
+    registration_end_date TEXT NOT NULL,
+    score_submission_start_date TEXT NOT NULL,
+    score_submission_end_date TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at_date TEXT NOT NULL,
+    created_at_time TEXT NOT NULL,
+    FOREIGN KEY (created_by) REFERENCES users(username)
+  )
+`;
+const TOURNAMENT_REGISTRATIONS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS tournament_registrations (
+    tournament_id INTEGER NOT NULL,
+    member_username TEXT NOT NULL,
+    registered_at_date TEXT NOT NULL,
+    registered_at_time TEXT NOT NULL,
+    PRIMARY KEY (tournament_id, member_username),
+    FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+    FOREIGN KEY (member_username) REFERENCES users(username)
+  )
+`;
+const TOURNAMENT_SCORES_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS tournament_scores (
+    tournament_id INTEGER NOT NULL,
+    round_number INTEGER NOT NULL,
+    member_username TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    submitted_at_date TEXT NOT NULL,
+    submitted_at_time TEXT NOT NULL,
+    PRIMARY KEY (tournament_id, round_number, member_username),
+    FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+    FOREIGN KEY (member_username) REFERENCES users(username)
+  )
+`;
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -122,33 +301,44 @@ db.exec(`
   )
 `);
 
+db.exec(LOGIN_EVENTS_TABLE_SQL);
+
 db.exec(`
-  CREATE TABLE IF NOT EXISTS login_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL,
-    login_method TEXT NOT NULL CHECK (login_method IN ('password', 'rfid')),
-    logged_in_at TEXT NOT NULL,
-    FOREIGN KEY (username) REFERENCES users(username)
+  CREATE TABLE IF NOT EXISTS roles (
+    role_key TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    is_system INTEGER NOT NULL DEFAULT 0
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS permissions (
+    permission_key TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    description TEXT NOT NULL
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS role_permissions (
+    role_key TEXT NOT NULL,
+    permission_key TEXT NOT NULL,
+    PRIMARY KEY (role_key, permission_key),
+    FOREIGN KEY (role_key) REFERENCES roles(role_key),
+    FOREIGN KEY (permission_key) REFERENCES permissions(permission_key)
   )
 `);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS user_types (
     username TEXT PRIMARY KEY,
-    user_type TEXT NOT NULL CHECK (user_type IN ('general', 'admin', 'developer', 'coach')),
-    FOREIGN KEY (username) REFERENCES users(username)
+    user_type TEXT NOT NULL,
+    FOREIGN KEY (username) REFERENCES users(username),
+    FOREIGN KEY (user_type) REFERENCES roles(role_key)
   )
 `);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS guest_login_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    first_name TEXT NOT NULL,
-    surname TEXT NOT NULL,
-    archery_gb_membership_number TEXT NOT NULL,
-    logged_in_at TEXT NOT NULL
-  )
-`);
+db.exec(GUEST_LOGIN_EVENTS_TABLE_SQL);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS user_disciplines (
@@ -197,94 +387,19 @@ db.exec(`
   )
 `);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS coaching_sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    coach_username TEXT NOT NULL,
-    session_date TEXT NOT NULL,
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-    available_slots INTEGER NOT NULL DEFAULT 1,
-    topic TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    venue TEXT NOT NULL CHECK (venue IN ('indoor', 'outdoor')),
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (coach_username) REFERENCES users(username)
-  )
-`);
+db.exec(COACHING_SESSIONS_TABLE_SQL);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS coaching_session_bookings (
-    coaching_session_id INTEGER NOT NULL,
-    member_username TEXT NOT NULL,
-    booked_at TEXT NOT NULL,
-    PRIMARY KEY (coaching_session_id, member_username),
-    FOREIGN KEY (coaching_session_id) REFERENCES coaching_sessions(id),
-    FOREIGN KEY (member_username) REFERENCES users(username)
-  )
-`);
+db.exec(COACHING_SESSION_BOOKINGS_TABLE_SQL);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS club_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_date TEXT NOT NULL,
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-    title TEXT NOT NULL,
-    type TEXT NOT NULL CHECK (type IN ('competition', 'social', 'range-closed')),
-    created_at TEXT NOT NULL
-  )
-`);
+db.exec(CLUB_EVENTS_TABLE_SQL);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS event_bookings (
-    club_event_id INTEGER NOT NULL,
-    member_username TEXT NOT NULL,
-    booked_at TEXT NOT NULL,
-    PRIMARY KEY (club_event_id, member_username),
-    FOREIGN KEY (club_event_id) REFERENCES club_events(id),
-    FOREIGN KEY (member_username) REFERENCES users(username)
-  )
-`);
+db.exec(EVENT_BOOKINGS_TABLE_SQL);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS tournaments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    tournament_type TEXT NOT NULL,
-    registration_start_date TEXT NOT NULL,
-    registration_end_date TEXT NOT NULL,
-    score_submission_start_date TEXT NOT NULL,
-    score_submission_end_date TEXT NOT NULL,
-    created_by TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    FOREIGN KEY (created_by) REFERENCES users(username)
-  )
-`);
+db.exec(TOURNAMENTS_TABLE_SQL);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS tournament_registrations (
-    tournament_id INTEGER NOT NULL,
-    member_username TEXT NOT NULL,
-    registered_at TEXT NOT NULL,
-    PRIMARY KEY (tournament_id, member_username),
-    FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
-    FOREIGN KEY (member_username) REFERENCES users(username)
-  )
-`);
+db.exec(TOURNAMENT_REGISTRATIONS_TABLE_SQL);
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS tournament_scores (
-    tournament_id INTEGER NOT NULL,
-    round_number INTEGER NOT NULL,
-    member_username TEXT NOT NULL,
-    score INTEGER NOT NULL,
-    submitted_at TEXT NOT NULL,
-    PRIMARY KEY (tournament_id, round_number, member_username),
-    FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
-    FOREIGN KEY (member_username) REFERENCES users(username)
-  )
-`);
+db.exec(TOURNAMENT_SCORES_TABLE_SQL);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS committee_roles (
@@ -306,10 +421,14 @@ const userTypesTableSchema = db
   `)
   .get();
 
-if (
+const userTypesRequiresMigration =
   userTypesTableSchema?.sql &&
-  !userTypesTableSchema.sql.includes("'coach'")
-) {
+  (
+    userTypesTableSchema.sql.includes("CHECK (user_type IN") ||
+    !userTypesTableSchema.sql.includes("REFERENCES roles(role_key)")
+  );
+
+if (userTypesRequiresMigration) {
   db.exec(`
     PRAGMA foreign_keys = OFF;
 
@@ -319,8 +438,9 @@ if (
 
     CREATE TABLE user_types (
       username TEXT PRIMARY KEY,
-      user_type TEXT NOT NULL CHECK (user_type IN ('general', 'admin', 'developer', 'coach')),
-      FOREIGN KEY (username) REFERENCES users(username)
+      user_type TEXT NOT NULL,
+      FOREIGN KEY (username) REFERENCES users(username),
+      FOREIGN KEY (user_type) REFERENCES roles(role_key)
     );
 
     INSERT INTO user_types (username, user_type)
@@ -335,9 +455,157 @@ if (
   `);
 }
 
+const upsertRole = db.prepare(`
+  INSERT INTO roles (role_key, title, is_system)
+  VALUES (@roleKey, @title, @isSystem)
+  ON CONFLICT(role_key) DO UPDATE SET
+    title = excluded.title,
+    is_system = MAX(roles.is_system, excluded.is_system)
+`);
+
+const upsertPermissionDefinition = db.prepare(`
+  INSERT INTO permissions (permission_key, label, description)
+  VALUES (@key, @label, @description)
+  ON CONFLICT(permission_key) DO UPDATE SET
+    label = excluded.label,
+    description = excluded.description
+`);
+
+const insertRolePermission = db.prepare(`
+  INSERT OR IGNORE INTO role_permissions (role_key, permission_key)
+  VALUES (?, ?)
+`);
+
+const listDistinctUserTypes = db.prepare(`
+  SELECT DISTINCT user_type
+  FROM user_types
+`);
+
+for (const permission of PERMISSION_DEFINITIONS) {
+  upsertPermissionDefinition.run(permission);
+}
+
+for (const role of SYSTEM_ROLE_DEFINITIONS) {
+  upsertRole.run({
+    roleKey: role.roleKey,
+    title: role.title,
+    isSystem: 1,
+  });
+
+  for (const permissionKey of role.permissions) {
+    insertRolePermission.run(role.roleKey, permissionKey);
+  }
+}
+
+for (const row of listDistinctUserTypes.all()) {
+  if (!row.user_type || row.user_type === "guest") {
+    continue;
+  }
+
+  upsertRole.run({
+    roleKey: row.user_type,
+    title: row.user_type,
+    isSystem: 0,
+  });
+}
+
+function migrateCombinedDateTimeColumn({
+  tableName,
+  legacyColumnName,
+  createTableSql,
+  insertColumns,
+  selectColumns,
+}) {
+  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+
+  if (!columns.some((column) => column.name === legacyColumnName)) {
+    return false;
+  }
+
+  const temporaryTableName = `${tableName}_old`;
+
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+
+    BEGIN TRANSACTION;
+
+    ALTER TABLE ${tableName} RENAME TO ${temporaryTableName};
+
+    ${createTableSql};
+
+    INSERT INTO ${tableName} (${insertColumns.join(", ")})
+    SELECT
+      ${selectColumns.join(",\n      ")}
+    FROM ${temporaryTableName};
+
+    DROP TABLE ${temporaryTableName};
+
+    COMMIT;
+
+    PRAGMA foreign_keys = ON;
+  `);
+
+  return true;
+}
+
+migrateCombinedDateTimeColumn({
+  tableName: "login_events",
+  legacyColumnName: "logged_in_at",
+  createTableSql: LOGIN_EVENTS_TABLE_SQL.trim(),
+  insertColumns: [
+    "id",
+    "username",
+    "login_method",
+    "logged_in_date",
+    "logged_in_time",
+  ],
+  selectColumns: [
+    "id",
+    "username",
+    "login_method",
+    "substr(logged_in_at, 1, 10)",
+    "substr(logged_in_at, 12)",
+  ],
+});
+
+migrateCombinedDateTimeColumn({
+  tableName: "guest_login_events",
+  legacyColumnName: "logged_in_at",
+  createTableSql: GUEST_LOGIN_EVENTS_TABLE_SQL.trim(),
+  insertColumns: [
+    "id",
+    "first_name",
+    "surname",
+    "archery_gb_membership_number",
+    "logged_in_date",
+    "logged_in_time",
+  ],
+  selectColumns: [
+    "id",
+    "first_name",
+    "surname",
+    "archery_gb_membership_number",
+    "substr(logged_in_at, 1, 10)",
+    "substr(logged_in_at, 12)",
+  ],
+});
+
 const coachingSessionsColumns = db
   .prepare(`PRAGMA table_info(coaching_sessions)`)
   .all();
+const coachingSessionBookingsColumns = db
+  .prepare(`PRAGMA table_info(coaching_session_bookings)`)
+  .all();
+const coachingSessionsAvailableSlotsSelect = coachingSessionsColumns.some(
+  (column) => column.name === "available_slots",
+)
+  ? "available_slots"
+  : "1";
+const coachingSessionsVenueSelect = coachingSessionsColumns.some(
+  (column) => column.name === "venue",
+)
+  ? "CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' ELSE 'indoor' END"
+  : "CASE WHEN lower(COALESCE(location, '')) = 'outdoor' THEN 'outdoor' ELSE 'indoor' END";
 
 const userColumns = db.prepare(`PRAGMA table_info(users)`).all();
 const memberLoanBowColumns = db
@@ -378,7 +646,10 @@ if (!userColumns.some((column) => column.name === "membership_fees_due")) {
 
 if (
   coachingSessionsColumns.length > 0 &&
-  !coachingSessionsColumns.some((column) => column.name === "available_slots")
+  (
+    coachingSessionsColumns.some((column) => column.name === "created_at") ||
+    !coachingSessionsColumns.some((column) => column.name === "available_slots")
+  )
 ) {
   db.exec(`
     PRAGMA foreign_keys = OFF;
@@ -387,19 +658,7 @@ if (
 
     ALTER TABLE coaching_sessions RENAME TO coaching_sessions_old;
 
-    CREATE TABLE coaching_sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      coach_username TEXT NOT NULL,
-      session_date TEXT NOT NULL,
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
-      available_slots INTEGER NOT NULL DEFAULT 1,
-      topic TEXT NOT NULL,
-      summary TEXT NOT NULL,
-      venue TEXT NOT NULL CHECK (venue IN ('indoor', 'outdoor')),
-      created_at TEXT NOT NULL,
-      FOREIGN KEY (coach_username) REFERENCES users(username)
-    );
+    ${COACHING_SESSIONS_TABLE_SQL.trim()};
 
     INSERT INTO coaching_sessions (
       id,
@@ -411,7 +670,8 @@ if (
       topic,
       summary,
       venue,
-      created_at
+      created_at_date,
+      created_at_time
     )
     SELECT
       id,
@@ -419,14 +679,12 @@ if (
       session_date,
       start_time,
       end_time,
-      1,
+      ${coachingSessionsAvailableSlotsSelect},
       topic,
       summary,
-      CASE
-        WHEN lower(COALESCE(location, '')) = 'outdoor' THEN 'outdoor'
-        ELSE 'indoor'
-      END,
-      created_at
+      ${coachingSessionsVenueSelect},
+      substr(created_at, 1, 10),
+      substr(created_at, 12)
     FROM coaching_sessions_old;
 
     DROP TABLE coaching_sessions_old;
@@ -442,6 +700,7 @@ const coachingBookingForeignKeys = db
   .all();
 
 if (
+  coachingSessionBookingsColumns.some((column) => column.name === "booked_at") ||
   coachingBookingForeignKeys.some(
     (foreignKey) => foreignKey.table === "coaching_sessions_old",
   )
@@ -453,27 +712,185 @@ if (
 
     ALTER TABLE coaching_session_bookings RENAME TO coaching_session_bookings_old;
 
-    CREATE TABLE coaching_session_bookings (
-      coaching_session_id INTEGER NOT NULL,
-      member_username TEXT NOT NULL,
-      booked_at TEXT NOT NULL,
-      PRIMARY KEY (coaching_session_id, member_username),
-      FOREIGN KEY (coaching_session_id) REFERENCES coaching_sessions(id),
-      FOREIGN KEY (member_username) REFERENCES users(username)
-    );
+    ${COACHING_SESSION_BOOKINGS_TABLE_SQL.trim()};
 
     INSERT INTO coaching_session_bookings (
       coaching_session_id,
       member_username,
-      booked_at
+      booked_at_date,
+      booked_at_time
     )
     SELECT
       coaching_session_id,
       member_username,
-      booked_at
+      substr(booked_at, 1, 10),
+      substr(booked_at, 12)
     FROM coaching_session_bookings_old;
 
     DROP TABLE coaching_session_bookings_old;
+
+    COMMIT;
+
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
+const eventBookingsColumns = db.prepare(`PRAGMA table_info(event_bookings)`).all();
+const eventBookingForeignKeys = db.prepare(`PRAGMA foreign_key_list(event_bookings)`).all();
+
+if (
+  migrateCombinedDateTimeColumn({
+    tableName: "club_events",
+    legacyColumnName: "created_at",
+    createTableSql: CLUB_EVENTS_TABLE_SQL.trim(),
+    insertColumns: [
+      "id",
+      "event_date",
+      "start_time",
+      "end_time",
+      "title",
+      "type",
+      "created_at_date",
+      "created_at_time",
+    ],
+    selectColumns: [
+      "id",
+      "event_date",
+      "start_time",
+      "end_time",
+      "title",
+      "type",
+      "substr(created_at, 1, 10)",
+      "substr(created_at, 12)",
+    ],
+  }) ||
+  eventBookingForeignKeys.some((foreignKey) => foreignKey.table === "club_events_old") ||
+  eventBookingsColumns.some((column) => column.name === "booked_at")
+) {
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+
+    BEGIN TRANSACTION;
+
+    ALTER TABLE event_bookings RENAME TO event_bookings_old;
+
+    ${EVENT_BOOKINGS_TABLE_SQL.trim()};
+
+    INSERT INTO event_bookings (
+      club_event_id,
+      member_username,
+      booked_at_date,
+      booked_at_time
+    )
+    SELECT
+      club_event_id,
+      member_username,
+      substr(booked_at, 1, 10),
+      substr(booked_at, 12)
+    FROM event_bookings_old;
+
+    DROP TABLE event_bookings_old;
+
+    COMMIT;
+
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
+const tournamentRegistrationsColumns = db
+  .prepare(`PRAGMA table_info(tournament_registrations)`)
+  .all();
+const tournamentRegistrationsForeignKeys = db
+  .prepare(`PRAGMA foreign_key_list(tournament_registrations)`)
+  .all();
+const tournamentScoresColumns = db.prepare(`PRAGMA table_info(tournament_scores)`).all();
+const tournamentScoresForeignKeys = db
+  .prepare(`PRAGMA foreign_key_list(tournament_scores)`)
+  .all();
+
+if (
+  migrateCombinedDateTimeColumn({
+    tableName: "tournaments",
+    legacyColumnName: "created_at",
+    createTableSql: TOURNAMENTS_TABLE_SQL.trim(),
+    insertColumns: [
+      "id",
+      "name",
+      "tournament_type",
+      "registration_start_date",
+      "registration_end_date",
+      "score_submission_start_date",
+      "score_submission_end_date",
+      "created_by",
+      "created_at_date",
+      "created_at_time",
+    ],
+    selectColumns: [
+      "id",
+      "name",
+      "tournament_type",
+      "registration_start_date",
+      "registration_end_date",
+      "score_submission_start_date",
+      "score_submission_end_date",
+      "created_by",
+      "substr(created_at, 1, 10)",
+      "substr(created_at, 12)",
+    ],
+  }) ||
+  tournamentRegistrationsForeignKeys.some(
+    (foreignKey) => foreignKey.table === "tournaments_old",
+  ) ||
+  tournamentRegistrationsColumns.some((column) => column.name === "registered_at") ||
+  tournamentScoresForeignKeys.some((foreignKey) => foreignKey.table === "tournaments_old") ||
+  tournamentScoresColumns.some((column) => column.name === "submitted_at")
+) {
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+
+    BEGIN TRANSACTION;
+
+    ALTER TABLE tournament_registrations RENAME TO tournament_registrations_old;
+
+    ${TOURNAMENT_REGISTRATIONS_TABLE_SQL.trim()};
+
+    INSERT INTO tournament_registrations (
+      tournament_id,
+      member_username,
+      registered_at_date,
+      registered_at_time
+    )
+    SELECT
+      tournament_id,
+      member_username,
+      substr(registered_at, 1, 10),
+      substr(registered_at, 12)
+    FROM tournament_registrations_old;
+
+    DROP TABLE tournament_registrations_old;
+
+    ALTER TABLE tournament_scores RENAME TO tournament_scores_old;
+
+    ${TOURNAMENT_SCORES_TABLE_SQL.trim()};
+
+    INSERT INTO tournament_scores (
+      tournament_id,
+      round_number,
+      member_username,
+      score,
+      submitted_at_date,
+      submitted_at_time
+    )
+    SELECT
+      tournament_id,
+      round_number,
+      member_username,
+      score,
+      substr(submitted_at, 1, 10),
+      substr(submitted_at, 12)
+    FROM tournament_scores_old;
+
+    DROP TABLE tournament_scores_old;
 
     COMMIT;
 
@@ -751,6 +1168,63 @@ const listAllUsers = db.prepare(`
   ORDER BY users.surname ASC, users.first_name ASC
 `);
 
+const listRoleDefinitions = db.prepare(`
+  SELECT
+    role_key,
+    title,
+    is_system
+  FROM roles
+  ORDER BY is_system DESC, title ASC, role_key ASC
+`);
+
+const findRoleDefinitionByKey = db.prepare(`
+  SELECT
+    role_key,
+    title,
+    is_system
+  FROM roles
+  WHERE role_key = ?
+`);
+
+const listPermissionDefinitions = db.prepare(`
+  SELECT
+    permission_key,
+    label,
+    description
+  FROM permissions
+  ORDER BY label ASC, permission_key ASC
+`);
+
+const listRolePermissionKeysByRoleKey = db.prepare(`
+  SELECT
+    permission_key
+  FROM role_permissions
+  WHERE role_key = ?
+  ORDER BY permission_key ASC
+`);
+
+const deleteRolePermissionsByRoleKey = db.prepare(`
+  DELETE FROM role_permissions
+  WHERE role_key = ?
+`);
+
+const updateRoleDefinition = db.prepare(`
+  UPDATE roles
+  SET title = ?
+  WHERE role_key = ?
+`);
+
+const deleteRoleDefinition = db.prepare(`
+  DELETE FROM roles
+  WHERE role_key = ?
+`);
+
+const countUsersByRoleKey = db.prepare(`
+  SELECT COUNT(*) AS count
+  FROM user_types
+  WHERE user_type = ?
+`);
+
 const listCommitteeRoles = db.prepare(`
   SELECT
     committee_roles.id,
@@ -905,9 +1379,10 @@ const insertCoachingSession = db.prepare(`
     topic,
     summary,
     venue,
-    created_at
+    created_at_date,
+    created_at_time
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const listCoachingSessions = db.prepare(`
@@ -921,7 +1396,7 @@ const listCoachingSessions = db.prepare(`
     coaching_sessions.topic,
     coaching_sessions.summary,
     coaching_sessions.venue,
-    coaching_sessions.created_at,
+    coaching_sessions.created_at_date || 'T' || coaching_sessions.created_at_time AS created_at,
     users.first_name AS coach_first_name,
     users.surname AS coach_surname
   FROM coaching_sessions
@@ -940,7 +1415,7 @@ const findCoachingSessionById = db.prepare(`
     coaching_sessions.topic,
     coaching_sessions.summary,
     coaching_sessions.venue,
-    coaching_sessions.created_at,
+    coaching_sessions.created_at_date || 'T' || coaching_sessions.created_at_time AS created_at,
     users.first_name AS coach_first_name,
     users.surname AS coach_surname
   FROM coaching_sessions
@@ -952,7 +1427,7 @@ const listBookingsByCoachingSessionId = db.prepare(`
   SELECT
     coaching_session_bookings.coaching_session_id,
     coaching_session_bookings.member_username,
-    coaching_session_bookings.booked_at,
+    coaching_session_bookings.booked_at_date || 'T' || coaching_session_bookings.booked_at_time AS booked_at,
     users.first_name,
     users.surname
   FROM coaching_session_bookings
@@ -965,9 +1440,10 @@ const insertCoachingSessionBooking = db.prepare(`
   INSERT INTO coaching_session_bookings (
     coaching_session_id,
     member_username,
-    booked_at
+    booked_at_date,
+    booked_at_time
   )
-  VALUES (?, ?, ?)
+  VALUES (?, ?, ?, ?)
 `);
 
 const deleteCoachingSessionBooking = db.prepare(`
@@ -1014,7 +1490,7 @@ const listClubEvents = db.prepare(`
     end_time,
     title,
     type,
-    created_at
+    created_at_date || 'T' || created_at_time AS created_at
   FROM club_events
   ORDER BY event_date ASC, start_time ASC
 `);
@@ -1026,9 +1502,10 @@ const insertClubEvent = db.prepare(`
     end_time,
     title,
     type,
-    created_at
+    created_at_date,
+    created_at_time
   )
-  VALUES (?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 
 const listTournaments = db.prepare(`
@@ -1041,12 +1518,12 @@ const listTournaments = db.prepare(`
     tournaments.score_submission_start_date,
     tournaments.score_submission_end_date,
     tournaments.created_by,
-    tournaments.created_at,
+    tournaments.created_at_date || 'T' || tournaments.created_at_time AS created_at,
     users.first_name AS created_by_first_name,
     users.surname AS created_by_surname
   FROM tournaments
   INNER JOIN users ON users.username = tournaments.created_by
-  ORDER BY tournaments.registration_start_date DESC, tournaments.created_at DESC
+  ORDER BY tournaments.registration_start_date DESC, tournaments.created_at_date DESC, tournaments.created_at_time DESC
 `);
 
 const findTournamentById = db.prepare(`
@@ -1059,7 +1536,7 @@ const findTournamentById = db.prepare(`
     tournaments.score_submission_start_date,
     tournaments.score_submission_end_date,
     tournaments.created_by,
-    tournaments.created_at,
+    tournaments.created_at_date || 'T' || tournaments.created_at_time AS created_at,
     users.first_name AS created_by_first_name,
     users.surname AS created_by_surname
   FROM tournaments
@@ -1076,9 +1553,10 @@ const insertTournament = db.prepare(`
     score_submission_start_date,
     score_submission_end_date,
     created_by,
-    created_at
+    created_at_date,
+    created_at_time
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateTournamentById = db.prepare(`
@@ -1112,7 +1590,7 @@ const listTournamentRegistrationsByTournamentId = db.prepare(`
   SELECT
     tournament_registrations.tournament_id,
     tournament_registrations.member_username,
-    tournament_registrations.registered_at,
+    tournament_registrations.registered_at_date || 'T' || tournament_registrations.registered_at_time AS registered_at,
     users.first_name,
     users.surname,
     user_types.user_type
@@ -1127,9 +1605,10 @@ const insertTournamentRegistration = db.prepare(`
   INSERT INTO tournament_registrations (
     tournament_id,
     member_username,
-    registered_at
+    registered_at_date,
+    registered_at_time
   )
-  VALUES (?, ?, ?)
+  VALUES (?, ?, ?, ?)
 `);
 
 const deleteTournamentRegistration = db.prepare(`
@@ -1143,7 +1622,7 @@ const listTournamentScoresByTournamentId = db.prepare(`
     round_number,
     member_username,
     score,
-    submitted_at
+    submitted_at_date || 'T' || submitted_at_time AS submitted_at
   FROM tournament_scores
   WHERE tournament_id = ?
   ORDER BY round_number ASC, member_username ASC
@@ -1155,19 +1634,21 @@ const upsertTournamentScore = db.prepare(`
     round_number,
     member_username,
     score,
-    submitted_at
+    submitted_at_date,
+    submitted_at_time
   )
-  VALUES (?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT(tournament_id, round_number, member_username) DO UPDATE SET
     score = excluded.score,
-    submitted_at = excluded.submitted_at
+    submitted_at_date = excluded.submitted_at_date,
+    submitted_at_time = excluded.submitted_at_time
 `);
 
 const listEventBookingsByEventId = db.prepare(`
   SELECT
     event_bookings.club_event_id,
     event_bookings.member_username,
-    event_bookings.booked_at,
+    event_bookings.booked_at_date || 'T' || event_bookings.booked_at_time AS booked_at,
     users.first_name,
     users.surname
   FROM event_bookings
@@ -1180,9 +1661,10 @@ const insertEventBooking = db.prepare(`
   INSERT INTO event_bookings (
     club_event_id,
     member_username,
-    booked_at
+    booked_at_date,
+    booked_at_time
   )
-  VALUES (?, ?, ?)
+  VALUES (?, ?, ?, ?)
 `);
 
 const deleteEventBooking = db.prepare(`
@@ -1213,14 +1695,19 @@ const findClubEventById = db.prepare(`
     end_time,
     title,
     type,
-    created_at
+    created_at_date || 'T' || created_at_time AS created_at
   FROM club_events
   WHERE id = ?
 `);
 
 const insertLoginEvent = db.prepare(`
-  INSERT INTO login_events (username, login_method, logged_in_at)
-  VALUES (?, ?, ?)
+  INSERT INTO login_events (
+    username,
+    login_method,
+    logged_in_date,
+    logged_in_time
+  )
+  VALUES (?, ?, ?, ?)
 `);
 
 const insertGuestLoginEvent = db.prepare(`
@@ -1228,9 +1715,10 @@ const insertGuestLoginEvent = db.prepare(`
     first_name,
     surname,
     archery_gb_membership_number,
-    logged_in_at
+    logged_in_date,
+    logged_in_time
   )
-  VALUES (?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?)
 `);
 
 const findRecentRangeMembers = db.prepare(`
@@ -1242,11 +1730,11 @@ const findRecentRangeMembers = db.prepare(`
     users.active_member,
     users.membership_fees_due,
     user_types.user_type,
-    MAX(login_events.logged_in_at) AS last_logged_in_at
+    MAX(login_events.logged_in_date || 'T' || login_events.logged_in_time) AS last_logged_in_at
   FROM login_events
   INNER JOIN users ON users.username = login_events.username
   INNER JOIN user_types ON user_types.username = users.username
-  WHERE login_events.logged_in_at >= ?
+  WHERE (login_events.logged_in_date || 'T' || login_events.logged_in_time) >= ?
   GROUP BY users.username, users.first_name, users.surname, users.rfid_tag, users.active_member, users.membership_fees_due, user_types.user_type
   ORDER BY users.surname ASC, users.first_name ASC
 `);
@@ -1263,9 +1751,9 @@ const findRecentGuestLogins = db.prepare(`
     first_name,
     surname,
     archery_gb_membership_number,
-    MAX(logged_in_at) AS last_logged_in_at
+    MAX(logged_in_date || 'T' || logged_in_time) AS last_logged_in_at
   FROM guest_login_events
-  WHERE logged_in_at >= ?
+  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
   GROUP BY first_name, surname, archery_gb_membership_number
   ORDER BY surname ASC, first_name ASC
 `);
@@ -1273,54 +1761,62 @@ const findRecentGuestLogins = db.prepare(`
 const countMemberLoginsInRange = db.prepare(`
   SELECT COUNT(*) AS count
   FROM login_events
-  WHERE logged_in_at >= ? AND logged_in_at < ?
+  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
 `);
 
 const countGuestLoginsInRange = db.prepare(`
   SELECT COUNT(*) AS count
   FROM guest_login_events
-  WHERE logged_in_at >= ? AND logged_in_at < ?
+  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
 `);
 
 const memberLoginsByHourInRange = db.prepare(`
-  SELECT CAST(strftime('%H', logged_in_at) AS INTEGER) AS hour, COUNT(*) AS count
+  SELECT CAST(substr(logged_in_time, 1, 2) AS INTEGER) AS hour, COUNT(*) AS count
   FROM login_events
-  WHERE logged_in_at >= ? AND logged_in_at < ?
+  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
   GROUP BY hour
 `);
 
 const guestLoginsByHourInRange = db.prepare(`
-  SELECT CAST(strftime('%H', logged_in_at) AS INTEGER) AS hour, COUNT(*) AS count
+  SELECT CAST(substr(logged_in_time, 1, 2) AS INTEGER) AS hour, COUNT(*) AS count
   FROM guest_login_events
-  WHERE logged_in_at >= ? AND logged_in_at < ?
+  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
   GROUP BY hour
 `);
 
 const memberLoginsByWeekdayInRange = db.prepare(`
-  SELECT CAST(strftime('%w', logged_in_at) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
+  SELECT CAST(strftime('%w', logged_in_date) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
   FROM login_events
-  WHERE logged_in_at >= ? AND logged_in_at < ?
+  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
   GROUP BY dayOfWeek
 `);
 
 const guestLoginsByWeekdayInRange = db.prepare(`
-  SELECT CAST(strftime('%w', logged_in_at) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
+  SELECT CAST(strftime('%w', logged_in_date) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
   FROM guest_login_events
-  WHERE logged_in_at >= ? AND logged_in_at < ?
+  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
   GROUP BY dayOfWeek
 `);
 
 const memberLoginsByDateInRange = db.prepare(`
-  SELECT strftime('%Y-%m-%d', logged_in_at) AS usageDate, COUNT(*) AS count
+  SELECT logged_in_date AS usageDate, COUNT(*) AS count
   FROM login_events
-  WHERE logged_in_at >= ? AND logged_in_at < ?
+  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
   GROUP BY usageDate
 `);
 
 const guestLoginsByDateInRange = db.prepare(`
-  SELECT strftime('%Y-%m-%d', logged_in_at) AS usageDate, COUNT(*) AS count
+  SELECT logged_in_date AS usageDate, COUNT(*) AS count
   FROM guest_login_events
-  WHERE logged_in_at >= ? AND logged_in_at < ?
+  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
   GROUP BY usageDate
 `);
 
@@ -1329,6 +1825,8 @@ const app = express();
 app.use(express.json());
 
 function buildMemberUserProfile(user, disciplines = [], meta = {}) {
+  const permissions = getPermissionsForRole(user.user_type);
+
   return {
     id: user.username,
     accountType: "member",
@@ -1344,6 +1842,7 @@ function buildMemberUserProfile(user, disciplines = [], meta = {}) {
     },
     membership: {
       role: user.user_type,
+      permissions,
       disciplines,
     },
     meta: {
@@ -1455,6 +1954,7 @@ function buildGuestUserProfile(guest, meta = {}) {
     },
     membership: {
       role: "guest",
+      permissions: [],
       disciplines: [],
     },
     meta,
@@ -1515,6 +2015,16 @@ function buildCommitteeRole(role) {
           userType: role.assigned_user_type,
         }
       : null,
+  };
+}
+
+function buildRoleDefinitionResponse(role) {
+  return {
+    roleKey: role.role_key,
+    title: role.title,
+    isSystem: Boolean(role.is_system),
+    assignedUserCount: countUsersByRoleKey.get(role.role_key)?.count ?? 0,
+    permissions: getPermissionsForRole(role.role_key),
   };
 }
 
@@ -1855,6 +2365,56 @@ function getActorUser(req) {
   return findUserByUsername.get(actorUsername);
 }
 
+function listAssignableRoleKeys() {
+  return listRoleDefinitions.all().map((role) => role.role_key);
+}
+
+function getPermissionsForRole(roleKey) {
+  if (!roleKey) {
+    return [];
+  }
+
+  return listRolePermissionKeysByRoleKey
+    .all(roleKey)
+    .map((permission) => permission.permission_key);
+}
+
+function actorHasPermission(actor, permissionKey) {
+  if (!actor) {
+    return false;
+  }
+
+  return getPermissionsForRole(actor.user_type).includes(permissionKey);
+}
+
+function toRoleKey(value) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+function buildUniqueRoleKeyFromTitle(title) {
+  const baseKey = toRoleKey(title);
+
+  if (!baseKey) {
+    return "";
+  }
+
+  let nextKey = baseKey;
+  let counter = 2;
+
+  while (findRoleDefinitionByKey.get(nextKey)) {
+    const suffix = `-${counter}`;
+    const trimmedBase = baseKey.slice(0, Math.max(1, 40 - suffix.length));
+    nextKey = `${trimmedBase}${suffix}`;
+    counter += 1;
+  }
+
+  return nextKey;
+}
+
 function sanitizeDisciplines(disciplines) {
   if (!Array.isArray(disciplines)) {
     return [];
@@ -2037,7 +2597,7 @@ function saveMemberProfile({
     };
   }
 
-  if (!ALLOWED_USER_TYPES.includes(userType)) {
+  if (!findRoleDefinitionByKey.get(userType)) {
     return {
       success: false,
       status: 400,
@@ -2113,6 +2673,11 @@ function saveMemberProfile({
 
 function toUtcDateString(date) {
   return date.toISOString().slice(0, 10);
+}
+
+function getUtcTimestampParts(date = new Date()) {
+  const isoTimestamp = date.toISOString();
+  return [isoTimestamp.slice(0, 10), isoTimestamp.slice(11)];
 }
 
 function startOfUtcDay(date) {
@@ -2304,7 +2869,11 @@ app.post("/api/auth/login", (req, res) => {
     return;
   }
 
-  insertLoginEvent.run(user.username, "password", new Date().toISOString());
+  insertLoginEvent.run(
+    user.username,
+    "password",
+    ...getUtcTimestampParts(),
+  );
 
   res.json({
     success: true,
@@ -2338,7 +2907,11 @@ app.post("/api/auth/rfid", (req, res) => {
     return;
   }
 
-  insertLoginEvent.run(user.username, "rfid", new Date().toISOString());
+  insertLoginEvent.run(
+    user.username,
+    "rfid",
+    ...getUtcTimestampParts(),
+  );
 
   res.json({
     success: true,
@@ -2376,7 +2949,7 @@ app.post("/api/auth/guest-login", (req, res) => {
     firstName.trim(),
     surname.trim(),
     trimmedMembershipNumber,
-    new Date().toISOString(),
+    ...getUtcTimestampParts(),
   );
 
   res.json({
@@ -2407,10 +2980,10 @@ app.get("/api/profile-options", (req, res) => {
     return;
   }
 
-  if (actor.user_type !== "admin") {
+  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
     res.status(403).json({
       success: false,
-      message: "Only admins can load the member list.",
+      message: "You do not have permission to load member options.",
     });
     return;
   }
@@ -2422,18 +2995,255 @@ app.get("/api/profile-options", (req, res) => {
       fullName: `${user.first_name} ${user.surname}`,
       userType: user.user_type,
     })),
-    userTypes: ALLOWED_USER_TYPES,
+    userTypes: listAssignableRoleKeys(),
     disciplines: ALLOWED_DISCIPLINES,
+  });
+});
+
+app.get("/api/roles", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_ROLES_PERMISSIONS)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to manage roles.",
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    roles: listRoleDefinitions.all().map(buildRoleDefinitionResponse),
+    permissions: listPermissionDefinitions.all().map((permission) => ({
+      key: permission.permission_key,
+      label: permission.label,
+      description: permission.description,
+    })),
+  });
+});
+
+app.post("/api/roles", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_ROLES_PERMISSIONS)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to create roles.",
+    });
+    return;
+  }
+
+  const titleRaw = typeof req.body?.title === "string" ? req.body.title : "";
+  const permissionsRaw = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+  const title = titleRaw.trim();
+  const validPermissionKeys = new Set(
+    listPermissionDefinitions
+      .all()
+      .map((permission) => permission.permission_key),
+  );
+  const normalizedPermissions = [...new Set(
+    permissionsRaw
+      .filter((permission) => typeof permission === "string")
+      .map((permission) => permission.trim())
+      .filter((permission) => validPermissionKeys.has(permission)),
+  )];
+
+  if (!title) {
+    res.status(400).json({
+      success: false,
+      message: "Role title is required.",
+    });
+    return;
+  }
+
+  const roleKey = buildUniqueRoleKeyFromTitle(title);
+
+  if (!roleKey) {
+    res.status(400).json({
+      success: false,
+      message: "Role title must contain letters or numbers.",
+    });
+    return;
+  }
+
+  const createRoleTransaction = db.transaction(() => {
+    upsertRole.run({
+      roleKey,
+      title,
+      isSystem: 0,
+    });
+    deleteRolePermissionsByRoleKey.run(roleKey);
+
+    for (const permissionKey of normalizedPermissions) {
+      insertRolePermission.run(roleKey, permissionKey);
+    }
+  });
+
+  createRoleTransaction();
+
+  const createdRole = findRoleDefinitionByKey.get(roleKey);
+
+  res.status(201).json({
+    success: true,
+    role: buildRoleDefinitionResponse(createdRole),
+  });
+});
+
+app.put("/api/roles/:roleKey", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_ROLES_PERMISSIONS)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to update roles.",
+    });
+    return;
+  }
+
+  const roleKey = req.params.roleKey;
+  const existingRole = findRoleDefinitionByKey.get(roleKey);
+
+  if (!existingRole) {
+    res.status(404).json({
+      success: false,
+      message: "Role not found.",
+    });
+    return;
+  }
+
+  const titleRaw = typeof req.body?.title === "string" ? req.body.title : "";
+  const permissionsRaw = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+  const title = titleRaw.trim();
+
+  if (!title) {
+    res.status(400).json({
+      success: false,
+      message: "Role title is required.",
+    });
+    return;
+  }
+
+  const validPermissionKeys = new Set(
+    listPermissionDefinitions
+      .all()
+      .map((permission) => permission.permission_key),
+  );
+  const normalizedPermissions = [...new Set(
+    permissionsRaw
+      .filter((permission) => typeof permission === "string")
+      .map((permission) => permission.trim())
+      .filter((permission) => validPermissionKeys.has(permission)),
+  )];
+
+  const updateRoleTransaction = db.transaction(() => {
+    updateRoleDefinition.run(title, roleKey);
+    deleteRolePermissionsByRoleKey.run(roleKey);
+
+    for (const permissionKey of normalizedPermissions) {
+      insertRolePermission.run(roleKey, permissionKey);
+    }
+  });
+
+  updateRoleTransaction();
+
+  res.json({
+    success: true,
+    role: buildRoleDefinitionResponse(findRoleDefinitionByKey.get(roleKey)),
+  });
+});
+
+app.delete("/api/roles/:roleKey", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_ROLES_PERMISSIONS)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to delete roles.",
+    });
+    return;
+  }
+
+  const roleKey = req.params.roleKey;
+  const existingRole = findRoleDefinitionByKey.get(roleKey);
+
+  if (!existingRole) {
+    res.status(404).json({
+      success: false,
+      message: "Role not found.",
+    });
+    return;
+  }
+
+  if (existingRole.is_system) {
+    res.status(400).json({
+      success: false,
+      message: "System roles cannot be deleted.",
+    });
+    return;
+  }
+
+  const assignedUserCount = countUsersByRoleKey.get(roleKey)?.count ?? 0;
+
+  if (assignedUserCount > 0) {
+    res.status(409).json({
+      success: false,
+      message: "This role is still assigned to members and cannot be deleted.",
+    });
+    return;
+  }
+
+  const deleteRoleTransaction = db.transaction(() => {
+    deleteRolePermissionsByRoleKey.run(roleKey);
+    deleteRoleDefinition.run(roleKey);
+  });
+
+  deleteRoleTransaction();
+
+  res.json({
+    success: true,
+    deletedRoleKey: roleKey,
   });
 });
 
 app.get("/api/tournament-options", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || actor.user_type !== "admin") {
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
     res.status(403).json({
       success: false,
-      message: "Only admin users can load tournament setup options.",
+      message: "You do not have permission to load tournament setup options.",
     });
     return;
   }
@@ -2459,7 +3269,7 @@ app.get("/api/committee-roles", (req, res) => {
     success: true,
     roles: listCommitteeRoles.all().map(buildCommitteeRole),
     members:
-      actor.user_type === "admin"
+      actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)
         ? listAllUsers.all().map((user) => ({
             username: user.username,
             fullName: `${user.first_name} ${user.surname}`,
@@ -2472,10 +3282,10 @@ app.get("/api/committee-roles", (req, res) => {
 app.put("/api/committee-roles/:id", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || actor.user_type !== "admin") {
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)) {
     res.status(403).json({
       success: false,
-      message: "Only admin users can update committee roles.",
+      message: "You do not have permission to update committee roles.",
     });
     return;
   }
@@ -2534,10 +3344,12 @@ app.get("/api/user-profiles/:username", (req, res) => {
       sensitivity: "accent",
     }) === 0;
 
-  if (!isSelf && actor.user_type !== "admin") {
+  const canManageMembers = actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS);
+
+  if (!isSelf && !canManageMembers) {
     res.status(403).json({
       success: false,
-      message: "Only admins can edit another member profile.",
+      message: "You do not have permission to edit another member profile.",
     });
     return;
   }
@@ -2561,7 +3373,7 @@ app.get("/api/user-profiles/:username", (req, res) => {
     success: true,
     editableProfile: buildEditableMemberProfile(user, disciplines, loanBow),
     userProfile: buildMemberUserProfile(user, disciplines),
-    userTypes: ALLOWED_USER_TYPES,
+    userTypes: listAssignableRoleKeys(),
     disciplines: ALLOWED_DISCIPLINES,
   });
 });
@@ -2569,10 +3381,10 @@ app.get("/api/user-profiles/:username", (req, res) => {
 app.post("/api/user-profiles", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || actor.user_type !== "admin") {
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
     res.status(403).json({
       success: false,
-      message: "Only admins can create new member profiles.",
+      message: "You do not have permission to create member profiles.",
     });
     return;
   }
@@ -2650,10 +3462,12 @@ app.put("/api/user-profiles/:username", (req, res) => {
       sensitivity: "accent",
     }) === 0;
 
-  if (!isSelf && actor.user_type !== "admin") {
+  const canManageMembers = actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS);
+
+  if (!isSelf && !canManageMembers) {
     res.status(403).json({
       success: false,
-      message: "Only admins can update another member profile.",
+      message: "You do not have permission to update another member profile.",
     });
     return;
   }
@@ -2677,15 +3491,15 @@ app.put("/api/user-profiles/:username", (req, res) => {
     password,
     rfidTag,
     activeMember:
-      actor.user_type === "admin" ? activeMember : existingUser.active_member,
+      canManageMembers ? activeMember : existingUser.active_member,
     membershipFeesDue:
-      actor.user_type === "admin"
+      canManageMembers
         ? membershipFeesDue
         : existingUser.membership_fees_due,
-    userType: actor.user_type === "admin" ? userType : existingUser.user_type,
+    userType: canManageMembers ? userType : existingUser.user_type,
     disciplines,
     loanBow:
-      actor.user_type === "admin"
+      canManageMembers
         ? loanBow
         : buildLoanBowRecord(findLoanBowByUsername.get(existingUser.username)),
     existingUser,
@@ -2713,10 +3527,10 @@ app.get("/api/loan-bow-options", (req, res) => {
     return;
   }
 
-  if (!["admin", "coach"].includes(actor.user_type)) {
+  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_LOAN_BOWS)) {
     res.status(403).json({
       success: false,
-      message: "Only admin and coach users can manage loan bow records.",
+      message: "You do not have permission to manage loan bow records.",
     });
     return;
   }
@@ -2725,7 +3539,7 @@ app.get("/api/loan-bow-options", (req, res) => {
     success: true,
     members: listAllUsers
       .all()
-      .filter((user) => user.user_type !== "admin")
+      .filter((user) => !getPermissionsForRole(user.user_type).includes(PERMISSIONS.MANAGE_MEMBERS))
       .map((user) => ({
         username: user.username,
         fullName: `${user.first_name} ${user.surname}`,
@@ -2746,10 +3560,10 @@ app.get("/api/loan-bow-profiles/:username", (req, res) => {
     return;
   }
 
-  if (!["admin", "coach"].includes(actor.user_type)) {
+  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_LOAN_BOWS)) {
     res.status(403).json({
       success: false,
-      message: "Only admin and coach users can manage loan bow records.",
+      message: "You do not have permission to manage loan bow records.",
     });
     return;
   }
@@ -2787,10 +3601,10 @@ app.put("/api/loan-bow-profiles/:username", (req, res) => {
     return;
   }
 
-  if (!["admin", "coach"].includes(actor.user_type)) {
+  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_LOAN_BOWS)) {
     res.status(403).json({
       success: false,
-      message: "Only admin and coach users can manage loan bow records.",
+      message: "You do not have permission to manage loan bow records.",
     });
     return;
   }
@@ -2832,10 +3646,10 @@ app.post("/api/loan-bow-profiles/:username/return", (req, res) => {
     return;
   }
 
-  if (!["admin", "coach"].includes(actor.user_type)) {
+  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_LOAN_BOWS)) {
     res.status(403).json({
       success: false,
-      message: "Only admin and coach users can manage loan bow records.",
+      message: "You do not have permission to manage loan bow records.",
     });
     return;
   }
@@ -2942,10 +3756,10 @@ app.get("/api/tournaments", (req, res) => {
 app.post("/api/tournaments", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || actor.user_type !== "admin") {
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
     res.status(403).json({
       success: false,
-      message: "Only admin users can create tournaments.",
+      message: "You do not have permission to create tournaments.",
     });
     return;
   }
@@ -3003,7 +3817,7 @@ app.post("/api/tournaments", (req, res) => {
     scoreSubmissionStartDate,
     scoreSubmissionEndDate,
     actor.username,
-    new Date().toISOString(),
+    ...getUtcTimestampParts(),
   );
   const tournament = findTournamentById.get(insertResult.lastInsertRowid);
 
@@ -3016,10 +3830,10 @@ app.post("/api/tournaments", (req, res) => {
 app.put("/api/tournaments/:id", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || actor.user_type !== "admin") {
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
     res.status(403).json({
       success: false,
-      message: "Only admin users can amend tournaments.",
+      message: "You do not have permission to amend tournaments.",
     });
     return;
   }
@@ -3111,10 +3925,10 @@ const deleteTournamentCascade = db.transaction((tournamentId) => {
 app.delete("/api/tournaments/:id", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || actor.user_type !== "admin") {
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
     res.status(403).json({
       success: false,
-      message: "Only admin users can delete tournaments.",
+      message: "You do not have permission to delete tournaments.",
     });
     return;
   }
@@ -3176,7 +3990,7 @@ app.post("/api/tournaments/:id/register", (req, res) => {
     insertTournamentRegistration.run(
       tournament.id,
       actor.username,
-      new Date().toISOString(),
+      ...getUtcTimestampParts(),
     );
   } catch (error) {
     if (
@@ -3327,7 +4141,7 @@ app.post("/api/tournaments/:id/score", (req, res) => {
     builtTournament.currentRoundNumber,
     actor.username,
     normalizedScore,
-    new Date().toISOString(),
+    ...getUtcTimestampParts(),
   );
 
   res.json({
@@ -3354,10 +4168,10 @@ app.post("/api/events", (req, res) => {
     return;
   }
 
-  if (actor.user_type !== "admin") {
+  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_EVENTS)) {
     res.status(403).json({
       success: false,
-      message: "Only admin users can create events.",
+      message: "You do not have permission to create events.",
     });
     return;
   }
@@ -3394,7 +4208,7 @@ app.post("/api/events", (req, res) => {
     endTime,
     trimmedTitle,
     type,
-    new Date().toISOString(),
+    ...getUtcTimestampParts(),
   );
   const event = listClubEvents.all().find((entry) => entry.id === insertResult.lastInsertRowid);
 
@@ -3434,7 +4248,11 @@ app.post("/api/events/:id/book", (req, res) => {
   }
 
   try {
-    insertEventBooking.run(event.id, actor.username, new Date().toISOString());
+    insertEventBooking.run(
+      event.id,
+      actor.username,
+      ...getUtcTimestampParts(),
+    );
   } catch (error) {
     if (
       error?.message?.includes(
@@ -3533,10 +4351,10 @@ app.get("/api/coaching-sessions", (req, res) => {
 app.post("/api/coaching-sessions", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || actor.user_type !== "coach") {
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_COACHING_SESSIONS)) {
     res.status(403).json({
       success: false,
-      message: "Only coach users can add coaching sessions.",
+      message: "You do not have permission to add coaching sessions.",
     });
     return;
   }
@@ -3590,7 +4408,7 @@ app.post("/api/coaching-sessions", (req, res) => {
     trimmedTopic,
     trimmedSummary,
     normalizedVenue,
-    new Date().toISOString(),
+    ...getUtcTimestampParts(),
   );
   const session = findCoachingSessionById.get(insertResult.lastInsertRowid);
 
@@ -3635,7 +4453,7 @@ app.post("/api/coaching-sessions/:id/book", (req, res) => {
     insertCoachingSessionBooking.run(
       session.id,
       actor.username,
-      new Date().toISOString(),
+      ...getUtcTimestampParts(),
     );
   } catch (error) {
     if (
@@ -3715,10 +4533,10 @@ app.delete("/api/coaching-sessions/:id/booking", (req, res) => {
 app.delete("/api/coaching-sessions/:id", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || actor.user_type !== "coach") {
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_COACHING_SESSIONS)) {
     res.status(403).json({
       success: false,
-      message: "Only coach users can cancel coaching sessions.",
+      message: "You do not have permission to cancel coaching sessions.",
     });
     return;
   }

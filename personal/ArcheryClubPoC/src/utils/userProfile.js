@@ -1,3 +1,35 @@
+const ROLE_PERMISSION_FALLBACKS = {
+  guest: [],
+  general: [],
+  coach: ["manage_coaching_sessions", "manage_loan_bows"],
+  admin: [
+    "manage_members",
+    "manage_roles_permissions",
+    "manage_committee_roles",
+    "manage_events",
+    "manage_coaching_sessions",
+    "manage_loan_bows",
+    "manage_tournaments",
+  ],
+  developer: [
+    "manage_members",
+    "manage_roles_permissions",
+    "manage_committee_roles",
+    "manage_events",
+    "manage_coaching_sessions",
+    "manage_loan_bows",
+    "manage_tournaments",
+  ],
+};
+
+function normalizePermissions(permissions, role) {
+  if (Array.isArray(permissions)) {
+    return [...new Set(permissions.filter((permission) => typeof permission === "string"))];
+  }
+
+  return ROLE_PERMISSION_FALLBACKS[role] ?? [];
+}
+
 export function normalizeUserProfile(profile) {
   if (!profile) {
     return null;
@@ -22,6 +54,10 @@ export function normalizeUserProfile(profile) {
       },
       membership: {
         role: profile.membership.role ?? "guest",
+        permissions: normalizePermissions(
+          profile.membership.permissions,
+          profile.membership.role ?? "guest",
+        ),
         disciplines: Array.isArray(profile.membership.disciplines)
           ? profile.membership.disciplines
           : [],
@@ -56,6 +92,10 @@ export function normalizeUserProfile(profile) {
     },
     membership: {
       role,
+      permissions: normalizePermissions(
+        profile.permissions ?? profile.membership?.permissions,
+        role,
+      ),
       disciplines: Array.isArray(profile.disciplines) ? profile.disciplines : [],
     },
     meta: {
@@ -65,6 +105,15 @@ export function normalizeUserProfile(profile) {
       ...profile.meta,
     },
   };
+}
+
+export function hasPermission(profile, permissionKey) {
+  if (!profile || !permissionKey) {
+    return false;
+  }
+
+  return normalizePermissions(profile.membership?.permissions, profile.membership?.role)
+    .includes(permissionKey);
 }
 
 export function getUserProfileKey(profile) {

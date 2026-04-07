@@ -16,7 +16,9 @@ import { ProfilePage } from "./ProfilePage";
 import { UserCreationPage } from "./UserCreationPage";
 import { LoanBowRegisterPage } from "./LoanBowRegisterPage";
 import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
+import { RolePermissionsPage } from "./RolePermissionsPage";
 import {
+  hasPermission,
   isSameUserProfile,
   normalizeUserProfile,
 } from "../../utils/userProfile";
@@ -27,6 +29,7 @@ const pageTitleMap = {
   home: "Home",
   profile: "Profile",
   "user-creation": "User Creation",
+  "role-permissions": "Roles & Permissions",
   "loan-bow-register": "Loan Bow Register",
   "event-calendar": "Event/Competition Calendar",
   "range-usage": "Range Usage",
@@ -44,6 +47,7 @@ const pathToPageId = {
   "/": "home",
   "/profile": "profile",
   "/user-creation": "user-creation",
+  "/role-permissions": "role-permissions",
   "/loan-bow-register": "loan-bow-register",
   "/event-calendar": "event-calendar",
   "/range-usage": "range-usage",
@@ -74,7 +78,10 @@ export function HomePage({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const isAdmin = currentUserProfile?.membership?.role === "admin";
+  const canManageTournaments = hasPermission(
+    currentUserProfile,
+    "manage_tournaments",
+  );
 
   const activePage = pathToPageId[location.pathname] || "home";
   const membersAtRange = currentUserProfile
@@ -178,7 +185,7 @@ export function HomePage({
   }, [currentUserProfile]);
 
   const loadAdminTournamentWarnings = useCallback(async (signal) => {
-    if (!isAdmin || !currentUserProfile?.auth?.username) {
+    if (!canManageTournaments || !currentUserProfile?.auth?.username) {
       setAdminTournamentWarnings([]);
       return;
     }
@@ -233,7 +240,7 @@ export function HomePage({
         setAdminTournamentWarnings([]);
       }
     }
-  }, [currentUserProfile, isAdmin]);
+  }, [canManageTournaments, currentUserProfile]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -263,7 +270,7 @@ export function HomePage({
     };
   }, [
     currentUserProfile?.auth?.username,
-    isAdmin,
+    canManageTournaments,
     location.pathname,
     loadAdminTournamentWarnings,
     loadRangeMembers,
@@ -326,7 +333,6 @@ export function HomePage({
 
       <main className="page-shell">
         <section className="page-content">
-          <h2>{pageTitleMap[activePage] || "Archery Club"}</h2>
           {activePage === "home" ? (
             <p className="welcome-message">
               Welcome {currentUserProfile?.personal.fullName}
@@ -346,6 +352,15 @@ export function HomePage({
             <Route
               path="/user-creation"
               element={<UserCreationPage currentUserProfile={currentUserProfile} />}
+            />
+            <Route
+              path="/role-permissions"
+              element={
+                <RolePermissionsPage
+                  currentUserProfile={currentUserProfile}
+                  onCurrentUserProfileUpdate={onCurrentUserProfileUpdate}
+                />
+              }
             />
             <Route
               path="/loan-bow-register"

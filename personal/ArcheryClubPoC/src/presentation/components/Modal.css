@@ -12,6 +12,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: clamp(12px, 3vw, 24px);
   z-index: 9999;
 }
 
@@ -19,12 +20,12 @@
   background: var(--modal-bg);
   border: 1px solid var(--modal-border);
   color: #f8f8f8;
-  border-radius: 10px;
-  width: min(90vw, 540px);
-  max-height: 90vh;
+  border-radius: 14px;
+  width: min(100%, 540px);
+  max-height: calc(100svh - clamp(24px, 6vw, 48px));
   overflow-y: auto;
   box-shadow: var(--modal-shadow);
-  padding: 16px;
+  padding: clamp(16px, 2vw, 22px);
 }
 
 .modal-header {

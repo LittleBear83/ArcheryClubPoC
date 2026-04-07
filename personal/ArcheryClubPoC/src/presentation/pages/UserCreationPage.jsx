@@ -1,5 +1,6 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { MemberProfileForm } from "../components/MemberProfileForm";
+import { hasPermission } from "../../utils/userProfile";
 
 const EMPTY_PROFILE = {
   username: "",
@@ -35,6 +36,7 @@ function buildHeaders(currentUserProfile) {
 }
 
 export function UserCreationPage({ currentUserProfile }) {
+  const hasLoadedOptionsRef = useRef(false);
   const [editableProfile, setEditableProfile] = useState(EMPTY_PROFILE);
   const [disciplineOptions, setDisciplineOptions] = useState([]);
   const [roleOptions, setRoleOptions] = useState([]);
@@ -42,16 +44,22 @@ export function UserCreationPage({ currentUserProfile }) {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const actorUsername = currentUserProfile?.auth?.username ?? "";
 
-  const isAdmin = currentUserProfile?.membership?.role === "admin";
+  const canManageMembers = hasPermission(
+    currentUserProfile,
+    "manage_members",
+  );
 
   const loadOptions = useEffectEvent(async (signal) => {
-    if (!isAdmin) {
+    if (!canManageMembers) {
       setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
+    if (!hasLoadedOptionsRef.current) {
+      setIsLoading(true);
+    }
     setError("");
 
     try {
@@ -69,15 +77,20 @@ export function UserCreationPage({ currentUserProfile }) {
         return;
       }
 
-      setRoleOptions(result.userTypes ?? []);
+      const nextRoleOptions = result.userTypes ?? [];
+      const defaultRole = nextRoleOptions.includes("general")
+        ? "general"
+        : nextRoleOptions[0] ?? "general";
+
+      setRoleOptions(nextRoleOptions);
       setDisciplineOptions(result.disciplines ?? []);
-      setEditableProfile({
-        ...EMPTY_PROFILE,
-        userType:
-          result.userTypes?.includes("general")
-            ? "general"
-            : result.userTypes?.[0] ?? "general",
-      });
+      setEditableProfile((current) => ({
+        ...current,
+        userType: nextRoleOptions.includes(current.userType)
+          ? current.userType
+          : defaultRole,
+      }));
+      hasLoadedOptionsRef.current = true;
     } catch (loadError) {
       if (!signal?.aborted) {
         setError(loadError.message);
@@ -100,7 +113,7 @@ export function UserCreationPage({ currentUserProfile }) {
       abortController.abort();
       window.removeEventListener("profile-data-updated", refresh);
     };
-  }, [currentUserProfile, isAdmin, loadOptions]);
+  }, [actorUsername, canManageMembers]);
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
@@ -177,18 +190,20 @@ export function UserCreationPage({ currentUserProfile }) {
     }
   };
 
-  if (!isAdmin) {
-    return <p>Only admin users can create new member accounts.</p>;
+  if (!canManageMembers) {
+    return <p>You do not have permission to create member accounts.</p>;
   }
 
   return (
     <div className="profile-page">
       <p>Create a new member account for the system.</p>
-      {isLoading ? <p>Loading user creation options...</p> : null}
+      {isLoading && roleOptions.length === 0 ? (
+        <p>Loading user creation options...</p>
+      ) : null}
       {error ? <p className="profile-error">{error}</p> : null}
       {message ? <p className="profile-success">{message}</p> : null}
 
-      {!isLoading ? (
+      {roleOptions.length > 0 ? (
         <MemberProfileForm
           editableProfile={editableProfile}
           handleChange={handleChange}
@@ -198,9 +213,9 @@ export function UserCreationPage({ currentUserProfile }) {
           toggleLoanBowField={toggleLoanBowField}
           disciplineOptions={disciplineOptions}
           roleOptions={roleOptions}
-          isAdmin
+          isAdmin={canManageMembers}
           isCreatingNew
-          isSaving={isSaving}
+          isSaving={isSaving || isLoading}
           onSubmit={handleCreate}
           submitLabel={isSaving ? "Creating member..." : "Create member"}
         />

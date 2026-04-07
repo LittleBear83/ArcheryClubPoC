@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
+import { hasPermission } from "../../utils/userProfile";
 
 function TrainingIcon({ className = "" }) {
   return (
@@ -52,6 +53,7 @@ export function CoachingCalendarPage({ currentUserProfile }) {
   const [month, setMonth] = useState(today.getMonth());
   const [sessions, setSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedSessions, setHasLoadedSessions] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
@@ -71,11 +73,16 @@ export function CoachingCalendarPage({ currentUserProfile }) {
     availableSlots: 4,
   });
 
-  const isCoach = currentUserProfile?.membership?.role === "coach";
+  const canManageCoachingSessions = hasPermission(
+    currentUserProfile,
+    "manage_coaching_sessions",
+  );
   const actorUsername = currentUserProfile?.auth?.username ?? "";
 
   const loadSessions = useCallback(async (signal) => {
-    setIsLoading(true);
+    if (!hasLoadedSessions) {
+      setIsLoading(true);
+    }
     setError("");
 
     try {
@@ -97,6 +104,7 @@ export function CoachingCalendarPage({ currentUserProfile }) {
       }
 
       setSessions(result.sessions ?? []);
+      setHasLoadedSessions(true);
     } catch (loadError) {
       if (!signal?.aborted) {
         setError(loadError.message);
@@ -106,7 +114,7 @@ export function CoachingCalendarPage({ currentUserProfile }) {
         setIsLoading(false);
       }
     }
-  }, [actorUsername]);
+  }, [actorUsername, hasLoadedSessions]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -317,9 +325,9 @@ export function CoachingCalendarPage({ currentUserProfile }) {
       {error ? <p className="profile-error">{error}</p> : null}
       {feedbackMessage ? <p className="profile-success">{feedbackMessage}</p> : null}
 
-      {isLoading ? <p>Loading coaching sessions...</p> : null}
+      {isLoading && !hasLoadedSessions ? <p>Loading coaching sessions...</p> : null}
 
-      {!isLoading ? (
+      {hasLoadedSessions ? (
         <section className="event-calendar-layout">
           <div className="event-calendar-main">
             <div className="event-calendar-key" aria-label="Coaching type key">
@@ -417,7 +425,8 @@ export function CoachingCalendarPage({ currentUserProfile }) {
                       {selectedSession.availableSlots === 1 ? "" : "s"} booked.
                     </p>
 
-                    {isCoach && selectedSession.coach.username === actorUsername ? (
+                    {canManageCoachingSessions &&
+                    selectedSession.coach.username === actorUsername ? (
                       <>
                         <h4>Booked Members</h4>
                         {selectedSession.bookings.length > 0 ? (
@@ -480,7 +489,7 @@ export function CoachingCalendarPage({ currentUserProfile }) {
         </section>
       ) : null}
 
-      {isCoach ? (
+      {canManageCoachingSessions ? (
         <>
           <button
             onClick={() => setIsModalOpen(true)}

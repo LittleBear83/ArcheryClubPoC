@@ -18,11 +18,11 @@
   top: 0;
   left: 0;
   bottom: 0;
-  width: min(300px, 90vw);
+  width: min(340px, 92vw);
   transform: translateX(-105%);
   background: #000;
   color: #fff;
-  box-shadow: 4px 0 16px rgba(0, 0, 0, 0.46);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.46);
   transition: transform 0.25s ease;
   z-index: 1001;
   display: flex;
@@ -39,7 +39,7 @@
   justify-content: flex-start;
   align-items: center;
   border-bottom: 1px solid #ddd;
-  padding: 14px;
+  padding: clamp(14px, 2vw, 20px);
 }
 
 .drawer-header-content {
@@ -50,8 +50,8 @@
 
 .drawer-logo {
   display: block;
-  width: 72px;
-  height: 72px;
+  width: clamp(60px, 8vw, 72px);
+  height: clamp(60px, 8vw, 72px);
 }
 
 .drawer-logo-button {
@@ -87,8 +87,9 @@
 }
 
 .side-drawer nav {
-  padding: 12px 6px;
+  padding: 12px 8px;
   flex: 1;
+  overflow-y: auto;
 }
 
 .side-drawer ul {
@@ -104,8 +105,11 @@
   text-align: left;
   border: none;
   background: transparent;
+  color: #fff;
+  font-weight: 700;
+  min-height: 44px;
   padding: 10px 12px;
-  border-radius: 6px;
+  border-radius: 10px;
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -123,7 +127,7 @@
 
 .drawer-footer {
   margin-top: auto;
-  padding: 14px;
+  padding: clamp(14px, 2vw, 20px);
   border-top: 1px solid #ddd;
 }
 

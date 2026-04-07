@@ -7,6 +7,12 @@
   --accent: #ffdd00;
   --accent-bg: rgba(255, 221, 0, 0.12);
   --accent-border: #f0c800;
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-strong: rgba(16, 16, 16, 0.94);
+  --panel-border: rgba(255, 255, 255, 0.14);
+  --shell-width: min(var(--page-max-width), calc(100vw - (var(--page-gutter) * 2)));
+  --banner-height: clamp(96px, 14vw, 160px);
+  --logo-size: clamp(60px, 8vw, 86px);
 }
 
 * {
@@ -17,7 +23,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: "Open Sans", sans-serif;
+  font-family: var(--sans);
 }
 
 .login-shell {
@@ -26,7 +32,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px 20px;
+  padding: clamp(20px, 4vw, 48px) var(--page-gutter);
   background:
     radial-gradient(circle at top, rgba(255, 221, 0, 0.18), transparent 28%),
     linear-gradient(180deg, #111111 0%, #050505 100%);
@@ -153,11 +159,11 @@ body {
 .login-card {
   position: relative;
   z-index: 1;
-  width: min(960px, 100%);
-  padding: 32px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 24px;
-  background: rgba(16, 16, 16, 0.94);
+  width: min(1120px, 100%);
+  padding: clamp(20px, 3vw, 36px);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--card-radius);
+  background: var(--surface-strong);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
   text-align: left;
 }
@@ -171,8 +177,8 @@ body {
 }
 
 .login-logo {
-  width: 100px;
-  height: 100px;
+  width: clamp(84px, 10vw, 120px);
+  height: clamp(84px, 10vw, 120px);
   display: block;
   margin-bottom: 16px;
 }
@@ -194,6 +200,7 @@ body {
 .login-copy {
   margin: 0 0 24px;
   color: var(--muted);
+  max-width: 60ch;
 }
 
 .login-form {
@@ -210,6 +217,7 @@ body {
 
 .login-form input {
   width: 100%;
+  min-height: var(--control-height);
   padding: 12px 14px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 12px;
@@ -262,17 +270,18 @@ body {
 
 .login-sections {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(18px, 2vw, 28px);
   align-items: start;
 }
 
 .member-panel,
 .guest-panel {
-  padding: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.04);
+  min-width: 0;
+  padding: clamp(18px, 2vw, 24px);
+  border: 1px solid var(--panel-border);
+  border-radius: calc(var(--card-radius) - 4px);
+  background: var(--surface);
 }
 
 .member-panel {
@@ -281,8 +290,8 @@ body {
 }
 
 .rfid-panel {
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: clamp(16px, 1.8vw, 20px);
+  border: 1px solid var(--panel-border);
   border-radius: 18px;
   background: rgba(0, 0, 0, 0.18);
 }
@@ -328,9 +337,9 @@ body {
   background: #ffe45c;
 }
 
-@media (max-width: 820px) {
+@media (max-width: 960px) {
   .login-card {
-    width: min(520px, 100%);
+    width: min(760px, 100%);
   }
 
   .login-sections {
@@ -338,26 +347,30 @@ body {
   }
 }
 
+@media (max-width: 640px) {
+  .login-shell {
+    padding-inline: 12px;
+  }
+
+  .login-card {
+    padding: 18px 14px;
+  }
+}
+
 .target-arch-banner {
   position: relative;
   overflow: hidden;
-  width: 100vw;
-  left: 50%;
-  right: 50%;
-  margin-left: -50vw;
-  margin-right: -50vw;
+  width: 100%;
   background: #101010;
   border-bottom: 1px solid var(--border);
   color: #fff;
-  min-height: 90px;
-  height: 120px;
+  min-height: var(--banner-height);
+  height: var(--banner-height);
   padding: 0;
 }
 
 .admin-warning-ticker {
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
+  width: 100%;
   overflow: hidden;
   border-bottom: 1px solid rgba(255, 221, 0, 0.35);
   background: linear-gradient(90deg, #4b0000 0%, #7c0909 48%, #4b0000 100%);
@@ -393,11 +406,11 @@ body {
 
 .target-arch-banner .menu-button {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 50%;
+  left: clamp(10px, 2vw, 22px);
   z-index: 4;
-  width: 72px;
-  height: 72px;
+  width: var(--logo-size);
+  height: var(--logo-size);
   padding: 0;
   border-radius: 50%;
   background: transparent;
@@ -407,6 +420,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  transform: translateY(-50%);
 }
 
 .target-arch-banner .menu-button:hover {
@@ -415,8 +429,8 @@ body {
 }
 
 .target-arch-banner .menu-button-logo {
-  width: 72px;
-  height: 72px;
+  width: var(--logo-size);
+  height: var(--logo-size);
   display: block;
 }
 
@@ -440,17 +454,17 @@ body {
   justify-content: flex-end;
   width: 100%;
   height: 100%;
-  padding: 0 24px 0 0;
+  padding: 0 var(--page-gutter) 0 calc(var(--logo-size) + (var(--page-gutter) * 2));
 }
 
 .target-arch-banner .heading-wrap h1 {
-  margin: 0;
-  font-size: 2.2rem;
+  margin: 0 0 0 auto;
+  font-size: clamp(1.2rem, 0.95rem + 1.4vw, 2.4rem);
   color: #fff;
   text-align: right;
   pointer-events: none;
   text-shadow: 0 0 8px rgba(0, 0, 0, 0.75);
-  max-width: 58%;
+  max-width: min(60%, 18ch);
 }
 
 .target-arch-banner h1 {
@@ -460,16 +474,16 @@ body {
 }
 
 .page-shell {
-  width: 100%;
-  max-width: 100%;
+  width: min(var(--page-max-width), calc(100% - (var(--page-gutter) * 2)));
   margin: 0 auto;
-  padding: 24px 10px 40px;
-  font-family: system-ui, sans-serif;
+  padding: clamp(18px, 3vw, 32px) 0 clamp(36px, 5vw, 56px);
+  font-family: var(--sans);
 }
 
 .page-content {
   width: 100%;
-  margin-bottom: 24px;
+  margin-bottom: var(--section-gap);
+  text-align: left;
 }
 
 a {
@@ -480,7 +494,28 @@ button,
 input,
 select,
 textarea {
-  font-family: "Open Sans", sans-serif;
+  font-family: var(--sans);
+  max-width: 100%;
+}
+
+button {
+  min-height: var(--touch-target);
+  padding: 10px 16px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #111;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #ffe45c;
+}
+
+button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .counter {
@@ -568,16 +603,16 @@ textarea {
 
 .home-split-view {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: var(--section-gap);
   align-items: start;
 }
 
 .home-panel {
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: var(--panel-padding);
+  border: 1px solid var(--panel-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface);
 }
 
 .profile-page {
@@ -587,10 +622,10 @@ textarea {
 
 .profile-admin-panel,
 .profile-form {
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: var(--panel-padding);
+  border: 1px solid var(--panel-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface);
 }
 
 .profile-section-title {
@@ -606,7 +641,7 @@ textarea {
 .profile-form-grid {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   gap: 16px;
 }
 
@@ -620,7 +655,7 @@ textarea {
 
 .profile-discipline-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 12px;
 }
 
@@ -739,10 +774,37 @@ textarea {
   color: #9de38a;
 }
 
+.role-permissions-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.role-permissions-toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.role-permissions-toolbar .profile-member-select {
+  min-width: min(420px, 100%);
+}
+
+.role-meta-copy {
+  margin: 0;
+  color: var(--muted);
+}
+
+.role-permissions-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .event-calendar-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.9fr);
-  gap: 24px;
+  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.95fr);
+  gap: clamp(18px, 2vw, 28px);
   align-items: start;
   margin-bottom: 20px;
 }
@@ -835,7 +897,8 @@ textarea {
 }
 
 .event-summary-panel {
-  padding-left: 24px;
+  min-width: 0;
+  padding-left: clamp(18px, 2vw, 24px);
   border-left: 1px solid rgba(255, 255, 255, 0.18);
 }
 
@@ -1023,8 +1086,8 @@ textarea {
 
 .tournament-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.6fr);
-  gap: 24px;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.6fr);
+  gap: clamp(18px, 2vw, 28px);
   align-items: start;
 }
 
@@ -1033,10 +1096,11 @@ textarea {
 .tournament-registrations-card,
 .tournament-score-card,
 .tournament-bracket-card {
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  min-width: 0;
+  padding: var(--panel-padding);
+  border: 1px solid var(--panel-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface);
 }
 
 .tournament-list-panel,
@@ -1077,7 +1141,7 @@ textarea {
 
 .tournament-primary-button,
 .tournament-secondary-button {
-  min-width: 190px;
+  min-width: min(190px, 100%);
   padding: 12px 18px;
   border-radius: 999px;
   font-weight: 700;
@@ -1185,17 +1249,17 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: var(--page-gutter);
   background: rgba(0, 0, 0, 0.7);
   z-index: 40;
 }
 
 .tournament-modal {
   width: min(760px, 100%);
-  max-height: calc(100vh - 48px);
+  max-height: calc(100svh - (var(--page-gutter) * 2));
   overflow: auto;
-  padding: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  padding: clamp(18px, 2vw, 28px);
+  border: 1px solid var(--panel-border);
   border-radius: 20px;
   background: #0f0f0f;
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
@@ -1404,13 +1468,13 @@ textarea {
 
 .range-usage-dashboard {
   display: grid;
-  gap: 20px;
+  gap: var(--section-gap);
   text-align: left;
 }
 
 .usage-filter-form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 220px));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 16px;
 }
 
@@ -1429,16 +1493,17 @@ textarea {
 
 .usage-cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: 16px;
 }
 
 .usage-card,
 .usage-hourly-panel {
-  padding: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  min-width: 0;
+  padding: var(--panel-padding);
+  border: 1px solid var(--panel-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--surface);
 }
 
 .usage-card {
@@ -1545,6 +1610,7 @@ textarea {
   gap: 8px;
   align-items: end;
   min-height: 280px;
+  width: max(100%, 860px);
 }
 
 .usage-graph-week {
@@ -1602,22 +1668,8 @@ textarea {
   color: var(--muted);
 }
 
-@media (max-width: 820px) {
-  .home-split-view {
-    grid-template-columns: 1fr;
-  }
-
-  .profile-form-grid,
-  .profile-discipline-grid,
-  .loan-bow-grid,
-  .loan-bow-boolean-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .event-calendar-layout {
-    grid-template-columns: 1fr;
-  }
-
+@media (max-width: 1200px) {
+  .event-calendar-layout,
   .tournament-layout {
     grid-template-columns: 1fr;
   }
@@ -1628,14 +1680,20 @@ textarea {
     border-left: 0;
     border-top: 1px solid rgba(255, 255, 255, 0.18);
   }
+}
+
+@media (max-width: 820px) {
+  .home-split-view {
+    grid-template-columns: 1fr;
+  }
+
+  .loan-bow-grid,
+  .loan-bow-boolean-grid {
+    grid-template-columns: 1fr;
+  }
 
   .event-calendar-key {
     gap: 10px 14px;
-  }
-
-  .usage-filter-form,
-  .usage-cards {
-    grid-template-columns: 1fr;
   }
 
   .usage-card-stats,
@@ -1654,6 +1712,116 @@ textarea {
   .usage-graph-date {
     grid-template-columns: repeat(auto-fit, minmax(24px, 1fr));
   }
+}
+
+@media (max-width: 640px) {
+  .target-arch-banner .heading-wrap {
+    justify-content: flex-end;
+    padding-right: 12px;
+    padding-left: calc(var(--logo-size) + 20px);
+  }
+
+  .target-arch-banner .heading-wrap h1 {
+    max-width: 100%;
+  }
+
+  .welcome-message {
+    font-size: 1rem;
+  }
+
+  .usage-hourly-row,
+  .usage-card-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .tournament-action-row,
+  .tournament-setup-actions,
+  .loan-bow-return-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .tournament-primary-button,
+  .tournament-secondary-button,
+  .tournament-setup-button,
+  .event-book-button,
+  .event-cancel-button,
+  .login-submit,
+  .guest-submit-button,
+  .rfid-simulate-button {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.calendar-toolbar-title {
+  font-size: clamp(1rem, 0.95rem + 0.5vw, 1.15rem);
+}
+
+.calendar-nav-button {
+  min-height: var(--touch-target);
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.calendar-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.calendar-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+}
+
+.calendar-table th {
+  padding: 8px 6px;
+  border: 1px solid #444;
+  background: #111;
+}
+
+.calendar-day-cell {
+  min-height: 92px;
+  vertical-align: top;
+  border: 1px solid #444;
+  padding: 6px;
+  background: transparent;
+}
+
+.calendar-day-cell.is-clickable {
+  cursor: pointer;
+}
+
+.calendar-day-cell.has-items {
+  background: rgba(255, 221, 0, 0.18);
+}
+
+.calendar-day-cell.selected {
+  border: 2px solid #ffdd00;
+  background: rgba(255, 221, 0, 0.3);
+}
+
+.calendar-day-number {
+  font-weight: 700;
+}
+
+.calendar-day-item {
+  font-size: 0.76rem;
+  color: #ffdd00;
 }
 
 .hero {

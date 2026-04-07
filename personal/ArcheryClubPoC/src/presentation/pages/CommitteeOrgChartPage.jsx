@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { hasPermission } from "../../utils/userProfile";
 
 function buildHeaders(currentUserProfile) {
   return {
@@ -29,14 +30,20 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
   const [roles, setRoles] = useState([]);
   const [members, setMembers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasLoadedRoles, setHasLoadedRoles] = useState(false);
   const [savingRoleId, setSavingRoleId] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const isAdmin = currentUserProfile?.membership?.role === "admin";
+  const canManageCommitteeRoles = hasPermission(
+    currentUserProfile,
+    "manage_committee_roles",
+  );
 
   const loadCommitteeRoles = useCallback(async (signal) => {
-    setIsLoading(true);
+    if (!hasLoadedRoles) {
+      setIsLoading(true);
+    }
     setError("");
 
     try {
@@ -60,6 +67,7 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
 
       setRoles(result.roles ?? []);
       setMembers(result.members ?? []);
+      setHasLoadedRoles(true);
     } catch (loadError) {
       if (!signal?.aborted) {
         setError(loadError.message);
@@ -69,7 +77,7 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
         setIsLoading(false);
       }
     }
-  }, [currentUserProfile]);
+  }, [currentUserProfile, hasLoadedRoles]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -121,11 +129,11 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
         through to associate member positions.
       </p>
 
-      {isLoading ? <p>Loading committee roles...</p> : null}
+      {isLoading && !hasLoadedRoles ? <p>Loading committee roles...</p> : null}
       {error ? <p className="profile-error">{error}</p> : null}
       {message ? <p className="profile-success">{message}</p> : null}
 
-      {!isLoading ? (
+      {hasLoadedRoles ? (
         <section className="profile-form committee-roles-panel">
           <h3 className="profile-section-title committee-roles-title">
             Committee Roles Table
@@ -146,7 +154,7 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
                     <td>{role.title}</td>
                     <td>{role.summary}</td>
                     <td>
-                      {isAdmin ? (
+                      {canManageCommitteeRoles ? (
                         <label className="committee-role-assignment">
                           <select
                             value={role.assignedMember?.username ?? ""}

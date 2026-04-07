@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
+import { hasPermission } from "../../utils/userProfile";
 
 const EVENT_TYPE_OPTIONS = [
   { value: "competition", label: "Competition", className: "event-type-competition" },
@@ -26,7 +27,10 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [bookingMessage, setBookingMessage] = useState("");
   const [eventFormError, setEventFormError] = useState("");
-  const canCreateEvents = currentUserProfile?.membership?.role === "admin";
+  const canCreateEvents = hasPermission(
+    currentUserProfile,
+    "manage_events",
+  );
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const canManageBookings = Boolean(actorUsername);
 

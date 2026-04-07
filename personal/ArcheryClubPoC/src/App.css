@@ -418,7 +418,9 @@ body {
   outline: none;
   cursor: pointer;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
+  gap: 2px;
   justify-content: center;
   transform: translateY(-50%);
 }
@@ -432,6 +434,13 @@ body {
   width: var(--logo-size);
   height: var(--logo-size);
   display: block;
+}
+
+.target-arch-banner .menu-button-label {
+  color: #111;
+  font-size: clamp(0.85rem, 0.75rem + 0.35vw, 1rem);
+  font-weight: 700;
+  line-height: 1;
 }
 
 .archery-banner-img {

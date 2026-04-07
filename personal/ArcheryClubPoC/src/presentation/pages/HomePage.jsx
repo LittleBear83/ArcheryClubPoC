@@ -325,6 +325,7 @@ export function HomePage({
             alt="Selby Archers Logo"
             className="menu-button-logo"
           />
+          <span className="menu-button-label">Menu</span>
         </button>
         <div className="heading-wrap">
           <h1>{pageTitleMap[activePage] || "Archery Club"}</h1>

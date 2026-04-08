@@ -17,6 +17,7 @@ import { UserCreationPage } from "./UserCreationPage";
 import { LoanBowRegisterPage } from "./LoanBowRegisterPage";
 import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
 import { RolePermissionsPage } from "./RolePermissionsPage";
+import { formatDate } from "../../utils/dateTime";
 import {
   hasPermission,
   isSameUserProfile,
@@ -66,6 +67,45 @@ const pageIdToPath = Object.entries(pathToPageId).reduce(
   {},
 );
 
+function getMembershipReminderMessage(currentUserProfile) {
+  const membershipFeesDue = currentUserProfile?.meta?.membershipFeesDue;
+
+  if (!membershipFeesDue) {
+    return "";
+  }
+
+  const today = new Date();
+  const todayUtc = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+  );
+  const dueDate = new Date(`${membershipFeesDue}T00:00:00Z`);
+
+  if (Number.isNaN(dueDate.getTime())) {
+    return "";
+  }
+
+  const dueUtc = Date.UTC(
+    dueDate.getUTCFullYear(),
+    dueDate.getUTCMonth(),
+    dueDate.getUTCDate(),
+  );
+  const daysUntilDue = Math.floor((dueUtc - todayUtc) / 86400000);
+
+  if (daysUntilDue < 0 || daysUntilDue > 30) {
+    return "";
+  }
+
+  const formattedDueDate = formatDate(membershipFeesDue);
+
+  if (daysUntilDue <= 15) {
+    return `reminder: your membership fees are due on ${formattedDueDate},\nplease be aware that if you dont renew your membership will be susspended as well as your access to the range`;
+  }
+
+  return `reminder: your membership fees are due on ${formattedDueDate}`;
+}
+
 export function HomePage({
   currentUserProfile,
   onCurrentUserProfileUpdate,
@@ -82,6 +122,7 @@ export function HomePage({
     currentUserProfile,
     "manage_tournaments",
   );
+  const membershipReminderMessage = getMembershipReminderMessage(currentUserProfile);
 
   const activePage = pathToPageId[location.pathname] || "home";
   const membersAtRange = currentUserProfile
@@ -284,6 +325,14 @@ export function HomePage({
 
   return (
     <>
+      {membershipReminderMessage ? (
+        <div className="membership-reminder-ticker" role="status" aria-live="polite">
+          <div className="membership-reminder-ticker-track">
+            <span>{membershipReminderMessage}</span>
+          </div>
+        </div>
+      ) : null}
+
       {adminTournamentWarnings.length > 0 ? (
         <div className="admin-warning-ticker" role="status" aria-live="polite">
           <div className="admin-warning-ticker-track">
@@ -388,7 +437,10 @@ export function HomePage({
                 />
               }
             />
-            <Route path="/range-usage" element={<RangeUsagePage />} />
+            <Route
+              path="/range-usage"
+              element={<RangeUsagePage currentUserProfile={currentUserProfile} />}
+            />
             <Route
               path="/coaching-calendar"
               element={<CoachingCalendarPage currentUserProfile={currentUserProfile} />}

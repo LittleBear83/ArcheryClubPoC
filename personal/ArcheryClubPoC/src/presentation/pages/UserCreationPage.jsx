@@ -125,6 +125,11 @@ export function UserCreationPage({ currentUserProfile }) {
     setEditableProfile((current) => ({ ...current, [field]: value }));
   };
 
+  const handleBooleanSelectChange = (field) => (event) => {
+    const value = event.target.value === "active";
+    setEditableProfile((current) => ({ ...current, [field]: value }));
+  };
+
   const toggleDiscipline = (discipline) => {
     setEditableProfile((current) => {
       const alreadySelected = current.disciplines.includes(discipline);
@@ -208,6 +213,7 @@ export function UserCreationPage({ currentUserProfile }) {
           editableProfile={editableProfile}
           handleChange={handleChange}
           handleBooleanChange={handleBooleanChange}
+          handleBooleanSelectChange={handleBooleanSelectChange}
           toggleDiscipline={toggleDiscipline}
           handleLoanBowFieldChange={handleLoanBowFieldChange}
           toggleLoanBowField={toggleLoanBowField}

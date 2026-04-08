@@ -17,6 +17,35 @@ function createEmptyTournamentForm(today, defaultTournamentType = "portsmouth") 
   };
 }
 
+function sanitizeFileNameSegment(value, fallback = "tournament") {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || fallback;
+}
+
+function buildTournamentCompetitorExport(tournament) {
+  const lines = [
+    `Tournament: ${tournament.name}`,
+    `Type: ${tournament.typeLabel}`,
+    `Registration window: ${tournament.registrationWindow.startDate} to ${tournament.registrationWindow.endDate}`,
+    `Score window: ${tournament.scoreWindow.startDate} to ${tournament.scoreWindow.endDate}`,
+    `Registered competitors: ${tournament.registrationCount}`,
+    "",
+    "Competing members:",
+    ...(tournament.registrations.length > 0
+      ? tournament.registrations.map(
+          (registration, index) => `${index + 1}. ${registration.fullName}`,
+        )
+      : ["No registered competitors."]),
+  ];
+
+  return `${lines.join("\n")}\n`;
+}
+
 function buildHeaders(currentUserProfile) {
   return {
     "Content-Type": "application/json",
@@ -565,6 +594,58 @@ export function TournamentsPage({
     }
   };
 
+  const handleSaveCompetitorList = async () => {
+    if (!selectedTournament) {
+      return;
+    }
+
+    const content = buildTournamentCompetitorExport(selectedTournament);
+    const suggestedName = `${sanitizeFileNameSegment(selectedTournament.name)}-competitors.txt`;
+
+    try {
+      if ("showSaveFilePicker" in window) {
+        const fileHandle = await window.showSaveFilePicker({
+          suggestedName,
+          types: [
+            {
+              description: "Text files",
+              accept: {
+                "text/plain": [".txt"],
+              },
+            },
+          ],
+        });
+        const writable = await fileHandle.createWritable();
+        await writable.write(content);
+        await writable.close();
+        setMessage("Competitor list saved.");
+        setError("");
+        return;
+      }
+
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = downloadUrl;
+      link.download = suggestedName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(downloadUrl);
+      setMessage(
+        "Competitor list downloaded. Your browser did not offer a full Save As location picker.",
+      );
+      setError("");
+    } catch (saveError) {
+      if (saveError?.name === "AbortError") {
+        return;
+      }
+
+      setError("Unable to save the competitor list.");
+    }
+  };
+
   return (
     <div className="profile-page">
       <p>
@@ -966,6 +1047,16 @@ export function TournamentsPage({
                         ? "Updating..."
                         : "Withdraw"}
                     </button>
+
+                    {canManageTournaments ? (
+                      <button
+                        type="button"
+                        className="tournament-secondary-button"
+                        onClick={handleSaveCompetitorList}
+                      >
+                        Save competitor list
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 

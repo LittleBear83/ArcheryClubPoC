@@ -320,7 +320,7 @@ export function CoachingCalendarPage({ currentUserProfile }) {
   };
 
   return (
-    <div>
+    <div className="event-calendar-page">
       <p>Coaching sessions created by coaches are listed here for members to book onto.</p>
       {error ? <p className="profile-error">{error}</p> : null}
       {feedbackMessage ? <p className="profile-success">{feedbackMessage}</p> : null}
@@ -328,7 +328,7 @@ export function CoachingCalendarPage({ currentUserProfile }) {
       {isLoading && !hasLoadedSessions ? <p>Loading coaching sessions...</p> : null}
 
       {hasLoadedSessions ? (
-        <section className="event-calendar-layout">
+        <section className="event-calendar-layout event-calendar-layout-expanded">
           <div className="event-calendar-main">
             <div className="event-calendar-key" aria-label="Coaching type key">
               <span className="event-key-item coaching-key-item">

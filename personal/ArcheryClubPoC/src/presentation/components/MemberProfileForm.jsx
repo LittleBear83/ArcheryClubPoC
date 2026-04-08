@@ -4,6 +4,7 @@ export function MemberProfileForm({
   editableProfile,
   handleChange,
   handleBooleanChange,
+  handleBooleanSelectChange,
   toggleDiscipline,
   handleLoanBowFieldChange,
   toggleLoanBowField,
@@ -86,14 +87,16 @@ export function MemberProfileForm({
           />
         </label>
 
-        <label className="profile-checkbox profile-checkbox-field">
+        <label>
           Active member
-          <input
-            type="checkbox"
-            checked={Boolean(editableProfile.activeMember)}
-            onChange={handleBooleanChange("activeMember")}
+          <select
+            value={editableProfile.activeMember ? "active" : "deactive"}
+            onChange={handleBooleanSelectChange("activeMember")}
             disabled={!isAdmin || isSaving}
-          />
+          >
+            <option value="active">Active</option>
+            <option value="deactive">Deactive</option>
+          </select>
         </label>
 
         <label>

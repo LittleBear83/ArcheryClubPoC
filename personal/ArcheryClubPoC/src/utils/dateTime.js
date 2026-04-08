@@ -93,7 +93,7 @@ export function formatHourLabel(hour) {
     return String(hour);
   }
 
-  return `${String(safeHour).padStart(2, "0")}:00:00`;
+  return String(safeHour).padStart(2, "0");
 }
 
 export function formatDateRangeLabel(startDate, endDate) {

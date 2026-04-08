@@ -261,9 +261,9 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
   };
 
   return (
-    <div>
+    <div className="event-calendar-page">
       <p>Event/Competition Calendar</p>
-      <section className="event-calendar-layout">
+      <section className="event-calendar-layout event-calendar-layout-expanded">
         <div className="event-calendar-main">
           <div className="event-calendar-key" aria-label="Event type key">
             {EVENT_TYPE_OPTIONS.map((option) => (

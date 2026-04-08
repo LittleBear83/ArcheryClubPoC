@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MemberProfileForm } from "../components/MemberProfileForm";
 import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
+import { Modal } from "../components/Modal";
 import { hasPermission } from "../../utils/userProfile";
 
 function buildHeaders(currentUserProfile) {
@@ -24,6 +25,9 @@ async function readJsonResponse(response) {
 
 export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) {
   const hasLoadedProfileRef = useRef(false);
+  const cardIssueSessionRef = useRef(0);
+  const cardIssueCloseTimeoutRef = useRef(null);
+  const isIssuingCardRef = useRef(false);
   const [editableProfile, setEditableProfile] = useState(null);
   const [memberOptions, setMemberOptions] = useState([]);
   const [selectedUsername, setSelectedUsername] = useState(
@@ -39,6 +43,11 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [returnError, setReturnError] = useState("");
   const [isSavingReturn, setIsSavingReturn] = useState(false);
+  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [cardIssueError, setCardIssueError] = useState("");
+  const [cardIssueStatus, setCardIssueStatus] = useState("");
+  const [cardIssueSuccess, setCardIssueSuccess] = useState("");
+  const [isIssuingCard, setIsIssuingCard] = useState(false);
 
   const canManageMembers = hasPermission(
     currentUserProfile,
@@ -55,7 +64,16 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     setIsRefreshingProfile(false);
     setError("");
     setMessage("");
+    setIsCardModalOpen(false);
+    setCardIssueError("");
+    setCardIssueStatus("");
+    setCardIssueSuccess("");
+    setIsIssuingCard(false);
   }, [currentUserProfile?.auth?.username]);
+
+  useEffect(() => {
+    isIssuingCardRef.current = isIssuingCard;
+  }, [isIssuingCard]);
 
   const loadProfile = useCallback(
     async (username, { signal, isBackgroundRefresh = false } = {}) => {
@@ -226,6 +244,181 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     };
   }, [canManageMembers, editableProfile, isGuest, loadProfile, selectedUsername]);
 
+  useEffect(() => {
+    if (!isCardModalOpen || !canManageMembers || !editableProfile?.username) {
+      return undefined;
+    }
+
+    cardIssueSessionRef.current += 1;
+    const sessionId = cardIssueSessionRef.current;
+    let isActive = true;
+    let intervalId = null;
+
+    const assignPresentedTag = async (rfidTag) => {
+      if (!rfidTag || !isActive || cardIssueSessionRef.current !== sessionId) {
+        return;
+      }
+
+      setIsIssuingCard(true);
+      setCardIssueError("");
+      setCardIssueSuccess("");
+      setCardIssueStatus(`Registering tag ${rfidTag} to ${editableProfile.firstName} ${editableProfile.surname}...`);
+
+      try {
+        let response = await fetch(
+          `/api/user-profiles/${editableProfile.username}/assign-rfid`,
+          {
+            method: "POST",
+            headers: buildHeaders(currentUserProfile),
+            body: JSON.stringify({ rfidTag }),
+          },
+        );
+        let result = await readJsonResponse(response);
+
+        if (response.status === 404) {
+          response = await fetch(`/api/user-profiles/${editableProfile.username}`, {
+            method: "PUT",
+            headers: buildHeaders(currentUserProfile),
+            body: JSON.stringify({
+              firstName: editableProfile.firstName,
+              surname: editableProfile.surname,
+              password: editableProfile.password,
+              rfidTag,
+              activeMember: editableProfile.activeMember,
+              membershipFeesDue: editableProfile.membershipFeesDue,
+              userType: editableProfile.userType,
+              disciplines: editableProfile.disciplines,
+              loanBow: editableProfile.loanBow,
+            }),
+          });
+          result = await readJsonResponse(response);
+        }
+
+        if (!isActive || cardIssueSessionRef.current !== sessionId) {
+          return;
+        }
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.message ?? "Unable to issue the member card.");
+        }
+
+        setEditableProfile(result.editableProfile);
+        setMemberOptions((current) =>
+          current.map((member) =>
+            member.username === result.editableProfile.username
+              ? {
+                  ...member,
+                  fullName: `${result.editableProfile.firstName} ${result.editableProfile.surname}`,
+                  userType: result.editableProfile.userType,
+                }
+              : member,
+          ),
+        );
+        setMessage(`Card ${result.editableProfile.rfidTag} registered to ${result.editableProfile.firstName} ${result.editableProfile.surname}.`);
+        setCardIssueStatus("");
+        setCardIssueSuccess(
+          `Tag ${result.editableProfile.rfidTag} registered to ${result.editableProfile.firstName} ${result.editableProfile.surname}.`,
+        );
+
+        if (
+          result.editableProfile.username === currentUserProfile?.auth?.username &&
+          onCurrentUserProfileUpdate
+        ) {
+          onCurrentUserProfileUpdate(result.userProfile);
+        }
+
+        window.dispatchEvent(new Event("profile-data-updated"));
+
+      } catch (assignError) {
+        if (isActive && cardIssueSessionRef.current === sessionId) {
+          setCardIssueError(assignError.message);
+          setCardIssueSuccess("");
+          setCardIssueStatus("Present a tag to try again.");
+        }
+      } finally {
+        if (isActive && cardIssueSessionRef.current === sessionId) {
+          setIsIssuingCard(false);
+        }
+      }
+    };
+
+    const pollForPresentedTag = async () => {
+      if (
+        !isActive ||
+        isIssuingCardRef.current ||
+        cardIssueSessionRef.current !== sessionId
+      ) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/auth/rfid/latest-scan", {
+          cache: "no-store",
+        });
+        const result = await response.json();
+
+        if (
+          !isActive ||
+          cardIssueSessionRef.current !== sessionId ||
+          !response.ok ||
+          !result.success ||
+          !result.scan?.rfidTag
+        ) {
+          return;
+        }
+
+        await assignPresentedTag(result.scan.rfidTag);
+      } catch {
+        if (isActive && cardIssueSessionRef.current === sessionId) {
+          setCardIssueStatus("Waiting for a card to be presented...");
+        }
+      }
+    };
+
+    const beginScanSession = async () => {
+      setCardIssueError("");
+      setCardIssueStatus("Waiting for a card to be presented...");
+
+      try {
+        await fetch("/api/auth/rfid/latest-scan", {
+          cache: "no-store",
+        });
+      } catch {
+        if (!isActive) {
+          return;
+        }
+      }
+
+      if (!isActive) {
+        return;
+      }
+
+      await pollForPresentedTag();
+      intervalId = window.setInterval(pollForPresentedTag, 1500);
+    };
+
+    beginScanSession();
+
+    return () => {
+      isActive = false;
+
+      if (cardIssueCloseTimeoutRef.current) {
+        window.clearTimeout(cardIssueCloseTimeoutRef.current);
+        cardIssueCloseTimeoutRef.current = null;
+      }
+
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, [
+    canManageMembers,
+    currentUserProfile,
+    editableProfile,
+    isCardModalOpen,
+    onCurrentUserProfileUpdate,
+  ]);
+
   const handleChange = (field) => (event) => {
     const value = event.target.value;
     setEditableProfile((current) => ({ ...current, [field]: value }));
@@ -233,6 +426,11 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
 
   const handleBooleanChange = (field) => (event) => {
     const value = event.target.checked;
+    setEditableProfile((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleBooleanSelectChange = (field) => (event) => {
+    const value = event.target.value === "active";
     setEditableProfile((current) => ({ ...current, [field]: value }));
   };
 
@@ -378,6 +576,30 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     }
   };
 
+  const handleOpenCardModal = () => {
+    setError("");
+    setMessage("");
+    setCardIssueError("");
+    setCardIssueStatus("");
+    setCardIssueSuccess("");
+    setIsIssuingCard(false);
+    setIsCardModalOpen(true);
+  };
+
+  const handleCloseCardModal = () => {
+    if (cardIssueCloseTimeoutRef.current) {
+      window.clearTimeout(cardIssueCloseTimeoutRef.current);
+      cardIssueCloseTimeoutRef.current = null;
+    }
+
+    cardIssueSessionRef.current += 1;
+    setIsCardModalOpen(false);
+    setIsIssuingCard(false);
+    setCardIssueError("");
+    setCardIssueStatus("");
+    setCardIssueSuccess("");
+  };
+
   if (isGuest) {
     return <p>Guest logins do not have an editable member profile.</p>;
   }
@@ -403,6 +625,18 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
               ))}
             </select>
           </label>
+          {editableProfile ? (
+            <div className="profile-admin-actions">
+              <button
+                type="button"
+                className="secondary-button profile-rfid-button"
+                onClick={handleOpenCardModal}
+                disabled={isInitialLoading || isRefreshingProfile || isSaving}
+              >
+                {editableProfile.rfidTag?.trim() ? "Issue new card" : "Add tag"}
+              </button>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -418,6 +652,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
           editableProfile={editableProfile}
           handleChange={handleChange}
           handleBooleanChange={handleBooleanChange}
+          handleBooleanSelectChange={handleBooleanSelectChange}
           toggleDiscipline={toggleDiscipline}
           handleLoanBowFieldChange={handleLoanBowFieldChange}
           toggleLoanBowField={toggleLoanBowField}
@@ -457,6 +692,45 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
           }}
           onSubmit={handleReturnLoanBow}
         />
+      ) : null}
+
+      {editableProfile ? (
+        <Modal
+          open={isCardModalOpen}
+          onClose={handleCloseCardModal}
+          title={editableProfile.rfidTag?.trim() ? "Issue New Card" : "Add Tag"}
+        >
+          <div className="profile-card-issue-modal">
+            <p>
+              Present a tag now to register it against{" "}
+              <strong>
+                {editableProfile.firstName} {editableProfile.surname}
+              </strong>
+              .
+            </p>
+            <p className="profile-card-issue-note">
+              This will register the presented tag for the selected user.
+            </p>
+            {cardIssueStatus ? (
+              <p className="profile-card-issue-status">{cardIssueStatus}</p>
+            ) : null}
+            {cardIssueSuccess ? (
+              <p className="profile-success">{cardIssueSuccess}</p>
+            ) : null}
+            {cardIssueError ? (
+              <p className="profile-error">{cardIssueError}</p>
+            ) : null}
+            <div className="profile-card-issue-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={handleCloseCardModal}
+              >
+                {cardIssueSuccess ? "Done" : "Close"}
+              </button>
+            </div>
+          </div>
+        </Modal>
       ) : null}
     </div>
   );

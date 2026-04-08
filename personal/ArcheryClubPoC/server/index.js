@@ -1,12 +1,15 @@
 import express from "express";
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dataDirectory = path.join(__dirname, "data");
+const exportsDirectory = path.join(dataDirectory, "exports");
 const databasePath = path.join(dataDirectory, "auth.sqlite");
 const distDirectory = path.join(__dirname, "..", "dist");
 const PORT = Number(process.env.PORT ?? 3001);
@@ -19,6 +22,8 @@ const PERMISSIONS = {
   MANAGE_LOAN_BOWS: "manage_loan_bows",
   MANAGE_TOURNAMENTS: "manage_tournaments",
 };
+const DEACTIVATED_RFID_SUFFIX = "-deactivated";
+const RFID_READER_NAME = "ACS ACR122U PICC Interface 0";
 const PERMISSION_DEFINITIONS = [
   {
     key: PERMISSIONS.MANAGE_MEMBERS,
@@ -99,84 +104,98 @@ const COMMITTEE_ROLE_SEED = [
   {
     roleKey: "chairman",
     title: "Chairman",
-    summary: "Leads the committee, chairs meetings, and sets the club direction.",
+    summary:
+      "Leads the committee, chairs meetings, and sets the club direction.",
     displayOrder: 1,
   },
   {
     roleKey: "captain",
     title: "Captain",
-    summary: "Leads shooting activities, represents members on the shooting line, and supports club standards.",
+    summary:
+      "Leads shooting activities, represents members on the shooting line, and supports club standards.",
     displayOrder: 2,
   },
   {
     roleKey: "vice-captain",
     title: "Vice Captain",
-    summary: "Supports the captain and steps in when the captain is unavailable.",
+    summary:
+      "Supports the captain and steps in when the captain is unavailable.",
     displayOrder: 3,
   },
   {
     roleKey: "secretary",
     title: "Secretary",
-    summary: "Manages committee records, meeting notes, and club correspondence.",
+    summary:
+      "Manages committee records, meeting notes, and club correspondence.",
     displayOrder: 4,
   },
   {
     roleKey: "treasurer",
     title: "Treasurer",
-    summary: "Oversees finances, budgets, fee tracking, and financial reporting.",
+    summary:
+      "Oversees finances, budgets, fee tracking, and financial reporting.",
     displayOrder: 5,
   },
   {
     roleKey: "membership-secretary",
     title: "Membership Secretary",
-    summary: "Looks after member records, renewals, and new member administration.",
+    summary:
+      "Looks after member records, renewals, and new member administration.",
     displayOrder: 6,
   },
   {
     roleKey: "records-officer",
     title: "Records Officer",
-    summary: "Maintains club records, scores, classifications, and achievement history.",
+    summary:
+      "Maintains club records, scores, classifications, and achievement history.",
     displayOrder: 7,
   },
   {
     roleKey: "tournament-officer",
     title: "Tournament Officer",
-    summary: "Coordinates tournaments, entries, fixtures, and competition logistics.",
+    summary:
+      "Coordinates tournaments, entries, fixtures, and competition logistics.",
     displayOrder: 8,
   },
   {
     roleKey: "safeguarding-officer",
     title: "Safeguarding Officer",
-    summary: "Supports welfare, safeguarding processes, and member wellbeing matters.",
+    summary:
+      "Supports welfare, safeguarding processes, and member wellbeing matters.",
     displayOrder: 9,
   },
   {
     roleKey: "equipment-officer",
     title: "Equipment Officer",
-    summary: "Oversees club equipment, maintenance, and issue or return processes.",
+    summary:
+      "Oversees club equipment, maintenance, and issue or return processes.",
     displayOrder: 10,
   },
   {
     roleKey: "coaching-representative",
     title: "Coaching Representative",
-    summary: "Represents coaching activity, development pathways, and training needs.",
+    summary:
+      "Represents coaching activity, development pathways, and training needs.",
     displayOrder: 11,
   },
   {
     roleKey: "ordinary-committee-member",
     title: "Ordinary Committee Member",
-    summary: "Supports committee decisions and contributes to club governance tasks.",
+    summary:
+      "Supports committee decisions and contributes to club governance tasks.",
     displayOrder: 12,
   },
   {
     roleKey: "associate-member",
     title: "Associate Member",
-    summary: "Attends in a supporting capacity and contributes where invited by the committee.",
+    summary:
+      "Attends in a supporting capacity and contributes where invited by the committee.",
     displayOrder: 13,
   },
 ];
 
 mkdirSync(dataDirectory, { recursive: true });
+mkdirSync(exportsDirectory, { recursive: true });
 
 const db = new Database(databasePath);
 const LOGIN_EVENTS_TABLE_SQL = `
@@ -195,8 +214,11 @@ const GUEST_LOGIN_EVENTS_TABLE_SQL = `
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
     archery_gb_membership_number TEXT NOT NULL,
+    invited_by_username TEXT,
+    invited_by_name TEXT,
     logged_in_date TEXT NOT NULL,
-    logged_in_time TEXT NOT NULL
+    logged_in_time TEXT NOT NULL,
+    FOREIGN KEY (invited_by_username) REFERENCES users(username)
   )
 `;
 const COACHING_SESSIONS_TABLE_SQL = `
@@ -414,19 +436,19 @@ db.exec(`
 `);
 
 const userTypesTableSchema = db
-  .prepare(`
+  .prepare(
+    `
     SELECT sql
     FROM sqlite_master
     WHERE type = 'table' AND name = 'user_types'
-  `)
+  `,
+  )
   .get();
 
 const userTypesRequiresMigration =
   userTypesTableSchema?.sql &&
-  (
-    userTypesTableSchema.sql.includes("CHECK (user_type IN") ||
-    !userTypesTableSchema.sql.includes("REFERENCES roles(role_key)")
-  );
+  (userTypesTableSchema.sql.includes("CHECK (user_type IN") ||
+    !userTypesTableSchema.sql.includes("REFERENCES roles(role_key)"));
 
 if (userTypesRequiresMigration) {
   db.exec(`
@@ -577,6 +599,8 @@ migrateCombinedDateTimeColumn({
     "first_name",
     "surname",
     "archery_gb_membership_number",
+    "invited_by_username",
+    "invited_by_name",
     "logged_in_date",
     "logged_in_time",
   ],
@@ -585,10 +609,30 @@ migrateCombinedDateTimeColumn({
     "first_name",
     "surname",
     "archery_gb_membership_number",
+    "NULL",
+    "NULL",
     "substr(logged_in_at, 1, 10)",
     "substr(logged_in_at, 12)",
   ],
 });
+
+const guestLoginEventColumns = db
+  .prepare(`PRAGMA table_info(guest_login_events)`)
+  .all();
+
+if (
+  !guestLoginEventColumns.some(
+    (column) => column.name === "invited_by_username",
+  )
+) {
+  db.exec(`ALTER TABLE guest_login_events ADD COLUMN invited_by_username TEXT`);
+}
+
+if (
+  !guestLoginEventColumns.some((column) => column.name === "invited_by_name")
+) {
+  db.exec(`ALTER TABLE guest_login_events ADD COLUMN invited_by_name TEXT`);
+}
 
 const coachingSessionsColumns = db
   .prepare(`PRAGMA table_info(coaching_sessions)`)
@@ -646,10 +690,10 @@ if (!userColumns.some((column) => column.name === "membership_fees_due")) {
 
 if (
   coachingSessionsColumns.length > 0 &&
-  (
-    coachingSessionsColumns.some((column) => column.name === "created_at") ||
-    !coachingSessionsColumns.some((column) => column.name === "available_slots")
-  )
+  (coachingSessionsColumns.some((column) => column.name === "created_at") ||
+    !coachingSessionsColumns.some(
+      (column) => column.name === "available_slots",
+    ))
 ) {
   db.exec(`
     PRAGMA foreign_keys = OFF;
@@ -700,7 +744,9 @@ const coachingBookingForeignKeys = db
   .all();
 
 if (
-  coachingSessionBookingsColumns.some((column) => column.name === "booked_at") ||
+  coachingSessionBookingsColumns.some(
+    (column) => column.name === "booked_at",
+  ) ||
   coachingBookingForeignKeys.some(
     (foreignKey) => foreignKey.table === "coaching_sessions_old",
   )
@@ -735,8 +781,12 @@ if (
   `);
 }
 
-const eventBookingsColumns = db.prepare(`PRAGMA table_info(event_bookings)`).all();
-const eventBookingForeignKeys = db.prepare(`PRAGMA foreign_key_list(event_bookings)`).all();
+const eventBookingsColumns = db
+  .prepare(`PRAGMA table_info(event_bookings)`)
+  .all();
+const eventBookingForeignKeys = db
+  .prepare(`PRAGMA foreign_key_list(event_bookings)`)
+  .all();
 
 if (
   migrateCombinedDateTimeColumn({
@@ -764,7 +814,9 @@ if (
       "substr(created_at, 12)",
     ],
   }) ||
-  eventBookingForeignKeys.some((foreignKey) => foreignKey.table === "club_events_old") ||
+  eventBookingForeignKeys.some(
+    (foreignKey) => foreignKey.table === "club_events_old",
+  ) ||
   eventBookingsColumns.some((column) => column.name === "booked_at")
 ) {
   db.exec(`
@@ -803,7 +855,9 @@ const tournamentRegistrationsColumns = db
 const tournamentRegistrationsForeignKeys = db
   .prepare(`PRAGMA foreign_key_list(tournament_registrations)`)
   .all();
-const tournamentScoresColumns = db.prepare(`PRAGMA table_info(tournament_scores)`).all();
+const tournamentScoresColumns = db
+  .prepare(`PRAGMA table_info(tournament_scores)`)
+  .all();
 const tournamentScoresForeignKeys = db
   .prepare(`PRAGMA foreign_key_list(tournament_scores)`)
   .all();
@@ -841,8 +895,12 @@ if (
   tournamentRegistrationsForeignKeys.some(
     (foreignKey) => foreignKey.table === "tournaments_old",
   ) ||
-  tournamentRegistrationsColumns.some((column) => column.name === "registered_at") ||
-  tournamentScoresForeignKeys.some((foreignKey) => foreignKey.table === "tournaments_old") ||
+  tournamentRegistrationsColumns.some(
+    (column) => column.name === "registered_at",
+  ) ||
+  tournamentScoresForeignKeys.some(
+    (foreignKey) => foreignKey.table === "tournaments_old",
+  ) ||
   tournamentScoresColumns.some((column) => column.name === "submitted_at")
 ) {
   db.exec(`
@@ -900,14 +958,36 @@ if (
 
 const seedUsers = [
   {
+    username: "CLikley",
+    firstName: "Chris",
+    surname: "Likley",
+    password: "qwe",
+    rfidTag: null,
+    activeMember: true,
+    membershipFeesDue: "2026-12-31",
+    userType: "coach",
+    disciplines: ["Recurve Bow"],
+  },
+  {
     username: "Cfleetham",
     firstName: "Craig",
     surname: "Fleetham",
     password: "abc",
-    rfidTag: "RFID-CFLEETHAM-001",
+    rfidTag: "7673CF3D",
     activeMember: true,
     membershipFeesDue: "2026-12-31",
     userType: "developer",
+    disciplines: ["Recurve Bow"],
+  },
+  {
+    username: "DStevens",
+    firstName: "Kamala",
+    surname: "Khan",
+    password: "marvel",
+    rfidTag: "D9DBCF3D-deactivated",
+    activeMember: false,
+    membershipFeesDue: "2026-01-01",
+    userType: "general",
     disciplines: ["Recurve Bow"],
   },
   {
@@ -920,23 +1000,45 @@ const seedUsers = [
     membershipFeesDue: "2026-12-31",
     userType: "admin",
     disciplines: [
-      "Long Bow",
-      "Flat Bow",
       "Bare Bow",
-      "Recurve Bow",
       "Compound Bow",
+      "Flat Bow",
+      "Long Bow",
+      "Recurve Bow",
     ],
   },
   {
-    username: "CLikley",
-    firstName: "Chris",
-    surname: "Likley",
-    password: "qwe",
+    username: "MJones",
+    firstName: "Jessica",
+    surname: "Jones",
+    password: "marvel",
+    rfidTag: null,
+    activeMember: false,
+    membershipFeesDue: "2026-04-03",
+    userType: "general",
+    disciplines: ["Flat Bow"],
+  },
+  {
+    username: "MMurdock",
+    firstName: "Matt",
+    surname: "Murdock",
+    password: "marvel",
     rfidTag: null,
     activeMember: true,
     membershipFeesDue: "2026-12-31",
-    userType: "coach",
-    disciplines: ["Recurve Bow"],
+    userType: "general",
+    disciplines: ["Bare Bow"],
+  },
+  {
+    username: "NOdinson",
+    firstName: "Thor",
+    surname: "Odinson",
+    password: "marvel",
+    rfidTag: null,
+    activeMember: true,
+    membershipFeesDue: "2026-12-31",
+    userType: "general",
+    disciplines: ["Long Bow"],
   },
   {
     username: "PParker",
@@ -945,9 +1047,20 @@ const seedUsers = [
     password: "marvel",
     rfidTag: null,
     activeMember: true,
-    membershipFeesDue: "2026-12-31",
+    membershipFeesDue: "2026-05-08",
     userType: "general",
     disciplines: ["Bare Bow", "Recurve Bow"],
+  },
+  {
+    username: "RWilliams",
+    firstName: "Riri",
+    surname: "Williams",
+    password: "marvel",
+    rfidTag: null,
+    activeMember: true,
+    membershipFeesDue: "2026-12-31",
+    userType: "general",
+    disciplines: ["Recurve Bow", "Compound Bow"],
   },
   {
     username: "SMaximoff",
@@ -972,59 +1085,15 @@ const seedUsers = [
     disciplines: ["Compound Bow"],
   },
   {
-    username: "NOdinson",
-    firstName: "Thor",
-    surname: "Odinson",
-    password: "marvel",
-    rfidTag: null,
+    username: "TProfile",
+    firstName: "Temp",
+    surname: "ProfileUpdated",
+    password: "tmp",
+    rfidTag: "RFID-TPROFILE-001",
     activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    userType: "general",
-    disciplines: ["Long Bow"],
-  },
-  {
-    username: "RWilliams",
-    firstName: "Riri",
-    surname: "Williams",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    userType: "general",
-    disciplines: ["Recurve Bow", "Compound Bow"],
-  },
-  {
-    username: "MJones",
-    firstName: "Jessica",
-    surname: "Jones",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    userType: "general",
-    disciplines: ["Flat Bow"],
-  },
-  {
-    username: "MMurdock",
-    firstName: "Matt",
-    surname: "Murdock",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    userType: "general",
-    disciplines: ["Bare Bow"],
-  },
-  {
-    username: "DStevens",
-    firstName: "Kamala",
-    surname: "Khan",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    userType: "general",
-    disciplines: ["Recurve Bow"],
+    membershipFeesDue: "2026-04-17",
+    userType: "coach",
+    disciplines: ["Bare Bow", "Recurve Bow"],
   },
 ];
 
@@ -1054,6 +1123,14 @@ const upsertUser = db.prepare(`
     rfid_tag = excluded.rfid_tag,
     active_member = excluded.active_member,
     membership_fees_due = excluded.membership_fees_due
+`);
+
+const updateUserMembershipStatus = db.prepare(`
+  UPDATE users
+  SET
+    active_member = ?,
+    rfid_tag = ?
+  WHERE username = ?
 `);
 
 const upsertUserType = db.prepare(`
@@ -1167,6 +1244,8 @@ const listAllUsers = db.prepare(`
   INNER JOIN user_types ON user_types.username = users.username
   ORDER BY users.surname ASC, users.first_name ASC
 `);
+
+syncAllMemberStatusesWithFees();
 
 const listRoleDefinitions = db.prepare(`
   SELECT
@@ -1715,10 +1794,12 @@ const insertGuestLoginEvent = db.prepare(`
     first_name,
     surname,
     archery_gb_membership_number,
+    invited_by_username,
+    invited_by_name,
     logged_in_date,
     logged_in_time
   )
-  VALUES (?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 
 const findRecentRangeMembers = db.prepare(`
@@ -1751,10 +1832,12 @@ const findRecentGuestLogins = db.prepare(`
     first_name,
     surname,
     archery_gb_membership_number,
+    invited_by_username,
+    invited_by_name,
     MAX(logged_in_date || 'T' || logged_in_time) AS last_logged_in_at
   FROM guest_login_events
   WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-  GROUP BY first_name, surname, archery_gb_membership_number
+  GROUP BY first_name, surname, archery_gb_membership_number, invited_by_username, invited_by_name
   ORDER BY surname ASC, first_name ASC
 `);
 
@@ -1816,6 +1899,41 @@ const guestLoginsByDateInRange = db.prepare(`
   SELECT logged_in_date AS usageDate, COUNT(*) AS count
   FROM guest_login_events
   WHERE (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
+  GROUP BY usageDate
+`);
+
+const countMemberLoginsForUserInRange = db.prepare(`
+  SELECT COUNT(*) AS count
+  FROM login_events
+  WHERE username = ?
+    AND (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
+`);
+
+const memberLoginsByHourForUserInRange = db.prepare(`
+  SELECT CAST(substr(logged_in_time, 1, 2) AS INTEGER) AS hour, COUNT(*) AS count
+  FROM login_events
+  WHERE username = ?
+    AND (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
+  GROUP BY hour
+`);
+
+const memberLoginsByWeekdayForUserInRange = db.prepare(`
+  SELECT CAST(strftime('%w', logged_in_date) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
+  FROM login_events
+  WHERE username = ?
+    AND (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
+  GROUP BY dayOfWeek
+`);
+
+const memberLoginsByDateForUserInRange = db.prepare(`
+  SELECT logged_in_date AS usageDate, COUNT(*) AS count
+  FROM login_events
+  WHERE username = ?
+    AND (logged_in_date || 'T' || logged_in_time) >= ?
     AND (logged_in_date || 'T' || logged_in_time) < ?
   GROUP BY usageDate
 `);
@@ -1935,9 +2053,14 @@ function buildEditableMemberProfile(user, disciplines = [], loanBow = null) {
 
 function buildGuestUserProfile(guest, meta = {}) {
   const archeryGbMembershipNumber =
-    guest.archery_gb_membership_number ?? guest.archeryGbMembershipNumber ?? null;
+    guest.archery_gb_membership_number ??
+    guest.archeryGbMembershipNumber ??
+    null;
   const firstName = guest.first_name ?? guest.firstName;
   const surname = guest.surname;
+  const invitedByUsername =
+    guest.invited_by_username ?? guest.invitedByUsername ?? null;
+  const invitedByName = guest.invited_by_name ?? guest.invitedByName ?? null;
 
   return {
     id: `guest:${archeryGbMembershipNumber ?? `${firstName}-${surname}`}`,
@@ -1957,7 +2080,11 @@ function buildGuestUserProfile(guest, meta = {}) {
       permissions: [],
       disciplines: [],
     },
-    meta,
+    meta: {
+      invitedByUsername,
+      invitedByName,
+      ...meta,
+    },
   };
 }
 
@@ -1980,9 +2107,200 @@ function buildCoachingSession(session, bookings = [], actorUsername = null) {
     remainingSlots: Math.max(session.available_slots - bookings.length, 0),
     isBookedOn: Boolean(
       actorUsername &&
-        bookings.some((booking) => booking.username === actorUsername),
+      bookings.some((booking) => booking.username === actorUsername),
     ),
   };
+}
+
+function sanitizeFileNameSegment(value, fallback = "export") {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return normalized || fallback;
+}
+
+const latestRfidScan = {
+  sequence: 0,
+  rfidTag: null,
+  scannedAt: null,
+  source: null,
+  deliveredSequence: 0,
+};
+
+function registerRfidScan(rfidTag, source = "reader") {
+  if (!rfidTag) {
+    return;
+  }
+
+  latestRfidScan.sequence += 1;
+  latestRfidScan.rfidTag = rfidTag;
+  latestRfidScan.scannedAt = new Date().toISOString();
+  latestRfidScan.source = source;
+}
+
+function startRfidReaderMonitor() {
+  const powershellPath =
+    "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";
+  const monitorScript = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+[StructLayout(LayoutKind.Sequential)]
+public struct SCARD_IO_REQUEST {
+    public uint dwProtocol;
+    public uint cbPciLength;
+}
+
+public static class WinSCardReader {
+    public const uint SCARD_SCOPE_USER = 0;
+    public const uint SCARD_SHARE_SHARED = 2;
+    public const uint SCARD_PROTOCOL_T0 = 1;
+    public const uint SCARD_PROTOCOL_T1 = 2;
+    public const uint SCARD_LEAVE_CARD = 0;
+
+    [DllImport("winscard.dll")]
+    public static extern int SCardEstablishContext(uint dwScope, IntPtr pvReserved1, IntPtr pvReserved2, out IntPtr phContext);
+
+    [DllImport("winscard.dll", CharSet = CharSet.Unicode)]
+    public static extern int SCardConnect(IntPtr hContext, string szReader, uint dwShareMode, uint dwPreferredProtocols, out IntPtr phCard, out uint pdwActiveProtocol);
+
+    [DllImport("winscard.dll")]
+    public static extern int SCardTransmit(IntPtr hCard, ref SCARD_IO_REQUEST pioSendPci, byte[] pbSendBuffer, int cbSendLength, IntPtr pioRecvPci, byte[] pbRecvBuffer, ref int pcbRecvLength);
+
+    [DllImport("winscard.dll")]
+    public static extern int SCardDisconnect(IntPtr hCard, uint dwDisposition);
+
+    [DllImport("winscard.dll")]
+    public static extern int SCardReleaseContext(IntPtr hContext);
+}
+"@
+
+$reader = '${RFID_READER_NAME}'
+$apdu = [byte[]](0xFF,0xCA,0x00,0x00,0x00)
+$lastUid = ''
+$wasPresent = $false
+
+while ($true) {
+    $context = [IntPtr]::Zero
+    $card = [IntPtr]::Zero
+    $activeProtocol = 0
+    $uid = ''
+
+    try {
+        $result = [WinSCardReader]::SCardEstablishContext([WinSCardReader]::SCARD_SCOPE_USER, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$context)
+        if ($result -eq 0) {
+            $result = [WinSCardReader]::SCardConnect($context, $reader, [WinSCardReader]::SCARD_SHARE_SHARED, ([WinSCardReader]::SCARD_PROTOCOL_T0 -bor [WinSCardReader]::SCARD_PROTOCOL_T1), [ref]$card, [ref]$activeProtocol)
+            if ($result -eq 0) {
+                $sendPci = New-Object SCARD_IO_REQUEST
+                $sendPci.dwProtocol = $activeProtocol
+                $sendPci.cbPciLength = 8
+                $recv = New-Object byte[] 258
+                $recvLen = $recv.Length
+                $result = [WinSCardReader]::SCardTransmit($card, [ref]$sendPci, $apdu, $apdu.Length, [IntPtr]::Zero, $recv, [ref]$recvLen)
+                if ($result -eq 0 -and $recvLen -ge 2) {
+                    $sw1 = $recv[$recvLen - 2]
+                    $sw2 = $recv[$recvLen - 1]
+                    if ($sw1 -eq 0x90 -and $sw2 -eq 0x00 -and $recvLen -gt 2) {
+                        $payload = $recv[0..($recvLen - 3)]
+                        $uid = (($payload | ForEach-Object { $_.ToString('X2') }) -join '')
+                    }
+                }
+            }
+        }
+    } catch {
+    } finally {
+        if ($card -ne [IntPtr]::Zero) { [void][WinSCardReader]::SCardDisconnect($card, [WinSCardReader]::SCARD_LEAVE_CARD) }
+        if ($context -ne [IntPtr]::Zero) { [void][WinSCardReader]::SCardReleaseContext($context) }
+    }
+
+    if ($uid) {
+        if (-not $wasPresent -or $uid -ne $lastUid) {
+            Write-Output $uid
+            [Console]::Out.Flush()
+        }
+        $lastUid = $uid
+        $wasPresent = $true
+    } else {
+        $lastUid = ''
+        $wasPresent = $false
+    }
+
+    Start-Sleep -Milliseconds 800
+}
+`;
+
+  const child = spawn(
+    powershellPath,
+    ["-NoProfile", "-Command", monitorScript],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  );
+
+  child.stdout.setEncoding("utf8");
+  child.stdout.on("data", (chunk) => {
+    for (const line of chunk.split(/\r?\n/)) {
+      const trimmedLine = line.trim();
+
+      if (!trimmedLine) {
+        continue;
+      }
+
+      registerRfidScan(trimmedLine, "reader");
+    }
+  });
+
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", () => {});
+  child.on("error", () => {});
+}
+
+function getDeactivatedRfidTag(rfidTag) {
+  if (!rfidTag) {
+    return null;
+  }
+
+  return rfidTag.endsWith(DEACTIVATED_RFID_SUFFIX)
+    ? rfidTag
+    : `${rfidTag}${DEACTIVATED_RFID_SUFFIX}`;
+}
+
+function isMembershipFeesOverdue(user, today = toUtcDateString(new Date())) {
+  const membershipFeesDue =
+    user?.membership_fees_due ?? user?.membershipFeesDue ?? null;
+
+  return Boolean(membershipFeesDue && membershipFeesDue < today);
+}
+
+function syncMemberStatusWithFees(user) {
+  if (!user || !isMembershipFeesOverdue(user)) {
+    return user;
+  }
+
+  const nextRfidTag = getDeactivatedRfidTag(user.rfid_tag);
+  const requiresUpdate =
+    Boolean(user.active_member) || (user.rfid_tag ?? null) !== nextRfidTag;
+
+  if (requiresUpdate) {
+    updateUserMembershipStatus.run(0, nextRfidTag, user.username);
+  }
+
+  return {
+    ...user,
+    active_member: 0,
+    rfid_tag: nextRfidTag,
+  };
+}
+
+function syncAllMemberStatusesWithFees() {
+  for (const user of listAllUsers.all()) {
+    syncMemberStatusWithFees(user);
+  }
 }
 
 function buildClubEvent(event, bookings = [], actorUsername = null) {
@@ -1996,7 +2314,7 @@ function buildClubEvent(event, bookings = [], actorUsername = null) {
     bookingCount: bookings.length,
     isBookedOn: Boolean(
       actorUsername &&
-        bookings.some((booking) => booking.username === actorUsername),
+      bookings.some((booking) => booking.username === actorUsername),
     ),
   };
 }
@@ -2040,7 +2358,8 @@ function nextPowerOfTwo(value) {
 
 function getTournamentTypeLabel(type) {
   return (
-    TOURNAMENT_TYPE_OPTIONS.find((option) => option.value === type)?.label ?? type
+    TOURNAMENT_TYPE_OPTIONS.find((option) => option.value === type)?.label ??
+    type
   );
 }
 
@@ -2080,10 +2399,12 @@ function buildTournamentBracket(registrations, scoresByRound) {
     for (let index = 0; index < currentParticipants.length; index += 2) {
       const leftParticipant = currentParticipants[index] ?? null;
       const rightParticipant = currentParticipants[index + 1] ?? null;
-      const leftScore =
-        leftParticipant ? roundScores.get(leftParticipant.username) ?? null : null;
-      const rightScore =
-        rightParticipant ? roundScores.get(rightParticipant.username) ?? null : null;
+      const leftScore = leftParticipant
+        ? (roundScores.get(leftParticipant.username) ?? null)
+        : null;
+      const rightScore = rightParticipant
+        ? (roundScores.get(rightParticipant.username) ?? null)
+        : null;
 
       let winner = null;
       let status = "pending";
@@ -2124,10 +2445,11 @@ function buildTournamentBracket(registrations, scoresByRound) {
 
     if (
       currentRoundNumber === null &&
-      matches.some((match) =>
-        ["pending", "tie"].includes(match.status) &&
-        match.leftParticipant &&
-        match.rightParticipant,
+      matches.some(
+        (match) =>
+          ["pending", "tie"].includes(match.status) &&
+          match.leftParticipant &&
+          match.rightParticipant,
       )
     ) {
       currentRoundNumber = roundIndex;
@@ -2149,7 +2471,12 @@ function buildTournamentBracket(registrations, scoresByRound) {
   };
 }
 
-function buildTournament(tournament, registrations = [], scores = [], actorUsername = null) {
+function buildTournament(
+  tournament,
+  registrations = [],
+  scores = [],
+  actorUsername = null,
+) {
   const registrationLookup = new Set(
     registrations.map((entry) => entry.member_username),
   );
@@ -2166,10 +2493,15 @@ function buildTournament(tournament, registrations = [], scores = [], actorUsern
       scoresByRound.set(score.round_number, new Map());
     }
 
-    scoresByRound.get(score.round_number).set(score.member_username, score.score);
+    scoresByRound
+      .get(score.round_number)
+      .set(score.member_username, score.score);
   }
 
-  const bracket = buildTournamentBracket(normalizedRegistrations, scoresByRound);
+  const bracket = buildTournamentBracket(
+    normalizedRegistrations,
+    scoresByRound,
+  );
   const today = toUtcDateString(new Date());
   const registrationUpcoming = today < tournament.registration_start_date;
   const registrationOpen =
@@ -2183,14 +2515,15 @@ function buildTournament(tournament, registrations = [], scores = [], actorUsern
   const currentRound = bracket.rounds.find(
     (round) => round.roundNumber === currentRoundNumber,
   );
-  const actorMatch = currentRound?.matches.find(
-    (match) =>
-      match.leftParticipant?.username === actorUsername ||
-      match.rightParticipant?.username === actorUsername,
-  ) ?? null;
+  const actorMatch =
+    currentRound?.matches.find(
+      (match) =>
+        match.leftParticipant?.username === actorUsername ||
+        match.rightParticipant?.username === actorUsername,
+    ) ?? null;
   const actorScore =
     actorUsername && currentRoundNumber
-      ? scoresByRound.get(currentRoundNumber)?.get(actorUsername) ?? null
+      ? (scoresByRound.get(currentRoundNumber)?.get(actorUsername) ?? null)
       : null;
 
   return {
@@ -2198,13 +2531,13 @@ function buildTournament(tournament, registrations = [], scores = [], actorUsern
     name: tournament.name,
     type: tournament.tournament_type,
     typeLabel: getTournamentTypeLabel(tournament.tournament_type),
-      registrationWindow: {
-        startDate: tournament.registration_start_date,
-        endDate: tournament.registration_end_date,
-        isUpcoming: registrationUpcoming,
-        isOpen: registrationOpen,
-        isClosed: registrationClosed,
-      },
+    registrationWindow: {
+      startDate: tournament.registration_start_date,
+      endDate: tournament.registration_end_date,
+      isUpcoming: registrationUpcoming,
+      isOpen: registrationOpen,
+      isClosed: registrationClosed,
+    },
     scoreWindow: {
       startDate: tournament.score_submission_start_date,
       endDate: tournament.score_submission_end_date,
@@ -2214,45 +2547,45 @@ function buildTournament(tournament, registrations = [], scores = [], actorUsern
       username: tournament.created_by,
       fullName: `${tournament.created_by_first_name} ${tournament.created_by_surname}`,
     },
-      registrations: normalizedRegistrations,
-      registrationCount: normalizedRegistrations.length,
-      bracket,
-      bracketReady: registrationClosed && normalizedRegistrations.length > 1,
-      currentRoundNumber,
-    isRegistered: Boolean(actorUsername && registrationLookup.has(actorUsername)),
+    registrations: normalizedRegistrations,
+    registrationCount: normalizedRegistrations.length,
+    bracket,
+    bracketReady: registrationClosed && normalizedRegistrations.length > 1,
+    currentRoundNumber,
+    isRegistered: Boolean(
+      actorUsername && registrationLookup.has(actorUsername),
+    ),
     canRegister: Boolean(
-      actorUsername && registrationOpen && !registrationLookup.has(actorUsername),
+      actorUsername &&
+      registrationOpen &&
+      !registrationLookup.has(actorUsername),
     ),
     canWithdraw: Boolean(
-      actorUsername && registrationOpen && registrationLookup.has(actorUsername),
+      actorUsername &&
+      registrationOpen &&
+      registrationLookup.has(actorUsername),
     ),
     canSubmitScore: Boolean(
       actorUsername &&
-        registrationLookup.has(actorUsername) &&
-        scoreSubmissionOpen &&
-        currentRoundNumber &&
-        actorMatch &&
-        actorMatch.leftParticipant &&
-        actorMatch.rightParticipant,
+      registrationLookup.has(actorUsername) &&
+      scoreSubmissionOpen &&
+      currentRoundNumber &&
+      actorMatch &&
+      actorMatch.leftParticipant &&
+      actorMatch.rightParticipant,
     ),
     actorScore,
     needsScoreReminder: Boolean(
       actorUsername &&
-        registrationLookup.has(actorUsername) &&
-        scoreSubmissionOpen &&
-        currentRoundNumber &&
-        actorMatch &&
-        actorMatch.leftParticipant &&
-        actorMatch.rightParticipant &&
-        typeof actorScore !== "number",
+      registrationLookup.has(actorUsername) &&
+      scoreSubmissionOpen &&
+      currentRoundNumber &&
+      actorMatch &&
+      actorMatch.leftParticipant &&
+      actorMatch.rightParticipant &&
+      typeof actorScore !== "number",
     ),
   };
-}
-
-function addMinutesToTime(timeValue, minutes) {
-  const [hours, mins] = timeValue.split(":").map(Number);
-  const date = new Date(Date.UTC(1970, 0, 1, hours, mins + minutes));
-  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(date.getUTCMinutes()).padStart(2, "0")}`;
 }
 
 function buildRecurringClosureEvent(date) {
@@ -2362,7 +2695,15 @@ function getActorUser(req) {
     return null;
   }
 
-  return findUserByUsername.get(actorUsername);
+  syncAllMemberStatusesWithFees();
+
+  const actor = syncMemberStatusWithFees(findUserByUsername.get(actorUsername));
+
+  if (!actor?.active_member) {
+    return null;
+  }
+
+  return actor;
 }
 
 function listAssignableRoleKeys() {
@@ -2420,9 +2761,13 @@ function sanitizeDisciplines(disciplines) {
     return [];
   }
 
-  return [...new Set(disciplines.filter((discipline) =>
-    ALLOWED_DISCIPLINES.includes(discipline),
-  ))];
+  return [
+    ...new Set(
+      disciplines.filter((discipline) =>
+        ALLOWED_DISCIPLINES.includes(discipline),
+      ),
+    ),
+  ];
 }
 
 function sanitizeLoanBow(loanBow) {
@@ -2442,40 +2787,42 @@ function sanitizeLoanBow(loanBow) {
     };
   }
 
-    return {
-      hasLoanBow: true,
-      dateLoaned:
-        typeof loanBow.dateLoaned === "string" && loanBow.dateLoaned.trim()
-          ? loanBow.dateLoaned.trim()
-          : defaults.dateLoaned,
-      returnedDate:
-        typeof loanBow.returnedDate === "string" ? loanBow.returnedDate.trim() : "",
-      riserNumber:
-        typeof loanBow.riserNumber === "string" ? loanBow.riserNumber.trim() : "",
-      limbsNumber:
-        typeof loanBow.limbsNumber === "string" ? loanBow.limbsNumber.trim() : "",
-      arrowCount:
-        Number.isFinite(arrowCount) && arrowCount > 0
-          ? arrowCount
-          : DEFAULT_LOAN_ARROW_COUNT,
-      returnedRiser: Boolean(loanBow.returnedRiser),
-      returnedLimbs: Boolean(loanBow.returnedLimbs),
-      returnedArrows: Boolean(loanBow.returnedArrows),
-      fingerTab: Boolean(loanBow.fingerTab),
-      returnedFingerTab: Boolean(loanBow.returnedFingerTab),
-      string: Boolean(loanBow.string),
-      returnedString: Boolean(loanBow.returnedString),
-      armGuard: Boolean(loanBow.armGuard),
-      returnedArmGuard: Boolean(loanBow.returnedArmGuard),
-      chestGuard: Boolean(loanBow.chestGuard),
-      returnedChestGuard: Boolean(loanBow.returnedChestGuard),
-      sight: Boolean(loanBow.sight),
-      returnedSight: Boolean(loanBow.returnedSight),
-      longRod: Boolean(loanBow.longRod),
-      returnedLongRod: Boolean(loanBow.returnedLongRod),
-      pressureButton: Boolean(loanBow.pressureButton),
-      returnedPressureButton: Boolean(loanBow.returnedPressureButton),
-    };
+  return {
+    hasLoanBow: true,
+    dateLoaned:
+      typeof loanBow.dateLoaned === "string" && loanBow.dateLoaned.trim()
+        ? loanBow.dateLoaned.trim()
+        : defaults.dateLoaned,
+    returnedDate:
+      typeof loanBow.returnedDate === "string"
+        ? loanBow.returnedDate.trim()
+        : "",
+    riserNumber:
+      typeof loanBow.riserNumber === "string" ? loanBow.riserNumber.trim() : "",
+    limbsNumber:
+      typeof loanBow.limbsNumber === "string" ? loanBow.limbsNumber.trim() : "",
+    arrowCount:
+      Number.isFinite(arrowCount) && arrowCount > 0
+        ? arrowCount
+        : DEFAULT_LOAN_ARROW_COUNT,
+    returnedRiser: Boolean(loanBow.returnedRiser),
+    returnedLimbs: Boolean(loanBow.returnedLimbs),
+    returnedArrows: Boolean(loanBow.returnedArrows),
+    fingerTab: Boolean(loanBow.fingerTab),
+    returnedFingerTab: Boolean(loanBow.returnedFingerTab),
+    string: Boolean(loanBow.string),
+    returnedString: Boolean(loanBow.returnedString),
+    armGuard: Boolean(loanBow.armGuard),
+    returnedArmGuard: Boolean(loanBow.returnedArmGuard),
+    chestGuard: Boolean(loanBow.chestGuard),
+    returnedChestGuard: Boolean(loanBow.returnedChestGuard),
+    sight: Boolean(loanBow.sight),
+    returnedSight: Boolean(loanBow.returnedSight),
+    longRod: Boolean(loanBow.longRod),
+    returnedLongRod: Boolean(loanBow.returnedLongRod),
+    pressureButton: Boolean(loanBow.pressureButton),
+    returnedPressureButton: Boolean(loanBow.returnedPressureButton),
+  };
 }
 
 function sanitizeLoanBowReturn(existingLoanBow, loanBowReturn) {
@@ -2613,17 +2960,22 @@ function saveMemberProfile({
     };
   }
 
-  const passwordToSave =
-    trimmedPassword || existingUser?.password || null;
+  const passwordToSave = trimmedPassword || existingUser?.password || null;
+  const provisionalUser = syncMemberStatusWithFees({
+    username: existingUser?.username ?? trimmedUsername,
+    rfid_tag: trimmedRfidTag || null,
+    active_member: normalizedActiveMember ? 1 : 0,
+    membership_fees_due: normalizedMembershipFeesDue,
+  });
 
   const userPayload = {
-    username: existingUser?.username ?? trimmedUsername,
+    username: provisionalUser.username,
     firstName: trimmedFirstName,
     surname: trimmedSurname,
     password: passwordToSave,
-    rfidTag: trimmedRfidTag || null,
-    activeMember: normalizedActiveMember ? 1 : 0,
-    membershipFeesDue: normalizedMembershipFeesDue,
+    rfidTag: provisionalUser.rfid_tag,
+    activeMember: provisionalUser.active_member,
+    membershipFeesDue: provisionalUser.membership_fees_due,
   };
 
   try {
@@ -2653,9 +3005,7 @@ function saveMemberProfile({
       userProfile: buildMemberUserProfile(savedUser, normalizedDisciplines),
     };
   } catch (error) {
-    if (
-      error?.message?.includes("UNIQUE constraint failed: users.rfid_tag")
-    ) {
+    if (error?.message?.includes("UNIQUE constraint failed: users.rfid_tag")) {
       return {
         success: false,
         status: 409,
@@ -2703,6 +3053,20 @@ function buildUsageTotals(startIso, endIsoExclusive) {
   };
 }
 
+function buildPersonalUsageTotals(username, startIso, endIsoExclusive) {
+  const members = countMemberLoginsForUserInRange.get(
+    username,
+    startIso,
+    endIsoExclusive,
+  ).count;
+
+  return {
+    members,
+    guests: 0,
+    total: members,
+  };
+}
+
 function buildHourlyBreakdown(startIso, endIsoExclusive) {
   const memberRows = memberLoginsByHourInRange.all(startIso, endIsoExclusive);
   const guestRows = guestLoginsByHourInRange.all(startIso, endIsoExclusive);
@@ -2727,8 +3091,33 @@ function buildHourlyBreakdown(startIso, endIsoExclusive) {
   return hours;
 }
 
+function buildPersonalHourlyBreakdown(username, startIso, endIsoExclusive) {
+  const memberRows = memberLoginsByHourForUserInRange.all(
+    username,
+    startIso,
+    endIsoExclusive,
+  );
+  const hours = Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    label: `${String(hour).padStart(2, "0")}:00`,
+    members: 0,
+    guests: 0,
+    total: 0,
+  }));
+
+  for (const row of memberRows) {
+    hours[row.hour].members = row.count;
+    hours[row.hour].total += row.count;
+  }
+
+  return hours;
+}
+
 function buildWeekdayBreakdown(startIso, endIsoExclusive) {
-  const memberRows = memberLoginsByWeekdayInRange.all(startIso, endIsoExclusive);
+  const memberRows = memberLoginsByWeekdayInRange.all(
+    startIso,
+    endIsoExclusive,
+  );
   const guestRows = guestLoginsByWeekdayInRange.all(startIso, endIsoExclusive);
   const weekdays = [
     { dayOfWeek: 1, label: "Mon", members: 0, guests: 0, total: 0 },
@@ -2760,6 +3149,37 @@ function buildWeekdayBreakdown(startIso, endIsoExclusive) {
     }
 
     weekday.guests = row.count;
+    weekday.total += row.count;
+  }
+
+  return weekdays;
+}
+
+function buildPersonalWeekdayBreakdown(username, startIso, endIsoExclusive) {
+  const memberRows = memberLoginsByWeekdayForUserInRange.all(
+    username,
+    startIso,
+    endIsoExclusive,
+  );
+  const weekdays = [
+    { dayOfWeek: 1, label: "Mon", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 2, label: "Tue", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 3, label: "Wed", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 4, label: "Thu", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 5, label: "Fri", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 6, label: "Sat", members: 0, guests: 0, total: 0 },
+    { dayOfWeek: 0, label: "Sun", members: 0, guests: 0, total: 0 },
+  ];
+  const rowByDay = new Map(weekdays.map((row) => [row.dayOfWeek, row]));
+
+  for (const row of memberRows) {
+    const weekday = rowByDay.get(row.dayOfWeek);
+
+    if (!weekday) {
+      continue;
+    }
+
+    weekday.members = row.count;
     weekday.total += row.count;
   }
 
@@ -2818,15 +3238,77 @@ function buildDailyBreakdown(startDate, endDateExclusive) {
   return rows;
 }
 
-function buildMonthDailyBreakdown(anchorDate) {
-  const monthStart = new Date(
-    Date.UTC(anchorDate.getUTCFullYear(), anchorDate.getUTCMonth(), 1),
+function buildPersonalDailyBreakdown(username, startDate, endDateExclusive) {
+  const startIso = startDate.toISOString();
+  const endIso = endDateExclusive.toISOString();
+  const memberRows = memberLoginsByDateForUserInRange.all(
+    username,
+    startIso,
+    endIso,
   );
-  const nextMonthStart = new Date(
-    Date.UTC(anchorDate.getUTCFullYear(), anchorDate.getUTCMonth() + 1, 1),
+  const rows = [];
+  const rowByDate = new Map();
+
+  for (
+    let date = new Date(startDate);
+    date.getTime() < endDateExclusive.getTime();
+    date = addUtcDays(date, 1)
+  ) {
+    const usageDate = toUtcDateString(date);
+    const row = {
+      usageDate,
+      label: String(date.getUTCDate()),
+      fullLabel: usageDate,
+      members: 0,
+      guests: 0,
+      total: 0,
+    };
+
+    rows.push(row);
+    rowByDate.set(usageDate, row);
+  }
+
+  for (const row of memberRows) {
+    const day = rowByDate.get(row.usageDate);
+
+    if (!day) {
+      continue;
+    }
+
+    day.members = row.count;
+    day.total += row.count;
+  }
+
+  return rows;
+}
+
+function buildMonthDailyBreakdown(startDate, endDateExclusive) {
+  const rows = Array.from({ length: 31 }, (_, index) => ({
+    usageDate: `day-${index + 1}`,
+    label: String(index + 1),
+    fullLabel: `Day ${index + 1}`,
+    members: 0,
+    guests: 0,
+    total: 0,
+  }));
+  const rowByDayOfMonth = new Map(
+    rows.map((row, index) => [index + 1, row]),
   );
 
-  return buildDailyBreakdown(monthStart, nextMonthStart);
+  for (const row of buildDailyBreakdown(startDate, endDateExclusive)) {
+    const dayOfMonth = Number.parseInt(row.label, 10);
+    const aggregateRow = rowByDayOfMonth.get(dayOfMonth);
+
+    if (!aggregateRow) {
+      continue;
+    }
+
+    aggregateRow.members += row.members;
+    aggregateRow.guests += row.guests;
+    aggregateRow.total += row.total;
+  }
+
+  return rows;
 }
 
 function buildUsageWindow(label, startDate, endDateExclusive) {
@@ -2834,7 +3316,10 @@ function buildUsageWindow(label, startDate, endDateExclusive) {
     label,
     startDate: toUtcDateString(startDate),
     endDate: toUtcDateString(addUtcDays(endDateExclusive, -1)),
-    ...buildUsageTotals(startDate.toISOString(), endDateExclusive.toISOString()),
+    ...buildUsageTotals(
+      startDate.toISOString(),
+      endDateExclusive.toISOString(),
+    ),
     hourly: buildHourlyBreakdown(
       startDate.toISOString(),
       endDateExclusive.toISOString(),
@@ -2844,7 +3329,32 @@ function buildUsageWindow(label, startDate, endDateExclusive) {
       endDateExclusive.toISOString(),
     ),
     daily: buildDailyBreakdown(startDate, endDateExclusive),
-    monthDaily: buildMonthDailyBreakdown(startDate),
+    monthDaily: buildMonthDailyBreakdown(startDate, endDateExclusive),
+  };
+}
+
+function buildPersonalUsageWindow(username, label, startDate, endDateExclusive) {
+  return {
+    label,
+    startDate: toUtcDateString(startDate),
+    endDate: toUtcDateString(addUtcDays(endDateExclusive, -1)),
+    ...buildPersonalUsageTotals(
+      username,
+      startDate.toISOString(),
+      endDateExclusive.toISOString(),
+    ),
+    hourly: buildPersonalHourlyBreakdown(
+      username,
+      startDate.toISOString(),
+      endDateExclusive.toISOString(),
+    ),
+    weekday: buildPersonalWeekdayBreakdown(
+      username,
+      startDate.toISOString(),
+      endDateExclusive.toISOString(),
+    ),
+    daily: buildPersonalDailyBreakdown(username, startDate, endDateExclusive),
+    monthDaily: [],
   };
 }
 
@@ -2859,21 +3369,29 @@ app.post("/api/auth/login", (req, res) => {
     return;
   }
 
-  const user = findUserByCredentials.get(username, password);
+  const user = syncMemberStatusWithFees(
+    findUserByCredentials.get(username, password),
+  );
 
   if (!user) {
     res.status(401).json({
       success: false,
-      message: "Incorrect username or password.",
+      message:
+        "Incorrect username or password. have you tried using your Fob instead?",
     });
     return;
   }
 
-  insertLoginEvent.run(
-    user.username,
-    "password",
-    ...getUtcTimestampParts(),
-  );
+  if (!user.active_member) {
+    res.status(403).json({
+      success: false,
+      message:
+        "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
+    });
+    return;
+  }
+
+  insertLoginEvent.run(user.username, "password", ...getUtcTimestampParts());
 
   res.json({
     success: true,
@@ -2897,7 +3415,9 @@ app.post("/api/auth/rfid", (req, res) => {
     return;
   }
 
-  const user = findUserByRfid.get(rfidTag);
+  const user =
+    syncMemberStatusWithFees(findUserByRfid.get(rfidTag)) ??
+    syncMemberStatusWithFees(findUserByRfid.get(getDeactivatedRfidTag(rfidTag)));
 
   if (!user) {
     res.status(401).json({
@@ -2907,11 +3427,16 @@ app.post("/api/auth/rfid", (req, res) => {
     return;
   }
 
-  insertLoginEvent.run(
-    user.username,
-    "rfid",
-    ...getUtcTimestampParts(),
-  );
+  if (!user.active_member) {
+    res.status(403).json({
+      success: false,
+      message:
+        "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
+    });
+    return;
+  }
+
+  insertLoginEvent.run(user.username, "rfid", ...getUtcTimestampParts());
 
   res.json({
     success: true,
@@ -2924,15 +3449,44 @@ app.post("/api/auth/rfid", (req, res) => {
   });
 });
 
+app.get("/api/auth/rfid/latest-scan", (_req, res) => {
+  const hasUndeliveredScan =
+    latestRfidScan.sequence > latestRfidScan.deliveredSequence;
+
+  if (hasUndeliveredScan) {
+    latestRfidScan.deliveredSequence = latestRfidScan.sequence;
+  }
+
+  res.json({
+    success: true,
+    scan: hasUndeliveredScan
+      ? {
+          sequence: latestRfidScan.sequence,
+          rfidTag: latestRfidScan.rfidTag,
+          scannedAt: latestRfidScan.scannedAt,
+          source: latestRfidScan.source,
+        }
+      : null,
+  });
+});
+
 app.post("/api/auth/guest-login", (req, res) => {
-  const { firstName, surname, archeryGbMembershipNumber } = req.body ?? {};
+  const { firstName, surname, archeryGbMembershipNumber, invitedByUsername } =
+    req.body ?? {};
   const trimmedMembershipNumber = archeryGbMembershipNumber?.trim() ?? "";
   const membershipDigits = trimmedMembershipNumber.replace(/\D/g, "");
+  const trimmedInvitedByUsername = invitedByUsername?.trim() ?? "";
 
-  if (!firstName || !surname || !archeryGbMembershipNumber) {
+  if (
+    !firstName ||
+    !surname ||
+    !archeryGbMembershipNumber ||
+    !trimmedInvitedByUsername
+  ) {
     res.status(400).json({
       success: false,
-      message: "First name, surname, and Archery GB membership number are required.",
+      message:
+        "First name, surname, Archery GB membership number, and inviting member are required.",
     });
     return;
   }
@@ -2945,10 +3499,22 @@ app.post("/api/auth/guest-login", (req, res) => {
     return;
   }
 
+  const invitingMember = findUserByUsername.get(trimmedInvitedByUsername);
+
+  if (!invitingMember) {
+    res.status(400).json({
+      success: false,
+      message: "Inviting member could not be found.",
+    });
+    return;
+  }
+
   insertGuestLoginEvent.run(
     firstName.trim(),
     surname.trim(),
     trimmedMembershipNumber,
+    invitingMember.username,
+    `${invitingMember.first_name} ${invitingMember.surname}`,
     ...getUtcTimestampParts(),
   );
 
@@ -2958,7 +3524,21 @@ app.post("/api/auth/guest-login", (req, res) => {
       firstName: firstName.trim(),
       surname: surname.trim(),
       archeryGbMembershipNumber: trimmedMembershipNumber,
+      invitedByUsername: invitingMember.username,
+      invitedByName: `${invitingMember.first_name} ${invitingMember.surname}`,
     }),
+  });
+});
+
+app.get("/api/guest-inviter-members", (_req, res) => {
+  res.json({
+    success: true,
+    members: listAllUsers.all().map((user) => ({
+      username: user.username,
+      firstName: user.first_name,
+      surname: user.surname,
+      fullName: `${user.first_name} ${user.surname}`,
+    })),
   });
 });
 
@@ -3050,19 +3630,23 @@ app.post("/api/roles", (req, res) => {
   }
 
   const titleRaw = typeof req.body?.title === "string" ? req.body.title : "";
-  const permissionsRaw = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+  const permissionsRaw = Array.isArray(req.body?.permissions)
+    ? req.body.permissions
+    : [];
   const title = titleRaw.trim();
   const validPermissionKeys = new Set(
     listPermissionDefinitions
       .all()
       .map((permission) => permission.permission_key),
   );
-  const normalizedPermissions = [...new Set(
-    permissionsRaw
-      .filter((permission) => typeof permission === "string")
-      .map((permission) => permission.trim())
-      .filter((permission) => validPermissionKeys.has(permission)),
-  )];
+  const normalizedPermissions = [
+    ...new Set(
+      permissionsRaw
+        .filter((permission) => typeof permission === "string")
+        .map((permission) => permission.trim())
+        .filter((permission) => validPermissionKeys.has(permission)),
+    ),
+  ];
 
   if (!title) {
     res.status(400).json({
@@ -3136,7 +3720,9 @@ app.put("/api/roles/:roleKey", (req, res) => {
   }
 
   const titleRaw = typeof req.body?.title === "string" ? req.body.title : "";
-  const permissionsRaw = Array.isArray(req.body?.permissions) ? req.body.permissions : [];
+  const permissionsRaw = Array.isArray(req.body?.permissions)
+    ? req.body.permissions
+    : [];
   const title = titleRaw.trim();
 
   if (!title) {
@@ -3152,12 +3738,14 @@ app.put("/api/roles/:roleKey", (req, res) => {
       .all()
       .map((permission) => permission.permission_key),
   );
-  const normalizedPermissions = [...new Set(
-    permissionsRaw
-      .filter((permission) => typeof permission === "string")
-      .map((permission) => permission.trim())
-      .filter((permission) => validPermissionKeys.has(permission)),
-  )];
+  const normalizedPermissions = [
+    ...new Set(
+      permissionsRaw
+        .filter((permission) => typeof permission === "string")
+        .map((permission) => permission.trim())
+        .filter((permission) => validPermissionKeys.has(permission)),
+    ),
+  ];
 
   const updateRoleTransaction = db.transaction(() => {
     updateRoleDefinition.run(title, roleKey);
@@ -3268,21 +3856,23 @@ app.get("/api/committee-roles", (req, res) => {
   res.json({
     success: true,
     roles: listCommitteeRoles.all().map(buildCommitteeRole),
-    members:
-      actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)
-        ? listAllUsers.all().map((user) => ({
-            username: user.username,
-            fullName: `${user.first_name} ${user.surname}`,
-            userType: user.user_type,
-          }))
-        : [],
+    members: actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)
+      ? listAllUsers.all().map((user) => ({
+          username: user.username,
+          fullName: `${user.first_name} ${user.surname}`,
+          userType: user.user_type,
+        }))
+      : [],
   });
 });
 
 app.put("/api/committee-roles/:id", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)) {
+  if (
+    !actor ||
+    !actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)
+  ) {
     res.status(403).json({
       success: false,
       message: "You do not have permission to update committee roles.",
@@ -3344,7 +3934,10 @@ app.get("/api/user-profiles/:username", (req, res) => {
       sensitivity: "accent",
     }) === 0;
 
-  const canManageMembers = actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS);
+  const canManageMembers = actorHasPermission(
+    actor,
+    PERMISSIONS.MANAGE_MEMBERS,
+  );
 
   if (!isSelf && !canManageMembers) {
     res.status(403).json({
@@ -3462,7 +4055,10 @@ app.put("/api/user-profiles/:username", (req, res) => {
       sensitivity: "accent",
     }) === 0;
 
-  const canManageMembers = actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS);
+  const canManageMembers = actorHasPermission(
+    actor,
+    PERMISSIONS.MANAGE_MEMBERS,
+  );
 
   if (!isSelf && !canManageMembers) {
     res.status(403).json({
@@ -3490,18 +4086,76 @@ app.put("/api/user-profiles/:username", (req, res) => {
     surname,
     password,
     rfidTag,
-    activeMember:
-      canManageMembers ? activeMember : existingUser.active_member,
-    membershipFeesDue:
-      canManageMembers
-        ? membershipFeesDue
-        : existingUser.membership_fees_due,
+    activeMember: canManageMembers ? activeMember : existingUser.active_member,
+    membershipFeesDue: canManageMembers
+      ? membershipFeesDue
+      : existingUser.membership_fees_due,
     userType: canManageMembers ? userType : existingUser.user_type,
     disciplines,
-    loanBow:
-      canManageMembers
-        ? loanBow
-        : buildLoanBowRecord(findLoanBowByUsername.get(existingUser.username)),
+    loanBow: canManageMembers
+      ? loanBow
+      : buildLoanBowRecord(findLoanBowByUsername.get(existingUser.username)),
+    existingUser,
+  });
+
+  if (!result.success) {
+    res.status(result.status).json(result);
+    return;
+  }
+
+  res.json({
+    success: true,
+    ...result,
+  });
+});
+
+app.post("/api/user-profiles/:username/assign-rfid", (req, res) => {
+  const actor = getActorUser(req);
+  const requestedUsername = req.params.username;
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to issue member cards.",
+    });
+    return;
+  }
+
+  const existingUser = findUserByUsername.get(requestedUsername);
+  const rfidTag =
+    typeof req.body?.rfidTag === "string" ? req.body.rfidTag.trim() : "";
+
+  if (!existingUser) {
+    res.status(404).json({
+      success: false,
+      message: "Member profile not found.",
+    });
+    return;
+  }
+
+  if (!rfidTag) {
+    res.status(400).json({
+      success: false,
+      message: "An RFID tag is required to issue a member card.",
+    });
+    return;
+  }
+
+  const disciplines = findDisciplinesByUsername
+    .all(existingUser.username)
+    .map((discipline) => discipline.discipline);
+  const loanBow = buildLoanBowRecord(findLoanBowByUsername.get(existingUser.username));
+  const result = saveMemberProfile({
+    username: existingUser.username,
+    firstName: existingUser.first_name,
+    surname: existingUser.surname,
+    password: existingUser.password,
+    rfidTag,
+    activeMember: existingUser.active_member,
+    membershipFeesDue: existingUser.membership_fees_due,
+    userType: existingUser.user_type,
+    disciplines,
+    loanBow,
     existingUser,
   });
 
@@ -3539,7 +4193,12 @@ app.get("/api/loan-bow-options", (req, res) => {
     success: true,
     members: listAllUsers
       .all()
-      .filter((user) => !getPermissionsForRole(user.user_type).includes(PERMISSIONS.MANAGE_MEMBERS))
+      .filter(
+        (user) =>
+          !getPermissionsForRole(user.user_type).includes(
+            PERMISSIONS.MANAGE_MEMBERS,
+          ),
+      )
       .map((user) => ({
         username: user.username,
         fullName: `${user.first_name} ${user.surname}`,
@@ -3664,7 +4323,9 @@ app.post("/api/loan-bow-profiles/:username/return", (req, res) => {
     return;
   }
 
-  const existingLoanBow = buildLoanBowRecord(findLoanBowByUsername.get(user.username));
+  const existingLoanBow = buildLoanBowRecord(
+    findLoanBowByUsername.get(user.username),
+  );
   const returnResult = sanitizeLoanBowReturn(
     existingLoanBow,
     req.body?.loanBowReturn,
@@ -3730,21 +4391,25 @@ app.get("/api/events", (req, res) => {
     success: true,
     events: [...recurringClosures, ...persistedEvents].sort((left, right) => {
       const byDate = left.date.localeCompare(right.date);
-      return byDate !== 0 ? byDate : left.startTime.localeCompare(right.startTime);
+      return byDate !== 0
+        ? byDate
+        : left.startTime.localeCompare(right.startTime);
     }),
   });
 });
 
 app.get("/api/tournaments", (req, res) => {
   const actor = getActorUser(req);
-  const tournaments = listTournaments.all().map((tournament) =>
-    buildTournament(
-      tournament,
-      listTournamentRegistrationsByTournamentId.all(tournament.id),
-      listTournamentScoresByTournamentId.all(tournament.id),
-      actor?.username ?? null,
-    ),
-  );
+  const tournaments = listTournaments
+    .all()
+    .map((tournament) =>
+      buildTournament(
+        tournament,
+        listTournamentRegistrationsByTournamentId.all(tournament.id),
+        listTournamentScoresByTournamentId.all(tournament.id),
+        actor?.username ?? null,
+      ),
+    );
 
   res.json({
     success: true,
@@ -3777,7 +4442,9 @@ app.post("/api/tournaments", (req, res) => {
 
   if (
     !trimmedName ||
-    !TOURNAMENT_TYPE_OPTIONS.some((option) => option.value === tournamentType) ||
+    !TOURNAMENT_TYPE_OPTIONS.some(
+      (option) => option.value === tournamentType,
+    ) ||
     !registrationStartDate ||
     !registrationEndDate ||
     !scoreSubmissionStartDate ||
@@ -3785,7 +4452,8 @@ app.post("/api/tournaments", (req, res) => {
   ) {
     res.status(400).json({
       success: false,
-      message: "Name, tournament type, registration window, and score window are required.",
+      message:
+        "Name, tournament type, registration window, and score window are required.",
     });
     return;
   }
@@ -3804,7 +4472,8 @@ app.post("/api/tournaments", (req, res) => {
   if (registrationEndDate > scoreSubmissionEndDate) {
     res.status(400).json({
       success: false,
-      message: "The registration window must finish on or before the score window end date.",
+      message:
+        "The registration window must finish on or before the score window end date.",
     });
     return;
   }
@@ -3861,7 +4530,9 @@ app.put("/api/tournaments/:id", (req, res) => {
 
   if (
     !trimmedName ||
-    !TOURNAMENT_TYPE_OPTIONS.some((option) => option.value === tournamentType) ||
+    !TOURNAMENT_TYPE_OPTIONS.some(
+      (option) => option.value === tournamentType,
+    ) ||
     !registrationStartDate ||
     !registrationEndDate ||
     !scoreSubmissionStartDate ||
@@ -3869,7 +4540,8 @@ app.put("/api/tournaments/:id", (req, res) => {
   ) {
     res.status(400).json({
       success: false,
-      message: "Name, tournament type, registration window, and score window are required.",
+      message:
+        "Name, tournament type, registration window, and score window are required.",
     });
     return;
   }
@@ -3888,7 +4560,8 @@ app.put("/api/tournaments/:id", (req, res) => {
   if (registrationEndDate > scoreSubmissionEndDate) {
     res.status(400).json({
       success: false,
-      message: "The registration window must finish on or before the score window end date.",
+      message:
+        "The registration window must finish on or before the score window end date.",
     });
     return;
   }
@@ -4057,7 +4730,10 @@ app.delete("/api/tournaments/:id/register", (req, res) => {
     return;
   }
 
-  const deleteResult = deleteTournamentRegistration.run(tournament.id, actor.username);
+  const deleteResult = deleteTournamentRegistration.run(
+    tournament.id,
+    actor.username,
+  );
 
   if (deleteResult.changes === 0) {
     res.status(404).json({
@@ -4155,6 +4831,76 @@ app.post("/api/tournaments/:id/score", (req, res) => {
   });
 });
 
+app.post("/api/tournaments/:id/competitors-export", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to export tournament competitors.",
+    });
+    return;
+  }
+
+  const tournament = findTournamentById.get(req.params.id);
+
+  if (!tournament) {
+    res.status(404).json({
+      success: false,
+      message: "Tournament not found.",
+    });
+    return;
+  }
+
+  const registrations = listTournamentRegistrationsByTournamentId.all(
+    tournament.id,
+  );
+  const builtTournament = buildTournament(
+    tournament,
+    registrations,
+    listTournamentScoresByTournamentId.all(tournament.id),
+    actor.username,
+  );
+
+  const lines = [
+    `Tournament: ${builtTournament.name}`,
+    `Type: ${builtTournament.typeLabel}`,
+    `Registration window: ${builtTournament.registrationWindow.startDate} to ${builtTournament.registrationWindow.endDate}`,
+    `Score window: ${builtTournament.scoreWindow.startDate} to ${builtTournament.scoreWindow.endDate}`,
+    `Registered competitors: ${builtTournament.registrationCount}`,
+    "",
+    "Competing members:",
+    ...(builtTournament.registrations.length > 0
+      ? builtTournament.registrations.map(
+          (registration, index) => `${index + 1}. ${registration.fullName}`,
+        )
+      : ["No registered competitors."]),
+    "",
+    `Exported at: ${new Date().toISOString()}`,
+    `Exported by: ${actor.first_name} ${actor.surname} (${actor.username})`,
+  ];
+
+  const fileName = [
+    sanitizeFileNameSegment(builtTournament.name, "tournament"),
+    "competitors",
+    toUtcDateString(new Date()),
+  ].join("-");
+  const filePath = path.join(exportsDirectory, `${fileName}.txt`);
+
+  writeFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
+
+  res.json({
+    success: true,
+    filePath,
+    fileName: `${fileName}.txt`,
+    tournament: {
+      id: builtTournament.id,
+      name: builtTournament.name,
+      registrationCount: builtTournament.registrationCount,
+    },
+  });
+});
+
 app.post("/api/events", (req, res) => {
   const actor = getActorUser(req);
   const { date, startTime, endTime, title, type } = req.body ?? {};
@@ -4179,7 +4925,8 @@ app.post("/api/events", (req, res) => {
   if (!date || !startTime || !endTime || !trimmedTitle || !type) {
     res.status(400).json({
       success: false,
-      message: "Date, start time, end time, title, and event type are required.",
+      message:
+        "Date, start time, end time, title, and event type are required.",
     });
     return;
   }
@@ -4210,7 +4957,9 @@ app.post("/api/events", (req, res) => {
     type,
     ...getUtcTimestampParts(),
   );
-  const event = listClubEvents.all().find((entry) => entry.id === insertResult.lastInsertRowid);
+  const event = listClubEvents
+    .all()
+    .find((entry) => entry.id === insertResult.lastInsertRowid);
 
   res.status(201).json({
     success: true,
@@ -4248,11 +4997,7 @@ app.post("/api/events/:id/book", (req, res) => {
   }
 
   try {
-    insertEventBooking.run(
-      event.id,
-      actor.username,
-      ...getUtcTimestampParts(),
-    );
+    insertEventBooking.run(event.id, actor.username, ...getUtcTimestampParts());
   } catch (error) {
     if (
       error?.message?.includes(
@@ -4351,7 +5096,10 @@ app.get("/api/coaching-sessions", (req, res) => {
 app.post("/api/coaching-sessions", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_COACHING_SESSIONS)) {
+  if (
+    !actor ||
+    !actorHasPermission(actor, PERMISSIONS.MANAGE_COACHING_SESSIONS)
+  ) {
     res.status(403).json({
       success: false,
       message: "You do not have permission to add coaching sessions.",
@@ -4359,16 +5107,26 @@ app.post("/api/coaching-sessions", (req, res) => {
     return;
   }
 
-  const { date, startTime, endTime, availableSlots, topic, summary, venue } = req.body ?? {};
+  const { date, startTime, endTime, availableSlots, topic, summary, venue } =
+    req.body ?? {};
   const trimmedTopic = topic?.trim();
   const trimmedSummary = summary?.trim();
-  const normalizedVenue = venue === "outdoor" ? "outdoor" : venue === "indoor" ? "indoor" : null;
+  const normalizedVenue =
+    venue === "outdoor" ? "outdoor" : venue === "indoor" ? "indoor" : null;
   const normalizedAvailableSlots = Number.parseInt(availableSlots, 10);
 
-  if (!date || !startTime || !endTime || !trimmedTopic || !trimmedSummary || !normalizedVenue) {
+  if (
+    !date ||
+    !startTime ||
+    !endTime ||
+    !trimmedTopic ||
+    !trimmedSummary ||
+    !normalizedVenue
+  ) {
     res.status(400).json({
       success: false,
-      message: "Date, start time, end time, topic, summary, and venue are required.",
+      message:
+        "Date, start time, end time, topic, summary, and venue are required.",
     });
     return;
   }
@@ -4381,7 +5139,10 @@ app.post("/api/coaching-sessions", (req, res) => {
     return;
   }
 
-  if (!Number.isInteger(normalizedAvailableSlots) || normalizedAvailableSlots < 1) {
+  if (
+    !Number.isInteger(normalizedAvailableSlots) ||
+    normalizedAvailableSlots < 1
+  ) {
     res.status(400).json({
       success: false,
       message: "Available slots must be at least 1.",
@@ -4475,11 +5236,13 @@ app.post("/api/coaching-sessions/:id/book", (req, res) => {
     return;
   }
 
-  const bookings = listBookingsByCoachingSessionId.all(session.id).map((booking) => ({
-    username: booking.member_username,
-    fullName: `${booking.first_name} ${booking.surname}`,
-    bookedAt: booking.booked_at,
-  }));
+  const bookings = listBookingsByCoachingSessionId
+    .all(session.id)
+    .map((booking) => ({
+      username: booking.member_username,
+      fullName: `${booking.first_name} ${booking.surname}`,
+      bookedAt: booking.booked_at,
+    }));
 
   res.json({
     success: true,
@@ -4508,7 +5271,10 @@ app.delete("/api/coaching-sessions/:id/booking", (req, res) => {
     return;
   }
 
-  const deleteResult = deleteCoachingSessionBooking.run(session.id, actor.username);
+  const deleteResult = deleteCoachingSessionBooking.run(
+    session.id,
+    actor.username,
+  );
 
   if (deleteResult.changes === 0) {
     res.status(404).json({
@@ -4518,11 +5284,13 @@ app.delete("/api/coaching-sessions/:id/booking", (req, res) => {
     return;
   }
 
-  const bookings = listBookingsByCoachingSessionId.all(session.id).map((booking) => ({
-    username: booking.member_username,
-    fullName: `${booking.first_name} ${booking.surname}`,
-    bookedAt: booking.booked_at,
-  }));
+  const bookings = listBookingsByCoachingSessionId
+    .all(session.id)
+    .map((booking) => ({
+      username: booking.member_username,
+      fullName: `${booking.first_name} ${booking.surname}`,
+      bookedAt: booking.booked_at,
+    }));
 
   res.json({
     success: true,
@@ -4533,7 +5301,10 @@ app.delete("/api/coaching-sessions/:id/booking", (req, res) => {
 app.delete("/api/coaching-sessions/:id", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_COACHING_SESSIONS)) {
+  if (
+    !actor ||
+    !actorHasPermission(actor, PERMISSIONS.MANAGE_COACHING_SESSIONS)
+  ) {
     res.status(403).json({
       success: false,
       message: "You do not have permission to cancel coaching sessions.",
@@ -4611,7 +5382,8 @@ app.get("/api/my-event-bookings", (req, res) => {
       id: `event-${booking.id}`,
       date: booking.event_date,
       title: booking.title,
-      summary: booking.type === "competition" ? "Competition event" : "Social event",
+      summary:
+        booking.type === "competition" ? "Competition event" : "Social event",
       startTime: booking.start_time,
       endTime: booking.end_time,
       type: booking.type,
@@ -4744,6 +5516,7 @@ app.get("/api/range-members", (_req, res) => {
 });
 
 app.get("/api/range-usage-dashboard", (req, res) => {
+  const actor = getActorUser(req);
   const now = new Date();
   const currentMonthStart = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
@@ -4806,12 +5579,43 @@ app.get("/api/range-usage-dashboard", (req, res) => {
     filteredStart,
     filteredEndExclusive,
   );
+  const myCurrentMonth = actor
+    ? buildPersonalUsageWindow(
+        actor.username,
+        `${toUtcDateString(currentMonthStart)} to ${toUtcDateString(
+          addUtcDays(nextMonthStart, -1),
+        )}`,
+        currentMonthStart,
+        nextMonthStart,
+      )
+    : null;
+  const myCurrentWeek = actor
+    ? buildPersonalUsageWindow(
+        actor.username,
+        `${toUtcDateString(currentWeekStart)} to ${toUtcDateString(
+          addUtcDays(nextWeekStart, -1),
+        )}`,
+        currentWeekStart,
+        nextWeekStart,
+      )
+    : null;
+  const myFilteredRange = actor
+    ? buildPersonalUsageWindow(
+        actor.username,
+        `${toUtcDateString(filteredStart)} to ${toUtcDateString(filteredEndDay)}`,
+        filteredStart,
+        filteredEndExclusive,
+      )
+    : null;
 
   res.json({
     success: true,
     currentMonth,
     currentWeek,
     filteredRange,
+    myCurrentMonth,
+    myCurrentWeek,
+    myFilteredRange,
   });
 });
 
@@ -4822,6 +5626,8 @@ if (existsSync(distDirectory)) {
     res.sendFile(path.join(distDirectory, "index.html"));
   });
 }
+
+startRfidReaderMonitor();
 
 app.listen(PORT, () => {
   console.log(`App and auth server listening on http://localhost:${PORT}`);

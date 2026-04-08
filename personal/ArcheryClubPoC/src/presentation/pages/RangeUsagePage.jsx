@@ -38,7 +38,7 @@ function normalizeUsageWindow(windowData, fallbackLabel = "") {
   const label =
     startDate && endDate
       ? formatDateRangeLabel(startDate, endDate)
-      : windowData.label ?? fallbackLabel;
+      : (windowData.label ?? fallbackLabel);
 
   return {
     label,
@@ -64,7 +64,7 @@ function normalizeUsageWindow(windowData, fallbackLabel = "") {
     monthDaily: Array.isArray(windowData.monthDaily)
       ? windowData.monthDaily.map((row) => ({
           ...row,
-          fullLabel: formatDate(row.usageDate),
+          fullLabel: row.fullLabel ?? `Day ${row.label}`,
         }))
       : [],
   };
@@ -102,16 +102,124 @@ function HourlyUsageGraph({ rows }) {
 }
 
 function WeekdayUsageGraph({ rows }) {
-  return <UsageGraph rows={rows} keyField="dayOfWeek" className="usage-graph-week" />;
+  return (
+    <UsageGraph rows={rows} keyField="dayOfWeek" className="usage-graph-week" />
+  );
 }
 
 function DailyUsageGraph({ rows }) {
-  return <UsageGraph rows={rows} keyField="usageDate" className="usage-graph-date" />;
+  return (
+    <UsageGraph rows={rows} keyField="usageDate" className="usage-graph-date" />
+  );
+}
+
+function PersonalUsageGraph({ rows, keyField, className = "" }) {
+  if (!rows.length) {
+    return (
+      <p className="usage-empty-state">
+        No personal range usage data for this period.
+      </p>
+    );
+  }
+
+  const maxValue = Math.max(
+    ...rows.map((row) => row.members ?? row.total ?? 0),
+    1,
+  );
+  const graphClassName = ["usage-graph", className].filter(Boolean).join(" ");
+
+  return (
+    <div className={graphClassName}>
+      {rows.map((row) => {
+        const value = row.members ?? row.total ?? 0;
+
+        return (
+          <div key={row[keyField]} className="usage-graph-column">
+            <span className="usage-graph-total usage-graph-total-members">
+              {value}
+            </span>
+            <div className="usage-graph-track">
+              <div
+                className="usage-graph-stack"
+                style={{ height: `${(value / maxValue) * 100}%` }}
+                title={`${row.fullLabel ?? row.label}: ${value} member visits`}
+              >
+                <div
+                  className="usage-graph-segment usage-graph-members"
+                  style={{ height: "100%" }}
+                />
+              </div>
+            </div>
+            <span className="usage-graph-label">{row.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function UsageGraphLegend() {
+  return (
+    <div className="usage-graph-legend">
+      <span className="usage-legend-item">
+        <span className="usage-legend-swatch usage-graph-members" />
+        Members
+      </span>
+      <span className="usage-legend-item">
+        <span className="usage-legend-swatch usage-graph-guests" />
+        Guests
+      </span>
+    </div>
+  );
+}
+
+function aggregateMonthDayRows(rows) {
+  const aggregatedRows = Array.from({ length: 31 }, (_, index) => ({
+    usageDate: `day-${index + 1}`,
+    label: String(index + 1),
+    fullLabel: `Day ${index + 1}`,
+    members: 0,
+    guests: 0,
+    total: 0,
+  }));
+
+  for (const row of rows) {
+    const usageDate = typeof row.usageDate === "string" ? row.usageDate : "";
+    const dayOfMonth = Number.parseInt(usageDate.slice(-2), 10);
+
+    if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) {
+      continue;
+    }
+
+    const aggregateRow = aggregatedRows[dayOfMonth - 1];
+    aggregateRow.members += row.members ?? 0;
+    aggregateRow.guests += row.guests ?? 0;
+    aggregateRow.total += row.total ?? 0;
+  }
+
+  return aggregatedRows;
+}
+
+function getSelectedRangeLengthInDays(data) {
+  if (!data?.startDate || !data?.endDate) {
+    return 0;
+  }
+
+  const start = new Date(`${data.startDate}T00:00:00Z`);
+  const end = new Date(`${data.endDate}T00:00:00Z`);
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return 0;
+  }
+
+  return Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
 }
 
 function UsageGraph({ rows, keyField, className = "" }) {
   if (!rows.length) {
-    return <p className="usage-empty-state">No range usage data for this period.</p>;
+    return (
+      <p className="usage-empty-state">No range usage data for this period.</p>
+    );
   }
 
   const maxTotal = Math.max(...rows.map((row) => row.total), 1);
@@ -153,7 +261,7 @@ function UsageGraph({ rows, keyField, className = "" }) {
   );
 }
 
-export function RangeUsagePage() {
+export function RangeUsagePage({ currentUserProfile }) {
   const [startDate, setStartDate] = useState(getTodayString());
   const [endDate, setEndDate] = useState(getTodayString());
   const [activeView, setActiveView] = useState("filteredRange");
@@ -171,6 +279,11 @@ export function RangeUsagePage() {
         });
         const response = await fetch(
           `/api/range-usage-dashboard?${params.toString()}`,
+          {
+            headers: {
+              "x-actor-username": currentUserProfile?.auth?.username ?? "",
+            },
+          },
         );
         const result = await response.json();
 
@@ -182,11 +295,33 @@ export function RangeUsagePage() {
         }
 
         if (isMounted) {
+          const normalizedCurrentMonth = normalizeUsageWindow(
+            result.currentMonth,
+            "Current month",
+          );
+          const normalizedCurrentWeek = normalizeUsageWindow(
+            result.currentWeek,
+            "Current week",
+          );
+          const normalizedFilteredRange = normalizeUsageWindow(
+            result.filteredRange,
+            formatDateRangeLabel(startDate, endDate),
+          );
+
           setDashboard({
-            currentMonth: normalizeUsageWindow(result.currentMonth, "Current month"),
-            currentWeek: normalizeUsageWindow(result.currentWeek, "Current week"),
-            filteredRange: normalizeUsageWindow(
-              result.filteredRange,
+            currentMonth: normalizedCurrentMonth,
+            currentWeek: normalizedCurrentWeek,
+            filteredRange: normalizedFilteredRange,
+            myCurrentMonth: normalizeUsageWindow(
+              result.myCurrentMonth ?? result.currentMonth,
+              "Current month",
+            ),
+            myCurrentWeek: normalizeUsageWindow(
+              result.myCurrentWeek ?? result.currentWeek,
+              "Current week",
+            ),
+            myFilteredRange: normalizeUsageWindow(
+              result.myFilteredRange ?? result.filteredRange,
               formatDateRangeLabel(startDate, endDate),
             ),
           });
@@ -204,19 +339,66 @@ export function RangeUsagePage() {
     return () => {
       isMounted = false;
     };
-  }, [startDate, endDate]);
+  }, [currentUserProfile?.auth?.username, startDate, endDate]);
 
   const activeData = dashboard
     ? normalizeUsageWindow(dashboard[activeView])
     : null;
+  const activePersonalData = dashboard
+    ? normalizeUsageWindow(
+        dashboard[
+          activeView === "currentMonth"
+            ? "myCurrentMonth"
+            : activeView === "currentWeek"
+              ? "myCurrentWeek"
+              : "myFilteredRange"
+        ],
+      )
+    : null;
+  const aggregatedMonthRows = activeData
+    ? aggregateMonthDayRows(activeData.daily)
+    : [];
+  const aggregatedPersonalMonthRows = activePersonalData
+    ? aggregateMonthDayRows(activePersonalData.daily)
+    : [];
+  const selectedRangeLengthInDays =
+    getSelectedRangeLengthInDays(activePersonalData);
+  const myRangeGraphConfig =
+    activeView === "currentMonth"
+      ? {
+          rows: aggregatedPersonalMonthRows,
+          keyField: "usageDate",
+          className: "usage-graph-date",
+          subtitle: activePersonalData?.label,
+        }
+      : activeView === "currentWeek"
+        ? {
+            rows: activePersonalData?.weekday ?? [],
+            keyField: "dayOfWeek",
+            className: "usage-graph-week",
+            subtitle: activePersonalData?.label,
+          }
+        : selectedRangeLengthInDays <= 14
+          ? {
+              rows: activePersonalData?.daily ?? [],
+              keyField: "usageDate",
+              className: "usage-graph-date",
+              subtitle: `${activePersonalData?.label} by day`,
+            }
+          : {
+              rows: aggregatedPersonalMonthRows,
+              keyField: "usageDate",
+              className: "usage-graph-date",
+              subtitle: `${activePersonalData?.label} aggregated by day of month`,
+            };
 
   return (
     <div className="range-usage-dashboard">
-      <p>Range usage dashboard for members and guests.</p>
+      <p className="range-usage-title">Range Usage Dashboard</p>
 
-      <form className="usage-filter-form">
+      <form className="usage-filter-form usage-filter-panel">
         <label>
-          Start date
+          From
           <input
             type="date"
             value={startDate}
@@ -226,7 +408,7 @@ export function RangeUsagePage() {
         </label>
 
         <label>
-          End date
+          To
           <input
             type="date"
             value={endDate}
@@ -264,19 +446,25 @@ export function RangeUsagePage() {
 
           <section className="usage-hourly-panel">
             <div className="usage-hourly-header">
+              <h3>My Range Usage</h3>
+              <p>{myRangeGraphConfig?.subtitle}</p>
+            </div>
+            {activePersonalData ? (
+              <PersonalUsageGraph
+                key={`personal-${activeView}-${activePersonalData.startDate}-${activePersonalData.endDate}`}
+                rows={myRangeGraphConfig.rows}
+                keyField={myRangeGraphConfig.keyField}
+                className={myRangeGraphConfig.className}
+              />
+            ) : null}
+          </section>
+
+          <section className="usage-hourly-panel">
+            <div className="usage-hourly-header">
               <h3>Usage By Hour Of Day</h3>
               <p>{activeData?.label}</p>
             </div>
-            <div className="usage-graph-legend">
-              <span className="usage-legend-item">
-                <span className="usage-legend-swatch usage-graph-members" />
-                Members
-              </span>
-              <span className="usage-legend-item">
-                <span className="usage-legend-swatch usage-graph-guests" />
-                Guests
-              </span>
-            </div>
+            <UsageGraphLegend />
             {activeData ? (
               <HourlyUsageGraph
                 key={`${activeView}-${activeData.startDate}-${activeData.endDate}`}
@@ -290,6 +478,7 @@ export function RangeUsagePage() {
               <h3>Usage By Day Of Week</h3>
               <p>Monday to Sunday for {activeData?.label}</p>
             </div>
+            <UsageGraphLegend />
             {activeData ? (
               <WeekdayUsageGraph
                 key={`weekday-${activeView}-${activeData.startDate}-${activeData.endDate}`}
@@ -301,12 +490,16 @@ export function RangeUsagePage() {
           <section className="usage-hourly-panel">
             <div className="usage-hourly-header">
               <h3>Usage By Date In Month</h3>
-              <p>Fixed calendar dates from the 1st to the last day of the month</p>
+              <p>
+                Fixed day-of-month view from 1 to 31, aggregated across{" "}
+                {activeData?.label}
+              </p>
             </div>
+            <UsageGraphLegend />
             {activeData ? (
               <DailyUsageGraph
                 key={`daily-${activeView}-${activeData.startDate}-${activeData.endDate}`}
-                rows={activeData.monthDaily}
+                rows={aggregatedMonthRows}
               />
             ) : null}
           </section>

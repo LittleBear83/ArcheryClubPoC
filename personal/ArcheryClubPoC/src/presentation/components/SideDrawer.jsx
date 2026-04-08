@@ -5,6 +5,31 @@ import { hasPermission } from "../../utils/userProfile";
 const pages = [
   { id: "home", label: "Home", path: "/" },
   { id: "profile", label: "Profile", path: "/profile" },
+  { id: "range-usage", label: "Range Usage", path: "/range-usage" },
+  {
+    id: "event-calendar",
+    label: "Event and Competition",
+    path: "/event-calendar",
+  },
+  {
+    id: "tournaments",
+    label: "Tournaments",
+    path: "/tournaments",
+  },
+  {
+    id: "coaching-calendar",
+    label: "Coaching",
+    path: "/coaching-calendar",
+  },
+  { id: "feedback-form", label: "Feedback Form", path: "/feedback-form" },
+  { id: "ideas-form", label: "Ideas Form", path: "/ideas-form" },
+  { id: "lost-and-found", label: "Lost and Found", path: "/lost-and-found" },
+  {
+    id: "committee-org-chart",
+    label: "The Committee",
+    path: "/committee-org-chart",
+  },
+  { id: "general-info", label: "General Information", path: "/general-info" },
   {
     id: "user-creation",
     label: "User Creation",
@@ -24,36 +49,11 @@ const pages = [
     permission: "manage_loan_bows",
   },
   {
-    id: "event-calendar",
-    label: "Event/Competition Calendar",
-    path: "/event-calendar",
-  },
-  { id: "range-usage", label: "Range Usage", path: "/range-usage" },
-  { id: "feedback-form", label: "Feedback Form", path: "/feedback-form" },
-  { id: "ideas-form", label: "Ideas Form", path: "/ideas-form" },
-  {
-    id: "coaching-calendar",
-    label: "Coaching Calendar",
-    path: "/coaching-calendar",
-  },
-  {
-    id: "tournaments",
-    label: "Tournaments",
-    path: "/tournaments",
-  },
-  {
     id: "tournament-setup",
     label: "Tournament Setup",
     path: "/tournament-setup",
     permission: "manage_tournaments",
   },
-  {
-    id: "committee-org-chart",
-    label: "Committee Org Chart",
-    path: "/committee-org-chart",
-  },
-  { id: "general-info", label: "General Info", path: "/general-info" },
-  { id: "lost-and-found", label: "Lost and Found", path: "/lost-and-found" },
 ];
 
 export function SideDrawer({
@@ -72,6 +72,8 @@ export function SideDrawer({
   const visiblePages = pages.filter(
     (page) => !page.permission || hasPermission(currentUserProfile, page.permission),
   );
+  const memberPages = visiblePages.filter((page) => !page.permission);
+  const adminPages = visiblePages.filter((page) => page.permission);
 
   return (
     <>
@@ -100,8 +102,9 @@ export function SideDrawer({
           </div>
         </div>
         <nav>
+          <p className="drawer-section-label">General Members</p>
           <ul>
-            {visiblePages.map((page) => (
+            {memberPages.map((page) => (
               <li key={page.id}>
                 <button
                   className={page.id === selectedPage ? "active" : ""}
@@ -115,6 +118,26 @@ export function SideDrawer({
               </li>
             ))}
           </ul>
+          {adminPages.length > 0 ? (
+            <>
+              <p className="drawer-section-label">Admin Tools</p>
+              <ul>
+                {adminPages.map((page) => (
+                  <li key={page.id}>
+                    <button
+                      className={page.id === selectedPage ? "active" : ""}
+                      onClick={() => {
+                        onSelectPage(page.id);
+                        onClose();
+                      }}
+                    >
+                      {page.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
         </nav>
         <div className="drawer-footer">
           <button

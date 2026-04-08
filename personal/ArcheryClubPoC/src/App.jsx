@@ -11,8 +11,10 @@ import { normalizeUserProfile } from "./utils/userProfile";
 
 const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
+const AUTH_MESSAGE_STORAGE_KEY = "archeryclubpoc-auth-message";
 const DEFAULT_USERNAME = "Cfleetham";
 const INACTIVITY_TIMEOUT_MS = 120000;
+const RFID_SESSION_HANDOFF_IDLE_MS = 30000;
 
 const dataSource = new InMemoryMemberDataSource();
 const memberRepository = new MemberRepositoryImpl({ dataSource });
@@ -35,16 +37,23 @@ function loadStoredUserProfile() {
 
 function App() {
   const inactivityTimeoutRef = useRef(null);
+  const lastActivityAtRef = useRef(Date.now());
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return window.localStorage.getItem(AUTH_STORAGE_KEY) === "true";
   });
   const [currentUserProfile, setCurrentUserProfile] = useState(() =>
     loadStoredUserProfile(),
   );
+  const [loginMessage, setLoginMessage] = useState(() => {
+    return window.localStorage.getItem(AUTH_MESSAGE_STORAGE_KEY) ?? "";
+  });
 
   const persistAuthenticatedUser = (userProfile) => {
     const storedUserProfile = normalizeUserProfile(userProfile);
 
+    lastActivityAtRef.current = Date.now();
+    window.localStorage.removeItem(AUTH_MESSAGE_STORAGE_KEY);
+    setLoginMessage("");
     window.localStorage.setItem(AUTH_STORAGE_KEY, "true");
     window.localStorage.setItem(
       AUTH_USER_STORAGE_KEY,
@@ -90,12 +99,20 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = (message = "") => {
     if (inactivityTimeoutRef.current) {
       window.clearTimeout(inactivityTimeoutRef.current);
       inactivityTimeoutRef.current = null;
     }
 
+    lastActivityAtRef.current = Date.now();
+    if (message) {
+      window.localStorage.setItem(AUTH_MESSAGE_STORAGE_KEY, message);
+      setLoginMessage(message);
+    } else {
+      window.localStorage.removeItem(AUTH_MESSAGE_STORAGE_KEY);
+      setLoginMessage("");
+    }
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
     window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
     setIsAuthenticated(false);
@@ -139,6 +156,7 @@ function App() {
     firstName,
     surname,
     archeryGbMembershipNumber,
+    invitedByUsername,
   }) => {
     try {
       const response = await fetch("/api/auth/guest-login", {
@@ -150,6 +168,7 @@ function App() {
           firstName,
           surname,
           archeryGbMembershipNumber,
+          invitedByUsername,
         }),
       });
 
@@ -187,6 +206,8 @@ function App() {
     }
 
     const resetInactivityTimeout = () => {
+      lastActivityAtRef.current = Date.now();
+
       if (inactivityTimeoutRef.current) {
         window.clearTimeout(inactivityTimeoutRef.current);
       }
@@ -223,12 +244,68 @@ function App() {
     };
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return undefined;
+    }
+
+    let isActive = true;
+    let isHandingOff = false;
+
+    const pollForIdleSessionRfidHandoff = async () => {
+      if (!isActive || isHandingOff) {
+        return;
+      }
+
+      const idleForMs = Date.now() - lastActivityAtRef.current;
+
+      if (idleForMs < RFID_SESSION_HANDOFF_IDLE_MS) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/auth/rfid/latest-scan", {
+          cache: "no-store",
+        });
+        const result = await response.json();
+
+        if (!isActive || !response.ok || !result.success || !result.scan?.rfidTag) {
+          return;
+        }
+
+        isHandingOff = true;
+        const loginResult = await handleRfidLogin(result.scan.rfidTag);
+
+        if (!isActive) {
+          return;
+        }
+
+        if (!loginResult.success) {
+          handleLogout(loginResult.message);
+          return;
+        }
+      } catch {
+        return;
+      } finally {
+        isHandingOff = false;
+      }
+    };
+
+    const intervalId = window.setInterval(pollForIdleSessionRfidHandoff, 1500);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(intervalId);
+    };
+  }, [isAuthenticated]);
+
   if (!isAuthenticated) {
     return (
       <LoginPage
         onGuestLogin={handleGuestLogin}
         onLogin={handleLogin}
         onRfidLogin={handleRfidLogin}
+        initialMessage={loginMessage}
         seededUsername={DEFAULT_USERNAME}
       />
     );

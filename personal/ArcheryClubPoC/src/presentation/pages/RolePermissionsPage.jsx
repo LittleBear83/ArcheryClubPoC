@@ -13,6 +13,58 @@ const EMPTY_ROLE_FORM = {
   permissions: [],
 };
 
+const PERMISSION_GROUP_ORDER = [
+  "member-setup",
+  "events-coaching",
+  "competitions-activity",
+  "equipment-committee",
+  "system-admin",
+];
+
+const PERMISSION_GROUP_METADATA = {
+  "member-setup": {
+    title: "Member Setup",
+    description: "Member records, user creation, profile structure, and role assignment.",
+  },
+  "events-coaching": {
+    title: "Events and Coaching",
+    description: "Create and approve events, competitions, and coaching sessions.",
+  },
+  "competitions-activity": {
+    title: "Competitions and Activity",
+    description: "Tournament setup and related activity management.",
+  },
+  "equipment-committee": {
+    title: "Equipment and Committee",
+    description: "Loan bow management and committee administration.",
+  },
+  "system-admin": {
+    title: "System Administration",
+    description: "Cross-system administration and permission governance.",
+  },
+};
+
+function getPermissionGroup(permissionKey) {
+  switch (permissionKey) {
+    case "manage_members":
+      return "member-setup";
+    case "add_events":
+    case "approve_events":
+    case "add_coaching_sessions":
+    case "approve_coaching_sessions":
+      return "events-coaching";
+    case "manage_tournaments":
+      return "competitions-activity";
+    case "manage_loan_bows":
+    case "manage_committee_roles":
+      return "equipment-committee";
+    case "manage_roles_permissions":
+      return "system-admin";
+    default:
+      return "system-admin";
+  }
+}
+
 async function readJsonResponse(response, fallbackMessage) {
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -55,6 +107,26 @@ export function RolePermissionsPage({
     () => roles.find((role) => role.roleKey === selectedRoleKey) ?? null,
     [roles, selectedRoleKey],
   );
+  const groupedPermissionOptions = useMemo(() => {
+    const groupedPermissions = new Map(
+      PERMISSION_GROUP_ORDER.map((groupKey) => [groupKey, []]),
+    );
+
+    for (const permission of permissionOptions) {
+      const groupKey = getPermissionGroup(permission.key);
+      const currentGroup = groupedPermissions.get(groupKey) ?? [];
+      currentGroup.push(permission);
+      groupedPermissions.set(groupKey, currentGroup);
+    }
+
+    return PERMISSION_GROUP_ORDER
+      .map((groupKey) => ({
+        groupKey,
+        ...PERMISSION_GROUP_METADATA[groupKey],
+        permissions: groupedPermissions.get(groupKey) ?? [],
+      }))
+      .filter((group) => group.permissions.length > 0);
+  }, [permissionOptions]);
 
   const loadRoles = useCallback(async (signal) => {
     if (!canManageRoles) {
@@ -346,17 +418,30 @@ export function RolePermissionsPage({
 
             <fieldset className="profile-discipline-fieldset">
               <legend>Permissions</legend>
-              <div className="profile-discipline-grid">
-                {permissionOptions.map((permission) => (
-                  <label key={permission.key} className="profile-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={form.permissions.includes(permission.key)}
-                      onChange={() => togglePermission(permission.key)}
-                      disabled={isSaving}
-                    />
-                    <span>{permission.label}</span>
-                  </label>
+              <div className="role-permissions-group-grid">
+                {groupedPermissionOptions.map((group) => (
+                  <section
+                    key={group.groupKey}
+                    className="role-permissions-group-card"
+                  >
+                    <h4>{group.title}</h4>
+                    <p className="role-permissions-group-copy">
+                      {group.description}
+                    </p>
+                    <div className="role-permissions-checkbox-list">
+                      {group.permissions.map((permission) => (
+                        <label key={permission.key} className="profile-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={form.permissions.includes(permission.key)}
+                            onChange={() => togglePermission(permission.key)}
+                            disabled={isSaving}
+                          />
+                          <span>{permission.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
             </fieldset>

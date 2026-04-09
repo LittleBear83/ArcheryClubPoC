@@ -3,12 +3,46 @@ import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
+import { useVisiblePolling } from "../state/useVisiblePolling";
+
+function getTodayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function hasEventEnded(event) {
+  if (!event?.date || !event?.endTime) {
+    return false;
+  }
+
+  const normalizedEndTime = /^\d{2}:\d{2}$/.test(event.endTime)
+    ? `${event.endTime}:00`
+    : event.endTime;
+  const eventEnd = new Date(`${event.date}T${normalizedEndTime}`);
+
+  if (Number.isNaN(eventEnd.getTime())) {
+    return false;
+  }
+
+  return eventEnd.getTime() <= Date.now();
+}
 
 const EVENT_TYPE_OPTIONS = [
   { value: "competition", label: "Competition", className: "event-type-competition" },
   { value: "social", label: "Social event", className: "event-type-social" },
   { value: "range-closed", label: "Range closed", className: "event-type-range-closed" },
 ];
+const VENUE_OPTIONS = [
+  { value: "indoor", label: "Indoor" },
+  { value: "outdoor", label: "Outdoor" },
+  { value: "both", label: "Indoor and outdoor" },
+];
+
+function getVenueLabel(venue) {
+  return (
+    VENUE_OPTIONS.find((option) => option.value === venue)?.label ??
+    "Indoor and outdoor"
+  );
+}
 export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -21,16 +55,18 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
   const [newEventStartTime, setNewEventStartTime] = useState("09:00");
   const [newEventEndTime, setNewEventEndTime] = useState("10:00");
   const [newEventType, setNewEventType] = useState("competition");
+  const [newEventVenue, setNewEventVenue] = useState("indoor");
   const [events, setEvents] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [bookingModalMode, setBookingModalMode] = useState("");
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(() => getTodayDateString());
   const [bookingMessage, setBookingMessage] = useState("");
   const [eventFormError, setEventFormError] = useState("");
   const canCreateEvents = hasPermission(
     currentUserProfile,
-    "manage_events",
+    "add_events",
   );
+  const canApproveEvents = hasPermission(currentUserProfile, "approve_events");
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const canManageBookings = Boolean(actorUsername);
 
@@ -61,19 +97,22 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
     }
   }, [actorUsername]);
 
+  useVisiblePolling(() => {
+    loadEvents(new AbortController().signal);
+  }, {
+    enabled: true,
+    intervalMs: 60000,
+  });
+
   useEffect(() => {
     const abortController = new AbortController();
     const refresh = () => loadEvents(abortController.signal);
 
-    refresh();
-
-    const intervalId = window.setInterval(refresh, 30000);
     window.addEventListener("event-data-updated", refresh);
     window.addEventListener("member-bookings-updated", refresh);
 
     return () => {
       abortController.abort();
-      window.clearInterval(intervalId);
       window.removeEventListener("event-data-updated", refresh);
       window.removeEventListener("member-bookings-updated", refresh);
     };
@@ -97,6 +136,7 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
           endTime: newEventEndTime,
           title: newEvent.trim(),
           type: newEventType,
+          venue: newEventVenue,
         }),
       });
       const result = await response.json();
@@ -121,8 +161,10 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
       setNewEventStartTime("09:00");
       setNewEventEndTime("10:00");
       setNewEventType("competition");
+      setNewEventVenue("indoor");
       setEventFormError("");
       setIsModalOpen(false);
+      setBookingMessage(result.message ?? "Event saved successfully.");
       window.dispatchEvent(new Event("event-data-updated"));
     } catch {
       setEventFormError("Unable to save event.");
@@ -140,13 +182,35 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
     [events],
   );
 
-  const selectedEvents = selectedDate ? eventsByDate[selectedDate] || [] : [];
-  const bookableSelectedEvents = selectedEvents.filter(
-    (event) => event.type !== "range-closed",
+  const selectedEvents = useMemo(
+    () => (selectedDate ? eventsByDate[selectedDate] || [] : []),
+    [eventsByDate, selectedDate],
   );
-  const bookedSelectedEvents = bookableSelectedEvents.filter((event) => event.isBookedOn);
-  const availableToBookSelectedEvents = bookableSelectedEvents.filter(
-    (event) => !event.isBookedOn,
+  const bookableSelectedEvents = useMemo(
+    () => selectedEvents.filter((event) => event.type !== "range-closed"),
+    [selectedEvents],
+  );
+  const bookedSelectedEvents = useMemo(
+    () => bookableSelectedEvents.filter((event) => event.isBookedOn),
+    [bookableSelectedEvents],
+  );
+  const availableToBookSelectedEvents = useMemo(
+    () =>
+      bookableSelectedEvents.filter(
+        (event) =>
+          event.isApproved &&
+          !event.isBookedOn &&
+          !hasEventEnded(event),
+      ),
+    [bookableSelectedEvents],
+  );
+  const pendingSelectedEvents = useMemo(
+    () => selectedEvents.filter((event) => event.isPendingApproval),
+    [selectedEvents],
+  );
+  const rejectedSelectedEvents = useMemo(
+    () => selectedEvents.filter((event) => event.isRejected),
+    [selectedEvents],
   );
 
   const handleDateSelect = (dateString) => {
@@ -164,6 +228,30 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
     setEvents((current) =>
       current.map((event) => (event.id === updatedEvent.id ? updatedEvent : event)),
     );
+  };
+
+  const approveEvent = async (event) => {
+    try {
+      const response = await fetch(`/api/events/${event.id}/approve`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-actor-username": actorUsername,
+        },
+        cache: "no-store",
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message ?? "Unable to approve this event.");
+      }
+
+      updateEventInState(result.event);
+      setBookingMessage(result.message ?? `${event.title} approved successfully.`);
+      window.dispatchEvent(new Event("event-data-updated"));
+    } catch (approvalError) {
+      setBookingMessage(approvalError.message);
+    }
   };
 
   const startBookingForEvent = async (event) => {
@@ -344,13 +432,32 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
                           {getEventTypeDetails(evt.type).label}
                         </span>{" "}
                         {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)} - {evt.title}
+                        {` (${getVenueLabel(evt.venue)})`}
                         {evt.type === "range-closed" ? " (not bookable)" : ""}
                         {evt.isBookedOn ? " (booked on)" : ""}
+                        {evt.isPendingApproval ? " (pending approval)" : ""}
+                        {evt.isRejected ? " (request rejected)" : ""}
+                        {!evt.isBookedOn && hasEventEnded(evt)
+                          ? " (event has finished)"
+                          : ""}
+                        {evt.canApprove ? " " : ""}
+                        {evt.canApprove ? (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => approveEvent(evt)}
+                          >
+                            Approve
+                          </button>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
                 </>
               )}
+              {pendingSelectedEvents.length > 0 && !canApproveEvents ? (
+                <p>Pending events cannot be booked until approved.</p>
+              ) : null}
               <button
                 type="button"
                 className="event-book-button"
@@ -359,7 +466,16 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
                 }
                 onClick={handleBookOn}
               >
-                Book on
+                {selectedEvents.some((event) => !event.isBookedOn && hasEventEnded(event))
+                  && availableToBookSelectedEvents.length === 0
+                  ? "Booking closed"
+                  : rejectedSelectedEvents.length > 0 &&
+                    availableToBookSelectedEvents.length === 0
+                    ? "Request rejected"
+                  : pendingSelectedEvents.length > 0 &&
+                    availableToBookSelectedEvents.length === 0
+                    ? "Awaiting approval"
+                  : "Book on"}
               </button>
               {canManageBookings && bookedSelectedEvents.length > 0 ? (
                 <button
@@ -445,8 +561,23 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
               ))}
             </select>
           </label>
+          <label>
+            Venue
+            <select
+              value={newEventVenue}
+              onChange={(e) => setNewEventVenue(e.target.value)}
+            >
+              {VENUE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
           {eventFormError ? <p className="event-form-error">{eventFormError}</p> : null}
-          <button type="submit">Save Event</button>
+          <button type="submit">
+            {canApproveEvents ? "Save Event" : "Submit For Approval"}
+          </button>
         </form>
       </Modal>
 

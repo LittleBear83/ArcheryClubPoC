@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Modal } from "../components/Modal";
+import { subscribeToRfidScans } from "../../utils/rfidScanHub";
 
-const SIMULATED_RFID_TAG = "RFID-CFLEETHAM-001";
+const SIMULATED_RFID_TAG = "7673CF3D";
 
 export function LoginPage({
   onGuestLogin,
@@ -24,7 +25,6 @@ export function LoginPage({
   const [memberSearchSurname, setMemberSearchSurname] = useState("");
   const [isInvitingMemberModalOpen, setIsInvitingMemberModalOpen] =
     useState(false);
-  const [lastHandledRfidSequence, setLastHandledRfidSequence] = useState(0);
   const [error, setError] = useState(initialMessage);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -50,6 +50,9 @@ export function LoginPage({
       setIsSubmitting(false);
     }
   };
+  const attemptRfidLoginEvent = useEffectEvent(async (rfidTag) => {
+    await attemptRfidLogin(rfidTag);
+  });
 
   useEffect(() => {
     setError(initialMessage);
@@ -105,64 +108,48 @@ export function LoginPage({
   useEffect(() => {
     let isActive = true;
 
-    const pollForRfidScan = async () => {
-      if (isSubmitting) {
+    return subscribeToRfidScans(async (scan) => {
+      if (!isActive || isSubmitting || !scan?.rfidTag) {
         return;
       }
 
       try {
-        const response = await fetch("/api/auth/rfid/latest-scan", {
-          cache: "no-store",
-        });
-        const result = await response.json();
-
-        if (!isActive || !response.ok || !result.success || !result.scan) {
-          return;
-        }
-
-        if (
-          result.scan.sequence <= lastHandledRfidSequence ||
-          !result.scan.rfidTag
-        ) {
-          return;
-        }
-
-        setLastHandledRfidSequence(result.scan.sequence);
-        await attemptRfidLogin(result.scan.rfidTag);
+        await attemptRfidLoginEvent(scan.rfidTag);
       } catch {
         if (isActive) {
           setIsSubmitting(false);
         }
       }
-    };
+    });
+  }, [isSubmitting]);
 
-    pollForRfidScan();
-    const intervalId = window.setInterval(pollForRfidScan, 1500);
+  const filteredAllMembers = useMemo(() => {
+    const normalizedSearch = memberSearchSurname.trim().toLowerCase();
 
-    return () => {
-      isActive = false;
-      window.clearInterval(intervalId);
-    };
-  }, [isSubmitting, lastHandledRfidSequence, onRfidLogin]);
+    if (!normalizedSearch) {
+      return [];
+    }
 
-  const filteredAllMembers = allMembers.filter((member) =>
-    memberSearchSurname.trim()
-      ? member.surname
-          .toLowerCase()
-          .includes(memberSearchSurname.trim().toLowerCase())
-      : false,
-  );
-  const selectedInvitingMember =
-    allMembers.find(
-      (member) => member.username === selectedInvitingMemberUsername,
-    ) ??
-    rangeMembers.find(
+    return allMembers.filter((member) =>
+      member.surname.toLowerCase().includes(normalizedSearch),
+    );
+  }, [allMembers, memberSearchSurname]);
+  const selectedInvitingMember = useMemo(() => {
+    return (
+      allMembers.find(
+        (member) => member.username === selectedInvitingMemberUsername,
+      ) ??
+      rangeMembers.find(
+        (member) => member.auth?.username === selectedInvitingMemberUsername,
+      ) ??
+      null
+    );
+  }, [allMembers, rangeMembers, selectedInvitingMemberUsername]);
+  const isSelectedInvitingMemberAtRange = useMemo(() => {
+    return rangeMembers.some(
       (member) => member.auth?.username === selectedInvitingMemberUsername,
-    ) ??
-    null;
-  const isSelectedInvitingMemberAtRange = rangeMembers.some(
-    (member) => member.auth?.username === selectedInvitingMemberUsername,
-  );
+    );
+  }, [rangeMembers, selectedInvitingMemberUsername]);
 
   const openInvitingMemberModal = () => {
     setMemberSearchSurname("");

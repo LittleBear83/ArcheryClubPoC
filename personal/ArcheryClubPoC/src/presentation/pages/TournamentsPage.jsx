@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
 
@@ -188,7 +188,7 @@ export function TournamentsPage({
     "manage_tournaments",
   );
 
-  const loadTournaments = async () => {
+  const loadTournaments = useCallback(async () => {
     if (!hasLoadedTournaments) {
       setIsLoading(true);
     }
@@ -249,11 +249,11 @@ export function TournamentsPage({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentUserProfile, hasLoadedTournaments]);
 
   useEffect(() => {
     loadTournaments();
-  }, [currentUserProfile?.auth?.username]);
+  }, [currentUserProfile?.auth?.username, loadTournaments]);
 
   const selectedTournament = useMemo(
     () =>

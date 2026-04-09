@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MemberProfileForm } from "../components/MemberProfileForm";
 import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
 import { Modal } from "../components/Modal";
 import { hasPermission } from "../../utils/userProfile";
+import { subscribeToRfidScans } from "../../utils/rfidScanHub";
 
 function buildHeaders(currentUserProfile) {
   return {
@@ -25,8 +26,6 @@ async function readJsonResponse(response) {
 
 export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) {
   const hasLoadedProfileRef = useRef(false);
-  const cardIssueSessionRef = useRef(0);
-  const cardIssueCloseTimeoutRef = useRef(null);
   const isIssuingCardRef = useRef(false);
   const [editableProfile, setEditableProfile] = useState(null);
   const [memberOptions, setMemberOptions] = useState([]);
@@ -54,6 +53,15 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     "manage_members",
   );
   const isGuest = currentUserProfile?.accountType === "guest";
+  const activeUsername = useMemo(() => {
+    if (isGuest) {
+      return "";
+    }
+
+    return canManageMembers
+      ? selectedUsername || currentUserProfile?.auth?.username || ""
+      : currentUserProfile?.auth?.username || "";
+  }, [canManageMembers, currentUserProfile, isGuest, selectedUsername]);
 
   useEffect(() => {
     hasLoadedProfileRef.current = false;
@@ -112,8 +120,6 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
         }
 
         setEditableProfile(result.editableProfile);
-        setRoleOptions((current) => result.userTypes ?? current);
-        setDisciplineOptions((current) => result.disciplines ?? current);
         setMessage("");
         hasLoadedProfileRef.current = true;
       } catch (loadError) {
@@ -130,132 +136,92 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     [currentUserProfile, isGuest],
   );
 
-  const loadInitialData = useCallback(
+  const loadProfileOptions = useCallback(
     async (signal) => {
-      if (isGuest) {
-        setIsInitialLoading(false);
+      if (!canManageMembers || isGuest) {
         return;
       }
-
-      const initialUsername = canManageMembers
-        ? selectedUsername || currentUserProfile?.auth?.username
-        : currentUserProfile?.auth?.username;
-
-      if (!initialUsername) {
-        setIsInitialLoading(false);
-        return;
-      }
-
-      if (hasLoadedProfileRef.current) {
-        setIsRefreshingProfile(true);
-      } else {
-        setIsInitialLoading(true);
-      }
-
-      setError("");
 
       try {
-        if (canManageMembers) {
-          const optionsResponse = await fetch("/api/profile-options", {
-            headers: buildHeaders(currentUserProfile),
-            signal,
-            cache: "no-store",
-          });
-          const optionsResult = await readJsonResponse(optionsResponse);
-
-          if (!optionsResponse.ok || !optionsResult.success) {
-            throw new Error(
-              optionsResult.message ?? "Unable to load member options.",
-            );
-          }
-
-          if (signal?.aborted) {
-            return;
-          }
-
-          setMemberOptions(optionsResult.members ?? []);
-          setRoleOptions(optionsResult.userTypes ?? []);
-          setDisciplineOptions(optionsResult.disciplines ?? []);
-        }
-
-        await loadProfile(initialUsername, {
+        const response = await fetch("/api/profile-options", {
+          headers: buildHeaders(currentUserProfile),
           signal,
-          isBackgroundRefresh: hasLoadedProfileRef.current,
+          cache: "no-store",
         });
+        const result = await readJsonResponse(response);
 
-        if (!signal?.aborted) {
-          setSelectedUsername(initialUsername);
+        if (!response.ok || !result.success) {
+          throw new Error(result.message ?? "Unable to load member options.");
         }
+
+        if (signal?.aborted) {
+          return;
+        }
+
+        setMemberOptions(result.members ?? []);
+        setRoleOptions(result.userTypes ?? []);
+        setDisciplineOptions(result.disciplines ?? []);
       } catch (loadError) {
         if (!signal?.aborted) {
           setError(loadError.message);
-          setIsInitialLoading(false);
-          setIsRefreshingProfile(false);
         }
       }
     },
-    [
-      currentUserProfile,
-      canManageMembers,
-      isGuest,
-      loadProfile,
-      selectedUsername,
-    ],
+    [canManageMembers, currentUserProfile, isGuest],
   );
 
   useEffect(() => {
+    if (!canManageMembers || isGuest) {
+      return undefined;
+    }
+
     const abortController = new AbortController();
-    const refresh = () => {
-      loadInitialData(abortController.signal);
+    const refreshOptions = () => {
+      loadProfileOptions(abortController.signal);
     };
 
-    refresh();
-    window.addEventListener("profile-data-updated", refresh);
-    window.addEventListener("loan-bow-data-updated", refresh);
+    refreshOptions();
+    window.addEventListener("profile-data-updated", refreshOptions);
 
     return () => {
       abortController.abort();
-      window.removeEventListener("profile-data-updated", refresh);
-      window.removeEventListener("loan-bow-data-updated", refresh);
+      window.removeEventListener("profile-data-updated", refreshOptions);
     };
-  }, [loadInitialData]);
+  }, [canManageMembers, isGuest, loadProfileOptions]);
 
   useEffect(() => {
-    if (!canManageMembers || isGuest || !selectedUsername) {
-      return undefined;
-    }
-
-    if (!editableProfile) {
-      return undefined;
-    }
-
-    if (editableProfile.username === selectedUsername) {
+    if (!activeUsername) {
       return undefined;
     }
 
     const abortController = new AbortController();
-    loadProfile(selectedUsername, {
-      signal: abortController.signal,
-      isBackgroundRefresh: hasLoadedProfileRef.current,
-    });
+    const refreshProfile = () => {
+      loadProfile(activeUsername, {
+        signal: abortController.signal,
+        isBackgroundRefresh: hasLoadedProfileRef.current,
+      });
+    };
+
+    refreshProfile();
+    window.addEventListener("profile-data-updated", refreshProfile);
+    window.addEventListener("loan-bow-data-updated", refreshProfile);
 
     return () => {
       abortController.abort();
+      window.removeEventListener("profile-data-updated", refreshProfile);
+      window.removeEventListener("loan-bow-data-updated", refreshProfile);
     };
-  }, [canManageMembers, editableProfile, isGuest, loadProfile, selectedUsername]);
+  }, [activeUsername, loadProfile]);
 
   useEffect(() => {
     if (!isCardModalOpen || !canManageMembers || !editableProfile?.username) {
       return undefined;
     }
 
-    cardIssueSessionRef.current += 1;
-    const sessionId = cardIssueSessionRef.current;
     let isActive = true;
-    let intervalId = null;
 
     const assignPresentedTag = async (rfidTag) => {
-      if (!rfidTag || !isActive || cardIssueSessionRef.current !== sessionId) {
+      if (!rfidTag || !isActive) {
         return;
       }
 
@@ -294,7 +260,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
           result = await readJsonResponse(response);
         }
 
-        if (!isActive || cardIssueSessionRef.current !== sessionId) {
+        if (!isActive) {
           return;
         }
 
@@ -330,87 +296,34 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
         window.dispatchEvent(new Event("profile-data-updated"));
 
       } catch (assignError) {
-        if (isActive && cardIssueSessionRef.current === sessionId) {
+        if (isActive) {
           setCardIssueError(assignError.message);
           setCardIssueSuccess("");
           setCardIssueStatus("Present a tag to try again.");
         }
       } finally {
-        if (isActive && cardIssueSessionRef.current === sessionId) {
+        if (isActive) {
           setIsIssuingCard(false);
         }
       }
     };
 
-    const pollForPresentedTag = async () => {
-      if (
-        !isActive ||
-        isIssuingCardRef.current ||
-        cardIssueSessionRef.current !== sessionId
-      ) {
+    setCardIssueError("");
+    setCardIssueStatus("Waiting for a card to be presented...");
+
+    return subscribeToRfidScans(async (scan) => {
+      if (!isActive || isIssuingCardRef.current || !scan?.rfidTag) {
         return;
       }
 
       try {
-        const response = await fetch("/api/auth/rfid/latest-scan", {
-          cache: "no-store",
-        });
-        const result = await response.json();
-
-        if (
-          !isActive ||
-          cardIssueSessionRef.current !== sessionId ||
-          !response.ok ||
-          !result.success ||
-          !result.scan?.rfidTag
-        ) {
-          return;
-        }
-
-        await assignPresentedTag(result.scan.rfidTag);
+        await assignPresentedTag(scan.rfidTag);
       } catch {
-        if (isActive && cardIssueSessionRef.current === sessionId) {
+        if (isActive) {
           setCardIssueStatus("Waiting for a card to be presented...");
         }
       }
-    };
-
-    const beginScanSession = async () => {
-      setCardIssueError("");
-      setCardIssueStatus("Waiting for a card to be presented...");
-
-      try {
-        await fetch("/api/auth/rfid/latest-scan", {
-          cache: "no-store",
-        });
-      } catch {
-        if (!isActive) {
-          return;
-        }
-      }
-
-      if (!isActive) {
-        return;
-      }
-
-      await pollForPresentedTag();
-      intervalId = window.setInterval(pollForPresentedTag, 1500);
-    };
-
-    beginScanSession();
-
-    return () => {
-      isActive = false;
-
-      if (cardIssueCloseTimeoutRef.current) {
-        window.clearTimeout(cardIssueCloseTimeoutRef.current);
-        cardIssueCloseTimeoutRef.current = null;
-      }
-
-      if (intervalId) {
-        window.clearInterval(intervalId);
-      }
-    };
+    });
   }, [
     canManageMembers,
     currentUserProfile,
@@ -421,11 +334,6 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
-    setEditableProfile((current) => ({ ...current, [field]: value }));
-  };
-
-  const handleBooleanChange = (field) => (event) => {
-    const value = event.target.checked;
     setEditableProfile((current) => ({ ...current, [field]: value }));
   };
 
@@ -587,12 +495,6 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
   };
 
   const handleCloseCardModal = () => {
-    if (cardIssueCloseTimeoutRef.current) {
-      window.clearTimeout(cardIssueCloseTimeoutRef.current);
-      cardIssueCloseTimeoutRef.current = null;
-    }
-
-    cardIssueSessionRef.current += 1;
     setIsCardModalOpen(false);
     setIsIssuingCard(false);
     setCardIssueError("");
@@ -651,7 +553,6 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
         <MemberProfileForm
           editableProfile={editableProfile}
           handleChange={handleChange}
-          handleBooleanChange={handleBooleanChange}
           handleBooleanSelectChange={handleBooleanSelectChange}
           toggleDiscipline={toggleDiscipline}
           handleLoanBowFieldChange={handleLoanBowFieldChange}

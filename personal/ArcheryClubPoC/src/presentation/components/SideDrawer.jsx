@@ -1,4 +1,5 @@
 import "./SideDrawer.css";
+import { useMemo } from "react";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { hasPermission } from "../../utils/userProfile";
 
@@ -43,6 +44,12 @@ const pages = [
     permission: "manage_roles_permissions",
   },
   {
+    id: "approvals",
+    label: "Approvals",
+    path: "/approvals",
+    permissionAny: ["approve_events", "approve_coaching_sessions"],
+  },
+  {
     id: "loan-bow-register",
     label: "Loan Bow Register",
     path: "/loan-bow-register",
@@ -69,11 +76,24 @@ export function SideDrawer({
     currentUserProfile?.auth?.username ??
     "Member";
 
-  const visiblePages = pages.filter(
-    (page) => !page.permission || hasPermission(currentUserProfile, page.permission),
+  const visiblePages = useMemo(() => {
+    return pages.filter(
+      (page) =>
+        (!page.permission || hasPermission(currentUserProfile, page.permission)) &&
+        (!page.permissionAny ||
+          page.permissionAny.some((permissionKey) =>
+            hasPermission(currentUserProfile, permissionKey),
+          )),
+    );
+  }, [currentUserProfile]);
+  const memberPages = useMemo(
+    () => visiblePages.filter((page) => !page.permission),
+    [visiblePages],
   );
-  const memberPages = visiblePages.filter((page) => !page.permission);
-  const adminPages = visiblePages.filter((page) => page.permission);
+  const adminPages = useMemo(
+    () => visiblePages.filter((page) => page.permission || page.permissionAny),
+    [visiblePages],
+  );
 
   return (
     <>

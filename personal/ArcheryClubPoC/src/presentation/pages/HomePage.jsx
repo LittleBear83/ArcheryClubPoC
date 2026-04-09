@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, Routes, Route } from "react-router-dom";
 import { SideDrawer } from "../components/SideDrawer";
 import archeryBanner from "../../assets/archery_banner.svg";
@@ -17,7 +17,9 @@ import { UserCreationPage } from "./UserCreationPage";
 import { LoanBowRegisterPage } from "./LoanBowRegisterPage";
 import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
 import { RolePermissionsPage } from "./RolePermissionsPage";
+import { ApprovalsPage } from "./ApprovalsPage";
 import { formatDate } from "../../utils/dateTime";
+import { useVisiblePolling } from "../state/useVisiblePolling";
 import {
   hasPermission,
   isSameUserProfile,
@@ -31,6 +33,7 @@ const pageTitleMap = {
   profile: "Profile",
   "user-creation": "User Creation",
   "role-permissions": "Roles & Permissions",
+  approvals: "Approvals",
   "loan-bow-register": "Loan Bow Register",
   "event-calendar": "Event/Competition Calendar",
   "range-usage": "Range Usage",
@@ -49,6 +52,7 @@ const pathToPageId = {
   "/profile": "profile",
   "/user-creation": "user-creation",
   "/role-permissions": "role-permissions",
+  "/approvals": "approvals",
   "/loan-bow-register": "loan-bow-register",
   "/event-calendar": "event-calendar",
   "/range-usage": "range-usage",
@@ -62,9 +66,8 @@ const pathToPageId = {
   "/lost-and-found": "lost-and-found",
 };
 
-const pageIdToPath = Object.entries(pathToPageId).reduce(
-  (acc, [path, id]) => ({ ...acc, [id]: path }),
-  {},
+const pageIdToPath = Object.fromEntries(
+  Object.entries(pathToPageId).map(([path, id]) => [id, path]),
 );
 
 function getMembershipReminderMessage(currentUserProfile) {
@@ -122,18 +125,22 @@ export function HomePage({
     currentUserProfile,
     "manage_tournaments",
   );
-  const membershipReminderMessage = getMembershipReminderMessage(currentUserProfile);
-
+  const membershipReminderMessage = useMemo(
+    () => getMembershipReminderMessage(currentUserProfile),
+    [currentUserProfile],
+  );
   const activePage = pathToPageId[location.pathname] || "home";
-  const membersAtRange = currentUserProfile
-    ? (() => {
-        const alreadyIncluded = members.some((member) =>
-          isSameUserProfile(currentUserProfile, member),
-        );
+  const membersAtRange = useMemo(() => {
+    if (!currentUserProfile) {
+      return members;
+    }
 
-        return alreadyIncluded ? members : [currentUserProfile, ...members];
-      })()
-    : members;
+    const alreadyIncluded = members.some((member) =>
+      isSameUserProfile(currentUserProfile, member),
+    );
+
+    return alreadyIncluded ? members : [currentUserProfile, ...members];
+  }, [currentUserProfile, members]);
 
   useEffect(() => {
     if (!currentUserProfile) {
@@ -283,28 +290,41 @@ export function HomePage({
     }
   }, [canManageTournaments, currentUserProfile]);
 
+  const refreshHomeSections = useCallback(() => {
+    const signal = new AbortController().signal;
+    loadRangeMembers(signal);
+    refreshHomeActivity(signal);
+  }, [loadRangeMembers, refreshHomeActivity]);
+
+  const refreshTournamentWarnings = useCallback(() => {
+    loadAdminTournamentWarnings(new AbortController().signal);
+  }, [loadAdminTournamentWarnings]);
+
+  useVisiblePolling(() => {
+    refreshHomeSections();
+  }, {
+    enabled: activePage === "home",
+    intervalMs: 60000,
+  });
+
+  useVisiblePolling(() => {
+    refreshTournamentWarnings();
+  }, {
+    enabled: canManageTournaments,
+    intervalMs: 60000,
+  });
+
   useEffect(() => {
-    const abortController = new AbortController();
-
-    loadRangeMembers(abortController.signal);
-    refreshHomeActivity(abortController.signal);
-    loadAdminTournamentWarnings(abortController.signal);
-
     const refreshAll = () => {
-      const signal = abortController.signal;
-      loadRangeMembers(signal);
-      refreshHomeActivity(signal);
-      loadAdminTournamentWarnings(signal);
+      refreshHomeSections();
+      refreshTournamentWarnings();
     };
-    const intervalId = window.setInterval(refreshAll, 30000);
 
     window.addEventListener("member-bookings-updated", refreshAll);
     window.addEventListener("member-session-updated", refreshAll);
     window.addEventListener("tournament-data-updated", refreshAll);
 
     return () => {
-      abortController.abort();
-      window.clearInterval(intervalId);
       window.removeEventListener("member-bookings-updated", refreshAll);
       window.removeEventListener("member-session-updated", refreshAll);
       window.removeEventListener("tournament-data-updated", refreshAll);
@@ -312,10 +332,8 @@ export function HomePage({
   }, [
     currentUserProfile?.auth?.username,
     canManageTournaments,
-    location.pathname,
-    loadAdminTournamentWarnings,
-    loadRangeMembers,
-    refreshHomeActivity,
+    refreshHomeSections,
+    refreshTournamentWarnings,
   ]);
 
   const handleNavigate = (pageId) => {
@@ -411,6 +429,10 @@ export function HomePage({
                   onCurrentUserProfileUpdate={onCurrentUserProfileUpdate}
                 />
               }
+            />
+            <Route
+              path="/approvals"
+              element={<ApprovalsPage currentUserProfile={currentUserProfile} />}
             />
             <Route
               path="/loan-bow-register"

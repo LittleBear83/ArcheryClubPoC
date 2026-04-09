@@ -3,6 +3,28 @@ import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
+import { useVisiblePolling } from "../state/useVisiblePolling";
+
+function getTodayDateString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function hasSessionEnded(session) {
+  if (!session?.date || !session?.endTime) {
+    return false;
+  }
+
+  const normalizedEndTime = /^\d{2}:\d{2}$/.test(session.endTime)
+    ? `${session.endTime}:00`
+    : session.endTime;
+  const sessionEnd = new Date(`${session.date}T${normalizedEndTime}`);
+
+  if (Number.isNaN(sessionEnd.getTime())) {
+    return false;
+  }
+
+  return sessionEnd.getTime() <= Date.now();
+}
 
 function TrainingIcon({ className = "" }) {
   return (
@@ -31,6 +53,19 @@ function buildHeaders(currentUserProfile) {
   };
 }
 
+const VENUE_OPTIONS = [
+  { value: "indoor", label: "Indoor" },
+  { value: "outdoor", label: "Outdoor" },
+  { value: "both", label: "Indoor and outdoor" },
+];
+
+function getVenueLabel(venue) {
+  return (
+    VENUE_OPTIONS.find((option) => option.value === venue)?.label ??
+    "Indoor and outdoor"
+  );
+}
+
 async function parseApiResponse(response, fallbackMessage) {
   const contentType = response.headers.get("content-type") ?? "";
 
@@ -55,7 +90,7 @@ export function CoachingCalendarPage({ currentUserProfile }) {
   const [isLoading, setIsLoading] = useState(true);
   const [hasLoadedSessions, setHasLoadedSessions] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(null);
+  const [selectedDate, setSelectedDate] = useState(() => getTodayDateString());
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [error, setError] = useState("");
@@ -75,7 +110,11 @@ export function CoachingCalendarPage({ currentUserProfile }) {
 
   const canManageCoachingSessions = hasPermission(
     currentUserProfile,
-    "manage_coaching_sessions",
+    "add_coaching_sessions",
+  );
+  const canApproveSessions = hasPermission(
+    currentUserProfile,
+    "approve_coaching_sessions",
   );
   const actorUsername = currentUserProfile?.auth?.username ?? "";
 
@@ -116,19 +155,22 @@ export function CoachingCalendarPage({ currentUserProfile }) {
     }
   }, [actorUsername, hasLoadedSessions]);
 
+  useVisiblePolling(() => {
+    loadSessions(new AbortController().signal);
+  }, {
+    enabled: true,
+    intervalMs: 60000,
+  });
+
   useEffect(() => {
     const abortController = new AbortController();
     const refresh = () => loadSessions(abortController.signal);
 
-    refresh();
-
-    const intervalId = window.setInterval(refresh, 30000);
     window.addEventListener("coaching-data-updated", refresh);
     window.addEventListener("member-bookings-updated", refresh);
 
     return () => {
       abortController.abort();
-      window.clearInterval(intervalId);
       window.removeEventListener("coaching-data-updated", refresh);
       window.removeEventListener("member-bookings-updated", refresh);
     };
@@ -143,7 +185,10 @@ export function CoachingCalendarPage({ currentUserProfile }) {
     [sessions],
   );
 
-  const selectedSessions = selectedDate ? sessionsByDate[selectedDate] || [] : [];
+  const selectedSessions = useMemo(
+    () => (selectedDate ? sessionsByDate[selectedDate] || [] : []),
+    [selectedDate, sessionsByDate],
+  );
   const selectedSession =
     selectedSessions.find((session) => session.id === selectedSessionId) ??
     selectedSessions[0] ??
@@ -187,7 +232,9 @@ export function CoachingCalendarPage({ currentUserProfile }) {
       );
       setSelectedDate(result.session.date);
       setSelectedSessionId(result.session.id);
-      setFeedbackMessage("Coaching session added successfully.");
+      setFeedbackMessage(
+        result.message ?? "Coaching session added successfully.",
+      );
       setForm({
         topic: "",
         summary: "",
@@ -301,7 +348,7 @@ export function CoachingCalendarPage({ currentUserProfile }) {
           headers: buildHeaders(currentUserProfile),
         },
       );
-      const result = await parseApiResponse(
+      await parseApiResponse(
         response,
         "Unable to cancel this session. If the server was already running, restart it and try again.",
       );
@@ -316,6 +363,41 @@ export function CoachingCalendarPage({ currentUserProfile }) {
       setError(cancelError.message);
     } finally {
       setIsCancellingSession(false);
+    }
+  };
+
+  const handleApproveSession = async () => {
+    if (!selectedSession) {
+      return;
+    }
+
+    setError("");
+    setFeedbackMessage("");
+
+    try {
+      const response = await fetch(
+        `/api/coaching-sessions/${selectedSession.id}/approve`,
+        {
+          method: "POST",
+          headers: buildHeaders(currentUserProfile),
+        },
+      );
+      const result = await parseApiResponse(
+        response,
+        "Unable to approve this coaching session.",
+      );
+
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === result.session.id ? result.session : session,
+        ),
+      );
+      setFeedbackMessage(
+        result.message ?? `${result.session.topic} approved successfully.`,
+      );
+      window.dispatchEvent(new Event("coaching-data-updated"));
+    } catch (approvalError) {
+      setError(approvalError.message);
     }
   };
 
@@ -417,13 +499,31 @@ export function CoachingCalendarPage({ currentUserProfile }) {
                     <p>
                       {formatClockTime(selectedSession.startTime)} to{" "}
                       {formatClockTime(selectedSession.endTime)} -{" "}
-                      {selectedSession.venue === "outdoor" ? "Outdoor" : "Indoor"}
+                      {getVenueLabel(selectedSession.venue)}
                     </p>
                     <p>Coach: {selectedSession.coach.fullName}</p>
                     <p>
                       {selectedSession.bookingCount} of {selectedSession.availableSlots} slot
                       {selectedSession.availableSlots === 1 ? "" : "s"} booked.
                     </p>
+                    {selectedSession.isPendingApproval ? (
+                      <p>This coaching session is awaiting approval.</p>
+                    ) : null}
+                    {selectedSession.isRejected ? (
+                      <p>This coaching session request was rejected.</p>
+                    ) : null}
+                    {selectedSession.canApprove ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={handleApproveSession}
+                      >
+                        Approve session
+                      </button>
+                    ) : null}
+                    {!selectedSession.isBookedOn && hasSessionEnded(selectedSession) ? (
+                      <p>This coaching session has finished.</p>
+                    ) : null}
 
                     {canManageCoachingSessions &&
                     selectedSession.coach.username === actorUsername ? (
@@ -468,11 +568,19 @@ export function CoachingCalendarPage({ currentUserProfile }) {
                             className="event-book-button"
                             disabled={
                               isBookingSession ||
-                              selectedSession.remainingSlots <= 0
+                              !selectedSession.isApproved ||
+                              selectedSession.remainingSlots <= 0 ||
+                              hasSessionEnded(selectedSession)
                             }
                             onClick={handleBookOn}
                           >
-                            {selectedSession.remainingSlots <= 0
+                            {selectedSession.isRejected
+                              ? "Request rejected"
+                              : !selectedSession.isApproved
+                              ? "Awaiting approval"
+                              : hasSessionEnded(selectedSession)
+                              ? "Booking closed"
+                              : selectedSession.remainingSlots <= 0
                               ? "Session full"
                               : isBookingSession
                                 ? "Booking on..."
@@ -536,8 +644,11 @@ export function CoachingCalendarPage({ currentUserProfile }) {
                     setForm((current) => ({ ...current, venue: event.target.value }))
                   }
                 >
-                  <option value="indoor">Indoor</option>
-                  <option value="outdoor">Outdoor</option>
+                  {VENUE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
@@ -592,7 +703,11 @@ export function CoachingCalendarPage({ currentUserProfile }) {
                 />
               </label>
               <button type="submit" disabled={isSavingSession}>
-                {isSavingSession ? "Adding session..." : "Add session"}
+                {isSavingSession
+                  ? "Adding session..."
+                  : canApproveSessions
+                    ? "Add session"
+                    : "Submit For Approval"}
               </button>
             </form>
           </Modal>

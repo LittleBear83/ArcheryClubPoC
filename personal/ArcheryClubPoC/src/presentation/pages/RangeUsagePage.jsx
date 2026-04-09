@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   formatDate,
   formatDateRangeLabel,
@@ -341,56 +341,81 @@ export function RangeUsagePage({ currentUserProfile }) {
     };
   }, [currentUserProfile?.auth?.username, startDate, endDate]);
 
-  const activeData = dashboard
-    ? normalizeUsageWindow(dashboard[activeView])
-    : null;
-  const activePersonalData = dashboard
-    ? normalizeUsageWindow(
-        dashboard[
-          activeView === "currentMonth"
-            ? "myCurrentMonth"
-            : activeView === "currentWeek"
-              ? "myCurrentWeek"
-              : "myFilteredRange"
-        ],
-      )
-    : null;
-  const aggregatedMonthRows = activeData
-    ? aggregateMonthDayRows(activeData.daily)
-    : [];
-  const aggregatedPersonalMonthRows = activePersonalData
-    ? aggregateMonthDayRows(activePersonalData.daily)
-    : [];
-  const selectedRangeLengthInDays =
-    getSelectedRangeLengthInDays(activePersonalData);
-  const myRangeGraphConfig =
-    activeView === "currentMonth"
-      ? {
-          rows: aggregatedPersonalMonthRows,
-          keyField: "usageDate",
-          className: "usage-graph-date",
-          subtitle: activePersonalData?.label,
-        }
-      : activeView === "currentWeek"
-        ? {
-            rows: activePersonalData?.weekday ?? [],
-            keyField: "dayOfWeek",
-            className: "usage-graph-week",
-            subtitle: activePersonalData?.label,
-          }
-        : selectedRangeLengthInDays <= 14
-          ? {
-              rows: activePersonalData?.daily ?? [],
-              keyField: "usageDate",
-              className: "usage-graph-date",
-              subtitle: `${activePersonalData?.label} by day`,
-            }
-          : {
-              rows: aggregatedPersonalMonthRows,
-              keyField: "usageDate",
-              className: "usage-graph-date",
-              subtitle: `${activePersonalData?.label} aggregated by day of month`,
-            };
+  const activeData = useMemo(
+    () => (dashboard ? dashboard[activeView] : null),
+    [activeView, dashboard],
+  );
+  const activePersonalData = useMemo(() => {
+    if (!dashboard) {
+      return null;
+    }
+
+    const personalKey =
+      activeView === "currentMonth"
+        ? "myCurrentMonth"
+        : activeView === "currentWeek"
+          ? "myCurrentWeek"
+          : "myFilteredRange";
+
+    return dashboard[personalKey];
+  }, [activeView, dashboard]);
+  const aggregatedMonthRows = useMemo(
+    () => (activeData ? aggregateMonthDayRows(activeData.daily) : []),
+    [activeData],
+  );
+  const aggregatedPersonalMonthRows = useMemo(
+    () =>
+      activePersonalData ? aggregateMonthDayRows(activePersonalData.daily) : [],
+    [activePersonalData],
+  );
+  const selectedRangeLengthInDays = useMemo(
+    () => getSelectedRangeLengthInDays(activePersonalData),
+    [activePersonalData],
+  );
+  const myRangeGraphConfig = useMemo(() => {
+    if (!activePersonalData) {
+      return null;
+    }
+
+    if (activeView === "currentMonth") {
+      return {
+        rows: aggregatedPersonalMonthRows,
+        keyField: "usageDate",
+        className: "usage-graph-date",
+        subtitle: activePersonalData.label,
+      };
+    }
+
+    if (activeView === "currentWeek") {
+      return {
+        rows: activePersonalData.weekday,
+        keyField: "dayOfWeek",
+        className: "usage-graph-week",
+        subtitle: activePersonalData.label,
+      };
+    }
+
+    if (selectedRangeLengthInDays <= 14) {
+      return {
+        rows: activePersonalData.daily,
+        keyField: "usageDate",
+        className: "usage-graph-date",
+        subtitle: `${activePersonalData.label} by day`,
+      };
+    }
+
+    return {
+      rows: aggregatedPersonalMonthRows,
+      keyField: "usageDate",
+      className: "usage-graph-date",
+      subtitle: `${activePersonalData.label} aggregated by day of month`,
+    };
+  }, [
+    activePersonalData,
+    activeView,
+    aggregatedPersonalMonthRows,
+    selectedRangeLengthInDays,
+  ]);
 
   return (
     <div className="range-usage-dashboard">

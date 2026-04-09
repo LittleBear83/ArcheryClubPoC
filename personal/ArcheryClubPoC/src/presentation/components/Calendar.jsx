@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { formatDate } from "../../utils/dateTime";
+
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function getMonthDays(year, month) {
   const first = new Date(year, month, 1);
@@ -38,7 +40,7 @@ export function Calendar({
   selectedDate,
   onDayClick,
 }) {
-  const calendar = getMonthDays(year, month);
+  const calendar = useMemo(() => getMonthDays(year, month), [month, year]);
 
   return (
     <>
@@ -66,7 +68,7 @@ export function Calendar({
         <table className="calendar-table">
           <thead>
             <tr>
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((dayLabel) => (
+              {DAY_LABELS.map((dayLabel) => (
                 <th key={dayLabel}>{dayLabel}</th>
               ))}
             </tr>

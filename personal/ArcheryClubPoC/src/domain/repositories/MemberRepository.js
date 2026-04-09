@@ -3,7 +3,7 @@ export class MemberRepository {
     throw new Error("getAllMembers() not implemented");
   }
 
-  async addMember(member) {
+  async addMember() {
     throw new Error("addMember() not implemented");
   }
 }

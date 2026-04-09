@@ -3,7 +3,6 @@ import { LoanBowSection } from "./LoanBowSection";
 export function MemberProfileForm({
   editableProfile,
   handleChange,
-  handleBooleanChange,
   handleBooleanSelectChange,
   toggleDiscipline,
   handleLoanBowFieldChange,

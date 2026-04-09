@@ -17,8 +17,10 @@ const PERMISSIONS = {
   MANAGE_MEMBERS: "manage_members",
   MANAGE_ROLES_PERMISSIONS: "manage_roles_permissions",
   MANAGE_COMMITTEE_ROLES: "manage_committee_roles",
-  MANAGE_EVENTS: "manage_events",
-  MANAGE_COACHING_SESSIONS: "manage_coaching_sessions",
+  ADD_EVENTS: "add_events",
+  APPROVE_EVENTS: "approve_events",
+  ADD_COACHING_SESSIONS: "add_coaching_sessions",
+  APPROVE_COACHING_SESSIONS: "approve_coaching_sessions",
   MANAGE_LOAN_BOWS: "manage_loan_bows",
   MANAGE_TOURNAMENTS: "manage_tournaments",
 };
@@ -41,14 +43,24 @@ const PERMISSION_DEFINITIONS = [
     description: "Assign members to committee positions.",
   },
   {
-    key: PERMISSIONS.MANAGE_EVENTS,
-    label: "Manage Events",
-    description: "Create and maintain events and competitions.",
+    key: PERMISSIONS.ADD_EVENTS,
+    label: "Add Events",
+    description: "Create events and competitions.",
   },
   {
-    key: PERMISSIONS.MANAGE_COACHING_SESSIONS,
-    label: "Manage Coaching Sessions",
+    key: PERMISSIONS.APPROVE_EVENTS,
+    label: "Approve Events",
+    description: "Approve submitted events and competitions.",
+  },
+  {
+    key: PERMISSIONS.ADD_COACHING_SESSIONS,
+    label: "Add Coaching Sessions",
     description: "Create and cancel coaching sessions.",
+  },
+  {
+    key: PERMISSIONS.APPROVE_COACHING_SESSIONS,
+    label: "Approve Coaching Sessions",
+    description: "Approve submitted coaching sessions.",
   },
   {
     key: PERMISSIONS.MANAGE_LOAN_BOWS,
@@ -81,7 +93,7 @@ const SYSTEM_ROLE_DEFINITIONS = [
     roleKey: "coach",
     title: "Coach",
     permissions: [
-      PERMISSIONS.MANAGE_COACHING_SESSIONS,
+      PERMISSIONS.ADD_COACHING_SESSIONS,
       PERMISSIONS.MANAGE_LOAN_BOWS,
     ],
   },
@@ -231,10 +243,15 @@ const COACHING_SESSIONS_TABLE_SQL = `
     available_slots INTEGER NOT NULL DEFAULT 1,
     topic TEXT NOT NULL,
     summary TEXT NOT NULL,
-    venue TEXT NOT NULL CHECK (venue IN ('indoor', 'outdoor')),
+    venue TEXT NOT NULL CHECK (venue IN ('indoor', 'outdoor', 'both')),
+    approval_status TEXT NOT NULL DEFAULT 'approved',
+    approved_by_username TEXT,
+    approved_at_date TEXT,
+    approved_at_time TEXT,
     created_at_date TEXT NOT NULL,
     created_at_time TEXT NOT NULL,
-    FOREIGN KEY (coach_username) REFERENCES users(username)
+    FOREIGN KEY (coach_username) REFERENCES users(username),
+    FOREIGN KEY (approved_by_username) REFERENCES users(username)
   )
 `;
 const COACHING_SESSION_BOOKINGS_TABLE_SQL = `
@@ -256,8 +273,16 @@ const CLUB_EVENTS_TABLE_SQL = `
     end_time TEXT NOT NULL,
     title TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN ('competition', 'social', 'range-closed')),
+    venue TEXT NOT NULL DEFAULT 'both' CHECK (venue IN ('indoor', 'outdoor', 'both')),
+    submitted_by_username TEXT,
+    approval_status TEXT NOT NULL DEFAULT 'approved',
+    approved_by_username TEXT,
+    approved_at_date TEXT,
+    approved_at_time TEXT,
     created_at_date TEXT NOT NULL,
-    created_at_time TEXT NOT NULL
+    created_at_time TEXT NOT NULL,
+    FOREIGN KEY (submitted_by_username) REFERENCES users(username),
+    FOREIGN KEY (approved_by_username) REFERENCES users(username)
   )
 `;
 const EVENT_BOOKINGS_TABLE_SQL = `
@@ -648,8 +673,14 @@ const coachingSessionsAvailableSlotsSelect = coachingSessionsColumns.some(
 const coachingSessionsVenueSelect = coachingSessionsColumns.some(
   (column) => column.name === "venue",
 )
-  ? "CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' ELSE 'indoor' END"
+  ? "CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'both' THEN 'both' ELSE 'indoor' END"
   : "CASE WHEN lower(COALESCE(location, '')) = 'outdoor' THEN 'outdoor' ELSE 'indoor' END";
+const clubEventsColumns = db.prepare(`PRAGMA table_info(club_events)`).all();
+const clubEventsVenueSelect = clubEventsColumns.some(
+  (column) => column.name === "venue",
+)
+  ? "CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END"
+  : "'both'";
 
 const userColumns = db.prepare(`PRAGMA table_info(users)`).all();
 const memberLoanBowColumns = db
@@ -688,12 +719,48 @@ if (!userColumns.some((column) => column.name === "membership_fees_due")) {
   db.exec(`ALTER TABLE users ADD COLUMN membership_fees_due TEXT`);
 }
 
+const coachingSessionApprovalColumns = [
+  ["approval_status", "TEXT NOT NULL DEFAULT 'approved'"],
+  ["approved_by_username", "TEXT"],
+  ["approved_at_date", "TEXT"],
+  ["approved_at_time", "TEXT"],
+];
+
+for (const [columnName, columnDefinition] of coachingSessionApprovalColumns) {
+  if (!coachingSessionsColumns.some((column) => column.name === columnName)) {
+    db.exec(
+      `ALTER TABLE coaching_sessions ADD COLUMN ${columnName} ${columnDefinition}`,
+    );
+  }
+}
+
+const clubEventApprovalColumns = [
+  ["venue", "TEXT NOT NULL DEFAULT 'both'"],
+  ["submitted_by_username", "TEXT"],
+  ["approval_status", "TEXT NOT NULL DEFAULT 'approved'"],
+  ["approved_by_username", "TEXT"],
+  ["approved_at_date", "TEXT"],
+  ["approved_at_time", "TEXT"],
+];
+
+for (const [columnName, columnDefinition] of clubEventApprovalColumns) {
+  if (!clubEventsColumns.some((column) => column.name === columnName)) {
+    db.exec(`ALTER TABLE club_events ADD COLUMN ${columnName} ${columnDefinition}`);
+  }
+}
+
 if (
   coachingSessionsColumns.length > 0 &&
   (coachingSessionsColumns.some((column) => column.name === "created_at") ||
     !coachingSessionsColumns.some(
       (column) => column.name === "available_slots",
-    ))
+    ) ||
+    !db
+      .prepare(
+        `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'coaching_sessions'`,
+      )
+      .get()
+      ?.sql?.includes("'both'"))
 ) {
   db.exec(`
     PRAGMA foreign_keys = OFF;
@@ -714,6 +781,10 @@ if (
       topic,
       summary,
       venue,
+      approval_status,
+      approved_by_username,
+      approved_at_date,
+      approved_at_time,
       created_at_date,
       created_at_time
     )
@@ -727,6 +798,10 @@ if (
       topic,
       summary,
       ${coachingSessionsVenueSelect},
+      COALESCE(approval_status, 'approved'),
+      approved_by_username,
+      approved_at_date,
+      approved_at_time,
       substr(created_at, 1, 10),
       substr(created_at, 12)
     FROM coaching_sessions_old;
@@ -800,6 +875,12 @@ if (
       "end_time",
       "title",
       "type",
+      "venue",
+      "submitted_by_username",
+      "approval_status",
+      "approved_by_username",
+      "approved_at_date",
+      "approved_at_time",
       "created_at_date",
       "created_at_time",
     ],
@@ -810,10 +891,22 @@ if (
       "end_time",
       "title",
       "type",
+      clubEventsVenueSelect,
+      "submitted_by_username",
+      "COALESCE(approval_status, 'approved')",
+      "approved_by_username",
+      "approved_at_date",
+      "approved_at_time",
       "substr(created_at, 1, 10)",
       "substr(created_at, 12)",
     ],
   }) ||
+  !db
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'club_events'`,
+    )
+    .get()
+    ?.sql?.includes("venue TEXT NOT NULL DEFAULT 'both'") ||
   eventBookingForeignKeys.some(
     (foreignKey) => foreignKey.table === "club_events_old",
   ) ||
@@ -1458,10 +1551,14 @@ const insertCoachingSession = db.prepare(`
     topic,
     summary,
     venue,
+    approval_status,
+    approved_by_username,
+    approved_at_date,
+    approved_at_time,
     created_at_date,
     created_at_time
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const listCoachingSessions = db.prepare(`
@@ -1474,7 +1571,10 @@ const listCoachingSessions = db.prepare(`
     coaching_sessions.available_slots,
     coaching_sessions.topic,
     coaching_sessions.summary,
-    coaching_sessions.venue,
+    CASE WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'both' THEN 'both' ELSE 'indoor' END AS venue,
+    coaching_sessions.approval_status,
+    coaching_sessions.approved_by_username,
+    coaching_sessions.approved_at_date || 'T' || coaching_sessions.approved_at_time AS approved_at,
     coaching_sessions.created_at_date || 'T' || coaching_sessions.created_at_time AS created_at,
     users.first_name AS coach_first_name,
     users.surname AS coach_surname
@@ -1493,7 +1593,10 @@ const findCoachingSessionById = db.prepare(`
     coaching_sessions.available_slots,
     coaching_sessions.topic,
     coaching_sessions.summary,
-    coaching_sessions.venue,
+    CASE WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'both' THEN 'both' ELSE 'indoor' END AS venue,
+    coaching_sessions.approval_status,
+    coaching_sessions.approved_by_username,
+    coaching_sessions.approved_at_date || 'T' || coaching_sessions.approved_at_time AS approved_at,
     coaching_sessions.created_at_date || 'T' || coaching_sessions.created_at_time AS created_at,
     users.first_name AS coach_first_name,
     users.surname AS coach_surname
@@ -1513,6 +1616,18 @@ const listBookingsByCoachingSessionId = db.prepare(`
   INNER JOIN users ON users.username = coaching_session_bookings.member_username
   WHERE coaching_session_bookings.coaching_session_id = ?
   ORDER BY users.surname ASC, users.first_name ASC
+`);
+
+const listAllCoachingSessionBookings = db.prepare(`
+  SELECT
+    coaching_session_bookings.coaching_session_id,
+    coaching_session_bookings.member_username,
+    coaching_session_bookings.booked_at_date || 'T' || coaching_session_bookings.booked_at_time AS booked_at,
+    users.first_name,
+    users.surname
+  FROM coaching_session_bookings
+  INNER JOIN users ON users.username = coaching_session_bookings.member_username
+  ORDER BY coaching_session_bookings.coaching_session_id ASC, users.surname ASC, users.first_name ASC
 `);
 
 const insertCoachingSessionBooking = db.prepare(`
@@ -1540,6 +1655,26 @@ const deleteCoachingSessionById = db.prepare(`
   WHERE id = ?
 `);
 
+const approveCoachingSessionById = db.prepare(`
+  UPDATE coaching_sessions
+  SET
+    approval_status = 'approved',
+    approved_by_username = ?,
+    approved_at_date = ?,
+    approved_at_time = ?
+  WHERE id = ?
+`);
+
+const rejectCoachingSessionById = db.prepare(`
+  UPDATE coaching_sessions
+  SET
+    approval_status = 'rejected',
+    approved_by_username = ?,
+    approved_at_date = ?,
+    approved_at_time = ?
+  WHERE id = ?
+`);
+
 const findMemberBookings = db.prepare(`
   SELECT
     coaching_sessions.id,
@@ -1549,7 +1684,7 @@ const findMemberBookings = db.prepare(`
     coaching_sessions.available_slots,
     coaching_sessions.topic,
     coaching_sessions.summary,
-    coaching_sessions.venue,
+    CASE WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'both' THEN 'both' ELSE 'indoor' END AS venue,
     coaching_sessions.coach_username,
     users.first_name AS coach_first_name,
     users.surname AS coach_surname
@@ -1569,7 +1704,12 @@ const listClubEvents = db.prepare(`
     end_time,
     title,
     type,
-    created_at_date || 'T' || created_at_time AS created_at
+    CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END AS venue,
+    submitted_by_username,
+    approval_status,
+    approved_by_username,
+    created_at_date || 'T' || created_at_time AS created_at,
+    approved_at_date || 'T' || approved_at_time AS approved_at
   FROM club_events
   ORDER BY event_date ASC, start_time ASC
 `);
@@ -1581,10 +1721,16 @@ const insertClubEvent = db.prepare(`
     end_time,
     title,
     type,
+    venue,
+    submitted_by_username,
+    approval_status,
+    approved_by_username,
+    approved_at_date,
+    approved_at_time,
     created_at_date,
     created_at_time
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const listTournaments = db.prepare(`
@@ -1680,6 +1826,20 @@ const listTournamentRegistrationsByTournamentId = db.prepare(`
   ORDER BY users.surname ASC, users.first_name ASC
 `);
 
+const listAllTournamentRegistrations = db.prepare(`
+  SELECT
+    tournament_registrations.tournament_id,
+    tournament_registrations.member_username,
+    tournament_registrations.registered_at_date || 'T' || tournament_registrations.registered_at_time AS registered_at,
+    users.first_name,
+    users.surname,
+    user_types.user_type
+  FROM tournament_registrations
+  INNER JOIN users ON users.username = tournament_registrations.member_username
+  INNER JOIN user_types ON user_types.username = users.username
+  ORDER BY tournament_registrations.tournament_id ASC, users.surname ASC, users.first_name ASC
+`);
+
 const insertTournamentRegistration = db.prepare(`
   INSERT INTO tournament_registrations (
     tournament_id,
@@ -1705,6 +1865,17 @@ const listTournamentScoresByTournamentId = db.prepare(`
   FROM tournament_scores
   WHERE tournament_id = ?
   ORDER BY round_number ASC, member_username ASC
+`);
+
+const listAllTournamentScores = db.prepare(`
+  SELECT
+    tournament_id,
+    round_number,
+    member_username,
+    score,
+    submitted_at_date || 'T' || submitted_at_time AS submitted_at
+  FROM tournament_scores
+  ORDER BY tournament_id ASC, round_number ASC, member_username ASC
 `);
 
 const upsertTournamentScore = db.prepare(`
@@ -1734,6 +1905,18 @@ const listEventBookingsByEventId = db.prepare(`
   INNER JOIN users ON users.username = event_bookings.member_username
   WHERE event_bookings.club_event_id = ?
   ORDER BY users.surname ASC, users.first_name ASC
+`);
+
+const listAllEventBookings = db.prepare(`
+  SELECT
+    event_bookings.club_event_id,
+    event_bookings.member_username,
+    event_bookings.booked_at_date || 'T' || event_bookings.booked_at_time AS booked_at,
+    users.first_name,
+    users.surname
+  FROM event_bookings
+  INNER JOIN users ON users.username = event_bookings.member_username
+  ORDER BY event_bookings.club_event_id ASC, users.surname ASC, users.first_name ASC
 `);
 
 const insertEventBooking = db.prepare(`
@@ -1774,8 +1957,33 @@ const findClubEventById = db.prepare(`
     end_time,
     title,
     type,
-    created_at_date || 'T' || created_at_time AS created_at
+    CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END AS venue,
+    submitted_by_username,
+    approval_status,
+    approved_by_username,
+    created_at_date || 'T' || created_at_time AS created_at,
+    approved_at_date || 'T' || approved_at_time AS approved_at
   FROM club_events
+  WHERE id = ?
+`);
+
+const approveClubEventById = db.prepare(`
+  UPDATE club_events
+  SET
+    approval_status = 'approved',
+    approved_by_username = ?,
+    approved_at_date = ?,
+    approved_at_time = ?
+  WHERE id = ?
+`);
+
+const rejectClubEventById = db.prepare(`
+  UPDATE club_events
+  SET
+    approval_status = 'rejected',
+    approved_by_username = ?,
+    approved_at_date = ?,
+    approved_at_time = ?
   WHERE id = ?
 `);
 
@@ -1825,6 +2033,12 @@ const findDisciplinesByUsername = db.prepare(`
   FROM user_disciplines
   WHERE username = ?
   ORDER BY discipline ASC
+`);
+
+const listAllUserDisciplines = db.prepare(`
+  SELECT username, discipline
+  FROM user_disciplines
+  ORDER BY username ASC, discipline ASC
 `);
 
 const findRecentGuestLogins = db.prepare(`
@@ -2088,7 +2302,13 @@ function buildGuestUserProfile(guest, meta = {}) {
   };
 }
 
-function buildCoachingSession(session, bookings = [], actorUsername = null) {
+function buildCoachingSession(session, bookings = [], actor = null) {
+  const actorUsername = actor?.username ?? null;
+  const canApprove = actorHasPermission(
+    actor,
+    PERMISSIONS.APPROVE_COACHING_SESSIONS,
+  );
+
   return {
     id: session.id,
     date: session.session_date,
@@ -2097,7 +2317,7 @@ function buildCoachingSession(session, bookings = [], actorUsername = null) {
     availableSlots: session.available_slots,
     topic: session.topic,
     summary: session.summary,
-    venue: session.venue,
+    venue: normalizeVenue(session.venue, "indoor"),
     coach: {
       username: session.coach_username,
       fullName: `${session.coach_first_name} ${session.coach_surname}`,
@@ -2105,10 +2325,87 @@ function buildCoachingSession(session, bookings = [], actorUsername = null) {
     bookings,
     bookingCount: bookings.length,
     remainingSlots: Math.max(session.available_slots - bookings.length, 0),
+    approvalStatus: session.approval_status ?? "approved",
+    isApproved: (session.approval_status ?? "approved") === "approved",
+    isPendingApproval: (session.approval_status ?? "approved") === "pending",
+    isRejected: (session.approval_status ?? "approved") === "rejected",
+    approvedByUsername: session.approved_by_username ?? null,
+    approvedAt: session.approved_at ?? null,
     isBookedOn: Boolean(
       actorUsername &&
       bookings.some((booking) => booking.username === actorUsername),
     ),
+    canApprove: Boolean(
+      canApprove &&
+      (session.approval_status ?? "approved") === "pending",
+    ),
+  };
+}
+
+function normalizeBookingRow(booking) {
+  return {
+    username: booking.member_username,
+    fullName: `${booking.first_name} ${booking.surname}`,
+    bookedAt: booking.booked_at,
+  };
+}
+
+function groupRowsBy(rows, keySelector, valueSelector = (value) => value) {
+  const groupedRows = new Map();
+
+  for (const row of rows) {
+    const key = keySelector(row);
+    const currentGroup = groupedRows.get(key);
+    const normalizedRow = valueSelector(row);
+
+    if (currentGroup) {
+      currentGroup.push(normalizedRow);
+      continue;
+    }
+
+    groupedRows.set(key, [normalizedRow]);
+  }
+
+  return groupedRows;
+}
+
+function buildEventBookingsMap() {
+  return groupRowsBy(
+    listAllEventBookings.all(),
+    (booking) => booking.club_event_id,
+    normalizeBookingRow,
+  );
+}
+
+function buildCoachingBookingsMap() {
+  return groupRowsBy(
+    listAllCoachingSessionBookings.all(),
+    (booking) => booking.coaching_session_id,
+    normalizeBookingRow,
+  );
+}
+
+function buildDisciplinesByUsernameMap() {
+  return groupRowsBy(
+    listAllUserDisciplines.all(),
+    (discipline) => discipline.username,
+    (discipline) => discipline.discipline,
+  );
+}
+
+function buildTournamentDataMaps() {
+  const registrationsByTournamentId = groupRowsBy(
+    listAllTournamentRegistrations.all(),
+    (registration) => registration.tournament_id,
+  );
+  const scoresByTournamentId = groupRowsBy(
+    listAllTournamentScores.all(),
+    (score) => score.tournament_id,
+  );
+
+  return {
+    registrationsByTournamentId,
+    scoresByTournamentId,
   };
 }
 
@@ -2303,7 +2600,10 @@ function syncAllMemberStatusesWithFees() {
   }
 }
 
-function buildClubEvent(event, bookings = [], actorUsername = null) {
+function buildClubEvent(event, bookings = [], actor = null) {
+  const actorUsername = actor?.username ?? null;
+  const canApprove = actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS);
+
   return {
     id: event.id,
     date: event.event_date,
@@ -2311,12 +2611,47 @@ function buildClubEvent(event, bookings = [], actorUsername = null) {
     endTime: event.end_time,
     title: event.title,
     type: event.type,
+    venue: normalizeVenue(event.venue),
     bookingCount: bookings.length,
+    approvalStatus: event.approval_status ?? "approved",
+    isApproved: (event.approval_status ?? "approved") === "approved",
+    isPendingApproval: (event.approval_status ?? "approved") === "pending",
+    isRejected: (event.approval_status ?? "approved") === "rejected",
+    submittedByUsername: event.submitted_by_username ?? null,
+    approvedByUsername: event.approved_by_username ?? null,
+    approvedAt: event.approved_at ?? null,
     isBookedOn: Boolean(
       actorUsername &&
       bookings.some((booking) => booking.username === actorUsername),
     ),
+    canApprove: Boolean(
+      canApprove &&
+      (event.approval_status ?? "approved") === "pending",
+    ),
   };
+}
+
+function canActorViewApprovalEntry(
+  entry,
+  actor,
+  submittedByUsernameField,
+  approverPermission,
+) {
+  const approvalStatus = entry.approval_status ?? "approved";
+
+  if (approvalStatus === "approved") {
+    return true;
+  }
+
+  if (!actor) {
+    return false;
+  }
+
+  if (actorHasPermission(actor, approverPermission)) {
+    return true;
+  }
+
+  return entry[submittedByUsernameField] === actor.username;
 }
 
 function buildCommitteeRole(role) {
@@ -2619,12 +2954,32 @@ function timesOverlap(startA, endA, startB, endB) {
   return startA < endB && startB < endA;
 }
 
-function findScheduleConflict({ date, startTime, endTime }) {
+function normalizeVenue(value, fallback = "both") {
+  if (value === "indoor" || value === "outdoor" || value === "both") {
+    return value;
+  }
+
+  return fallback;
+}
+
+function venuesOverlap(leftVenue, rightVenue) {
+  const normalizedLeftVenue = normalizeVenue(leftVenue);
+  const normalizedRightVenue = normalizeVenue(rightVenue);
+
+  return (
+    normalizedLeftVenue === "both" ||
+    normalizedRightVenue === "both" ||
+    normalizedLeftVenue === normalizedRightVenue
+  );
+}
+
+function findScheduleConflict({ date, startTime, endTime, venue = "both" }) {
   const sessionConflict = listCoachingSessions
     .all()
     .find(
       (session) =>
         session.session_date === date &&
+        venuesOverlap(venue, session.venue) &&
         timesOverlap(startTime, endTime, session.start_time, session.end_time),
     );
 
@@ -2642,6 +2997,7 @@ function findScheduleConflict({ date, startTime, endTime }) {
     .find(
       (event) =>
         event.event_date === date &&
+        venuesOverlap(venue, event.venue) &&
         timesOverlap(startTime, endTime, event.start_time, event.end_time),
     );
 
@@ -3023,6 +3379,23 @@ function saveMemberProfile({
 
 function toUtcDateString(date) {
   return date.toISOString().slice(0, 10);
+}
+
+function hasScheduleEntryEnded(date, endTime) {
+  if (!date || !endTime) {
+    return false;
+  }
+
+  const normalizedEndTime = /^\d{2}:\d{2}$/.test(endTime)
+    ? `${endTime}:00`
+    : endTime;
+  const entryEnd = new Date(`${date}T${normalizedEndTime}`);
+
+  if (Number.isNaN(entryEnd.getTime())) {
+    return false;
+  }
+
+  return entryEnd.getTime() <= Date.now();
 }
 
 function getUtcTimestampParts(date = new Date()) {
@@ -4351,17 +4724,24 @@ app.post("/api/loan-bow-profiles/:username/return", (req, res) => {
 
 app.get("/api/events", (req, res) => {
   const actor = getActorUser(req);
-  const persistedEvents = listClubEvents.all().map((event) =>
-    buildClubEvent(
-      event,
-      listEventBookingsByEventId.all(event.id).map((booking) => ({
-        username: booking.member_username,
-        fullName: `${booking.first_name} ${booking.surname}`,
-        bookedAt: booking.booked_at,
-      })),
-      actor?.username ?? null,
-    ),
-  );
+  const eventBookingsByEventId = buildEventBookingsMap();
+  const persistedEvents = listClubEvents
+    .all()
+    .filter((event) =>
+      canActorViewApprovalEntry(
+        event,
+        actor,
+        "submitted_by_username",
+        PERMISSIONS.APPROVE_EVENTS,
+      ),
+    )
+    .map((event) =>
+      buildClubEvent(
+        event,
+        eventBookingsByEventId.get(event.id) ?? [],
+        actor,
+      ),
+    );
   const recurringClosures = [];
   const startYear = new Date().getFullYear() - 1;
 
@@ -4380,6 +4760,7 @@ app.get("/api/events", (req, res) => {
         endTime: "12:00",
         title: "Range closed until 12:00",
         type: "range-closed",
+        venue: "both",
         system: true,
         bookingCount: 0,
         isBookedOn: false,
@@ -4400,16 +4781,16 @@ app.get("/api/events", (req, res) => {
 
 app.get("/api/tournaments", (req, res) => {
   const actor = getActorUser(req);
-  const tournaments = listTournaments
-    .all()
-    .map((tournament) =>
-      buildTournament(
-        tournament,
-        listTournamentRegistrationsByTournamentId.all(tournament.id),
-        listTournamentScoresByTournamentId.all(tournament.id),
-        actor?.username ?? null,
-      ),
-    );
+  const { registrationsByTournamentId, scoresByTournamentId } =
+    buildTournamentDataMaps();
+  const tournaments = listTournaments.all().map((tournament) =>
+    buildTournament(
+      tournament,
+      registrationsByTournamentId.get(tournament.id) ?? [],
+      scoresByTournamentId.get(tournament.id) ?? [],
+      actor?.username ?? null,
+    ),
+  );
 
   res.json({
     success: true,
@@ -4903,8 +5284,9 @@ app.post("/api/tournaments/:id/competitors-export", (req, res) => {
 
 app.post("/api/events", (req, res) => {
   const actor = getActorUser(req);
-  const { date, startTime, endTime, title, type } = req.body ?? {};
+  const { date, startTime, endTime, title, type, venue } = req.body ?? {};
   const trimmedTitle = title?.trim();
+  const normalizedVenue = normalizeVenue(venue);
 
   if (!actor) {
     res.status(401).json({
@@ -4914,7 +5296,7 @@ app.post("/api/events", (req, res) => {
     return;
   }
 
-  if (!actorHasPermission(actor, PERMISSIONS.MANAGE_EVENTS)) {
+  if (!actorHasPermission(actor, PERMISSIONS.ADD_EVENTS)) {
     res.status(403).json({
       success: false,
       message: "You do not have permission to create events.",
@@ -4939,7 +5321,12 @@ app.post("/api/events", (req, res) => {
     return;
   }
 
-  const conflict = findScheduleConflict({ date, startTime, endTime });
+  const conflict = findScheduleConflict({
+    date,
+    startTime,
+    endTime,
+    venue: normalizedVenue,
+  });
 
   if (conflict) {
     res.status(409).json({
@@ -4955,6 +5342,13 @@ app.post("/api/events", (req, res) => {
     endTime,
     trimmedTitle,
     type,
+    normalizedVenue,
+    actor.username,
+    actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS) ? "approved" : "pending",
+    actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS) ? actor.username : null,
+    ...(actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
+      ? getUtcTimestampParts()
+      : ["", ""]),
     ...getUtcTimestampParts(),
   );
   const event = listClubEvents
@@ -4963,7 +5357,90 @@ app.post("/api/events", (req, res) => {
 
   res.status(201).json({
     success: true,
-    event: buildClubEvent(event),
+    message: actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
+      ? "Event approved and published successfully."
+      : "Event submitted for approval.",
+    event: buildClubEvent(event, [], actor),
+  });
+});
+
+app.post("/api/events/:id/approve", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to approve events.",
+    });
+    return;
+  }
+
+  const event = findClubEventById.get(req.params.id);
+
+  if (!event) {
+    res.status(404).json({
+      success: false,
+      message: "Event not found.",
+    });
+    return;
+  }
+
+  if ((event.approval_status ?? "approved") === "approved") {
+    res.status(400).json({
+      success: false,
+      message: "This event has already been approved.",
+    });
+    return;
+  }
+
+  approveClubEventById.run(actor.username, ...getUtcTimestampParts(), event.id);
+  const approvedEvent = findClubEventById.get(event.id);
+  const bookings = listEventBookingsByEventId.all(event.id).map(normalizeBookingRow);
+
+  res.json({
+    success: true,
+    message: "Event approved successfully.",
+    event: buildClubEvent(approvedEvent, bookings, actor),
+  });
+});
+
+app.post("/api/events/:id/reject", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to reject events.",
+    });
+    return;
+  }
+
+  const event = findClubEventById.get(req.params.id);
+
+  if (!event) {
+    res.status(404).json({
+      success: false,
+      message: "Event not found.",
+    });
+    return;
+  }
+
+  if ((event.approval_status ?? "approved") !== "pending") {
+    res.status(400).json({
+      success: false,
+      message: "Only pending events can be rejected.",
+    });
+    return;
+  }
+
+  rejectClubEventById.run(actor.username, ...getUtcTimestampParts(), event.id);
+  const rejectedEvent = findClubEventById.get(event.id);
+  const bookings = listEventBookingsByEventId.all(event.id).map(normalizeBookingRow);
+
+  res.json({
+    success: true,
+    message: "Event request rejected.",
+    event: buildClubEvent(rejectedEvent, bookings, actor),
   });
 });
 
@@ -4992,6 +5469,22 @@ app.post("/api/events/:id/book", (req, res) => {
     res.status(400).json({
       success: false,
       message: "Range closed entries cannot be booked.",
+    });
+    return;
+  }
+
+  if ((event.approval_status ?? "approved") !== "approved") {
+    res.status(400).json({
+      success: false,
+      message: "This event is still awaiting approval.",
+    });
+    return;
+  }
+
+  if (hasScheduleEntryEnded(event.event_date, event.end_time)) {
+    res.status(400).json({
+      success: false,
+      message: "You cannot book onto an event that has already finished.",
     });
     return;
   }
@@ -5026,7 +5519,7 @@ app.post("/api/events/:id/book", (req, res) => {
 
   res.json({
     success: true,
-    event: buildClubEvent(event, bookings, actor.username),
+    event: buildClubEvent(event, bookings, actor),
   });
 });
 
@@ -5069,23 +5562,30 @@ app.delete("/api/events/:id/booking", (req, res) => {
 
   res.json({
     success: true,
-    event: buildClubEvent(event, bookings, actor.username),
+    event: buildClubEvent(event, bookings, actor),
   });
 });
 
 app.get("/api/coaching-sessions", (req, res) => {
   const actor = getActorUser(req);
-  const sessions = listCoachingSessions.all().map((session) => {
-    const bookings = listBookingsByCoachingSessionId
-      .all(session.id)
-      .map((booking) => ({
-        username: booking.member_username,
-        fullName: `${booking.first_name} ${booking.surname}`,
-        bookedAt: booking.booked_at,
-      }));
-
-    return buildCoachingSession(session, bookings, actor?.username ?? null);
-  });
+  const coachingBookingsBySessionId = buildCoachingBookingsMap();
+  const sessions = listCoachingSessions
+    .all()
+    .filter((session) =>
+      canActorViewApprovalEntry(
+        session,
+        actor,
+        "coach_username",
+        PERMISSIONS.APPROVE_COACHING_SESSIONS,
+      ),
+    )
+    .map((session) =>
+      buildCoachingSession(
+        session,
+        coachingBookingsBySessionId.get(session.id) ?? [],
+        actor,
+      ),
+    );
 
   res.json({
     success: true,
@@ -5098,7 +5598,7 @@ app.post("/api/coaching-sessions", (req, res) => {
 
   if (
     !actor ||
-    !actorHasPermission(actor, PERMISSIONS.MANAGE_COACHING_SESSIONS)
+    !actorHasPermission(actor, PERMISSIONS.ADD_COACHING_SESSIONS)
   ) {
     res.status(403).json({
       success: false,
@@ -5111,8 +5611,7 @@ app.post("/api/coaching-sessions", (req, res) => {
     req.body ?? {};
   const trimmedTopic = topic?.trim();
   const trimmedSummary = summary?.trim();
-  const normalizedVenue =
-    venue === "outdoor" ? "outdoor" : venue === "indoor" ? "indoor" : null;
+  const normalizedVenue = normalizeVenue(venue, "");
   const normalizedAvailableSlots = Number.parseInt(availableSlots, 10);
 
   if (
@@ -5150,7 +5649,12 @@ app.post("/api/coaching-sessions", (req, res) => {
     return;
   }
 
-  const conflict = findScheduleConflict({ date, startTime, endTime });
+  const conflict = findScheduleConflict({
+    date,
+    startTime,
+    endTime,
+    venue: normalizedVenue,
+  });
 
   if (conflict) {
     res.status(409).json({
@@ -5169,13 +5673,115 @@ app.post("/api/coaching-sessions", (req, res) => {
     trimmedTopic,
     trimmedSummary,
     normalizedVenue,
+    actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
+      ? "approved"
+      : "pending",
+    actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
+      ? actor.username
+      : null,
+    ...(actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
+      ? getUtcTimestampParts()
+      : ["", ""]),
     ...getUtcTimestampParts(),
   );
   const session = findCoachingSessionById.get(insertResult.lastInsertRowid);
 
   res.status(201).json({
     success: true,
-    session: buildCoachingSession(session, [], actor.username),
+    message: actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
+      ? "Coaching session approved and published successfully."
+      : "Coaching session submitted for approval.",
+    session: buildCoachingSession(session, [], actor),
+  });
+});
+
+app.post("/api/coaching-sessions/:id/approve", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (
+    !actor ||
+    !actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
+  ) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to approve coaching sessions.",
+    });
+    return;
+  }
+
+  const session = findCoachingSessionById.get(req.params.id);
+
+  if (!session) {
+    res.status(404).json({
+      success: false,
+      message: "Coaching session not found.",
+    });
+    return;
+  }
+
+  if ((session.approval_status ?? "approved") === "approved") {
+    res.status(400).json({
+      success: false,
+      message: "This coaching session has already been approved.",
+    });
+    return;
+  }
+
+  approveCoachingSessionById.run(actor.username, ...getUtcTimestampParts(), session.id);
+  const approvedSession = findCoachingSessionById.get(session.id);
+  const bookings = listBookingsByCoachingSessionId
+    .all(session.id)
+    .map(normalizeBookingRow);
+
+  res.json({
+    success: true,
+    message: "Coaching session approved successfully.",
+    session: buildCoachingSession(approvedSession, bookings, actor),
+  });
+});
+
+app.post("/api/coaching-sessions/:id/reject", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (
+    !actor ||
+    !actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
+  ) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to reject coaching sessions.",
+    });
+    return;
+  }
+
+  const session = findCoachingSessionById.get(req.params.id);
+
+  if (!session) {
+    res.status(404).json({
+      success: false,
+      message: "Coaching session not found.",
+    });
+    return;
+  }
+
+  if ((session.approval_status ?? "approved") !== "pending") {
+    res.status(400).json({
+      success: false,
+      message: "Only pending coaching sessions can be rejected.",
+    });
+    return;
+  }
+
+  rejectCoachingSessionById.run(actor.username, ...getUtcTimestampParts(), session.id);
+  const rejectedSession = findCoachingSessionById.get(session.id);
+  const bookings = listBookingsByCoachingSessionId
+    .all(session.id)
+    .map(normalizeBookingRow);
+
+  res.json({
+    success: true,
+    message: "Coaching session request rejected.",
+    session: buildCoachingSession(rejectedSession, bookings, actor),
   });
 });
 
@@ -5196,6 +5802,22 @@ app.post("/api/coaching-sessions/:id/book", (req, res) => {
     res.status(404).json({
       success: false,
       message: "Coaching session not found.",
+    });
+    return;
+  }
+
+  if (hasScheduleEntryEnded(session.session_date, session.end_time)) {
+    res.status(400).json({
+      success: false,
+      message: "You cannot book onto a coaching session that has already finished.",
+    });
+    return;
+  }
+
+  if ((session.approval_status ?? "approved") !== "approved") {
+    res.status(400).json({
+      success: false,
+      message: "This coaching session is still awaiting approval.",
     });
     return;
   }
@@ -5246,7 +5868,7 @@ app.post("/api/coaching-sessions/:id/book", (req, res) => {
 
   res.json({
     success: true,
-    session: buildCoachingSession(session, bookings, actor.username),
+    session: buildCoachingSession(session, bookings, actor),
   });
 });
 
@@ -5294,7 +5916,7 @@ app.delete("/api/coaching-sessions/:id/booking", (req, res) => {
 
   res.json({
     success: true,
-    session: buildCoachingSession(session, bookings, actor.username),
+    session: buildCoachingSession(session, bookings, actor),
   });
 });
 
@@ -5303,7 +5925,7 @@ app.delete("/api/coaching-sessions/:id", (req, res) => {
 
   if (
     !actor ||
-    !actorHasPermission(actor, PERMISSIONS.MANAGE_COACHING_SESSIONS)
+    !actorHasPermission(actor, PERMISSIONS.ADD_COACHING_SESSIONS)
   ) {
     res.status(403).json({
       success: false,
@@ -5403,13 +6025,15 @@ app.get("/api/my-tournament-reminders", (req, res) => {
   }
 
   const today = toUtcDateString(new Date());
+  const { registrationsByTournamentId, scoresByTournamentId } =
+    buildTournamentDataMaps();
   const reminders = listTournaments
     .all()
     .map((tournament) =>
       buildTournament(
         tournament,
-        listTournamentRegistrationsByTournamentId.all(tournament.id),
-        listTournamentScoresByTournamentId.all(tournament.id),
+        registrationsByTournamentId.get(tournament.id) ?? [],
+        scoresByTournamentId.get(tournament.id) ?? [],
         actor.username,
       ),
     )
@@ -5474,12 +6098,11 @@ app.get("/api/my-tournament-reminders", (req, res) => {
 
 app.get("/api/range-members", (_req, res) => {
   const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const disciplinesByUsername = buildDisciplinesByUsernameMap();
   const members = findRecentRangeMembers.all(cutoff).map((member) =>
     buildMemberUserProfile(
       member,
-      findDisciplinesByUsername
-        .all(member.username)
-        .map((discipline) => discipline.discipline),
+      disciplinesByUsername.get(member.username) ?? [],
       {
         lastLoggedInAt: member.last_logged_in_at,
       },

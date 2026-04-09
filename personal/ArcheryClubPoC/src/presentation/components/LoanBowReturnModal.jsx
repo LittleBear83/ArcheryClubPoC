@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Modal } from "./Modal";
 
 const RETURN_ITEM_FIELDS = [
@@ -70,6 +70,79 @@ function buildInitialReturnForm(loanBow) {
   };
 }
 
+function LoanBowReturnModalForm({ loanBow, isSaving, error, onClose, onSubmit }) {
+  const [returnForm, setReturnForm] = useState(() =>
+    buildInitialReturnForm(loanBow),
+  );
+  const availableItems = RETURN_ITEM_FIELDS.filter((field) =>
+    field.isAvailable(loanBow ?? {}),
+  );
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit(returnForm);
+      }}
+      className="left-align-form"
+    >
+      <label>
+        Date Returned
+        <input
+          type="date"
+          value={returnForm.returnedDate}
+          onChange={(event) =>
+            setReturnForm((current) => ({
+              ...current,
+              returnedDate: event.target.value,
+            }))
+          }
+          disabled={isSaving}
+          required
+        />
+      </label>
+
+      <fieldset className="profile-discipline-fieldset loan-bow-return-fieldset">
+        <legend>Returned Equipment</legend>
+        <div className="profile-discipline-grid loan-bow-boolean-grid">
+          {availableItems.map((field) => (
+            <label key={field.key} className="profile-checkbox">
+              <input
+                type="checkbox"
+                checked={returnForm[field.key]}
+                onChange={() =>
+                  setReturnForm((current) => ({
+                    ...current,
+                    [field.key]: !current[field.key],
+                  }))
+                }
+                disabled={isSaving}
+              />
+              <span>{field.label}</span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      {error ? <p className="profile-error">{error}</p> : null}
+
+      <div className="loan-bow-return-actions">
+        <button type="submit" disabled={isSaving}>
+          {isSaving ? "Saving return..." : "Submit return"}
+        </button>
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={onClose}
+          disabled={isSaving}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function LoanBowReturnModal({
   open,
   loanBow,
@@ -78,81 +151,27 @@ export function LoanBowReturnModal({
   onClose,
   onSubmit,
 }) {
-  const [returnForm, setReturnForm] = useState(() => buildInitialReturnForm(loanBow));
-
-  useEffect(() => {
-    if (open) {
-      setReturnForm(buildInitialReturnForm(loanBow));
-    }
+  const modalKey = useMemo(() => {
+    return JSON.stringify({
+      open,
+      username: loanBow?.username ?? "",
+      returnedDate: loanBow?.returnedDate ?? "",
+      riserNumber: loanBow?.riserNumber ?? "",
+      limbsNumber: loanBow?.limbsNumber ?? "",
+      arrowCount: loanBow?.arrowCount ?? 0,
+    });
   }, [loanBow, open]);
-
-  const availableItems = RETURN_ITEM_FIELDS.filter((field) =>
-    field.isAvailable(loanBow ?? {}),
-  );
 
   return (
     <Modal open={open} onClose={onClose} title="Loan Bow Return">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit(returnForm);
-        }}
-        className="left-align-form"
-      >
-        <label>
-          Date Returned
-          <input
-            type="date"
-            value={returnForm.returnedDate}
-            onChange={(event) =>
-              setReturnForm((current) => ({
-                ...current,
-                returnedDate: event.target.value,
-              }))
-            }
-            disabled={isSaving}
-            required
-          />
-        </label>
-
-        <fieldset className="profile-discipline-fieldset loan-bow-return-fieldset">
-          <legend>Returned Equipment</legend>
-          <div className="profile-discipline-grid loan-bow-boolean-grid">
-            {availableItems.map((field) => (
-              <label key={field.key} className="profile-checkbox">
-                <input
-                  type="checkbox"
-                  checked={returnForm[field.key]}
-                  onChange={() =>
-                    setReturnForm((current) => ({
-                      ...current,
-                      [field.key]: !current[field.key],
-                    }))
-                  }
-                  disabled={isSaving}
-                />
-                <span>{field.label}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        {error ? <p className="profile-error">{error}</p> : null}
-
-        <div className="loan-bow-return-actions">
-          <button type="submit" disabled={isSaving}>
-            {isSaving ? "Saving return..." : "Submit return"}
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={onClose}
-            disabled={isSaving}
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
+      <LoanBowReturnModalForm
+        key={modalKey}
+        loanBow={loanBow}
+        isSaving={isSaving}
+        error={error}
+        onClose={onClose}
+        onSubmit={onSubmit}
+      />
     </Modal>
   );
 }

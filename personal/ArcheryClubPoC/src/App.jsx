@@ -1,5 +1,5 @@
 import "./App.css";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { HomePage } from "./presentation/pages/HomePage";
 import { LoginPage } from "./presentation/pages/LoginPage";
@@ -8,6 +8,7 @@ import { MemberRepositoryImpl } from "./data/repositories/MemberRepositoryImpl";
 import { GetMembersUseCase } from "./usecases/GetMembersUseCase";
 import { AddMemberUseCase } from "./usecases/AddMemberUseCase";
 import { normalizeUserProfile } from "./utils/userProfile";
+import { subscribeToRfidScans } from "./utils/rfidScanHub";
 
 const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
@@ -194,11 +195,60 @@ function App() {
     }
   };
 
+  const handleLogoutEvent = useEffectEvent((message = "") => {
+    handleLogout(message);
+  });
+  const handleRfidLoginEvent = useEffectEvent(async (rfidTag) => {
+    return handleRfidLogin(rfidTag);
+  });
+
   useEffect(() => {
     if (isAuthenticated && !currentUserProfile) {
       handleLogout();
     }
   }, [currentUserProfile, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return undefined;
+    }
+
+    const username = currentUserProfile?.auth?.username;
+
+    if (!username) {
+      return undefined;
+    }
+
+    const abortController = new AbortController();
+
+    const refreshAuthenticatedUser = async () => {
+      try {
+        const response = await fetch(`/api/user-profiles/${username}`, {
+          headers: {
+            "x-actor-username": username,
+          },
+          cache: "no-store",
+          signal: abortController.signal,
+        });
+        const result = await response.json();
+
+        if (!response.ok || !result.success || abortController.signal.aborted) {
+          return;
+        }
+
+        persistAuthenticatedUser(result.userProfile);
+      } catch {
+        // Keep the active session if the refresh fails; the next successful
+        // profile load or login will rehydrate the latest permissions.
+      }
+    };
+
+    refreshAuthenticatedUser();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [currentUserProfile?.auth?.username, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -213,7 +263,7 @@ function App() {
       }
 
       inactivityTimeoutRef.current = window.setTimeout(() => {
-        handleLogout();
+        handleLogoutEvent();
       }, INACTIVITY_TIMEOUT_MS);
     };
 
@@ -252,8 +302,8 @@ function App() {
     let isActive = true;
     let isHandingOff = false;
 
-    const pollForIdleSessionRfidHandoff = async () => {
-      if (!isActive || isHandingOff) {
+    return subscribeToRfidScans(async (scan) => {
+      if (!isActive || isHandingOff || !scan?.rfidTag) {
         return;
       }
 
@@ -263,40 +313,22 @@ function App() {
         return;
       }
 
+      isHandingOff = true;
+
       try {
-        const response = await fetch("/api/auth/rfid/latest-scan", {
-          cache: "no-store",
-        });
-        const result = await response.json();
-
-        if (!isActive || !response.ok || !result.success || !result.scan?.rfidTag) {
-          return;
-        }
-
-        isHandingOff = true;
-        const loginResult = await handleRfidLogin(result.scan.rfidTag);
+        const loginResult = await handleRfidLoginEvent(scan.rfidTag);
 
         if (!isActive) {
           return;
         }
 
         if (!loginResult.success) {
-          handleLogout(loginResult.message);
-          return;
+          handleLogoutEvent(loginResult.message);
         }
-      } catch {
-        return;
       } finally {
         isHandingOff = false;
       }
-    };
-
-    const intervalId = window.setInterval(pollForIdleSessionRfidHandoff, 1500);
-
-    return () => {
-      isActive = false;
-      window.clearInterval(intervalId);
-    };
+    });
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {

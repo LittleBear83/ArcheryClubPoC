@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" role="img" aria-labelledby="title desc">
+  <title id="title">Lawnmower illustration</title>
+  <desc id="desc">A simple yellow lawnmower on grass.</desc>
+  <rect width="320" height="220" fill="#102013"/>
+  <rect y="162" width="320" height="58" fill="#2f6f2f"/>
+  <path d="M66 155h110l21-49h-86c-10 0-19 6-23 15z" fill="#ffcf24"/>
+  <path d="M164 106h40c21 0 38 17 38 38v11h-31v-8c0-8-7-15-15-15h-32z" fill="#d9472f"/>
+  <rect x="96" y="92" width="82" height="17" rx="8" fill="#ffe37e"/>
+  <circle cx="100" cy="170" r="21" fill="#1b1b1b"/>
+  <circle cx="100" cy="170" r="9" fill="#a9a9a9"/>
+  <circle cx="234" cy="170" r="28" fill="#1b1b1b"/>
+  <circle cx="234" cy="170" r="12" fill="#a9a9a9"/>
+  <path d="M210 95l31-45 12 7-31 45z" fill="#bfc4c9"/>
+  <path d="M245 44l20-8 8 11-18 9z" fill="#f26f21"/>
+  <path d="M63 150h20l-16 12h-22z" fill="#d9472f"/>
+  <circle cx="56" cy="154" r="5" fill="#ffec8a"/>
+</svg>

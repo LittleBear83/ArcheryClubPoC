@@ -113,6 +113,10 @@ export function LoginPage({
         return;
       }
 
+      if (scan.scanType === "payment-card") {
+        return;
+      }
+
       try {
         await attemptRfidLoginEvent(scan.rfidTag);
       } catch {

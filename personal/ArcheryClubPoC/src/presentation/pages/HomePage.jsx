@@ -402,9 +402,9 @@ export function HomePage({
       <main className="page-shell">
         <section className="page-content">
           {activePage === "home" ? (
-            <p className="welcome-message">
+            <h1 className="welcome-message">
               Welcome {currentUserProfile?.personal.fullName}
-            </p>
+            </h1>
           ) : null}
 
           <Routes>

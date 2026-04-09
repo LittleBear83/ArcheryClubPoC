@@ -1,8 +1,10 @@
 import "./App.css";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import lawnmower from "./assets/lawnmower.svg";
 import { HomePage } from "./presentation/pages/HomePage";
 import { LoginPage } from "./presentation/pages/LoginPage";
+import { Modal } from "./presentation/components/Modal";
 import { InMemoryMemberDataSource } from "./data/sources/InMemoryMemberDataSource";
 import { MemberRepositoryImpl } from "./data/repositories/MemberRepositoryImpl";
 import { GetMembersUseCase } from "./usecases/GetMembersUseCase";
@@ -15,7 +17,11 @@ const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
 const AUTH_MESSAGE_STORAGE_KEY = "archeryclubpoc-auth-message";
 const DEFAULT_USERNAME = "Cfleetham";
 const INACTIVITY_TIMEOUT_MS = 120000;
-const RFID_SESSION_HANDOFF_IDLE_MS = 30000;
+const RFID_SESSION_HANDOFF_IDLE_MS = 15000;
+const DEFAULT_PAYMENT_CARD_MESSAGE =
+  "Thank you for your $5000 donation for the children of Namibia, this will go a long way to the PPE equipment they sorely need, your complementary Parker Pen will be dispatched in the next 3-5 business weeks.";
+const PAYMENT_CARD_WARNING_MESSAGE =
+  "please ensure not to use any other token or card other than the one that was issued to you";
 
 const dataSource = new InMemoryMemberDataSource();
 const memberRepository = new MemberRepositoryImpl({ dataSource });
@@ -48,6 +54,28 @@ function App() {
   const [loginMessage, setLoginMessage] = useState(() => {
     return window.localStorage.getItem(AUTH_MESSAGE_STORAGE_KEY) ?? "";
   });
+  const [paymentCardModal, setPaymentCardModal] = useState({
+    open: false,
+    cardBrand: "",
+    message: DEFAULT_PAYMENT_CARD_MESSAGE,
+  });
+
+  const handlePaymentCardModalClose = () => {
+    setPaymentCardModal((current) => {
+      if (current.message === PAYMENT_CARD_WARNING_MESSAGE) {
+        return {
+          open: false,
+          cardBrand: "",
+          message: DEFAULT_PAYMENT_CARD_MESSAGE,
+        };
+      }
+
+      return {
+        ...current,
+        message: PAYMENT_CARD_WARNING_MESSAGE,
+      };
+    });
+  };
 
   const persistAuthenticatedUser = (userProfile) => {
     const storedUserProfile = normalizeUserProfile(userProfile);
@@ -95,7 +123,8 @@ function App() {
     } catch {
       return {
         success: false,
-        message: "Login service is unavailable. Make sure the local auth server is running.",
+        message:
+          "Login service is unavailable. Make sure the local auth server is running.",
       };
     }
   };
@@ -148,7 +177,8 @@ function App() {
     } catch {
       return {
         success: false,
-        message: "RFID service is unavailable. Make sure the local auth server is running.",
+        message:
+          "RFID service is unavailable. Make sure the local auth server is running.",
       };
     }
   };
@@ -190,7 +220,8 @@ function App() {
     } catch {
       return {
         success: false,
-        message: "Guest login service is unavailable. Make sure the local auth server is running.",
+        message:
+          "Guest login service is unavailable. Make sure the local auth server is running.",
       };
     }
   };
@@ -207,6 +238,27 @@ function App() {
       handleLogout();
     }
   }, [currentUserProfile, isAuthenticated]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    const unsubscribe = subscribeToRfidScans((scan) => {
+      if (!isActive || scan?.scanType !== "payment-card") {
+        return;
+      }
+
+      setPaymentCardModal({
+        open: true,
+        cardBrand: scan.cardBrand ?? "",
+        message: DEFAULT_PAYMENT_CARD_MESSAGE,
+      });
+    });
+
+    return () => {
+      isActive = false;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -307,6 +359,10 @@ function App() {
         return;
       }
 
+      if (scan.scanType === "payment-card") {
+        return;
+      }
+
       const idleForMs = Date.now() - lastActivityAtRef.current;
 
       if (idleForMs < RFID_SESSION_HANDOFF_IDLE_MS) {
@@ -333,33 +389,91 @@ function App() {
 
   if (!isAuthenticated) {
     return (
-      <LoginPage
-        onGuestLogin={handleGuestLogin}
-        onLogin={handleLogin}
-        onRfidLogin={handleRfidLogin}
-        initialMessage={loginMessage}
-        seededUsername={DEFAULT_USERNAME}
-      />
+      <>
+        <LoginPage
+          onGuestLogin={handleGuestLogin}
+          onLogin={handleLogin}
+          onRfidLogin={handleRfidLogin}
+          initialMessage={loginMessage}
+          seededUsername={DEFAULT_USERNAME}
+        />
+        <Modal
+          open={paymentCardModal.open}
+          onClose={handlePaymentCardModalClose}
+          title="Card Payment Detected"
+        >
+          <div className="payment-card-modal">
+            <img
+              src={lawnmower}
+              alt="Illustration of a lawnmower"
+              className="payment-card-modal-image"
+            />
+            <p className="payment-card-modal-copy">
+              {paymentCardModal.cardBrand
+                ? `${paymentCardModal.cardBrand} contactless card detected.`
+                : "Contactless payment card detected."}
+            </p>
+            <p className="payment-card-modal-copy">
+              {paymentCardModal.message}
+            </p>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={handlePaymentCardModalClose}
+            >
+              Close
+            </button>
+          </div>
+        </Modal>
+      </>
     );
   }
 
   return (
-    <Router>
-      <Routes>
-        <Route
-          path="/*"
-          element={
-            <HomePage
-              getMembersUseCase={getMembersUseCase}
-              addMemberUseCase={addMemberUseCase}
-              currentUserProfile={currentUserProfile}
-              onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
-              onLogout={handleLogout}
-            />
-          }
-        />
-      </Routes>
-    </Router>
+    <>
+      <Router>
+        <Routes>
+          <Route
+            path="/*"
+            element={
+              <HomePage
+                getMembersUseCase={getMembersUseCase}
+                addMemberUseCase={addMemberUseCase}
+                currentUserProfile={currentUserProfile}
+                onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
+                onLogout={handleLogout}
+              />
+            }
+          />
+        </Routes>
+      </Router>
+      <Modal
+        open={paymentCardModal.open}
+        onClose={handlePaymentCardModalClose}
+        title="Demo Only"
+      >
+        <div className="payment-card-modal">
+          <img
+            src={lawnmower}
+            alt="Illustration of a lawnmower"
+            className="payment-card-modal-image"
+          />
+          <p className="payment-card-modal-copy">
+            {paymentCardModal.cardBrand
+              ? `${paymentCardModal.cardBrand} contactless card detected.`
+              : "Contactless payment card detected."}
+          </p>
+          <p className="payment-card-modal-copy">{paymentCardModal.message}</p>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={handlePaymentCardModalClose}
+          >
+            Close
+          </button>
+        </div>
+      </Modal>
+    </>
   );
 }
 

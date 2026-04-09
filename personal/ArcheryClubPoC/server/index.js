@@ -25,7 +25,12 @@ const PERMISSIONS = {
   MANAGE_TOURNAMENTS: "manage_tournaments",
 };
 const DEACTIVATED_RFID_SUFFIX = "-deactivated";
-const RFID_READER_NAME = "ACS ACR122U PICC Interface 0";
+const RFID_READER_NAMES = [
+  process.env.RFID_READER_NAME,
+  "ACS ACR122U PICC Interface 0",
+  "ACS ACR122 0",
+  "ACR122 Smart Card Reader",
+].filter(Boolean);
 const PERMISSION_DEFINITIONS = [
   {
     key: PERMISSIONS.MANAGE_MEMBERS,
@@ -755,12 +760,8 @@ if (
     !coachingSessionsColumns.some(
       (column) => column.name === "available_slots",
     ) ||
-    !db
-      .prepare(
-        `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'coaching_sessions'`,
-      )
-      .get()
-      ?.sql?.includes("'both'"))
+    !coachingSessionsColumns.some((column) => column.name === "created_at_date") ||
+    !coachingSessionsColumns.some((column) => column.name === "created_at_time"))
 ) {
   db.exec(`
     PRAGMA foreign_keys = OFF;
@@ -1264,16 +1265,22 @@ const upsertCommitteeRole = db.prepare(`
     display_order = excluded.display_order
 `);
 
-for (const user of seedUsers) {
-  upsertUser.run({
-    ...user,
-    activeMember: user.activeMember ? 1 : 0,
-  });
-  upsertUserType.run(user);
-  deleteUserDisciplines.run(user.username);
+const existingUserCount = db
+  .prepare(`SELECT COUNT(*) AS count FROM users`)
+  .get().count;
 
-  for (const discipline of user.disciplines) {
-    insertUserDiscipline.run(user.username, discipline);
+if (existingUserCount === 0) {
+  for (const user of seedUsers) {
+    upsertUser.run({
+      ...user,
+      activeMember: user.activeMember ? 1 : 0,
+    });
+    upsertUserType.run(user);
+    deleteUserDisciplines.run(user.username);
+
+    for (const discipline of user.disciplines) {
+      insertUserDiscipline.run(user.username, discipline);
+    }
   }
 }
 
@@ -2424,18 +2431,37 @@ const latestRfidScan = {
   rfidTag: null,
   scannedAt: null,
   source: null,
+  scanType: "rfid",
+  cardBrand: null,
   deliveredSequence: 0,
 };
 
-function registerRfidScan(rfidTag, source = "reader") {
-  if (!rfidTag) {
+function registerRfidScan(scan, source = "reader") {
+  const normalizedScan =
+    typeof scan === "string"
+      ? {
+          rfidTag: scan,
+          source,
+          scanType: "rfid",
+          cardBrand: null,
+        }
+      : {
+          rfidTag: scan?.rfidTag ?? null,
+          source: scan?.source ?? source,
+          scanType: scan?.scanType ?? "rfid",
+          cardBrand: scan?.cardBrand ?? null,
+        };
+
+  if (!normalizedScan.rfidTag) {
     return;
   }
 
   latestRfidScan.sequence += 1;
-  latestRfidScan.rfidTag = rfidTag;
+  latestRfidScan.rfidTag = normalizedScan.rfidTag;
   latestRfidScan.scannedAt = new Date().toISOString();
-  latestRfidScan.source = source;
+  latestRfidScan.source = normalizedScan.source;
+  latestRfidScan.scanType = normalizedScan.scanType;
+  latestRfidScan.cardBrand = normalizedScan.cardBrand;
 }
 
 function startRfidReaderMonitor() {
@@ -2476,35 +2502,86 @@ public static class WinSCardReader {
 }
 "@
 
-$reader = '${RFID_READER_NAME}'
-$apdu = [byte[]](0xFF,0xCA,0x00,0x00,0x00)
-$lastUid = ''
+$readers = @(${RFID_READER_NAMES.map((reader) => `'${reader}'`).join(", ")})
+$uidApdu = [byte[]](0xFF,0xCA,0x00,0x00,0x00)
+$ppseApdu = [byte[]](0x00,0xA4,0x04,0x00,0x0E,0x32,0x50,0x41,0x59,0x2E,0x53,0x59,0x53,0x2E,0x44,0x44,0x46,0x30,0x31,0x00)
+$lastFingerprint = ''
 $wasPresent = $false
+
+function Invoke-Apdu($card, $activeProtocol, $apdu) {
+    $sendPci = New-Object SCARD_IO_REQUEST
+    $sendPci.dwProtocol = $activeProtocol
+    $sendPci.cbPciLength = 8
+    $recv = New-Object byte[] 258
+    $recvLen = $recv.Length
+    $result = [WinSCardReader]::SCardTransmit($card, [ref]$sendPci, $apdu, $apdu.Length, [IntPtr]::Zero, $recv, [ref]$recvLen)
+
+    if ($result -ne 0 -or $recvLen -lt 2) {
+        return @{
+            Status = ''
+            Payload = @()
+        }
+    }
+
+    $sw1 = $recv[$recvLen - 2]
+    $sw2 = $recv[$recvLen - 1]
+
+    return @{
+        Status = ('0x{0:X2}{1:X2}' -f $sw1, $sw2)
+        Payload = if ($recvLen -gt 2) { $recv[0..($recvLen - 3)] } else { @() }
+    }
+}
+
+function Get-PaymentCardBrand($payload) {
+    if (-not $payload -or $payload.Length -lt 7) {
+        return $null
+    }
+
+    $hexPayload = (($payload | ForEach-Object { $_.ToString('X2') }) -join '')
+
+    if ($hexPayload -match 'A0000000031010') {
+        return 'Visa'
+    }
+
+    if ($hexPayload -match 'A0000000041010') {
+        return 'Mastercard'
+    }
+
+    if ($hexPayload -match 'A000000025') {
+        return 'American Express'
+    }
+
+    return 'Payment card'
+}
 
 while ($true) {
     $context = [IntPtr]::Zero
     $card = [IntPtr]::Zero
     $activeProtocol = 0
     $uid = ''
+    $scanType = 'rfid'
+    $cardBrand = $null
+    $connected = $false
 
     try {
         $result = [WinSCardReader]::SCardEstablishContext([WinSCardReader]::SCARD_SCOPE_USER, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$context)
         if ($result -eq 0) {
-            $result = [WinSCardReader]::SCardConnect($context, $reader, [WinSCardReader]::SCARD_SHARE_SHARED, ([WinSCardReader]::SCARD_PROTOCOL_T0 -bor [WinSCardReader]::SCARD_PROTOCOL_T1), [ref]$card, [ref]$activeProtocol)
-            if ($result -eq 0) {
-                $sendPci = New-Object SCARD_IO_REQUEST
-                $sendPci.dwProtocol = $activeProtocol
-                $sendPci.cbPciLength = 8
-                $recv = New-Object byte[] 258
-                $recvLen = $recv.Length
-                $result = [WinSCardReader]::SCardTransmit($card, [ref]$sendPci, $apdu, $apdu.Length, [IntPtr]::Zero, $recv, [ref]$recvLen)
-                if ($result -eq 0 -and $recvLen -ge 2) {
-                    $sw1 = $recv[$recvLen - 2]
-                    $sw2 = $recv[$recvLen - 1]
-                    if ($sw1 -eq 0x90 -and $sw2 -eq 0x00 -and $recvLen -gt 2) {
-                        $payload = $recv[0..($recvLen - 3)]
-                        $uid = (($payload | ForEach-Object { $_.ToString('X2') }) -join '')
+            foreach ($reader in $readers) {
+                $result = [WinSCardReader]::SCardConnect($context, $reader, [WinSCardReader]::SCARD_SHARE_SHARED, ([WinSCardReader]::SCARD_PROTOCOL_T0 -bor [WinSCardReader]::SCARD_PROTOCOL_T1), [ref]$card, [ref]$activeProtocol)
+                if ($result -eq 0) {
+                    $connected = $true
+                    $uidResult = Invoke-Apdu $card $activeProtocol $uidApdu
+                    if ($uidResult.Status -eq '0x9000' -and $uidResult.Payload.Length -gt 0) {
+                        $uid = (($uidResult.Payload | ForEach-Object { $_.ToString('X2') }) -join '')
                     }
+
+                    $ppseResult = Invoke-Apdu $card $activeProtocol $ppseApdu
+                    if ($ppseResult.Status -eq '0x9000') {
+                        $scanType = 'payment-card'
+                        $cardBrand = Get-PaymentCardBrand $ppseResult.Payload
+                    }
+
+                    break
                 }
             }
         }
@@ -2515,14 +2592,21 @@ while ($true) {
     }
 
     if ($uid) {
-        if (-not $wasPresent -or $uid -ne $lastUid) {
-            Write-Output $uid
+        $fingerprint = if ($scanType -eq 'payment-card' -and $cardBrand) { "$uid|$scanType|$cardBrand" } else { "$uid|$scanType" }
+
+        if (-not $wasPresent -or $fingerprint -ne $lastFingerprint) {
+            [pscustomobject]@{
+                rfidTag = $uid
+                source = 'reader'
+                scanType = $scanType
+                cardBrand = $cardBrand
+            } | ConvertTo-Json -Compress | Write-Output
             [Console]::Out.Flush()
         }
-        $lastUid = $uid
+        $lastFingerprint = $fingerprint
         $wasPresent = $true
     } else {
-        $lastUid = ''
+        $lastFingerprint = ''
         $wasPresent = $false
     }
 
@@ -2548,7 +2632,11 @@ while ($true) {
         continue;
       }
 
-      registerRfidScan(trimmedLine, "reader");
+      try {
+        registerRfidScan(JSON.parse(trimmedLine), "reader");
+      } catch {
+        registerRfidScan(trimmedLine, "reader");
+      }
     }
   });
 
@@ -2973,12 +3061,18 @@ function venuesOverlap(leftVenue, rightVenue) {
   );
 }
 
+function isActiveApprovalStatus(value) {
+  const normalizedValue = value ?? "approved";
+  return normalizedValue === "approved" || normalizedValue === "pending";
+}
+
 function findScheduleConflict({ date, startTime, endTime, venue = "both" }) {
   const sessionConflict = listCoachingSessions
     .all()
     .find(
       (session) =>
         session.session_date === date &&
+        isActiveApprovalStatus(session.approval_status) &&
         venuesOverlap(venue, session.venue) &&
         timesOverlap(startTime, endTime, session.start_time, session.end_time),
     );
@@ -2997,6 +3091,7 @@ function findScheduleConflict({ date, startTime, endTime, venue = "both" }) {
     .find(
       (event) =>
         event.event_date === date &&
+        isActiveApprovalStatus(event.approval_status) &&
         venuesOverlap(venue, event.venue) &&
         timesOverlap(startTime, endTime, event.start_time, event.end_time),
     );
@@ -3832,12 +3927,14 @@ app.get("/api/auth/rfid/latest-scan", (_req, res) => {
 
   res.json({
     success: true,
-    scan: hasUndeliveredScan
+        scan: hasUndeliveredScan
       ? {
           sequence: latestRfidScan.sequence,
           rfidTag: latestRfidScan.rfidTag,
           scannedAt: latestRfidScan.scannedAt,
           source: latestRfidScan.source,
+          scanType: latestRfidScan.scanType,
+          cardBrand: latestRfidScan.cardBrand,
         }
       : null,
   });

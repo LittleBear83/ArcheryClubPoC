@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "../components/Button";
 
 export function IdeasFormPage() {
   const [form, setForm] = useState({
@@ -69,9 +70,9 @@ export function IdeasFormPage() {
           />
         </label>
 
-        <button type="submit">Submit idea</button>
+        <Button type="submit">Submit idea</Button>
       </form>
-      {submitted && <p style={{ color: "#8bc34a" }}>{submitted}</p>}
+      {submitted ? <p className="profile-success">{submitted}</p> : null}
     </>
   );
 }

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "../components/Button";
+import { LabeledSelect } from "../components/LabeledSelect";
 import { hasPermission } from "../../utils/userProfile";
 import { fetchApi } from "../../lib/api";
 
@@ -18,27 +20,24 @@ const EMPTY_ROLE_FORM = {
 const PERMISSION_GROUP_ORDER = [
   "member-setup",
   "events-coaching",
-  "competitions-activity",
   "equipment-committee",
   "system-admin",
 ] as const;
 
 const PERMISSION_GROUP_METADATA = {
   "member-setup": {
-    title: "Member Setup",
-    description: "Member records, user creation, profile structure, and role assignment.",
+    title: "Member adminstration",
+    description:
+      "Member records, user creation, profile structure, role assignment, and committee administration.",
   },
   "events-coaching": {
-    title: "Events and Coaching",
-    description: "Create and approve events, competitions, and coaching sessions.",
-  },
-  "competitions-activity": {
-    title: "Competitions and Activity",
-    description: "Tournament setup and related activity management.",
+    title: "Events/Tournaments and Coaching",
+    description:
+      "Create and approve events, coaching sessions, and tournament activity.",
   },
   "equipment-committee": {
     title: "Equipment and Committee",
-    description: "Loan bow management and committee administration.",
+    description: "Loan bow management and equipment administration.",
   },
   "system-admin": {
     title: "System Administration",
@@ -64,16 +63,16 @@ type Role = {
 function getPermissionGroup(permissionKey: string): PermissionGroupKey {
   switch (permissionKey) {
     case "manage_members":
+    case "manage_committee_roles":
       return "member-setup";
     case "add_events":
     case "approve_events":
+    case "cancel_events":
     case "add_coaching_sessions":
     case "approve_coaching_sessions":
-      return "events-coaching";
     case "manage_tournaments":
-      return "competitions-activity";
+      return "events-coaching";
     case "manage_loan_bows":
-    case "manage_committee_roles":
       return "equipment-committee";
     case "manage_roles_permissions":
       return "system-admin";
@@ -127,11 +126,12 @@ export function RolePermissionsPage({
     () =>
       selectedRoleKey && roles.some((role) => role.roleKey === selectedRoleKey)
         ? selectedRoleKey
-        : roles[0]?.roleKey ?? "",
+        : (roles[0]?.roleKey ?? ""),
     [roles, selectedRoleKey],
   );
   const selectedRole = useMemo(
-    () => roles.find((role) => role.roleKey === effectiveSelectedRoleKey) ?? null,
+    () =>
+      roles.find((role) => role.roleKey === effectiveSelectedRoleKey) ?? null,
     [effectiveSelectedRoleKey, roles],
   );
   const groupedPermissionOptions = useMemo(() => {
@@ -146,18 +146,18 @@ export function RolePermissionsPage({
       groupedPermissions.set(groupKey, currentGroup);
     }
 
-    return PERMISSION_GROUP_ORDER
-      .map((groupKey) => ({
-        groupKey,
-        ...PERMISSION_GROUP_METADATA[groupKey],
-        permissions: groupedPermissions.get(groupKey) ?? [],
-      }))
-      .filter((group) => group.permissions.length > 0);
+    return PERMISSION_GROUP_ORDER.map((groupKey) => ({
+      groupKey,
+      ...PERMISSION_GROUP_METADATA[groupKey],
+      permissions: groupedPermissions.get(groupKey) ?? [],
+    })).filter((group) => group.permissions.length > 0);
   }, [permissionOptions]);
 
   useEffect(() => {
     const refresh = () => {
-      void queryClient.invalidateQueries({ queryKey: ["roles", actorUsername] });
+      void queryClient.invalidateQueries({
+        queryKey: ["roles", actorUsername],
+      });
     };
 
     window.addEventListener("profile-data-updated", refresh);
@@ -177,6 +177,17 @@ export function RolePermissionsPage({
         : form,
     [form, isCreating, isFormDirty, selectedRole],
   );
+
+  const getEffectiveFormState = (currentForm: typeof EMPTY_ROLE_FORM) => {
+    if (!isCreating && !isFormDirty && selectedRole) {
+      return {
+        title: selectedRole.title,
+        permissions: selectedRole.permissions,
+      };
+    }
+
+    return currentForm;
+  };
 
   const refreshCurrentUserProfile = async () => {
     if (!currentUserProfile?.auth?.username || !onCurrentUserProfileUpdate) {
@@ -202,13 +213,16 @@ export function RolePermissionsPage({
 
   const togglePermission = (permissionKey: string) => {
     setForm((current) => {
-      const hasSelectedPermission = current.permissions.includes(permissionKey);
+      const baseForm = getEffectiveFormState(current);
+      const hasSelectedPermission = baseForm.permissions.includes(permissionKey);
 
       return {
-        ...current,
+        ...baseForm,
         permissions: hasSelectedPermission
-          ? current.permissions.filter((permission) => permission !== permissionKey)
-          : [...current.permissions, permissionKey],
+          ? baseForm.permissions.filter(
+              (permission) => permission !== permissionKey,
+            )
+          : [...baseForm.permissions, permissionKey],
       };
     });
     setIsFormDirty(true);
@@ -256,13 +270,19 @@ export function RolePermissionsPage({
       setMessage("");
     },
     onSuccess: async (result) => {
-      setMessage(isCreating ? "Role created successfully." : "Role updated successfully.");
+      setMessage(
+        isCreating
+          ? "Role created successfully."
+          : "Role updated successfully.",
+      );
       setIsCreating(false);
       setIsFormDirty(false);
       setSelectedRoleKey(result.role.roleKey);
       window.dispatchEvent(new Event("profile-data-updated"));
       await refreshCurrentUserProfile();
-      await queryClient.invalidateQueries({ queryKey: ["roles", actorUsername] });
+      await queryClient.invalidateQueries({
+        queryKey: ["roles", actorUsername],
+      });
     },
     onError: (saveError: Error) => {
       setError(saveError.message);
@@ -294,7 +314,9 @@ export function RolePermissionsPage({
       setIsFormDirty(false);
       window.dispatchEvent(new Event("profile-data-updated"));
       await refreshCurrentUserProfile();
-      await queryClient.invalidateQueries({ queryKey: ["roles", actorUsername] });
+      await queryClient.invalidateQueries({
+        queryKey: ["roles", actorUsername],
+      });
     },
     onError: (deleteError: Error) => {
       setError(deleteError.message);
@@ -314,9 +336,7 @@ export function RolePermissionsPage({
       return;
     }
 
-    const confirmed = window.confirm(
-      `Delete role '${selectedRole.title}'?`,
-    );
+    const confirmed = window.confirm(`Delete role '${selectedRole.title}'?`);
 
     if (!confirmed) {
       return;
@@ -339,57 +359,61 @@ export function RolePermissionsPage({
       {rolesQuery.data ? (
         <section className="profile-form role-permissions-panel">
           <div className="role-permissions-toolbar">
-            <label className="profile-member-select">
-              Select role
-              <select
-                value={selectedRoleKey}
-                onChange={(event) => {
-                  setIsCreating(false);
-                  setSelectedRoleKey(event.target.value);
-                  setForm(EMPTY_ROLE_FORM);
-                  setIsFormDirty(false);
-                  setError("");
-                  setMessage("");
-                }}
-                disabled={isCreating || isSaving || roles.length === 0}
-              >
-                {roles.map((role) => (
-                  <option key={role.roleKey} value={role.roleKey}>
-                    {role.title}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <LabeledSelect
+              className="role-select-field"
+              label="Select role"
+              value={selectedRoleKey}
+              onChange={(event) => {
+                setIsCreating(false);
+                setSelectedRoleKey(event.target.value);
+                setForm(EMPTY_ROLE_FORM);
+                setIsFormDirty(false);
+                setError("");
+                setMessage("");
+              }}
+              disabled={isCreating || isSaving || roles.length === 0}
+            >
+              {roles.map((role) => (
+                <option key={role.roleKey} value={role.roleKey}>
+                  {role.title}
+                </option>
+              ))}
+            </LabeledSelect>
 
             {!isCreating ? (
-              <button
+              <Button
                 type="button"
                 className="secondary-button"
                 onClick={startCreateRole}
                 disabled={isSaving}
+                variant="secondary"
               >
                 Create role
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
                 type="button"
                 className="secondary-button"
                 onClick={cancelCreateRole}
                 disabled={isSaving}
+                variant="secondary"
               >
                 Cancel create
-              </button>
+              </Button>
             )}
           </div>
 
           <form onSubmit={handleSaveRole} className="left-align-form">
             <div className="profile-form-grid">
-              <label>
+              <label className="role-title-field">
                 Role title
                 <input
                   value={formValues.title}
                   onChange={(event) =>
-                    setForm((current) => ({ ...current, title: event.target.value }))
+                    setForm((current) => ({
+                      ...getEffectiveFormState(current),
+                      title: event.target.value,
+                    }))
                   }
                   disabled={isSaving}
                   required
@@ -418,10 +442,15 @@ export function RolePermissionsPage({
                     </p>
                     <div className="role-permissions-checkbox-list">
                       {group.permissions.map((permission) => (
-                        <label key={permission.key} className="profile-checkbox">
+                        <label
+                          key={permission.key}
+                          className="profile-checkbox"
+                        >
                           <input
                             type="checkbox"
-                            checked={formValues.permissions.includes(permission.key)}
+                            checked={formValues.permissions.includes(
+                              permission.key,
+                            )}
                             onChange={() => togglePermission(permission.key)}
                             disabled={isSaving}
                           />
@@ -435,7 +464,7 @@ export function RolePermissionsPage({
             </fieldset>
 
             <div className="role-permissions-actions">
-              <button type="submit" disabled={isSaving}>
+              <Button type="submit" disabled={isSaving}>
                 {isSaving
                   ? isCreating
                     ? "Creating role..."
@@ -443,10 +472,10 @@ export function RolePermissionsPage({
                   : isCreating
                     ? "Create role"
                     : "Save role"}
-              </button>
+              </Button>
 
               {!isCreating && selectedRole && !selectedRole.isSystem ? (
-                <button
+                <Button
                   type="button"
                   className="event-cancel-button"
                   onClick={handleDeleteRole}
@@ -456,9 +485,10 @@ export function RolePermissionsPage({
                       ? "Remove users from this role before deleting it."
                       : "Delete role"
                   }
+                  variant="danger"
                 >
                   Delete role
-                </button>
+                </Button>
               ) : null}
             </div>
           </form>

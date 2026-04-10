@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "../components/Button";
+import { Modal } from "../components/Modal";
 import { formatClockTime, formatDate, formatDateTime } from "../../utils/dateTime";
+import { ApprovalCard } from "../components/ApprovalCard";
+import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { hasPermission } from "../../utils/userProfile";
 import { fetchApi } from "../../lib/api";
+import type { ApprovalEvent, CoachingSession, UserProfile } from "../../types/app";
 
 const VENUE_LABELS = {
   indoor: "Indoor",
@@ -69,7 +74,10 @@ function formatVenueLabel(venue) {
   return VENUE_LABELS[normalizeVenue(venue)] ?? "Indoor and outdoor";
 }
 
-function buildConflictWarnings(events, sessions) {
+function buildConflictWarnings(
+  events: ApprovalEvent[],
+  sessions: CoachingSession[],
+) {
   const activeEvents = events.filter(isActiveApprovalStatus);
   const activeSessions = sessions.filter(isActiveApprovalStatus);
   const warningsByKey = new Map();
@@ -196,7 +204,12 @@ export function ApprovalsPage({ currentUserProfile }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [processingKey, setProcessingKey] = useState("");
+  const [rejectingEvent, setRejectingEvent] = useState<ApprovalEvent | null>(null);
+  const [eventRejectReason, setEventRejectReason] = useState("");
+  const [rejectingSession, setRejectingSession] = useState<CoachingSession | null>(null);
+  const [sessionRejectReason, setSessionRejectReason] = useState("");
 
+  const currentUser = currentUserProfile as UserProfile | null;
   const canApproveEvents = hasPermission(currentUserProfile, "approve_events");
   const canApproveCoaching = hasPermission(
     currentUserProfile,
@@ -212,16 +225,19 @@ export function ApprovalsPage({ currentUserProfile }) {
       const headers = buildHeaders(currentUserProfile);
       const [eventResult, coachingResult] = await Promise.all([
         canApproveEvents
-          ? fetchApi<{ success: true; events?: any[] }>("/api/events", {
+          ? fetchApi<{ success: true; events?: ApprovalEvent[] }>("/api/events", {
               headers,
               cache: "no-store",
             })
           : Promise.resolve({ success: true, events: [] }),
         canApproveCoaching
-          ? fetchApi<{ success: true; sessions?: any[] }>("/api/coaching-sessions", {
-              headers,
-              cache: "no-store",
-            })
+          ? fetchApi<{ success: true; sessions?: CoachingSession[] }>(
+              "/api/coaching-sessions",
+              {
+                headers,
+                cache: "no-store",
+              },
+            )
           : Promise.resolve({ success: true, sessions: [] }),
       ]);
 
@@ -280,11 +296,13 @@ export function ApprovalsPage({ currentUserProfile }) {
 
   const mutateApproval = useMutation({
     mutationFn: async ({
+      body,
       url,
       successMessage,
       eventName,
       processingValue,
     }: {
+      body?: unknown;
       url: string;
       successMessage: string;
       eventName: string;
@@ -295,8 +313,9 @@ export function ApprovalsPage({ currentUserProfile }) {
       setMessage("");
       await fetchApi<{ success: true; message?: string }>(url, {
         method: "POST",
-        headers: buildHeaders(currentUserProfile),
+        headers: buildHeaders(currentUser),
         cache: "no-store",
+        body: body ? JSON.stringify(body) : undefined,
       });
       return { successMessage, eventName };
     },
@@ -322,9 +341,12 @@ export function ApprovalsPage({ currentUserProfile }) {
   return (
     <div className="approvals-page">
       <p>Review submitted events and coaching sessions before they are published to members.</p>
-      {error ? <p className="profile-error">{error}</p> : null}
-      {message ? <p className="profile-success">{message}</p> : null}
-      {approvalsQuery.isLoading ? <p>Loading approval queue...</p> : null}
+      <StatusMessagePanel
+        error={error}
+        loading={approvalsQuery.isLoading}
+        loadingLabel="Loading approval queue..."
+        success={message}
+      />
 
       {!approvalsQuery.isLoading && pendingCount === 0 ? (
         <p>No items are currently waiting for approval.</p>
@@ -339,8 +361,39 @@ export function ApprovalsPage({ currentUserProfile }) {
             ) : (
               <div className="approvals-list">
                 {events.map((event) => (
-                  <article key={event.id} className="approvals-card">
-                    <p className="approvals-card-title">{event.title}</p>
+                  <ApprovalCard
+                    key={event.id}
+                    title={event.title}
+                    conflictWarnings={conflictWarningsByKey.get(`event:${event.id}`) ?? []}
+                    actions={[
+                      {
+                        disabled: Boolean(processingKey),
+                        label:
+                          processingKey === `event:approve:${event.id}`
+                            ? "Approving..."
+                            : "Approve event",
+                        onClick: () =>
+                          void mutateApproval.mutateAsync({
+                            url: `/api/events/${event.id}/approve`,
+                            successMessage: `${event.title} approved successfully.`,
+                            eventName: "event-data-updated",
+                            processingValue: `event:approve:${event.id}`,
+                          }),
+                      },
+                      {
+                        disabled: Boolean(processingKey),
+                        label:
+                          processingKey === `event:reject:${event.id}`
+                            ? "Rejecting..."
+                            : "Reject request",
+                        onClick: () => {
+                          setEventRejectReason("");
+                          setRejectingEvent(event);
+                        },
+                        variant: "danger",
+                      },
+                    ]}
+                  >
                     <p>
                       {formatDate(event.date)} from {formatClockTime(event.startTime)} to{" "}
                       {formatClockTime(event.endTime)}
@@ -348,55 +401,7 @@ export function ApprovalsPage({ currentUserProfile }) {
                     <p>Type: {event.type}</p>
                     <p>Venue: {formatVenueLabel(event.venue)}</p>
                     <p>Submitted by: {event.submittedByUsername ?? "Unknown"}</p>
-                    {(conflictWarningsByKey.get(`event:${event.id}`) ?? []).length > 0 ? (
-                      <div className="approvals-conflict-box">
-                        <p className="approvals-conflict-title">
-                          Scheduling conflicts found
-                        </p>
-                        <ul className="approvals-conflict-list">
-                          {(conflictWarningsByKey.get(`event:${event.id}`) ?? []).map((warning) => (
-                            <li key={warning.id}>{warning.text}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-                    <div className="approvals-card-actions">
-                      <button
-                        type="button"
-                        className="tournament-secondary-button"
-                        disabled={Boolean(processingKey)}
-                        onClick={() =>
-                          void mutateApproval.mutateAsync({
-                            url: `/api/events/${event.id}/approve`,
-                            successMessage: `${event.title} approved successfully.`,
-                            eventName: "event-data-updated",
-                            processingValue: `event:approve:${event.id}`,
-                          })
-                        }
-                      >
-                        {processingKey === `event:approve:${event.id}`
-                          ? "Approving..."
-                          : "Approve event"}
-                      </button>
-                      <button
-                        type="button"
-                        className="approvals-reject-button"
-                        disabled={Boolean(processingKey)}
-                        onClick={() =>
-                          void mutateApproval.mutateAsync({
-                            url: `/api/events/${event.id}/reject`,
-                            successMessage: `${event.title} rejected.`,
-                            eventName: "event-data-updated",
-                            processingValue: `event:reject:${event.id}`,
-                          })
-                        }
-                      >
-                        {processingKey === `event:reject:${event.id}`
-                          ? "Rejecting..."
-                          : "Reject request"}
-                      </button>
-                    </div>
-                  </article>
+                  </ApprovalCard>
                 ))}
               </div>
             )}
@@ -411,8 +416,39 @@ export function ApprovalsPage({ currentUserProfile }) {
             ) : (
               <div className="approvals-list">
                 {sessions.map((session) => (
-                  <article key={session.id} className="approvals-card">
-                    <p className="approvals-card-title">{session.topic}</p>
+                  <ApprovalCard
+                    key={session.id}
+                    title={session.topic}
+                    conflictWarnings={conflictWarningsByKey.get(`session:${session.id}`) ?? []}
+                    actions={[
+                      {
+                        disabled: Boolean(processingKey),
+                        label:
+                          processingKey === `session:approve:${session.id}`
+                            ? "Approving..."
+                            : "Approve session",
+                        onClick: () =>
+                          void mutateApproval.mutateAsync({
+                            url: `/api/coaching-sessions/${session.id}/approve`,
+                            successMessage: `${session.topic} approved successfully.`,
+                            eventName: "coaching-data-updated",
+                            processingValue: `session:approve:${session.id}`,
+                          }),
+                      },
+                      {
+                        disabled: Boolean(processingKey),
+                        label:
+                          processingKey === `session:reject:${session.id}`
+                            ? "Rejecting..."
+                            : "Reject request",
+                        onClick: () => {
+                          setSessionRejectReason("");
+                          setRejectingSession(session);
+                        },
+                        variant: "danger",
+                      },
+                    ]}
+                  >
                     <p>{session.summary}</p>
                     <p>
                       {formatDate(session.date)} from{" "}
@@ -426,61 +462,151 @@ export function ApprovalsPage({ currentUserProfile }) {
                     {session.createdAt ? (
                       <p>Submitted: {formatDateTime(session.createdAt)}</p>
                     ) : null}
-                    {(conflictWarningsByKey.get(`session:${session.id}`) ?? []).length > 0 ? (
-                      <div className="approvals-conflict-box">
-                        <p className="approvals-conflict-title">
-                          Scheduling conflicts found
-                        </p>
-                        <ul className="approvals-conflict-list">
-                          {(conflictWarningsByKey.get(`session:${session.id}`) ?? []).map((warning) => (
-                            <li key={warning.id}>{warning.text}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
-                    <div className="approvals-card-actions">
-                      <button
-                        type="button"
-                        className="tournament-secondary-button"
-                        disabled={Boolean(processingKey)}
-                        onClick={() =>
-                          void mutateApproval.mutateAsync({
-                            url: `/api/coaching-sessions/${session.id}/approve`,
-                            successMessage: `${session.topic} approved successfully.`,
-                            eventName: "coaching-data-updated",
-                            processingValue: `session:approve:${session.id}`,
-                          })
-                        }
-                      >
-                        {processingKey === `session:approve:${session.id}`
-                          ? "Approving..."
-                          : "Approve session"}
-                      </button>
-                      <button
-                        type="button"
-                        className="approvals-reject-button"
-                        disabled={Boolean(processingKey)}
-                        onClick={() =>
-                          void mutateApproval.mutateAsync({
-                            url: `/api/coaching-sessions/${session.id}/reject`,
-                            successMessage: `${session.topic} rejected.`,
-                            eventName: "coaching-data-updated",
-                            processingValue: `session:reject:${session.id}`,
-                          })
-                        }
-                      >
-                        {processingKey === `session:reject:${session.id}`
-                          ? "Rejecting..."
-                          : "Reject request"}
-                      </button>
-                    </div>
-                  </article>
+                  </ApprovalCard>
                 ))}
               </div>
             )}
           </section>
         ) : null}
       </section>
+
+      <Modal
+        open={Boolean(rejectingEvent)}
+        onClose={() => {
+          if (!processingKey) {
+            setRejectingEvent(null);
+            setEventRejectReason("");
+          }
+        }}
+        title="Reject Event Request"
+      >
+        {rejectingEvent ? (
+          <form
+            className="left-align-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void mutateApproval.mutateAsync({
+                url: `/api/events/${rejectingEvent.id}/reject`,
+                body: {
+                  rejectionReason: eventRejectReason,
+                },
+                successMessage: `${rejectingEvent.title} rejected.`,
+                eventName: "event-data-updated",
+                processingValue: `event:reject:${rejectingEvent.id}`,
+              }).then(() => {
+                setRejectingEvent(null);
+                setEventRejectReason("");
+              });
+            }}
+          >
+            <p>
+              Rejecting <strong>{rejectingEvent.title}</strong>.
+            </p>
+            <label>
+              Reason for rejection (optional)
+              <textarea
+                value={eventRejectReason}
+                onChange={(event) => setEventRejectReason(event.target.value)}
+                maxLength={280}
+                rows={4}
+                placeholder="Add a short note for the member."
+                disabled={processingKey === `event:reject:${rejectingEvent.id}`}
+              />
+            </label>
+            <div className="loan-bow-return-actions">
+              <Button
+                type="submit"
+                variant="danger"
+                disabled={processingKey === `event:reject:${rejectingEvent.id}`}
+              >
+                {processingKey === `event:reject:${rejectingEvent.id}`
+                  ? "Rejecting..."
+                  : "Reject event"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setRejectingEvent(null);
+                  setEventRejectReason("");
+                }}
+                disabled={processingKey === `event:reject:${rejectingEvent.id}`}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(rejectingSession)}
+        onClose={() => {
+          if (!processingKey) {
+            setRejectingSession(null);
+            setSessionRejectReason("");
+          }
+        }}
+        title="Reject Coaching Session"
+      >
+        {rejectingSession ? (
+          <form
+            className="left-align-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void mutateApproval.mutateAsync({
+                url: `/api/coaching-sessions/${rejectingSession.id}/reject`,
+                body: {
+                  rejectionReason: sessionRejectReason,
+                },
+                successMessage: `${rejectingSession.topic} rejected.`,
+                eventName: "coaching-data-updated",
+                processingValue: `session:reject:${rejectingSession.id}`,
+              }).then(() => {
+                setRejectingSession(null);
+                setSessionRejectReason("");
+              });
+            }}
+          >
+            <p>
+              Rejecting <strong>{rejectingSession.topic}</strong>.
+            </p>
+            <label>
+              Reason for rejection (optional)
+              <textarea
+                value={sessionRejectReason}
+                onChange={(event) => setSessionRejectReason(event.target.value)}
+                maxLength={280}
+                rows={4}
+                placeholder="Add a short note for the coach/member."
+                disabled={processingKey === `session:reject:${rejectingSession.id}`}
+              />
+            </label>
+            <div className="loan-bow-return-actions">
+              <Button
+                type="submit"
+                variant="danger"
+                disabled={processingKey === `session:reject:${rejectingSession.id}`}
+              >
+                {processingKey === `session:reject:${rejectingSession.id}`
+                  ? "Rejecting..."
+                  : "Reject session"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setRejectingSession(null);
+                  setSessionRejectReason("");
+                }}
+                disabled={processingKey === `session:reject:${rejectingSession.id}`}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
     </div>
   );
 }

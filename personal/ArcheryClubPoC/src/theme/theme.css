@@ -1,0 +1,153 @@
+:root {
+  --theme-name: "archery";
+
+  --text: #f8f4ea;
+  --text-h: #fffdf7;
+  --text-soft: #d8d1c2;
+  --text-muted: #b8ad97;
+  --muted: #b8ad97;
+  --text-on-accent: #1b1403;
+  --text-on-strong: #fff8f0;
+  --bg: #050505;
+  --bg-elevated: #101010;
+  --bg-canvas: #16110a;
+  --highlight: #ffdd00;
+  --accent: #ffdd00;
+  --accent-hover: #ffe45c;
+  --accent-bg: rgba(255, 221, 0, 0.14);
+  --accent-bg-strong: rgba(255, 221, 0, 0.22);
+  --accent-border: #f0c800;
+  --accent-contrast: #1f1700;
+  --border: #444444;
+  --border-strong: rgba(255, 255, 255, 0.24);
+  --code-bg: rgba(255, 255, 255, 0.08);
+  --social-bg: rgba(255, 255, 255, 0.08);
+  --shadow:
+    rgba(0, 0, 0, 0.4) 0 10px 15px -3px,
+    rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+
+  --surface: rgba(255, 255, 255, 0.04);
+  --surface-strong: rgba(16, 16, 16, 0.94);
+  --surface-raised: rgba(255, 255, 255, 0.06);
+  --surface-deep: rgba(0, 0, 0, 0.2);
+  --surface-hover: rgba(255, 255, 255, 0.08);
+  --surface-selected: rgba(255, 221, 0, 0.08);
+  --surface-selected-strong: rgba(255, 221, 0, 0.18);
+  --panel-border: rgba(255, 255, 255, 0.14);
+  --panel-border-strong: rgba(255, 221, 0, 0.35);
+  --overlay-soft: rgba(0, 0, 0, 0.34);
+  --overlay-strong: rgba(0, 0, 0, 0.7);
+  --input-bg: rgba(255, 255, 255, 0.06);
+  --input-border: rgba(255, 255, 255, 0.18);
+  --input-text: #fffdf7;
+  --input-option-bg: #fffdf7;
+  --input-option-text: #111111;
+  --success: #9de38a;
+  --success-bg: rgba(95, 197, 118, 0.16);
+  --success-bg-soft: rgba(95, 197, 118, 0.14);
+  --success-border: rgba(95, 197, 118, 0.45);
+  --success-border-soft: rgba(95, 197, 118, 0.35);
+  --warning: #ffe45c;
+  --warning-soft: #fff3bf;
+  --warning-bg: rgba(255, 221, 0, 0.12);
+  --danger: #ff9f9f;
+  --danger-strong: #ffb1b1;
+  --danger-bg: rgba(255, 84, 84, 0.12);
+  --danger-bg-strong: rgba(255, 84, 84, 0.2);
+  --danger-border: rgba(255, 120, 120, 0.45);
+  --brand-danger: #8f1f1f;
+  --brand-danger-hover: #aa2a2a;
+  --brand-danger-border: rgba(255, 109, 109, 0.65);
+  --banner-bg: #101010;
+  --banner-shadow: 0 0 8px rgba(0, 0, 0, 0.75);
+  --membership-ticker-bg: linear-gradient(90deg, #2f2500 0%, #5a4300 48%, #2f2500 100%);
+  --membership-ticker-text: #fff3bf;
+  --admin-ticker-bg: linear-gradient(90deg, #4b0000 0%, #7c0909 48%, #4b0000 100%);
+  --admin-ticker-text: #fff6c5;
+  --drawer-bg: #000000;
+  --drawer-divider: #dddddd;
+  --drawer-muted: #cfcfcf;
+  --panel-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  --card-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+  --drawer-shadow: 4px 0 24px rgba(0, 0, 0, 0.46);
+  --modal-surface: #0f0f0f;
+  --connector: rgba(255, 255, 255, 0.88);
+  --connector-accent: rgba(255, 221, 0, 0.92);
+  --connector-accent-soft: rgba(255, 221, 0, 0.7);
+  --legend-ring: rgba(255, 255, 255, 0.55);
+  --legend-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+  --warning-panel-bg: rgba(255, 186, 73, 0.12);
+  --warning-panel-border: rgba(255, 186, 73, 0.4);
+  --warning-panel-text: #ffd36a;
+  --warning-panel-copy: #fff2cc;
+  --info: #d8ebff;
+  --info-bg: rgba(44, 129, 255, 0.18);
+  --info-bg-strong: rgba(44, 129, 255, 0.28);
+  --info-border: rgba(88, 171, 255, 0.45);
+  --coaching-badge-bg: #ffd900;
+  --coaching-badge-text: #1f1700;
+  --coaching-badge-border: #ffe76d;
+  --event-social-bg: rgb(252, 36, 36);
+  --event-social-text: #fff5f5;
+  --event-range-closed-bg: rgb(10, 114, 241);
+  --event-range-closed-text: #f5f9ff;
+  --modal-overlay: rgba(0, 0, 0, 0.45);
+  --modal-bg: #101010;
+  --modal-border: #444444;
+  --modal-close-border: #777777;
+  --modal-shadow: 0 12px 24px rgba(0, 0, 0, 0.6);
+  --root-frame: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --login-shell-bg: radial-gradient(circle at top, rgba(255, 221, 0, 0.18), transparent 28%),
+    linear-gradient(180deg, #111111 0%, #050505 100%);
+  --theme-switch-bg: rgba(5, 5, 5, 0.72);
+  --theme-switch-border: rgba(255, 255, 255, 0.16);
+
+  --sans: "Open Sans", "Segoe UI", Roboto, sans-serif;
+  --heading: "Open Sans", "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  --page-max-width: 1600px;
+  --page-gutter: clamp(14px, 2vw, 32px);
+  --section-gap: clamp(16px, 2vw, 28px);
+  --panel-padding: clamp(16px, 2vw, 24px);
+  --card-radius: clamp(16px, 2vw, 24px);
+  --control-height: clamp(42px, 5vw, 48px);
+  --touch-target: 44px;
+  --banner-height: clamp(96px, 14vw, 160px);
+  --logo-size: clamp(60px, 8vw, 86px);
+  --banner-title-offset: clamp(40px, 6vw, 84px);
+  --shell-width: min(
+    var(--page-max-width),
+    calc(100vw - (var(--page-gutter) * 2))
+  );
+  --banner-title-width: min(68%, 24ch);
+}
+
+:root[data-theme="archery"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="dawn"] {
+  color-scheme: light;
+}
+
+html,
+body,
+#root,
+button,
+input,
+select,
+textarea,
+.home-panel,
+.profile-form,
+.profile-admin-panel,
+.usage-card,
+.usage-hourly-panel,
+.side-drawer,
+.modal-content {
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}

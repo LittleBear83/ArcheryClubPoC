@@ -1,7 +1,7 @@
-import "./SideDrawer.css";
 import { useMemo } from "react";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { hasPermission } from "../../utils/userProfile";
+import { Button } from "./Button";
 
 const pages = [
   { id: "home", label: "Home", path: "/" },
@@ -79,7 +79,8 @@ export function SideDrawer({
   const visiblePages = useMemo(() => {
     return pages.filter(
       (page) =>
-        (!page.permission || hasPermission(currentUserProfile, page.permission)) &&
+        (!page.permission ||
+          hasPermission(currentUserProfile, page.permission)) &&
         (!page.permissionAny ||
           page.permissionAny.some((permissionKey) =>
             hasPermission(currentUserProfile, permissionKey),
@@ -87,7 +88,8 @@ export function SideDrawer({
     );
   }, [currentUserProfile]);
   const memberPages = useMemo(
-    () => visiblePages.filter((page) => !page.permission),
+    () =>
+      visiblePages.filter((page) => !page.permission && !page.permissionAny),
     [visiblePages],
   );
   const adminPages = useMemo(
@@ -104,17 +106,18 @@ export function SideDrawer({
       <aside className={`side-drawer ${open ? "open" : ""}`}>
         <div className="drawer-header">
           <div className="drawer-header-content">
-            <button
+            <Button
               className="drawer-logo-button"
               onClick={onClose}
               aria-label="Close menu"
+              variant="unstyled"
             >
               <img
                 src={selbyLogo}
                 alt="Selby Archers Logo"
                 className="drawer-logo"
               />
-            </button>
+            </Button>
             <div className="drawer-user-meta">
               <p className="drawer-user-label">Signed in as</p>
               <p className="drawer-user-name">{displayName}</p>
@@ -126,15 +129,16 @@ export function SideDrawer({
           <ul>
             {memberPages.map((page) => (
               <li key={page.id}>
-                <button
+                <Button
                   className={page.id === selectedPage ? "active" : ""}
                   onClick={() => {
                     onSelectPage(page.id);
                     onClose();
                   }}
+                  variant="unstyled"
                 >
                   {page.label}
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -144,15 +148,16 @@ export function SideDrawer({
               <ul>
                 {adminPages.map((page) => (
                   <li key={page.id}>
-                    <button
+                    <Button
                       className={page.id === selectedPage ? "active" : ""}
                       onClick={() => {
                         onSelectPage(page.id);
                         onClose();
                       }}
+                      variant="unstyled"
                     >
                       {page.label}
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -160,16 +165,15 @@ export function SideDrawer({
           ) : null}
         </nav>
         <div className="drawer-footer">
-          <button
+          <Button
             className="drawer-logout-button"
-            type="button"
             onClick={() => {
               onClose();
               onLogout();
             }}
           >
             Log Out
-          </button>
+          </Button>
         </div>
       </aside>
     </>

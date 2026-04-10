@@ -60,14 +60,15 @@ export function LoanBowSection({
             </p>
           )}
           {showReturnButton ? (
-            <button
+            <Button
               type="button"
               className="loan-bow-return-button"
               onClick={onReturnClick}
               disabled={disabled}
+              variant="secondary"
             >
               Loan bow return
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
@@ -157,3 +158,4 @@ export function LoanBowSection({
     </fieldset>
   );
 }
+import { Button } from "./Button";

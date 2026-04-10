@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
+import { Button } from "../components/Button";
 import { formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
 
@@ -764,41 +765,43 @@ export function TournamentsPage({
               </div>
 
               <div className="tournament-setup-actions">
-                <button
+                <Button
                   type="button"
                   className="tournament-setup-button tournament-setup-button-create"
                   onClick={openCreateModal}
                   disabled={isSaving}
                 >
                   Create tournament
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
                   className="tournament-setup-button tournament-setup-button-save"
                   disabled={isSaving}
+                  variant="ghost"
                 >
                   {isSaving ? "Saving changes..." : "Save changes"}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   className="tournament-setup-button event-cancel-button"
                   onClick={handleDeleteTournament}
                   disabled={isSaving}
+                  variant="danger"
                 >
                   Delete tournament
-                </button>
+                </Button>
               </div>
             </form>
           ) : (
             <div className="tournament-setup-actions">
-              <button
+              <Button
                 type="button"
                 className="tournament-setup-button tournament-setup-button-create"
                 onClick={openCreateModal}
                 disabled={isSaving}
               >
                 Create tournament
-              </button>
+              </Button>
             </div>
           )}
         </section>
@@ -920,21 +923,22 @@ export function TournamentsPage({
               </div>
 
               <div className="tournament-setup-actions">
-                <button
+                <Button
                   type="submit"
                   className="tournament-setup-button tournament-setup-button-create"
                   disabled={isSaving}
                 >
                   {isSaving ? "Creating tournament..." : "Create tournament"}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
                   className="tournament-setup-button secondary-button"
                   onClick={closeCreateModal}
                   disabled={isSaving}
+                  variant="secondary"
                 >
                   Cancel
-                </button>
+                </Button>
               </div>
             </form>
           </div>
@@ -954,9 +958,8 @@ export function TournamentsPage({
             ) : (
               <div className="tournament-list">
                 {tournaments.map((tournament) => (
-                  <button
+                  <Button
                     key={tournament.id}
-                    type="button"
                     className={`tournament-list-item ${
                       tournament.id === selectedTournament?.id ? "active" : ""
                     }`}
@@ -966,6 +969,7 @@ export function TournamentsPage({
                         setIsEditingTournament(true);
                       }
                     }}
+                    variant="unstyled"
                   >
                     <strong>{tournament.name}</strong>
                     <span>{tournament.typeLabel}</span>
@@ -976,7 +980,7 @@ export function TournamentsPage({
                     {showSetupForm && canManageTournaments ? (
                       <span className="tournament-admin-hint">Select to amend or delete</span>
                     ) : null}
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
@@ -1022,7 +1026,7 @@ export function TournamentsPage({
                   </p>
 
                   <div className="tournament-action-row">
-                    <button
+                    <Button
                       type="button"
                       className="tournament-primary-button"
                       onClick={handleRegister}
@@ -1037,27 +1041,29 @@ export function TournamentsPage({
                             : selectedTournament.registrationWindow.isOpen
                               ? "Registration unavailable"
                               : "Registration not open yet"}
-                    </button>
+                    </Button>
 
-                    <button
+                    <Button
                       type="button"
                       className="tournament-secondary-button"
                       onClick={handleWithdraw}
                       disabled={!selectedTournament.canWithdraw || isSaving}
+                      variant="secondary"
                     >
                       {isSaving && selectedTournament.canWithdraw
                         ? "Updating..."
                         : "Withdraw"}
-                    </button>
+                    </Button>
 
                     {canManageTournaments ? (
-                      <button
+                      <Button
                         type="button"
                         className="tournament-secondary-button"
                         onClick={handleSaveCompetitorList}
+                        variant="secondary"
                       >
                         Save competitor list
-                      </button>
+                      </Button>
                     ) : null}
                   </div>
                 </div>
@@ -1091,9 +1097,9 @@ export function TournamentsPage({
                         required
                       />
                     </label>
-                    <button type="submit" disabled={isSubmittingScore}>
+                    <Button type="submit" disabled={isSubmittingScore}>
                       {isSubmittingScore ? "Saving score..." : "Submit score"}
-                    </button>
+                    </Button>
                   </form>
                 ) : null}
 

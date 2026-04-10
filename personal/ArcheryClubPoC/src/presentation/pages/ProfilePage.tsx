@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MemberProfileForm } from "../components/MemberProfileForm";
+import { Button } from "../components/Button";
+import { LabeledSelect } from "../components/LabeledSelect";
 import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
 import { Modal } from "../components/Modal";
+import { SectionPanel } from "../components/SectionPanel";
+import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { hasPermission } from "../../utils/userProfile";
 import { subscribeToRfidScans } from "../../utils/rfidScanHub";
 
@@ -519,43 +523,42 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
       <p>Manage your member profile and account details.</p>
 
       {canManageMembers ? (
-        <section className="profile-admin-panel">
-          <h3 className="profile-section-title">Admin Member Update</h3>
-          <label className="profile-member-select">
-            Select member
-            <select
-              value={selectedUsername}
-              onChange={(event) => setSelectedUsername(event.target.value)}
-              disabled={isInitialLoading || isRefreshingProfile || isSaving}
-            >
-              {memberOptions.map((member) => (
-                <option key={member.username} value={member.username}>
-                  {member.fullName} ({member.username})
-                </option>
-              ))}
-            </select>
-          </label>
+        <SectionPanel className="profile-admin-panel" title="Admin Member Update">
+          <LabeledSelect
+            label="Select member"
+            value={selectedUsername}
+            onChange={(event) => setSelectedUsername(event.target.value)}
+            disabled={isInitialLoading || isRefreshingProfile || isSaving}
+          >
+            {memberOptions.map((member) => (
+              <option key={member.username} value={member.username}>
+                {member.fullName} ({member.username})
+              </option>
+            ))}
+          </LabeledSelect>
           {editableProfile ? (
             <div className="profile-admin-actions">
-              <button
+              <Button
                 type="button"
                 className="secondary-button profile-rfid-button"
                 onClick={handleOpenCardModal}
                 disabled={isInitialLoading || isRefreshingProfile || isSaving}
+                variant="danger"
               >
                 {editableProfile.rfidTag?.trim() ? "Issue new card" : "Add tag"}
-              </button>
+              </Button>
             </div>
           ) : null}
-        </section>
+        </SectionPanel>
       ) : null}
 
-      {isInitialLoading && !editableProfile ? <p>Loading profile...</p> : null}
-      {isRefreshingProfile && !isInitialLoading ? (
-        <p>Refreshing profile details...</p>
-      ) : null}
-      {error ? <p className="profile-error">{error}</p> : null}
-      {message ? <p className="profile-success">{message}</p> : null}
+      <StatusMessagePanel
+        error={error}
+        loading={isInitialLoading && !editableProfile}
+        loadingLabel="Loading profile..."
+        info={isRefreshingProfile && !isInitialLoading ? "Refreshing profile details..." : ""}
+        success={message}
+      />
 
       {editableProfile ? (
         <MemberProfileForm
@@ -630,13 +633,14 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
               <p className="profile-error">{cardIssueError}</p>
             ) : null}
             <div className="profile-card-issue-actions">
-              <button
+              <Button
                 type="button"
                 className="secondary-button"
                 onClick={handleCloseCardModal}
+                variant="secondary"
               >
                 {cardIssueSuccess ? "Done" : "Close"}
-              </button>
+              </Button>
             </div>
           </div>
         </Modal>

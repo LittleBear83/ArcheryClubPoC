@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Modal } from "./Modal";
+import { Button } from "./Button";
 
 const RETURN_ITEM_FIELDS = [
   {
@@ -127,17 +128,18 @@ function LoanBowReturnModalForm({ loanBow, isSaving, error, onClose, onSubmit })
       {error ? <p className="profile-error">{error}</p> : null}
 
       <div className="loan-bow-return-actions">
-        <button type="submit" disabled={isSaving}>
+        <Button type="submit" disabled={isSaving}>
           {isSaving ? "Saving return..." : "Submit return"}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           className="secondary-button"
           onClick={onClose}
           disabled={isSaving}
+          variant="secondary"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

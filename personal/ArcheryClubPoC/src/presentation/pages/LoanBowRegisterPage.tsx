@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "../components/Button";
+import { LabeledSelect } from "../components/LabeledSelect";
 import { LoanBowSection } from "../components/LoanBowSection";
 import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
+import { SectionPanel } from "../components/SectionPanel";
+import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { hasPermission } from "../../utils/userProfile";
 import { fetchApi } from "../../lib/api";
 
@@ -183,27 +187,27 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
     <div className="profile-page">
       <p>Register or update loan bow equipment against a member.</p>
 
-      <section className="profile-admin-panel">
-        <h3 className="profile-section-title">Member Loan Bow Register</h3>
-        <label className="profile-member-select">
-          Select member
-          <select
-            value={effectiveSelectedUsername}
-            onChange={(event) => setSelectedUsername(event.target.value)}
-            disabled={isSaving || memberOptions.length === 0}
-          >
-            {memberOptions.map((member) => (
-              <option key={member.username} value={member.username}>
-                {member.fullName} ({member.username})
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
+      <SectionPanel className="profile-admin-panel" title="Member Loan Bow Register">
+        <LabeledSelect
+          label="Select member"
+          value={effectiveSelectedUsername}
+          onChange={(event) => setSelectedUsername(event.target.value)}
+          disabled={isSaving || memberOptions.length === 0}
+        >
+          {memberOptions.map((member) => (
+            <option key={member.username} value={member.username}>
+              {member.fullName} ({member.username})
+            </option>
+          ))}
+        </LabeledSelect>
+      </SectionPanel>
 
-      {isLoading ? <p>Loading loan bow details...</p> : null}
-      {error ? <p className="profile-error">{error}</p> : null}
-      {message ? <p className="profile-success">{message}</p> : null}
+      <StatusMessagePanel
+        error={error}
+        loading={isLoading}
+        loadingLabel="Loading loan bow details..."
+        success={message}
+      />
 
       {loanBow ? (
         <form onSubmit={handleSave} className="left-align-form profile-form">
@@ -219,9 +223,9 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
             }}
           />
 
-          <button type="submit" disabled={isSaving || isLoading}>
+          <Button type="submit" disabled={isSaving || isLoading}>
             {isSaving ? "Saving loan bow details..." : "Save loan bow details"}
-          </button>
+          </Button>
         </form>
       ) : null}
 

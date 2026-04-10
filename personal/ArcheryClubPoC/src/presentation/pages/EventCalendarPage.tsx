@@ -2,12 +2,77 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
+import { Button } from "../components/Button";
+import { SummaryDate } from "../components/SummaryDate";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
 import { fetchApi } from "../../lib/api";
+import type { UserProfile } from "../../types/app";
 
 function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(dateString: string, daysToAdd: number) {
+  const nextDate = new Date(`${dateString}T12:00:00`);
+  nextDate.setDate(nextDate.getDate() + daysToAdd);
+  return nextDate.toISOString().slice(0, 10);
+}
+
+function buildRecurringDates(
+  startDate: string,
+  repeatUntilDate: string,
+  repeatPattern: "weekly" | "monthly",
+) {
+  if (!startDate || !repeatUntilDate || repeatUntilDate < startDate) {
+    return [startDate].filter(Boolean);
+  }
+
+  const generatedDates = [startDate];
+
+  if (repeatPattern === "weekly") {
+    let nextDate = startDate;
+
+    while (true) {
+      nextDate = addDays(nextDate, 7);
+      if (nextDate > repeatUntilDate) {
+        break;
+      }
+      generatedDates.push(nextDate);
+    }
+
+    return generatedDates;
+  }
+
+  const start = new Date(`${startDate}T12:00:00`);
+  const targetDay = start.getDate();
+  let monthOffset = 1;
+
+  while (monthOffset < 60) {
+    const candidate = new Date(
+      start.getFullYear(),
+      start.getMonth() + monthOffset,
+      targetDay,
+      12,
+      0,
+      0,
+    );
+    monthOffset += 1;
+
+    if (candidate.getDate() !== targetDay) {
+      continue;
+    }
+
+    const candidateDate = candidate.toISOString().slice(0, 10);
+
+    if (candidateDate > repeatUntilDate) {
+      break;
+    }
+
+    generatedDates.push(candidateDate);
+  }
+
+  return generatedDates;
 }
 
 function hasEventEnded(event) {
@@ -44,19 +109,23 @@ type CalendarEvent = {
   startTime: string;
   endTime: string;
   title: string;
+  details?: string;
   type: string;
   venue: string;
   isBookedOn?: boolean;
   isPendingApproval?: boolean;
   isRejected?: boolean;
+  rejectionReason?: string;
   isApproved?: boolean;
   canApprove?: boolean;
 };
 
 type EventCalendarPageProps = {
-  currentUserProfile: any;
+  currentUserProfile: UserProfile | null;
   onBookingsChanged?: () => void;
 };
+
+type EventCreationMode = "single" | "recurring" | "multiple";
 
 const eventQueryKeys = {
   list: (username: string) => ["events", username] as const,
@@ -97,10 +166,26 @@ export function EventCalendarPage({
   );
   const [newEventStartTime, setNewEventStartTime] = useState("09:00");
   const [newEventEndTime, setNewEventEndTime] = useState("10:00");
+  const [newEventDetails, setNewEventDetails] = useState("");
   const [newEventType, setNewEventType] = useState("competition");
   const [newEventVenue, setNewEventVenue] = useState("indoor");
+  const [eventCreationMode, setEventCreationMode] = useState<EventCreationMode>("single");
+  const [repeatPattern, setRepeatPattern] = useState<"weekly" | "monthly">("weekly");
+  const [repeatUntilDate, setRepeatUntilDate] = useState(
+    today.toISOString().slice(0, 10),
+  );
+  const [multiDateModalOpen, setMultiDateModalOpen] = useState(false);
+  const [multiDateYear, setMultiDateYear] = useState(today.getFullYear());
+  const [multiDateMonth, setMultiDateMonth] = useState(today.getMonth());
+  const [selectedMultiDates, setSelectedMultiDates] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [bookingModalMode, setBookingModalMode] = useState("");
+  const [selectedEventId, setSelectedEventId] = useState<CalendarEvent["id"] | null>(
+    null,
+  );
+  const [cancelEventModalOpen, setCancelEventModalOpen] = useState(false);
+  const [cancelEventId, setCancelEventId] = useState<CalendarEvent["id"] | null>(null);
+  const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
+  const [cancelConfirmationText, setCancelConfirmationText] = useState("");
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateString());
   const [bookingMessage, setBookingMessage] = useState("");
   const [eventFormError, setEventFormError] = useState("");
@@ -110,6 +195,7 @@ export function EventCalendarPage({
     "add_events",
   );
   const canApproveEvents = hasPermission(currentUserProfile, "approve_events");
+  const canCancelEvents = hasPermission(currentUserProfile, "cancel_events");
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const canManageBookings = Boolean(actorUsername);
 
@@ -139,38 +225,75 @@ export function EventCalendarPage({
   }, [actorUsername, queryClient]);
 
   const addEventMutation = useMutation({
-    mutationFn: async () =>
-      fetchApi<{ success: true; event: CalendarEvent; message?: string }>(
-        "/api/events",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-actor-username": currentUserProfile?.auth?.username ?? "",
-          },
-          cache: "no-store",
-          body: JSON.stringify({
-            date: newEventDate,
-            startTime: newEventStartTime,
-            endTime: newEventEndTime,
-            title: newEvent.trim(),
-            type: newEventType,
-            venue: newEventVenue,
-          }),
-        },
-      ),
+    mutationFn: async (eventDates: string[]) => {
+      const headers = {
+        "Content-Type": "application/json",
+        "x-actor-username": currentUserProfile?.auth?.username ?? "",
+      };
+      const createdEvents: CalendarEvent[] = [];
+      const failures: string[] = [];
+
+      for (const eventDate of eventDates) {
+        try {
+          const result = await fetchApi<{
+            success: true;
+            event: CalendarEvent;
+            message?: string;
+          }>("/api/events", {
+            method: "POST",
+            headers,
+            cache: "no-store",
+            body: JSON.stringify({
+              date: eventDate,
+              startTime: newEventStartTime,
+              endTime: newEventEndTime,
+              title: newEvent.trim(),
+              details: newEventDetails.trim(),
+              type: newEventType,
+              venue: newEventVenue,
+            }),
+          });
+
+          createdEvents.push(result.event);
+        } catch (error) {
+          failures.push(
+            `${eventDate}: ${error instanceof Error ? error.message : "Unable to save event."}`,
+          );
+        }
+      }
+
+      if (createdEvents.length === 0) {
+        throw new Error(failures[0] ?? "Unable to save event.");
+      }
+
+      return {
+        createdEvents,
+        failures,
+      };
+    },
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({
         queryKey: eventQueryKeys.list(actorUsername),
       });
       setNewEvent("");
+      setNewEventDate(today.toISOString().slice(0, 10));
       setNewEventStartTime("09:00");
       setNewEventEndTime("10:00");
+      setNewEventDetails("");
       setNewEventType("competition");
       setNewEventVenue("indoor");
+      setEventCreationMode("single");
+      setRepeatPattern("weekly");
+      setRepeatUntilDate(today.toISOString().slice(0, 10));
+      setSelectedMultiDates([]);
+      setMultiDateModalOpen(false);
       setEventFormError("");
       setIsModalOpen(false);
-      setBookingMessage(result.message ?? "Event saved successfully.");
+      setBookingMessage(
+        result.failures.length > 0
+          ? `${result.createdEvents.length} event${result.createdEvents.length === 1 ? "" : "s"} saved. ${result.failures.length} could not be created.`
+          : `${result.createdEvents.length} event${result.createdEvents.length === 1 ? "" : "s"} saved successfully.`,
+      );
       window.dispatchEvent(new Event("event-data-updated"));
     },
     onError: (error: Error) => {
@@ -181,7 +304,28 @@ export function EventCalendarPage({
   const addEvent = async (e) => {
     e.preventDefault();
     if (!newEvent.trim()) return;
-    await addEventMutation.mutateAsync();
+
+    const eventDates =
+      eventCreationMode === "multiple"
+        ? [...selectedMultiDates].sort()
+        : eventCreationMode === "recurring"
+          ? buildRecurringDates(newEventDate, repeatUntilDate, repeatPattern)
+          : [newEventDate];
+
+    if (eventDates.length === 0) {
+      setEventFormError("Choose at least one date for this event.");
+      return;
+    }
+
+    if (
+      eventCreationMode === "recurring" &&
+      (!repeatUntilDate || repeatUntilDate < newEventDate)
+    ) {
+      setEventFormError("Repeat until date must be on or after the first event date.");
+      return;
+    }
+
+    await addEventMutation.mutateAsync(eventDates);
   };
 
   const eventsByDate = useMemo(
@@ -199,24 +343,6 @@ export function EventCalendarPage({
     () => (selectedDate ? eventsByDate[selectedDate] || [] : []),
     [eventsByDate, selectedDate],
   );
-  const bookableSelectedEvents = useMemo(
-    () => selectedEvents.filter((event) => event.type !== "range-closed"),
-    [selectedEvents],
-  );
-  const bookedSelectedEvents = useMemo(
-    () => bookableSelectedEvents.filter((event) => event.isBookedOn),
-    [bookableSelectedEvents],
-  );
-  const availableToBookSelectedEvents = useMemo(
-    () =>
-      bookableSelectedEvents.filter(
-        (event) =>
-          event.isApproved &&
-          !event.isBookedOn &&
-          !hasEventEnded(event),
-      ),
-    [bookableSelectedEvents],
-  );
   const pendingSelectedEvents = useMemo(
     () => selectedEvents.filter((event) => event.isPendingApproval),
     [selectedEvents],
@@ -225,16 +351,40 @@ export function EventCalendarPage({
     () => selectedEvents.filter((event) => event.isRejected),
     [selectedEvents],
   );
+  const selectedEventDetail = useMemo(
+    () => selectedEvents.find((event) => event.id === selectedEventId) ?? null,
+    [selectedEventId, selectedEvents],
+  );
+  const cancellableEvents = useMemo(
+    () =>
+      events.filter((event) => {
+        const normalizedId = String(event.id);
+        return /^\d+$/.test(normalizedId);
+      }),
+    [events],
+  );
+  const cancelEventTarget = useMemo(
+    () => cancellableEvents.find((event) => event.id === cancelEventId) ?? null,
+    [cancelEventId, cancellableEvents],
+  );
 
   const handleDateSelect = (dateString) => {
     setSelectedDate(dateString);
+    setSelectedEventId(null);
     setBookingMessage("");
-    setBookingModalMode("");
   };
 
   const handleOpenModal = () => {
     setEventFormError("");
     setIsModalOpen(true);
+  };
+
+  const toggleMultiDateSelection = (dateKey: string) => {
+    setSelectedMultiDates((current) =>
+      current.includes(dateKey)
+        ? current.filter((date) => date !== dateKey)
+        : [...current, dateKey].sort(),
+    );
   };
 
   const approveEventMutation = useMutation({
@@ -289,11 +439,9 @@ export function EventCalendarPage({
       onBookingsChanged?.();
       window.dispatchEvent(new Event("member-bookings-updated"));
       window.dispatchEvent(new Event("event-data-updated"));
-      setBookingModalMode("");
     },
     onError: (error: Error) => {
       setBookingMessage(error.message);
-      setBookingModalMode("");
     },
   });
 
@@ -325,11 +473,9 @@ export function EventCalendarPage({
       onBookingsChanged?.();
       window.dispatchEvent(new Event("member-bookings-updated"));
       window.dispatchEvent(new Event("event-data-updated"));
-      setBookingModalMode("");
     },
     onError: (error: Error) => {
       setBookingMessage(error.message);
-      setBookingModalMode("");
     },
   });
 
@@ -340,30 +486,40 @@ export function EventCalendarPage({
     await leaveEventMutation.mutateAsync(event);
   };
 
-  const handleBookOn = () => {
-    if (!selectedDate || availableToBookSelectedEvents.length === 0) {
+  const cancelEventMutation = useMutation({
+    mutationFn: async (event: CalendarEvent) =>
+      fetchApi<{ success: true; message?: string }>(`/api/events/${event.id}`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "x-actor-username": actorUsername,
+        },
+        cache: "no-store",
+      }),
+    onSuccess: async (_result, event) => {
+      await queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.list(actorUsername),
+      });
+      setBookingMessage(`${event.title} cancelled successfully.`);
+      setCancelEventModalOpen(false);
+      setCancelEventId(null);
+      setCancelConfirmationOpen(false);
+      setCancelConfirmationText("");
+      setSelectedEventId((current) => (current === event.id ? null : current));
+      window.dispatchEvent(new Event("event-data-updated"));
+      onBookingsChanged?.();
+    },
+    onError: (error: Error) => {
+      setBookingMessage(error.message);
+    },
+  });
+
+  const confirmCancelEvent = async () => {
+    if (!cancelEventTarget || cancelConfirmationText.trim().toLowerCase() !== "delete") {
       return;
     }
 
-    if (availableToBookSelectedEvents.length === 1) {
-      startBookingForEvent(availableToBookSelectedEvents[0]);
-      return;
-    }
-
-    setBookingModalMode("book");
-  };
-
-  const handleLeaveEvent = () => {
-    if (!selectedDate || bookedSelectedEvents.length === 0) {
-      return;
-    }
-
-    if (bookedSelectedEvents.length === 1) {
-      leaveEvent(bookedSelectedEvents[0]);
-      return;
-    }
-
-    setBookingModalMode("leave");
+    await cancelEventMutation.mutateAsync(cancelEventTarget);
   };
 
   return (
@@ -384,6 +540,12 @@ export function EventCalendarPage({
             month={month}
             selectedDate={selectedDate}
             onDayClick={handleDateSelect}
+            onToday={() => {
+              const todayDate = new Date();
+              setYear(todayDate.getFullYear());
+              setMonth(todayDate.getMonth());
+              handleDateSelect(todayDate.toISOString().slice(0, 10));
+            }}
             onPrevMonth={() => {
               if (month === 0) {
                 setMonth(11);
@@ -409,9 +571,13 @@ export function EventCalendarPage({
 	                  ),
 	                ),
 	              ] as string[];
+              const hasRejectedItems = items.some((item) => item.isRejected);
 
               return (
                 <span className="calendar-day-key-markers" aria-hidden="true">
+                  {hasRejectedItems ? (
+                    <span className="calendar-day-rejected-flag" />
+                  ) : null}
                   {typeClasses.map((typeClass) => (
                     <span
                       key={typeClass}
@@ -421,6 +587,19 @@ export function EventCalendarPage({
                 </span>
               );
             }}
+            renderItem={(evt: CalendarEvent) => (
+              <span
+                className={[
+                  "calendar-entry-label",
+                  getEventTypeDetails(evt.type).className,
+                  evt.isRejected ? "is-rejected" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                {evt.title}
+              </span>
+            )}
           />
         </div>
 
@@ -430,9 +609,7 @@ export function EventCalendarPage({
             <p>Select a date on the calendar to view event details.</p>
           ) : (
             <>
-              <p className="event-summary-date">
-                <strong>{formatDate(selectedDate)}</strong>
-              </p>
+              <SummaryDate date={selectedDate} />
               {selectedEvents.length === 0 ? (
                 <p>No events are scheduled for this date yet.</p>
               ) : (
@@ -441,68 +618,57 @@ export function EventCalendarPage({
                     {selectedEvents.length} event
                     {selectedEvents.length === 1 ? "" : "s"} available.
                   </p>
-                  <ul className="event-summary-list">
+                  <p className="event-summary-hint">
+                    Click on an event for more information and booking options.
+                  </p>
+                  <div className="event-summary-card-list">
                     {selectedEvents.map((evt) => (
-                      <li key={evt.id}>
+                      <Button
+                      key={evt.id}
+                      type="button"
+                      className={[
+                        "event-summary-card",
+                        evt.isRejected ? "is-rejected" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onClick={() => setSelectedEventId(evt.id)}
+                      variant="unstyled"
+                    >
                         <span
                           className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
                         >
                           {getEventTypeDetails(evt.type).label}
-                        </span>{" "}
-                        {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)} - {evt.title}
-                        {` (${getVenueLabel(evt.venue)})`}
-                        {evt.type === "range-closed" ? " (not bookable)" : ""}
-                        {evt.isBookedOn ? " (booked on)" : ""}
-                        {evt.isPendingApproval ? " (pending approval)" : ""}
-                        {evt.isRejected ? " (request rejected)" : ""}
-                        {!evt.isBookedOn && hasEventEnded(evt)
-                          ? " (event has finished)"
-                          : ""}
-                        {evt.canApprove ? " " : ""}
-                        {evt.canApprove ? (
-                          <button
-                            type="button"
-                            className="secondary-button"
-                            onClick={() => approveEvent(evt)}
-                          >
-                            Approve
-                          </button>
-                        ) : null}
-                      </li>
+                        </span>
+                        <strong className="event-summary-card-title">{evt.title}</strong>
+                        <span className="event-summary-card-time">
+                          {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)}
+                        </span>
+                        <span className="event-summary-card-meta">
+                          {getVenueLabel(evt.venue)}
+                          {evt.isBookedOn ? " | Booked on" : ""}
+                          {evt.isPendingApproval ? " | Pending approval" : ""}
+                          {evt.isRejected ? " | Request rejected" : ""}
+                          {!evt.isBookedOn && hasEventEnded(evt)
+                            ? " | Event finished"
+                            : ""}
+                        </span>
+                      </Button>
                     ))}
-                  </ul>
+                  </div>
                 </>
               )}
               {pendingSelectedEvents.length > 0 && !canApproveEvents ? (
                 <p>Pending events cannot be booked until approved.</p>
               ) : null}
-              <button
-                type="button"
-                className="event-book-button"
-                disabled={
-                  !canManageBookings || availableToBookSelectedEvents.length === 0
-                }
-                onClick={handleBookOn}
-              >
-                {selectedEvents.some((event) => !event.isBookedOn && hasEventEnded(event))
-                  && availableToBookSelectedEvents.length === 0
-                  ? "Booking closed"
-                  : rejectedSelectedEvents.length > 0 &&
-                    availableToBookSelectedEvents.length === 0
-                    ? "Request rejected"
-                  : pendingSelectedEvents.length > 0 &&
-                    availableToBookSelectedEvents.length === 0
-                    ? "Awaiting approval"
-                  : "Book on"}
-              </button>
-              {canManageBookings && bookedSelectedEvents.length > 0 ? (
-                <button
-                  type="button"
-                  className="event-cancel-button"
-                  onClick={handleLeaveEvent}
-                >
-                  Leave event
-                </button>
+              {rejectedSelectedEvents.some((event) => event.rejectionReason) ? (
+                <p className="event-form-error">
+                  Rejected event note:{" "}
+                  {
+                    rejectedSelectedEvents.find((event) => event.rejectionReason)
+                      ?.rejectionReason
+                  }
+                </p>
               ) : null}
               {bookingMessage && (
                 <p className="event-booking-message">{bookingMessage}</p>
@@ -513,12 +679,44 @@ export function EventCalendarPage({
       </section>
 
       {canCreateEvents ? (
-        <button
-          onClick={handleOpenModal}
-          style={{ marginBottom: "12px" }}
-        >
-          Add event
-        </button>
+        <div className="event-page-actions">
+          <Button
+            onClick={handleOpenModal}
+          >
+            Add event
+          </Button>
+          {canCancelEvents ? (
+            <Button
+              type="button"
+              className="event-danger-ghost-button"
+              onClick={() => {
+                setCancelEventModalOpen(true);
+                setCancelEventId(null);
+                setCancelConfirmationOpen(false);
+                setCancelConfirmationText("");
+              }}
+              variant="ghost"
+            >
+              Cancel event
+            </Button>
+          ) : null}
+        </div>
+      ) : canCancelEvents ? (
+        <div className="event-page-actions">
+          <Button
+            type="button"
+            className="event-danger-ghost-button"
+            onClick={() => {
+              setCancelEventModalOpen(true);
+              setCancelEventId(null);
+              setCancelConfirmationOpen(false);
+              setCancelConfirmationText("");
+            }}
+            variant="ghost"
+          >
+            Cancel event
+          </Button>
+        </div>
       ) : null}
 
       <Modal
@@ -528,8 +726,7 @@ export function EventCalendarPage({
       >
         <form
           onSubmit={addEvent}
-          className="left-align-form"
-          style={{ marginBottom: "0" }}
+          className="left-align-form stack-gap-0"
         >
           <label>
             Event title
@@ -544,7 +741,12 @@ export function EventCalendarPage({
             <input
               type="date"
               value={newEventDate}
-              onChange={(e) => setNewEventDate(e.target.value)}
+              onChange={(e) => {
+                setNewEventDate(e.target.value);
+                if (repeatUntilDate < e.target.value) {
+                  setRepeatUntilDate(e.target.value);
+                }
+              }}
               required
             />
           </label>
@@ -567,67 +769,359 @@ export function EventCalendarPage({
             />
           </label>
           <label>
-            Event type
-            <select
-              value={newEventType}
-              onChange={(e) => setNewEventType(e.target.value)}
-            >
+            Event details
+            <textarea
+              value={newEventDetails}
+              onChange={(e) => setNewEventDetails(e.target.value)}
+              placeholder="Add extra details for members, for example format, notes, kit needed, or booking guidance."
+            />
+          </label>
+          <div className="form-choice-group">
+            <span className="form-choice-label">Schedule</span>
+            <div className="form-choice-options">
+              <Button
+                type="button"
+                className={[
+                  "form-choice-option",
+                  eventCreationMode === "single" ? "selected" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => setEventCreationMode("single")}
+                variant="ghost"
+              >
+                One time
+              </Button>
+              <Button
+                type="button"
+                className={[
+                  "form-choice-option",
+                  eventCreationMode === "recurring" ? "selected" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => setEventCreationMode("recurring")}
+                variant="ghost"
+              >
+                Recurring
+              </Button>
+              <Button
+                type="button"
+                className={[
+                  "form-choice-option",
+                  eventCreationMode === "multiple" ? "selected" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => setEventCreationMode("multiple")}
+                variant="ghost"
+              >
+                Multiple days
+              </Button>
+            </div>
+          </div>
+          {eventCreationMode === "recurring" ? (
+            <>
+              <div className="form-choice-group">
+                <span className="form-choice-label">Repeat pattern</span>
+                <div className="form-choice-options">
+                  <Button
+                    type="button"
+                    className={[
+                      "form-choice-option",
+                      repeatPattern === "weekly" ? "selected" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onClick={() => setRepeatPattern("weekly")}
+                    variant="ghost"
+                  >
+                    Weekly
+                  </Button>
+                  <Button
+                    type="button"
+                    className={[
+                      "form-choice-option",
+                      repeatPattern === "monthly" ? "selected" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onClick={() => setRepeatPattern("monthly")}
+                    variant="ghost"
+                  >
+                    Monthly
+                  </Button>
+                </div>
+              </div>
+              <label>
+                Repeat until
+                <input
+                  type="date"
+                  value={repeatUntilDate}
+                  min={newEventDate}
+                  onChange={(e) => setRepeatUntilDate(e.target.value)}
+                  required
+                />
+              </label>
+            </>
+          ) : null}
+          {eventCreationMode === "multiple" ? (
+            <div className="form-choice-group">
+              <span className="form-choice-label">Multiple event dates</span>
+              <div className="event-multi-date-toolbar">
+                <Button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setMultiDateModalOpen(true)}
+                  variant="secondary"
+                >
+                  Choose dates
+                </Button>
+                <span className="event-multi-date-copy">
+                  {selectedMultiDates.length === 0
+                    ? "No dates selected yet."
+                    : `${selectedMultiDates.length} date${selectedMultiDates.length === 1 ? "" : "s"} selected.`}
+                </span>
+              </div>
+            </div>
+          ) : null}
+          <div className="form-choice-group">
+            <span className="form-choice-label">Event type</span>
+            <div className="form-choice-options">
               {EVENT_TYPE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
+                <Button
+                  key={option.value}
+                  type="button"
+                  className={[
+                    "form-choice-option",
+                    "form-choice-option-keyed",
+                    option.className,
+                    newEventType === option.value ? "selected" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => setNewEventType(option.value)}
+                  variant="ghost"
+                >
                   {option.label}
-                </option>
+                </Button>
               ))}
-            </select>
-          </label>
-          <label>
-            Venue
-            <select
-              value={newEventVenue}
-              onChange={(e) => setNewEventVenue(e.target.value)}
-            >
+            </div>
+          </div>
+          <div className="form-choice-group">
+            <span className="form-choice-label">Venue</span>
+            <div className="form-choice-options">
               {VENUE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
+                <Button
+                  key={option.value}
+                  type="button"
+                  className={[
+                    "form-choice-option",
+                    newEventVenue === option.value ? "selected" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => setNewEventVenue(option.value)}
+                  variant="unstyled"
+                >
                   {option.label}
-                </option>
+                </Button>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
           {eventFormError ? <p className="event-form-error">{eventFormError}</p> : null}
-          <button type="submit">
-            {canApproveEvents ? "Save Event" : "Submit For Approval"}
-          </button>
+          <div className="event-modal-actions">
+            <Button type="submit">
+              {canApproveEvents ? "Save Event" : "Submit For Approval"}
+            </Button>
+          </div>
         </form>
       </Modal>
 
       <Modal
-        open={bookingModalMode === "book" || bookingModalMode === "leave"}
-        onClose={() => setBookingModalMode("")}
-        title={
-          bookingModalMode === "leave"
-            ? "Choose Event To Leave"
-            : "Choose Event To Book"
-        }
+        open={multiDateModalOpen}
+        onClose={() => setMultiDateModalOpen(false)}
+        title="Choose Event Dates"
       >
-        <div className="event-booking-picker">
+        <div className="event-multi-date-modal">
           <p>
-            {bookingModalMode === "leave"
-              ? `Select the event you want to leave for ${formatDate(selectedDate)}.`
-              : `Select the event you want to book onto for ${formatDate(selectedDate)}.`}
+            Select every date this event should be created on. Each chosen day will be submitted as its own event.
           </p>
-          <div className="event-booking-option-list">
-            {(bookingModalMode === "leave"
-              ? bookedSelectedEvents
-              : availableToBookSelectedEvents
-            ).map((event) => (
-              <button
+          <Calendar
+            year={multiDateYear}
+            month={multiDateMonth}
+            selectedDate={null}
+            selectedDates={selectedMultiDates}
+            onDayClick={toggleMultiDateSelection}
+            onToday={() => {
+              const todayDate = new Date();
+              setMultiDateYear(todayDate.getFullYear());
+              setMultiDateMonth(todayDate.getMonth());
+            }}
+            onPrevMonth={() => {
+              if (multiDateMonth === 0) {
+                setMultiDateMonth(11);
+                setMultiDateYear((current) => current - 1);
+              } else {
+                setMultiDateMonth((current) => current - 1);
+              }
+            }}
+            onNextMonth={() => {
+              if (multiDateMonth === 11) {
+                setMultiDateMonth(0);
+                setMultiDateYear((current) => current + 1);
+              } else {
+                setMultiDateMonth((current) => current + 1);
+              }
+            }}
+          />
+          <div className="event-multi-date-summary">
+            {selectedMultiDates.length === 0
+              ? "No dates selected."
+              : selectedMultiDates.join(", ")}
+          </div>
+          <div className="event-detail-actions">
+            <Button
+              type="button"
+              className="secondary-button"
+              onClick={() => setSelectedMultiDates([])}
+              variant="secondary"
+            >
+              Clear dates
+            </Button>
+            <Button
+              type="button"
+              onClick={() => setMultiDateModalOpen(false)}
+            >
+              Done
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(selectedEventDetail)}
+        onClose={() => setSelectedEventId(null)}
+        title={selectedEventDetail?.title ?? "Event details"}
+      >
+        {selectedEventDetail ? (
+          <div className="event-detail-modal">
+            <p>
+              <span
+                className={`event-type-badge ${getEventTypeDetails(selectedEventDetail.type).className}`}
+              >
+                {getEventTypeDetails(selectedEventDetail.type).label}
+              </span>
+            </p>
+            <p>
+              <strong>Date:</strong> {formatDate(selectedEventDetail.date)}
+            </p>
+            <p>
+              <strong>Time:</strong> {formatClockTime(selectedEventDetail.startTime)} to{" "}
+              {formatClockTime(selectedEventDetail.endTime)}
+            </p>
+            <p>
+              <strong>Venue:</strong> {getVenueLabel(selectedEventDetail.venue)}
+            </p>
+            {selectedEventDetail.details ? (
+              <p>
+                <strong>Details:</strong> {selectedEventDetail.details}
+              </p>
+            ) : null}
+            <p>
+              <strong>Status:</strong>{" "}
+              <span className="event-detail-status">
+                {selectedEventDetail.isBookedOn
+                  ? "Booked on"
+                  : selectedEventDetail.isPendingApproval
+                    ? "Pending approval"
+                    : selectedEventDetail.isRejected
+                      ? "Request rejected"
+                      : hasEventEnded(selectedEventDetail)
+                        ? "Event finished"
+                        : selectedEventDetail.type === "range-closed"
+                          ? "Not bookable"
+                          : "Open for booking"}
+              </span>
+            </p>
+            {selectedEventDetail.type === "range-closed" ? (
+              <p className="event-detail-note event-detail-note-range-closed">
+                Range closed event: this entry closes the range and cannot be booked onto.
+              </p>
+            ) : null}
+            {selectedEventDetail.rejectionReason ? (
+              <p className="event-form-error">
+                Rejection reason: {selectedEventDetail.rejectionReason}
+              </p>
+            ) : null}
+            <div className="event-detail-actions">
+              {selectedEventDetail.canApprove ? (
+                <Button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => approveEvent(selectedEventDetail)}
+                  variant="secondary"
+                >
+                  Approve
+                </Button>
+              ) : null}
+              {!selectedEventDetail.isBookedOn &&
+              selectedEventDetail.isApproved &&
+              selectedEventDetail.type !== "range-closed" &&
+              !hasEventEnded(selectedEventDetail) &&
+              canManageBookings ? (
+                <Button
+                  type="button"
+                  className="event-book-button"
+                  onClick={() => startBookingForEvent(selectedEventDetail)}
+                >
+                  Book on
+                </Button>
+              ) : null}
+              {selectedEventDetail.isBookedOn && canManageBookings ? (
+                <Button
+                  type="button"
+                  className="event-cancel-button"
+                  onClick={() => leaveEvent(selectedEventDetail)}
+                  variant="danger"
+                >
+                  Leave event
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={cancelEventModalOpen}
+        onClose={() => {
+          setCancelEventModalOpen(false);
+          setCancelEventId(null);
+          setCancelConfirmationOpen(false);
+          setCancelConfirmationText("");
+        }}
+        title="Cancel Event"
+      >
+        <div className="event-cancel-flow">
+          <p>Select an event to cancel.</p>
+          <div className="event-cancel-list">
+            {cancellableEvents.map((event) => (
+              <Button
                 key={event.id}
                 type="button"
-                className="event-booking-option"
-                onClick={() =>
-                  bookingModalMode === "leave"
-                    ? leaveEvent(event)
-                    : startBookingForEvent(event)
-                }
+                className={[
+                  "event-cancel-option",
+                  cancelEventId === event.id ? "selected" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={() => {
+                  setCancelEventId(event.id);
+                  setCancelConfirmationOpen(false);
+                  setCancelConfirmationText("");
+                }}
+                variant="ghost"
               >
                 <span
                   className={`event-type-badge ${getEventTypeDetails(event.type).className}`}
@@ -636,18 +1130,50 @@ export function EventCalendarPage({
                 </span>
                 <strong>{event.title}</strong>
                 <span>
-                  {formatClockTime(event.startTime)} to {formatClockTime(event.endTime)}
+                  {formatDate(event.date)} | {formatClockTime(event.startTime)} to{" "}
+                  {formatClockTime(event.endTime)}
                 </span>
-              </button>
+              </Button>
             ))}
           </div>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => setBookingModalMode("")}
-          >
-            Cancel
-          </button>
+          {cancelEventTarget ? (
+            <>
+              {!cancelConfirmationOpen ? (
+                <Button
+                  type="button"
+                  className="event-danger-ghost-button"
+                  onClick={() => setCancelConfirmationOpen(true)}
+                  variant="ghost"
+                >
+                  Confirm cancellation
+                </Button>
+              ) : (
+                <div className="event-cancel-confirmation">
+                  <p>
+                    Type <strong>delete</strong> to confirm cancellation of{" "}
+                    <strong>{cancelEventTarget.title}</strong>.
+                  </p>
+                  <input
+                    value={cancelConfirmationText}
+                    onChange={(event) => setCancelConfirmationText(event.target.value)}
+                    placeholder="Type delete"
+                  />
+                  <Button
+                    type="button"
+                    className="event-danger-ghost-button"
+                    onClick={confirmCancelEvent}
+                    disabled={
+                      cancelConfirmationText.trim().toLowerCase() !== "delete" ||
+                      cancelEventMutation.isPending
+                    }
+                    variant="ghost"
+                  >
+                    {cancelEventMutation.isPending ? "Cancelling..." : "Delete event"}
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : null}
         </div>
       </Modal>
     </div>

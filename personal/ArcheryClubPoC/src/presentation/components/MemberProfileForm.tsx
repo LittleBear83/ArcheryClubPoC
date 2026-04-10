@@ -1,4 +1,5 @@
 import { LoanBowSection } from "./LoanBowSection";
+import { Button } from "./Button";
 
 export function MemberProfileForm({
   editableProfile,
@@ -141,9 +142,9 @@ export function MemberProfileForm({
         onReturnClick={onReturnLoanBow}
       />
 
-      <button type="submit" disabled={isSaving}>
+      <Button type="submit" disabled={isSaving}>
         {submitLabel}
-      </button>
+      </Button>
     </form>
   );
 }

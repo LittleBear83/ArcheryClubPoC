@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "../components/Button";
 
 export function FeedbackFormPage() {
   const [form, setForm] = useState({ submittedBy: "", feedbackText: "" });
@@ -34,9 +35,9 @@ export function FeedbackFormPage() {
           />
         </label>
 
-        <button type="submit">Submit feedback</button>
+        <Button type="submit">Submit feedback</Button>
       </form>
-      {submitted && <p style={{ color: "#8bc34a" }}>{submitted}</p>}
+      {submitted ? <p className="profile-success">{submitted}</p> : null}
     </>
   );
 }

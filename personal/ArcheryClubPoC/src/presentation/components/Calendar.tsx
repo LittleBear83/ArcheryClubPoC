@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import { formatDate } from "../../utils/dateTime";
+import { Button } from "./Button";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -13,6 +14,7 @@ type CalendarProps = {
   month: number;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  onToday?: () => void;
   itemsByDate?: Record<string, CalendarItem[]>;
   renderItem?: (item: CalendarItem) => React.ReactNode;
   renderDayMeta?: (
@@ -20,6 +22,7 @@ type CalendarProps = {
     dateKey: string,
   ) => React.ReactNode;
   selectedDate: string | null;
+  selectedDates?: string[];
   onDayClick?: (dateKey: string) => void;
 };
 
@@ -57,10 +60,12 @@ export function Calendar({
   month,
   onPrevMonth,
   onNextMonth,
+  onToday,
   itemsByDate = {},
   renderItem,
   renderDayMeta,
   selectedDate,
+  selectedDates = [],
   onDayClick,
 }: CalendarProps) {
   const calendar = useMemo(() => getMonthDays(year, month), [month, year]);
@@ -68,23 +73,34 @@ export function Calendar({
   return (
     <>
       <div className="calendar-toolbar">
-        <button
-          type="button"
+        <Button
           className="calendar-nav-button"
           onClick={onPrevMonth}
+          variant="ghost"
         >
           Previous
-        </button>
-        <strong className="calendar-toolbar-title">
-          {formatDate(`${year}-${String(month + 1).padStart(2, "0")}-01`)}
-        </strong>
-        <button
-          type="button"
+        </Button>
+        <div className="calendar-toolbar-center">
+          <strong className="calendar-toolbar-title">
+            {formatDate(`${year}-${String(month + 1).padStart(2, "0")}-01`)}
+          </strong>
+          {onToday ? (
+            <Button
+              className="calendar-nav-button"
+              onClick={onToday}
+              variant="ghost"
+            >
+              Today
+            </Button>
+          ) : null}
+        </div>
+        <Button
           className="calendar-nav-button"
           onClick={onNextMonth}
+          variant="ghost"
         >
           Next
-        </button>
+        </Button>
       </div>
 
       <div className="calendar-table-wrap">
@@ -104,7 +120,8 @@ export function Calendar({
                     ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
                     : null;
                   const items = dateKey ? itemsByDate[dateKey] ?? [] : [];
-                  const isSelected = selectedDate === dateKey;
+                  const isSelected =
+                    selectedDate === dateKey || Boolean(dateKey && selectedDates.includes(dateKey));
                   const hasItems = Boolean(items?.length);
 
                   return (

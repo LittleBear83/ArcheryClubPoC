@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Button } from "../components/Button";
 
 export function LostAndFoundPage() {
   const [lostFoundType, setLostFoundType] = useState("found");
@@ -150,9 +151,9 @@ export function LostAndFoundPage() {
           />
         </label>
 
-        <button type="submit">Submit</button>
+        <Button type="submit">Submit</Button>
       </form>
-      {submitted && <p style={{ color: "#8bc34a" }}>{submitted}</p>}
+      {submitted ? <p className="profile-success">{submitted}</p> : null}
     </>
   );
 }

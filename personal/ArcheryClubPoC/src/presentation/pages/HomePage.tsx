@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, Routes, Route } from "react-router-dom";
 import { SideDrawer } from "../components/SideDrawer";
+import { Button } from "../components/Button";
 import archeryBanner from "../../assets/archery_banner.svg";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { HomeSection } from "./HomeSection";
@@ -21,6 +22,8 @@ import { RolePermissionsPage } from "./RolePermissionsPage";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { formatDate } from "../../utils/dateTime";
 import { fetchApi } from "../../lib/api";
+import { useTheme } from "../../theme/ThemeProvider";
+import type { HomeMember, UserProfile } from "../../types/app";
 import {
   hasPermission,
   isSameUserProfile,
@@ -30,24 +33,10 @@ import {
 type HomePageProps = {
   getMembersUseCase?: unknown;
   addMemberUseCase?: unknown;
-  currentUserProfile: {
-    accountType?: string;
-    auth?: {
-      username?: string;
-    };
-    personal?: {
-      fullName?: string;
-    };
-    meta?: {
-      membershipFeesDue?: string;
-    };
-    [key: string]: unknown;
-  } | null;
+  currentUserProfile: UserProfile | null;
   onCurrentUserProfileUpdate: (userProfile: unknown) => void;
   onLogout: (message?: string) => void;
 };
-
-type HomeMember = any;
 type HomeEvent = {
   id: string | number;
   date: string;
@@ -251,6 +240,7 @@ export function HomePage({
   onCurrentUserProfileUpdate,
   onLogout,
 }: HomePageProps) {
+  const { theme, themeName, toggleTheme } = useTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -354,10 +344,10 @@ export function HomePage({
         <div className="admin-warning-ticker" role="status" aria-live="polite">
           <div className="admin-warning-ticker-track">
             <span>
-              {adminTournamentWarnings.join("   •   ")}
+              {adminTournamentWarnings.join("   |   ")}
             </span>
             <span aria-hidden="true">
-              {adminTournamentWarnings.join("   •   ")}
+              {adminTournamentWarnings.join("   |   ")}
             </span>
           </div>
         </div>
@@ -381,10 +371,11 @@ export function HomePage({
           alt="Archery banner"
           className="archery-banner-img"
         />
-        <button
+        <Button
           className="menu-button"
           onClick={() => setDrawerOpen(true)}
           aria-label="Open menu"
+          variant="unstyled"
         >
           <img
             src={selbyLogo}
@@ -392,11 +383,29 @@ export function HomePage({
             className="menu-button-logo"
           />
           <span className="menu-button-label">Menu</span>
-        </button>
+        </Button>
         <div className="heading-wrap">
-          <h1>{pageTitleMap[activePage] || "Archery Club"}</h1>
+          <div className="page-heading-group">
+            <h1>{pageTitleMap[activePage] || "Archery Club"}</h1>
+          </div>
         </div>
       </section>
+
+      <div className="page-toolbar">
+        <div className="page-toolbar-content">
+          <Button
+            type="button"
+            className="theme-toggle-button"
+            onClick={toggleTheme}
+            aria-label={`Switch theme. Current theme is ${theme.label}.`}
+            title={`Theme: ${theme.label}`}
+            variant="ghost"
+          >
+            <span className="theme-toggle-label">Theme</span>
+            <strong>{themeName === "archery" ? "Gold" : "Dawn"}</strong>
+          </Button>
+        </div>
+      </div>
 
       <main className="page-shell">
         <section className="page-content">

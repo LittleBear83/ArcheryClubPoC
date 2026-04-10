@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { SectionPanel } from "../components/SectionPanel";
+import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { hasPermission } from "../../utils/userProfile";
 import { fetchApi } from "../../lib/api";
 
@@ -106,16 +108,19 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
         through to associate member positions.
       </p>
 
-      {isLoading ? <p>Loading committee roles...</p> : null}
-      {error ? <p className="profile-error">{error}</p> : null}
-      {message ? <p className="profile-success">{message}</p> : null}
+      <StatusMessagePanel
+        error={error}
+        loading={isLoading}
+        loadingLabel="Loading committee roles..."
+        success={message}
+      />
 
       {data ? (
-        <section className="profile-form committee-roles-panel">
-          <h3 className="profile-section-title committee-roles-title">
-            Committee Roles Table
-          </h3>
-
+        <SectionPanel
+          className="profile-form committee-roles-panel"
+          title="Committee Roles Table"
+          titleClassName="committee-roles-title"
+        >
           <div className="committee-roles-table-wrap">
             <table className="committee-roles-table">
               <thead>
@@ -159,7 +164,7 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
               </tbody>
             </table>
           </div>
-        </section>
+        </SectionPanel>
       ) : null}
     </div>
   );

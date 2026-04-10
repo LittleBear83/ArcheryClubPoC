@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MemberProfileForm } from "../components/MemberProfileForm";
+import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { hasPermission } from "../../utils/userProfile";
 import { fetchApi } from "../../lib/api";
 
@@ -194,11 +195,12 @@ export function UserCreationPage({ currentUserProfile }) {
   return (
     <div className="profile-page">
       <p>Create a new member account for the system.</p>
-      {isLoading && roleOptions.length === 0 ? (
-        <p>Loading user creation options...</p>
-      ) : null}
-      {error ? <p className="profile-error">{error}</p> : null}
-      {message ? <p className="profile-success">{message}</p> : null}
+      <StatusMessagePanel
+        error={error}
+        loading={isLoading && roleOptions.length === 0}
+        loadingLabel="Loading user creation options..."
+        success={message}
+      />
 
       {roleOptions.length > 0 ? (
         <MemberProfileForm

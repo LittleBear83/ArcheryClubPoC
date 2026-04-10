@@ -3,6 +3,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import lawnmower from "./assets/lawnmower.svg";
+import { Button } from "./presentation/components/Button";
 import { HomePage } from "./presentation/pages/HomePage";
 import { LoginPage } from "./presentation/pages/LoginPage";
 import { Modal } from "./presentation/components/Modal";
@@ -13,6 +14,7 @@ import { AddMemberUseCase } from "./usecases/AddMemberUseCase";
 import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
 import { fetchApi } from "./lib/api";
+import type { UserProfile } from "./types/app";
 
 const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
@@ -44,6 +46,50 @@ function loadStoredUserProfile() {
   }
 }
 
+function PaymentCardModal({
+  cardBrand,
+  message,
+  open,
+  title,
+  onClose,
+}: {
+  cardBrand: string;
+  message: string;
+  open: boolean;
+  title: string;
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={title}
+    >
+      <div className="payment-card-modal">
+        <img
+          src={lawnmower}
+          alt="Illustration of a lawnmower"
+          className="payment-card-modal-image"
+        />
+        <p className="payment-card-modal-copy">
+          {cardBrand
+            ? `${cardBrand} contactless card detected.`
+            : "Contactless payment card detected."}
+        </p>
+        <p className="payment-card-modal-copy">{message}</p>
+        <Button
+          type="button"
+          className="secondary-button"
+          onClick={onClose}
+          variant="secondary"
+        >
+          Close
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
 function App() {
   const inactivityTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const lastActivityAtRef = useRef(Date.now());
@@ -51,7 +97,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return window.localStorage.getItem(AUTH_STORAGE_KEY) === "true";
   });
-  const [currentUserProfile, setCurrentUserProfile] = useState(() =>
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(() =>
     loadStoredUserProfile(),
   );
   const [loginMessage, setLoginMessage] = useState(() => {
@@ -97,7 +143,7 @@ function App() {
     window.dispatchEvent(new Event("member-session-updated"));
   };
 
-  const handleCurrentUserProfileUpdate = (userProfile: unknown) => {
+  const handleCurrentUserProfileUpdate = (userProfile: UserProfile | unknown) => {
     persistAuthenticatedUser(userProfile);
     void queryClient.invalidateQueries();
   };
@@ -110,7 +156,7 @@ function App() {
     password: string;
   }) => {
     try {
-      const result = await fetchApi<{ success: true; userProfile: any }>(
+      const result = await fetchApi<{ success: true; userProfile: UserProfile }>(
         "/api/auth/login",
         {
           method: "POST",
@@ -157,7 +203,7 @@ function App() {
 
   const handleRfidLogin = async (rfidTag: string) => {
     try {
-      const result = await fetchApi<{ success: true; userProfile: any }>(
+      const result = await fetchApi<{ success: true; userProfile: UserProfile }>(
         "/api/auth/rfid",
         {
           method: "POST",
@@ -399,34 +445,13 @@ function App() {
           initialMessage={loginMessage}
           seededUsername={DEFAULT_USERNAME}
         />
-        <Modal
+        <PaymentCardModal
           open={paymentCardModal.open}
+          cardBrand={paymentCardModal.cardBrand}
+          message={paymentCardModal.message}
           onClose={handlePaymentCardModalClose}
           title="Card Payment Detected"
-        >
-          <div className="payment-card-modal">
-            <img
-              src={lawnmower}
-              alt="Illustration of a lawnmower"
-              className="payment-card-modal-image"
-            />
-            <p className="payment-card-modal-copy">
-              {paymentCardModal.cardBrand
-                ? `${paymentCardModal.cardBrand} contactless card detected.`
-                : "Contactless payment card detected."}
-            </p>
-            <p className="payment-card-modal-copy">
-              {paymentCardModal.message}
-            </p>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={handlePaymentCardModalClose}
-            >
-              Close
-            </button>
-          </div>
-        </Modal>
+        />
       </>
     );
   }
@@ -449,32 +474,13 @@ function App() {
           />
         </Routes>
       </Router>
-      <Modal
+      <PaymentCardModal
         open={paymentCardModal.open}
+        cardBrand={paymentCardModal.cardBrand}
+        message={paymentCardModal.message}
         onClose={handlePaymentCardModalClose}
         title="Demo Only"
-      >
-        <div className="payment-card-modal">
-          <img
-            src={lawnmower}
-            alt="Illustration of a lawnmower"
-            className="payment-card-modal-image"
-          />
-          <p className="payment-card-modal-copy">
-            {paymentCardModal.cardBrand
-              ? `${paymentCardModal.cardBrand} contactless card detected.`
-              : "Contactless payment card detected."}
-          </p>
-          <p className="payment-card-modal-copy">{paymentCardModal.message}</p>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={handlePaymentCardModalClose}
-          >
-            Close
-          </button>
-        </div>
-      </Modal>
+      />
     </>
   );
 }

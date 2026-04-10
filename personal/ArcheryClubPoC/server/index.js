@@ -19,6 +19,7 @@ const PERMISSIONS = {
   MANAGE_COMMITTEE_ROLES: "manage_committee_roles",
   ADD_EVENTS: "add_events",
   APPROVE_EVENTS: "approve_events",
+  CANCEL_EVENTS: "cancel_events",
   ADD_COACHING_SESSIONS: "add_coaching_sessions",
   APPROVE_COACHING_SESSIONS: "approve_coaching_sessions",
   MANAGE_LOAN_BOWS: "manage_loan_bows",
@@ -58,6 +59,11 @@ const PERMISSION_DEFINITIONS = [
     description: "Approve submitted events and competitions.",
   },
   {
+    key: PERMISSIONS.CANCEL_EVENTS,
+    label: "Cancel Events",
+    description: "Cancel published or pending events.",
+  },
+  {
     key: PERMISSIONS.ADD_COACHING_SESSIONS,
     label: "Add Coaching Sessions",
     description: "Create and cancel coaching sessions.",
@@ -78,6 +84,13 @@ const PERMISSION_DEFINITIONS = [
     description: "Create, amend, and delete tournaments.",
   },
 ];
+const CURRENT_PERMISSION_KEYS = PERMISSION_DEFINITIONS.map(
+  (permission) => permission.key,
+);
+const CURRENT_PERMISSION_KEY_SET = new Set(CURRENT_PERMISSION_KEYS);
+const CURRENT_PERMISSION_SQL_PLACEHOLDERS = CURRENT_PERMISSION_KEYS
+  .map(() => "?")
+  .join(", ");
 const SYSTEM_ROLE_DEFINITIONS = [
   {
     roleKey: "general",
@@ -250,6 +263,7 @@ const COACHING_SESSIONS_TABLE_SQL = `
     summary TEXT NOT NULL,
     venue TEXT NOT NULL CHECK (venue IN ('indoor', 'outdoor', 'both')),
     approval_status TEXT NOT NULL DEFAULT 'approved',
+    rejection_reason TEXT,
     approved_by_username TEXT,
     approved_at_date TEXT,
     approved_at_time TEXT,
@@ -277,10 +291,12 @@ const CLUB_EVENTS_TABLE_SQL = `
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
     title TEXT NOT NULL,
+    details TEXT,
     type TEXT NOT NULL CHECK (type IN ('competition', 'social', 'range-closed')),
     venue TEXT NOT NULL DEFAULT 'both' CHECK (venue IN ('indoor', 'outdoor', 'both')),
     submitted_by_username TEXT,
     approval_status TEXT NOT NULL DEFAULT 'approved',
+    rejection_reason TEXT,
     approved_by_username TEXT,
     approved_at_date TEXT,
     approved_at_time TEXT,
@@ -528,6 +544,16 @@ const insertRolePermission = db.prepare(`
   VALUES (?, ?)
 `);
 
+const deleteUnknownRolePermissions = db.prepare(`
+  DELETE FROM role_permissions
+  WHERE permission_key NOT IN (${CURRENT_PERMISSION_SQL_PLACEHOLDERS})
+`);
+
+const deleteUnknownPermissionDefinitions = db.prepare(`
+  DELETE FROM permissions
+  WHERE permission_key NOT IN (${CURRENT_PERMISSION_SQL_PLACEHOLDERS})
+`);
+
 const listDistinctUserTypes = db.prepare(`
   SELECT DISTINCT user_type
   FROM user_types
@@ -536,6 +562,9 @@ const listDistinctUserTypes = db.prepare(`
 for (const permission of PERMISSION_DEFINITIONS) {
   upsertPermissionDefinition.run(permission);
 }
+
+deleteUnknownRolePermissions.run(...CURRENT_PERMISSION_KEYS);
+deleteUnknownPermissionDefinitions.run(...CURRENT_PERMISSION_KEYS);
 
 for (const role of SYSTEM_ROLE_DEFINITIONS) {
   upsertRole.run({
@@ -726,6 +755,7 @@ if (!userColumns.some((column) => column.name === "membership_fees_due")) {
 
 const coachingSessionApprovalColumns = [
   ["approval_status", "TEXT NOT NULL DEFAULT 'approved'"],
+  ["rejection_reason", "TEXT"],
   ["approved_by_username", "TEXT"],
   ["approved_at_date", "TEXT"],
   ["approved_at_time", "TEXT"],
@@ -740,9 +770,11 @@ for (const [columnName, columnDefinition] of coachingSessionApprovalColumns) {
 }
 
 const clubEventApprovalColumns = [
+  ["details", "TEXT"],
   ["venue", "TEXT NOT NULL DEFAULT 'both'"],
   ["submitted_by_username", "TEXT"],
   ["approval_status", "TEXT NOT NULL DEFAULT 'approved'"],
+  ["rejection_reason", "TEXT"],
   ["approved_by_username", "TEXT"],
   ["approved_at_date", "TEXT"],
   ["approved_at_time", "TEXT"],
@@ -1559,13 +1591,14 @@ const insertCoachingSession = db.prepare(`
     summary,
     venue,
     approval_status,
+    rejection_reason,
     approved_by_username,
     approved_at_date,
     approved_at_time,
     created_at_date,
     created_at_time
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const listCoachingSessions = db.prepare(`
@@ -1580,6 +1613,7 @@ const listCoachingSessions = db.prepare(`
     coaching_sessions.summary,
     CASE WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'both' THEN 'both' ELSE 'indoor' END AS venue,
     coaching_sessions.approval_status,
+    coaching_sessions.rejection_reason,
     coaching_sessions.approved_by_username,
     coaching_sessions.approved_at_date || 'T' || coaching_sessions.approved_at_time AS approved_at,
     coaching_sessions.created_at_date || 'T' || coaching_sessions.created_at_time AS created_at,
@@ -1602,6 +1636,7 @@ const findCoachingSessionById = db.prepare(`
     coaching_sessions.summary,
     CASE WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'both' THEN 'both' ELSE 'indoor' END AS venue,
     coaching_sessions.approval_status,
+    coaching_sessions.rejection_reason,
     coaching_sessions.approved_by_username,
     coaching_sessions.approved_at_date || 'T' || coaching_sessions.approved_at_time AS approved_at,
     coaching_sessions.created_at_date || 'T' || coaching_sessions.created_at_time AS created_at,
@@ -1666,6 +1701,7 @@ const approveCoachingSessionById = db.prepare(`
   UPDATE coaching_sessions
   SET
     approval_status = 'approved',
+    rejection_reason = NULL,
     approved_by_username = ?,
     approved_at_date = ?,
     approved_at_time = ?
@@ -1676,6 +1712,7 @@ const rejectCoachingSessionById = db.prepare(`
   UPDATE coaching_sessions
   SET
     approval_status = 'rejected',
+    rejection_reason = ?,
     approved_by_username = ?,
     approved_at_date = ?,
     approved_at_time = ?
@@ -1710,10 +1747,12 @@ const listClubEvents = db.prepare(`
     start_time,
     end_time,
     title,
+    details,
     type,
     CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END AS venue,
     submitted_by_username,
     approval_status,
+    rejection_reason,
     approved_by_username,
     created_at_date || 'T' || created_at_time AS created_at,
     approved_at_date || 'T' || approved_at_time AS approved_at
@@ -1727,17 +1766,19 @@ const insertClubEvent = db.prepare(`
     start_time,
     end_time,
     title,
+    details,
     type,
     venue,
     submitted_by_username,
     approval_status,
+    rejection_reason,
     approved_by_username,
     approved_at_date,
     approved_at_time,
     created_at_date,
     created_at_time
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const listTournaments = db.prepare(`
@@ -1941,6 +1982,16 @@ const deleteEventBooking = db.prepare(`
   WHERE club_event_id = ? AND member_username = ?
 `);
 
+const deleteBookingsByEventId = db.prepare(`
+  DELETE FROM event_bookings
+  WHERE club_event_id = ?
+`);
+
+const deleteClubEventById = db.prepare(`
+  DELETE FROM club_events
+  WHERE id = ?
+`);
+
 const findMemberEventBookings = db.prepare(`
   SELECT
     club_events.id,
@@ -1967,6 +2018,7 @@ const findClubEventById = db.prepare(`
     CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END AS venue,
     submitted_by_username,
     approval_status,
+    rejection_reason,
     approved_by_username,
     created_at_date || 'T' || created_at_time AS created_at,
     approved_at_date || 'T' || approved_at_time AS approved_at
@@ -1978,6 +2030,7 @@ const approveClubEventById = db.prepare(`
   UPDATE club_events
   SET
     approval_status = 'approved',
+    rejection_reason = NULL,
     approved_by_username = ?,
     approved_at_date = ?,
     approved_at_time = ?
@@ -1988,6 +2041,7 @@ const rejectClubEventById = db.prepare(`
   UPDATE club_events
   SET
     approval_status = 'rejected',
+    rejection_reason = ?,
     approved_by_username = ?,
     approved_at_date = ?,
     approved_at_time = ?
@@ -2336,6 +2390,7 @@ function buildCoachingSession(session, bookings = [], actor = null) {
     isApproved: (session.approval_status ?? "approved") === "approved",
     isPendingApproval: (session.approval_status ?? "approved") === "pending",
     isRejected: (session.approval_status ?? "approved") === "rejected",
+    rejectionReason: session.rejection_reason?.trim() || "",
     approvedByUsername: session.approved_by_username ?? null,
     approvedAt: session.approved_at ?? null,
     isBookedOn: Boolean(
@@ -2471,6 +2526,7 @@ function startRfidReaderMonitor() {
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 [StructLayout(LayoutKind.Sequential)]
 public struct SCARD_IO_REQUEST {
@@ -2480,13 +2536,22 @@ public struct SCARD_IO_REQUEST {
 
 public static class WinSCardReader {
     public const uint SCARD_SCOPE_USER = 0;
+    public const uint SCARD_SCOPE_SYSTEM = 2;
     public const uint SCARD_SHARE_SHARED = 2;
     public const uint SCARD_PROTOCOL_T0 = 1;
     public const uint SCARD_PROTOCOL_T1 = 2;
+    public const uint SCARD_PROTOCOL_RAW = 4;
     public const uint SCARD_LEAVE_CARD = 0;
+    public const uint SCARD_AUTOALLOCATE = 0xFFFFFFFF;
 
     [DllImport("winscard.dll")]
     public static extern int SCardEstablishContext(uint dwScope, IntPtr pvReserved1, IntPtr pvReserved2, out IntPtr phContext);
+
+    [DllImport("winscard.dll", CharSet = CharSet.Unicode)]
+    public static extern int SCardListReaders(IntPtr hContext, string mszGroups, ref IntPtr mszReaders, ref uint pcchReaders);
+
+    [DllImport("winscard.dll")]
+    public static extern int SCardFreeMemory(IntPtr hContext, IntPtr pvMem);
 
     [DllImport("winscard.dll", CharSet = CharSet.Unicode)]
     public static extern int SCardConnect(IntPtr hContext, string szReader, uint dwShareMode, uint dwPreferredProtocols, out IntPtr phCard, out uint pdwActiveProtocol);
@@ -2505,6 +2570,7 @@ public static class WinSCardReader {
 $readers = @(${RFID_READER_NAMES.map((reader) => `'${reader}'`).join(", ")})
 $uidApdu = [byte[]](0xFF,0xCA,0x00,0x00,0x00)
 $ppseApdu = [byte[]](0x00,0xA4,0x04,0x00,0x0E,0x32,0x50,0x41,0x59,0x2E,0x53,0x59,0x53,0x2E,0x44,0x44,0x46,0x30,0x31,0x00)
+$readerHints = @('acr122', 'smart card', 'picc interface', 'contactless', 'omnikey', 'nfc')
 $lastFingerprint = ''
 $wasPresent = $false
 
@@ -2554,40 +2620,131 @@ function Get-PaymentCardBrand($payload) {
     return 'Payment card'
 }
 
+function Get-AvailableReaders($context) {
+    $readerBuffer = [IntPtr]::Zero
+    $readerLength = [WinSCardReader]::SCARD_AUTOALLOCATE
+    $result = [WinSCardReader]::SCardListReaders($context, $null, [ref]$readerBuffer, [ref]$readerLength)
+
+    if ($result -ne 0 -or $readerBuffer -eq [IntPtr]::Zero) {
+        return @()
+    }
+
+    try {
+        $readerBlock = [Runtime.InteropServices.Marshal]::PtrToStringUni($readerBuffer, [int]$readerLength)
+        if (-not $readerBlock) {
+            return @()
+        }
+
+        return $readerBlock -split "\`0" | Where-Object { $_ }
+    } finally {
+        [void][WinSCardReader]::SCardFreeMemory($context, $readerBuffer)
+    }
+}
+
+function Get-CandidateReaders($context) {
+    $availableReaders = Get-AvailableReaders $context
+    if (-not $availableReaders -or $availableReaders.Count -eq 0) {
+        return $readers
+    }
+
+    $ordered = New-Object System.Collections.Generic.List[string]
+    foreach ($preferred in $readers) {
+        foreach ($available in $availableReaders) {
+            if ($available -ieq $preferred -and -not $ordered.Contains($available)) {
+                [void]$ordered.Add($available)
+            }
+        }
+    }
+
+    foreach ($available in $availableReaders) {
+        $availableLower = $available.ToLowerInvariant()
+        foreach ($hint in $readerHints) {
+            if ($availableLower.Contains($hint) -and -not $ordered.Contains($available)) {
+                [void]$ordered.Add($available)
+                break
+            }
+        }
+    }
+
+    foreach ($available in $availableReaders) {
+        if (-not $ordered.Contains($available)) {
+            [void]$ordered.Add($available)
+        }
+    }
+
+    return $ordered.ToArray()
+}
+
+function Try-ReadCard($context, $reader) {
+    $protocolSets = @(
+        ([WinSCardReader]::SCARD_PROTOCOL_T0 -bor [WinSCardReader]::SCARD_PROTOCOL_T1),
+        [WinSCardReader]::SCARD_PROTOCOL_T1,
+        [WinSCardReader]::SCARD_PROTOCOL_T0,
+        ([WinSCardReader]::SCARD_PROTOCOL_T1 -bor [WinSCardReader]::SCARD_PROTOCOL_RAW)
+    )
+
+    foreach ($protocolMask in $protocolSets) {
+        $card = [IntPtr]::Zero
+        $activeProtocol = 0
+        $result = [WinSCardReader]::SCardConnect($context, $reader, [WinSCardReader]::SCARD_SHARE_SHARED, $protocolMask, [ref]$card, [ref]$activeProtocol)
+        if ($result -ne 0 -or $card -eq [IntPtr]::Zero) {
+            continue
+        }
+
+        try {
+            $uidResult = Invoke-Apdu $card $activeProtocol $uidApdu
+            $uid = ''
+            if ($uidResult.Status -eq '0x9000' -and $uidResult.Payload.Length -gt 0) {
+                $uid = (($uidResult.Payload | ForEach-Object { $_.ToString('X2') }) -join '')
+            }
+
+            $scanType = 'rfid'
+            $cardBrand = $null
+            $ppseResult = Invoke-Apdu $card $activeProtocol $ppseApdu
+            if ($ppseResult.Status -eq '0x9000') {
+                $scanType = 'payment-card'
+                $cardBrand = Get-PaymentCardBrand $ppseResult.Payload
+            }
+
+            if ($uid -or $scanType -eq 'payment-card') {
+                return @{
+                    uid = $uid
+                    scanType = $scanType
+                    cardBrand = $cardBrand
+                }
+            }
+        } finally {
+            [void][WinSCardReader]::SCardDisconnect($card, [WinSCardReader]::SCARD_LEAVE_CARD)
+        }
+    }
+
+    return $null
+}
+
 while ($true) {
     $context = [IntPtr]::Zero
-    $card = [IntPtr]::Zero
-    $activeProtocol = 0
     $uid = ''
     $scanType = 'rfid'
     $cardBrand = $null
-    $connected = $false
 
     try {
         $result = [WinSCardReader]::SCardEstablishContext([WinSCardReader]::SCARD_SCOPE_USER, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$context)
+        if ($result -ne 0) {
+            $result = [WinSCardReader]::SCardEstablishContext([WinSCardReader]::SCARD_SCOPE_SYSTEM, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$context)
+        }
         if ($result -eq 0) {
-            foreach ($reader in $readers) {
-                $result = [WinSCardReader]::SCardConnect($context, $reader, [WinSCardReader]::SCARD_SHARE_SHARED, ([WinSCardReader]::SCARD_PROTOCOL_T0 -bor [WinSCardReader]::SCARD_PROTOCOL_T1), [ref]$card, [ref]$activeProtocol)
-                if ($result -eq 0) {
-                    $connected = $true
-                    $uidResult = Invoke-Apdu $card $activeProtocol $uidApdu
-                    if ($uidResult.Status -eq '0x9000' -and $uidResult.Payload.Length -gt 0) {
-                        $uid = (($uidResult.Payload | ForEach-Object { $_.ToString('X2') }) -join '')
-                    }
-
-                    $ppseResult = Invoke-Apdu $card $activeProtocol $ppseApdu
-                    if ($ppseResult.Status -eq '0x9000') {
-                        $scanType = 'payment-card'
-                        $cardBrand = Get-PaymentCardBrand $ppseResult.Payload
-                    }
-
+            foreach ($reader in (Get-CandidateReaders $context)) {
+                $scan = Try-ReadCard $context $reader
+                if ($scan) {
+                    $uid = $scan.uid
+                    $scanType = $scan.scanType
+                    $cardBrand = $scan.cardBrand
                     break
                 }
             }
         }
     } catch {
     } finally {
-        if ($card -ne [IntPtr]::Zero) { [void][WinSCardReader]::SCardDisconnect($card, [WinSCardReader]::SCARD_LEAVE_CARD) }
         if ($context -ne [IntPtr]::Zero) { [void][WinSCardReader]::SCardReleaseContext($context) }
     }
 
@@ -2614,14 +2771,21 @@ while ($true) {
 }
 `;
 
-  const child = spawn(
-    powershellPath,
-    ["-NoProfile", "-Command", monitorScript],
-    {
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    },
-  );
+  let child;
+
+  try {
+    child = spawn(
+      powershellPath,
+      ["-NoProfile", "-Command", monitorScript],
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      },
+    );
+  } catch (error) {
+    console.error("Unable to start RFID reader monitor.", error);
+    return;
+  }
 
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
@@ -2642,7 +2806,9 @@ while ($true) {
 
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", () => {});
-  child.on("error", () => {});
+  child.on("error", (error) => {
+    console.error("RFID reader monitor failed.", error);
+  });
 }
 
 function getDeactivatedRfidTag(rfidTag) {
@@ -2698,6 +2864,7 @@ function buildClubEvent(event, bookings = [], actor = null) {
     startTime: event.start_time,
     endTime: event.end_time,
     title: event.title,
+    details: event.details?.trim() || "",
     type: event.type,
     venue: normalizeVenue(event.venue),
     bookingCount: bookings.length,
@@ -2705,6 +2872,7 @@ function buildClubEvent(event, bookings = [], actor = null) {
     isApproved: (event.approval_status ?? "approved") === "approved",
     isPendingApproval: (event.approval_status ?? "approved") === "pending",
     isRejected: (event.approval_status ?? "approved") === "rejected",
+    rejectionReason: event.rejection_reason?.trim() || "",
     submittedByUsername: event.submitted_by_username ?? null,
     approvedByUsername: event.approved_by_username ?? null,
     approvedAt: event.approved_at ?? null,
@@ -3168,7 +3336,8 @@ function getPermissionsForRole(roleKey) {
 
   return listRolePermissionKeysByRoleKey
     .all(roleKey)
-    .map((permission) => permission.permission_key);
+    .map((permission) => permission.permission_key)
+    .filter((permissionKey) => CURRENT_PERMISSION_KEY_SET.has(permissionKey));
 }
 
 function actorHasPermission(actor, permissionKey) {
@@ -4104,17 +4273,12 @@ app.post("/api/roles", (req, res) => {
     ? req.body.permissions
     : [];
   const title = titleRaw.trim();
-  const validPermissionKeys = new Set(
-    listPermissionDefinitions
-      .all()
-      .map((permission) => permission.permission_key),
-  );
   const normalizedPermissions = [
     ...new Set(
       permissionsRaw
         .filter((permission) => typeof permission === "string")
         .map((permission) => permission.trim())
-        .filter((permission) => validPermissionKeys.has(permission)),
+        .filter((permission) => CURRENT_PERMISSION_KEY_SET.has(permission)),
     ),
   ];
 
@@ -4203,17 +4367,12 @@ app.put("/api/roles/:roleKey", (req, res) => {
     return;
   }
 
-  const validPermissionKeys = new Set(
-    listPermissionDefinitions
-      .all()
-      .map((permission) => permission.permission_key),
-  );
   const normalizedPermissions = [
     ...new Set(
       permissionsRaw
         .filter((permission) => typeof permission === "string")
         .map((permission) => permission.trim())
-        .filter((permission) => validPermissionKeys.has(permission)),
+        .filter((permission) => CURRENT_PERMISSION_KEY_SET.has(permission)),
     ),
   ];
 
@@ -5381,8 +5540,10 @@ app.post("/api/tournaments/:id/competitors-export", (req, res) => {
 
 app.post("/api/events", (req, res) => {
   const actor = getActorUser(req);
-  const { date, startTime, endTime, title, type, venue } = req.body ?? {};
+  const { date, startTime, endTime, title, details, type, venue } = req.body ?? {};
   const trimmedTitle = title?.trim();
+  const trimmedDetails =
+    typeof details === "string" ? details.trim().slice(0, 2000) : "";
   const normalizedVenue = normalizeVenue(venue);
 
   if (!actor) {
@@ -5438,10 +5599,12 @@ app.post("/api/events", (req, res) => {
     startTime,
     endTime,
     trimmedTitle,
+    trimmedDetails,
     type,
     normalizedVenue,
     actor.username,
     actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS) ? "approved" : "pending",
+    null,
     actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS) ? actor.username : null,
     ...(actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
       ? getUtcTimestampParts()
@@ -5530,7 +5693,17 @@ app.post("/api/events/:id/reject", (req, res) => {
     return;
   }
 
-  rejectClubEventById.run(actor.username, ...getUtcTimestampParts(), event.id);
+  const rejectionReason =
+    typeof req.body?.rejectionReason === "string"
+      ? req.body.rejectionReason.trim().slice(0, 280)
+      : "";
+
+  rejectClubEventById.run(
+    rejectionReason || null,
+    actor.username,
+    ...getUtcTimestampParts(),
+    event.id,
+  );
   const rejectedEvent = findClubEventById.get(event.id);
   const bookings = listEventBookingsByEventId.all(event.id).map(normalizeBookingRow);
 
@@ -5663,6 +5836,40 @@ app.delete("/api/events/:id/booking", (req, res) => {
   });
 });
 
+app.delete("/api/events/:id", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.CANCEL_EVENTS)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to cancel events.",
+    });
+    return;
+  }
+
+  const event = findClubEventById.get(req.params.id);
+
+  if (!event) {
+    res.status(404).json({
+      success: false,
+      message: "Event not found.",
+    });
+    return;
+  }
+
+  const deleteEventTransaction = db.transaction(() => {
+    deleteBookingsByEventId.run(event.id);
+    deleteClubEventById.run(event.id);
+  });
+
+  deleteEventTransaction();
+
+  res.json({
+    success: true,
+    message: "Event cancelled successfully.",
+  });
+});
+
 app.get("/api/coaching-sessions", (req, res) => {
   const actor = getActorUser(req);
   const coachingBookingsBySessionId = buildCoachingBookingsMap();
@@ -5773,6 +5980,7 @@ app.post("/api/coaching-sessions", (req, res) => {
     actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
       ? "approved"
       : "pending",
+    null,
     actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
       ? actor.username
       : null,
@@ -5869,7 +6077,17 @@ app.post("/api/coaching-sessions/:id/reject", (req, res) => {
     return;
   }
 
-  rejectCoachingSessionById.run(actor.username, ...getUtcTimestampParts(), session.id);
+  const rejectionReason =
+    typeof req.body?.rejectionReason === "string"
+      ? req.body.rejectionReason.trim().slice(0, 280)
+      : "";
+
+  rejectCoachingSessionById.run(
+    rejectionReason || null,
+    actor.username,
+    ...getUtcTimestampParts(),
+    session.id,
+  );
   const rejectedSession = findCoachingSessionById.get(session.id);
   const bookings = listBookingsByCoachingSessionId
     .all(session.id)

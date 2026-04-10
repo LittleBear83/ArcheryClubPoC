@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Button } from "../components/Button";
 import {
   formatDate,
   formatDateRangeLabel,
@@ -74,10 +75,10 @@ function normalizeUsageWindow(windowData, fallbackLabel = "") {
 
 function UsageCard({ active, data, onClick, title }) {
   return (
-    <button
-      type="button"
+    <Button
       className={`usage-card ${active ? "active" : ""}`}
       onClick={onClick}
+      variant="unstyled"
     >
       <p className="usage-card-title">{title}</p>
       <p className="usage-card-range">{data.label}</p>
@@ -95,7 +96,7 @@ function UsageCard({ active, data, onClick, title }) {
           <strong>{data.total}</strong>
         </div>
       </div>
-    </button>
+    </Button>
   );
 }
 

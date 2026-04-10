@@ -1,6 +1,7 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
+import { Button } from "../components/Button";
 import { Modal } from "../components/Modal";
 import { subscribeToRfidScans } from "../../utils/rfidScanHub";
 import { fetchApi } from "../../lib/api";
@@ -299,13 +300,13 @@ export function LoginPage({
                 />
               </label>
 
-              <button
+              <Button
                 type="submit"
                 className="login-submit"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? "Signing In..." : "Log In"}
-              </button>
+              </Button>
             </form>
 
             <section className="rfid-panel" aria-label="RFID sign in">
@@ -314,14 +315,15 @@ export function LoginPage({
                 Tap your club card to sign in. For now, use the simulator below
                 for the {seededUsername} account.
               </p>
-              <button
+              <Button
                 type="button"
                 className="rfid-simulate-button"
                 onClick={handleSimulatedRfid}
                 disabled={isSubmitting}
+                variant="secondary"
               >
                 {isSubmitting ? "Checking RFID..." : "Simulate RFID Tap"}
-              </button>
+              </Button>
             </section>
           </section>
 
@@ -425,13 +427,13 @@ export function LoginPage({
                 />
               </label>
 
-              <button
+              <Button
                 type="submit"
                 className="guest-submit-button"
                 disabled={isSubmitting}
               >
                 {isSubmitting ? "Signing In Guest..." : "Guest Sign In"}
-              </button>
+              </Button>
             </form>
           </section>
         </div>
@@ -465,14 +467,15 @@ export function LoginPage({
           <div className="guest-member-modal-results" role="list">
             {filteredAllMembers.length > 0 ? (
               filteredAllMembers.map((member) => (
-                <button
+                <Button
                   key={member.username}
                   type="button"
                   className="guest-member-modal-option"
                   onClick={() => handleSelectInvitingMember(member)}
+                  variant="unstyled"
                 >
                   <span>{member.fullName}</span>
-                </button>
+                </Button>
               ))
             ) : (
               <p className="guest-member-modal-empty">

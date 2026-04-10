@@ -3,13 +3,36 @@ import { formatDate } from "../../utils/dateTime";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-function getMonthDays(year, month) {
+type CalendarItem = {
+  id: string | number;
+  [key: string]: unknown;
+};
+
+type CalendarProps = {
+  year: number;
+  month: number;
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
+  itemsByDate?: Record<string, CalendarItem[]>;
+  renderItem?: (item: CalendarItem) => React.ReactNode;
+  renderDayMeta?: (
+    items: CalendarItem[],
+    dateKey: string,
+  ) => React.ReactNode;
+  selectedDate: string | null;
+  onDayClick?: (dateKey: string) => void;
+};
+
+function getMonthDays(year: number, month: number) {
   const first = new Date(year, month, 1);
-  const days = [];
+  const days: Array<Array<number | null>> = [];
   const firstDayIndex = first.getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
 
-  let week = Array.from({ length: firstDayIndex }, () => null);
+  let week: Array<number | null> = Array.from(
+    { length: firstDayIndex },
+    () => null,
+  );
 
   for (let day = 1; day <= totalDays; day += 1) {
     week.push(day);
@@ -39,7 +62,7 @@ export function Calendar({
   renderDayMeta,
   selectedDate,
   onDayClick,
-}) {
+}: CalendarProps) {
   const calendar = useMemo(() => getMonthDays(year, month), [month, year]);
 
   return (
@@ -80,7 +103,7 @@ export function Calendar({
                   const dateKey = day
                     ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
                     : null;
-                  const items = dateKey ? itemsByDate[dateKey] : undefined;
+                  const items = dateKey ? itemsByDate[dateKey] ?? [] : [];
                   const isSelected = selectedDate === dateKey;
                   const hasItems = Boolean(items?.length);
 

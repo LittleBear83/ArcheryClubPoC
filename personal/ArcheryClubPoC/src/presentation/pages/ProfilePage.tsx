@@ -24,6 +24,11 @@ async function readJsonResponse(response) {
   }
 }
 
+type LoadProfileOptions = {
+  signal?: AbortSignal;
+  isBackgroundRefresh?: boolean;
+};
+
 export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) {
   const hasLoadedProfileRef = useRef(false);
   const isIssuingCardRef = useRef(false);
@@ -84,7 +89,10 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
   }, [isIssuingCard]);
 
   const loadProfile = useCallback(
-    async (username, { signal, isBackgroundRefresh = false } = {}) => {
+    async (
+      username,
+      { signal, isBackgroundRefresh = false }: LoadProfileOptions = {},
+    ) => {
       if (isGuest || !username) {
         setIsInitialLoading(false);
         return;

@@ -3,6 +3,7 @@ import { LoanBowSection } from "./LoanBowSection";
 export function MemberProfileForm({
   editableProfile,
   handleChange,
+  handleBooleanChange: _handleBooleanChange = undefined,
   handleBooleanSelectChange,
   toggleDiscipline,
   handleLoanBowFieldChange,
@@ -12,7 +13,7 @@ export function MemberProfileForm({
   isAdmin,
   canEditLoanBow = true,
   canReturnLoanBow = false,
-  onReturnLoanBow,
+  onReturnLoanBow = undefined,
   isCreatingNew,
   isSaving,
   onSubmit,

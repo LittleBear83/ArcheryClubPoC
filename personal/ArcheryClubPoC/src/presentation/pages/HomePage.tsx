@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, Routes, Route } from "react-router-dom";
 import { SideDrawer } from "../components/SideDrawer";
 import archeryBanner from "../../assets/archery_banner.svg";
@@ -19,12 +20,60 @@ import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
 import { RolePermissionsPage } from "./RolePermissionsPage";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { formatDate } from "../../utils/dateTime";
-import { useVisiblePolling } from "../state/useVisiblePolling";
+import { fetchApi } from "../../lib/api";
 import {
   hasPermission,
   isSameUserProfile,
   normalizeUserProfile,
 } from "../../utils/userProfile";
+
+type HomePageProps = {
+  getMembersUseCase?: unknown;
+  addMemberUseCase?: unknown;
+  currentUserProfile: {
+    accountType?: string;
+    auth?: {
+      username?: string;
+    };
+    personal?: {
+      fullName?: string;
+    };
+    meta?: {
+      membershipFeesDue?: string;
+    };
+    [key: string]: unknown;
+  } | null;
+  onCurrentUserProfileUpdate: (userProfile: unknown) => void;
+  onLogout: (message?: string) => void;
+};
+
+type HomeMember = any;
+type HomeEvent = {
+  id: string | number;
+  date: string;
+  title: string;
+  startTime?: string;
+};
+type TournamentReminder = {
+  id: string | number;
+  date: string;
+  title: string;
+};
+type TournamentSummary = {
+  name: string;
+  registrationCount?: number;
+  registrationWindow: {
+    endDate: string;
+    isClosed?: boolean;
+  };
+};
+
+const homeQueryKeys = {
+  rangeMembers: () => ["range-members"] as const,
+  activity: (username: string) => ["home-activity", username] as const,
+  adminWarnings: (username: string) =>
+    ["admin-tournament-warnings", username] as const,
+};
 
 const TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS = 2;
 
@@ -109,215 +158,166 @@ function getMembershipReminderMessage(currentUserProfile) {
   return `reminder: your membership fees are due on ${formattedDueDate}`;
 }
 
+async function fetchRangeMembers(): Promise<HomeMember[]> {
+  const result = await fetchApi<{ success: true; members?: HomeMember[] }>(
+    "/api/range-members",
+    {
+      cache: "no-store",
+    },
+  );
+
+  return (result.members ?? []).map((member) => normalizeUserProfile(member));
+}
+
+async function fetchHomeActivity(username: string): Promise<{
+  signedUpEvents: HomeEvent[];
+  tournamentReminders: TournamentReminder[];
+}> {
+  const headers = { "x-actor-username": username };
+  const [coachingResult, eventResult, reminderResult] = await Promise.all([
+    fetchApi<{ success: true; bookings?: HomeEvent[] }>("/api/my-coaching-bookings", {
+      headers,
+      cache: "no-store",
+    }),
+    fetchApi<{ success: true; bookings?: HomeEvent[] }>("/api/my-event-bookings", {
+      headers,
+      cache: "no-store",
+    }),
+    fetchApi<{ success: true; reminders?: TournamentReminder[] }>(
+      "/api/my-tournament-reminders",
+      {
+        headers,
+        cache: "no-store",
+      },
+    ),
+  ]);
+
+  return {
+    signedUpEvents: [...(coachingResult.bookings ?? []), ...(eventResult.bookings ?? [])]
+      .sort((left, right) => {
+        const byDate = left.date.localeCompare(right.date);
+        return byDate !== 0
+          ? byDate
+          : (left.startTime ?? "").localeCompare(right.startTime ?? "");
+      }),
+    tournamentReminders: reminderResult.reminders ?? [],
+  };
+}
+
+async function fetchAdminTournamentWarnings(username: string): Promise<string[]> {
+  const result = await fetchApi<{ success: true; tournaments?: TournamentSummary[] }>(
+    "/api/tournaments",
+    {
+      headers: {
+        "x-actor-username": username,
+      },
+      cache: "no-store",
+    },
+  );
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return (result.tournaments ?? []).flatMap((tournament) => {
+    const competitorCount = tournament.registrationCount ?? 0;
+
+    if (competitorCount === 0 || competitorCount % 2 === 0) {
+      return [];
+    }
+
+    const closingDate = new Date(tournament.registrationWindow.endDate);
+    closingDate.setHours(0, 0, 0, 0);
+
+    const diffInDays = Math.floor(
+      (closingDate.getTime() - today.getTime()) / 86400000,
+    );
+
+    if (
+      tournament.registrationWindow.isClosed ||
+      diffInDays < 0 ||
+      diffInDays > TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS
+    ) {
+      return [];
+    }
+
+    return [
+      `${tournament.name} registration closes on ${tournament.registrationWindow.endDate} with an uneven field of ${competitorCount} competing members.`,
+    ];
+  });
+}
+
 export function HomePage({
   currentUserProfile,
   onCurrentUserProfileUpdate,
   onLogout,
-}) {
-  const [members, setMembers] = useState([]);
-  const [signedUpEvents, setSignedUpEvents] = useState([]);
-  const [tournamentReminders, setTournamentReminders] = useState([]);
-  const [adminTournamentWarnings, setAdminTournamentWarnings] = useState([]);
+}: HomePageProps) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const canManageTournaments = hasPermission(
     currentUserProfile,
     "manage_tournaments",
   );
+  const actorUsername = currentUserProfile?.auth?.username ?? "";
   const membershipReminderMessage = useMemo(
     () => getMembershipReminderMessage(currentUserProfile),
     [currentUserProfile],
   );
   const activePage = pathToPageId[location.pathname] || "home";
+  const { data: rangeMembers = [] } = useQuery({
+    queryKey: homeQueryKeys.rangeMembers(),
+    queryFn: fetchRangeMembers,
+    refetchInterval: activePage === "home" ? 60000 : false,
+  });
+
+  const { data: homeActivity } = useQuery({
+    queryKey: homeQueryKeys.activity(actorUsername),
+    queryFn: () => fetchHomeActivity(actorUsername),
+    enabled: Boolean(actorUsername),
+    refetchInterval: activePage === "home" ? 60000 : false,
+  });
+
+  const { data: adminTournamentWarnings = [] } = useQuery({
+    queryKey: homeQueryKeys.adminWarnings(actorUsername),
+    queryFn: () => fetchAdminTournamentWarnings(actorUsername),
+    enabled: canManageTournaments && Boolean(actorUsername),
+    refetchInterval: canManageTournaments ? 60000 : false,
+  });
+
+  const signedUpEvents = homeActivity?.signedUpEvents ?? [];
+  const tournamentReminders = homeActivity?.tournamentReminders ?? [];
+
   const membersAtRange = useMemo(() => {
     if (!currentUserProfile) {
-      return members;
+      return rangeMembers;
     }
 
-    const alreadyIncluded = members.some((member) =>
-      isSameUserProfile(currentUserProfile, member),
+    const normalizedCurrentUser = normalizeUserProfile(currentUserProfile);
+    const alreadyIncluded = rangeMembers.some((member) =>
+      isSameUserProfile(normalizedCurrentUser, member),
     );
 
-    return alreadyIncluded ? members : [currentUserProfile, ...members];
-  }, [currentUserProfile, members]);
-
-  useEffect(() => {
-    if (!currentUserProfile) {
-      return;
-    }
-
-    setMembers((current) => {
-      const normalizedCurrentUser = normalizeUserProfile(currentUserProfile);
-      const alreadyIncluded = current.some((member) =>
-        isSameUserProfile(normalizedCurrentUser, member),
-      );
-
-      if (alreadyIncluded) {
-        return current;
-      }
-
-      return [normalizedCurrentUser, ...current];
-    });
-  }, [currentUserProfile]);
-
-  const loadRangeMembers = useCallback(async (signal) => {
-    try {
-      const response = await fetch("/api/range-members", {
-        cache: "no-store",
-        signal,
-      });
-      const result = await response.json();
-
-      if (!response.ok || !result.success || signal?.aborted) {
-        return;
-      }
-
-      setMembers(result.members.map((member) => normalizeUserProfile(member)));
-    } catch {
-      if (!signal?.aborted) {
-        return;
-      }
-    }
-  }, []);
-
-  const refreshHomeActivity = useCallback(async (signal) => {
-    if (!currentUserProfile?.auth?.username) {
-      setSignedUpEvents([]);
-      setTournamentReminders([]);
-      return;
-    }
-
-    try {
-      const headers = {
-        "x-actor-username": currentUserProfile.auth.username,
-      };
-      const [coachingResponse, eventResponse, reminderResponse] = await Promise.all([
-        fetch("/api/my-coaching-bookings", { headers, cache: "no-store", signal }),
-        fetch("/api/my-event-bookings", { headers, cache: "no-store", signal }),
-        fetch("/api/my-tournament-reminders", { headers, cache: "no-store", signal }),
-      ]);
-      const [coachingResult, eventResult, reminderResult] = await Promise.all([
-        coachingResponse.json(),
-        eventResponse.json(),
-        reminderResponse.json(),
-      ]);
-
-      if (
-        !coachingResponse.ok ||
-        !coachingResult.success ||
-        !eventResponse.ok ||
-        !eventResult.success ||
-        !reminderResponse.ok ||
-        !reminderResult.success ||
-        signal?.aborted
-      ) {
-        return;
-      }
-
-      setSignedUpEvents(
-        [...coachingResult.bookings, ...eventResult.bookings].sort((left, right) => {
-          const byDate = left.date.localeCompare(right.date);
-          return byDate !== 0
-            ? byDate
-            : (left.startTime ?? "").localeCompare(right.startTime ?? "");
-          }),
-      );
-      setTournamentReminders(reminderResult.reminders ?? []);
-    } catch {
-      if (!signal?.aborted) {
-        setSignedUpEvents([]);
-        setTournamentReminders([]);
-      }
-    }
-  }, [currentUserProfile]);
-
-  const loadAdminTournamentWarnings = useCallback(async (signal) => {
-    if (!canManageTournaments || !currentUserProfile?.auth?.username) {
-      setAdminTournamentWarnings([]);
-      return;
-    }
-
-    try {
-      const response = await fetch("/api/tournaments", {
-        headers: {
-          "x-actor-username": currentUserProfile.auth.username,
-        },
-        cache: "no-store",
-        signal,
-      });
-      const result = await response.json();
-
-      if (!response.ok || !result.success || signal?.aborted) {
-        throw new Error("Unable to load tournament warnings.");
-      }
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const warnings = (result.tournaments ?? []).flatMap((tournament) => {
-        const competitorCount = tournament.registrationCount ?? 0;
-
-        if (competitorCount === 0 || competitorCount % 2 === 0) {
-          return [];
-        }
-
-        const closingDate = new Date(tournament.registrationWindow.endDate);
-        closingDate.setHours(0, 0, 0, 0);
-
-        const diffInDays = Math.floor(
-          (closingDate.getTime() - today.getTime()) / 86400000,
-        );
-
-        if (
-          tournament.registrationWindow.isClosed ||
-          diffInDays < 0 ||
-          diffInDays > TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS
-        ) {
-          return [];
-        }
-
-        return [
-          `${tournament.name} registration closes on ${tournament.registrationWindow.endDate} with an uneven field of ${competitorCount} competing members.`,
-        ];
-      });
-
-      setAdminTournamentWarnings(warnings);
-    } catch {
-      if (!signal?.aborted) {
-        setAdminTournamentWarnings([]);
-      }
-    }
-  }, [canManageTournaments, currentUserProfile]);
-
-  const refreshHomeSections = useCallback(() => {
-    const signal = new AbortController().signal;
-    loadRangeMembers(signal);
-    refreshHomeActivity(signal);
-  }, [loadRangeMembers, refreshHomeActivity]);
-
-  const refreshTournamentWarnings = useCallback(() => {
-    loadAdminTournamentWarnings(new AbortController().signal);
-  }, [loadAdminTournamentWarnings]);
-
-  useVisiblePolling(() => {
-    refreshHomeSections();
-  }, {
-    enabled: activePage === "home",
-    intervalMs: 60000,
-  });
-
-  useVisiblePolling(() => {
-    refreshTournamentWarnings();
-  }, {
-    enabled: canManageTournaments,
-    intervalMs: 60000,
-  });
+    return alreadyIncluded
+      ? rangeMembers
+      : [normalizedCurrentUser, ...rangeMembers];
+  }, [currentUserProfile, rangeMembers]);
 
   useEffect(() => {
     const refreshAll = () => {
-      refreshHomeSections();
-      refreshTournamentWarnings();
+      void queryClient.invalidateQueries({
+        queryKey: homeQueryKeys.rangeMembers(),
+      });
+      if (actorUsername) {
+        void queryClient.invalidateQueries({
+          queryKey: homeQueryKeys.activity(actorUsername),
+        });
+      }
+      if (canManageTournaments && actorUsername) {
+        void queryClient.invalidateQueries({
+          queryKey: homeQueryKeys.adminWarnings(actorUsername),
+        });
+      }
     };
 
     window.addEventListener("member-bookings-updated", refreshAll);
@@ -330,10 +330,9 @@ export function HomePage({
       window.removeEventListener("tournament-data-updated", refreshAll);
     };
   }, [
-    currentUserProfile?.auth?.username,
+    actorUsername,
     canManageTournaments,
-    refreshHomeSections,
-    refreshTournamentWarnings,
+    queryClient,
   ]);
 
   const handleNavigate = (pageId) => {
@@ -455,7 +454,11 @@ export function HomePage({
               element={
                 <EventCalendarPage
                   currentUserProfile={currentUserProfile}
-                  onBookingsChanged={refreshHomeActivity}
+                  onBookingsChanged={() =>
+                    queryClient.invalidateQueries({
+                      queryKey: homeQueryKeys.activity(actorUsername),
+                    })
+                  }
                 />
               }
             />
@@ -472,7 +475,11 @@ export function HomePage({
               element={
                 <TournamentsPage
                   currentUserProfile={currentUserProfile}
-                  onTournamentActivity={refreshHomeActivity}
+                  onTournamentActivity={() =>
+                    queryClient.invalidateQueries({
+                      queryKey: homeQueryKeys.activity(actorUsername),
+                    })
+                  }
                 />
               }
             />
@@ -481,7 +488,11 @@ export function HomePage({
               element={
                 <TournamentsPage
                   currentUserProfile={currentUserProfile}
-                  onTournamentActivity={refreshHomeActivity}
+                  onTournamentActivity={() =>
+                    queryClient.invalidateQueries({
+                      queryKey: homeQueryKeys.activity(actorUsername),
+                    })
+                  }
                   showSetupForm
                 />
               }

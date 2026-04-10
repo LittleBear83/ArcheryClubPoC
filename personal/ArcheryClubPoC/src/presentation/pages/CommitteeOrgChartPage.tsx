@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { hasPermission } from "../../utils/userProfile";
+import { fetchApi } from "../../lib/api";
 
 function buildHeaders(currentUserProfile) {
   return {
@@ -8,29 +10,29 @@ function buildHeaders(currentUserProfile) {
   };
 }
 
-async function readJsonResponse(response, fallbackMessage) {
-  const contentType = response.headers.get("content-type") ?? "";
+type CommitteeMember = {
+  username: string;
+  fullName: string;
+};
 
-  if (contentType.includes("application/json")) {
-    return response.json();
-  }
+type CommitteeRole = {
+  id: number;
+  title: string;
+  summary: string;
+  assignedMember?: CommitteeMember | null;
+};
 
-  const responseText = await response.text();
+type CommitteeRolesResponse = {
+  success: true;
+  roles?: CommitteeRole[];
+  members?: CommitteeMember[];
+};
 
-  if (responseText.trim().startsWith("<!DOCTYPE")) {
-    throw new Error(
-      `${fallbackMessage} If the server was already running, restart it and try again.`,
-    );
-  }
-
-  throw new Error(fallbackMessage);
-}
+const committeeQueryKeys = {
+  roles: (actorUsername: string) => ["committee-roles", actorUsername] as const,
+};
 
 export function CommitteeOrgChartPage({ currentUserProfile }) {
-  const [roles, setRoles] = useState([]);
-  const [members, setMembers] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasLoadedRoles, setHasLoadedRoles] = useState(false);
   const [savingRoleId, setSavingRoleId] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -39,87 +41,62 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
     currentUserProfile,
     "manage_committee_roles",
   );
+  const actorUsername = currentUserProfile?.auth?.username ?? "";
+  const queryClient = useQueryClient();
 
-  const loadCommitteeRoles = useCallback(async (signal) => {
-    if (!hasLoadedRoles) {
-      setIsLoading(true);
-    }
-    setError("");
-
-    try {
-      const response = await fetch("/api/committee-roles", {
+  const { data, isLoading } = useQuery({
+    queryKey: committeeQueryKeys.roles(actorUsername),
+    queryFn: () =>
+      fetchApi<CommitteeRolesResponse>("/api/committee-roles", {
         headers: buildHeaders(currentUserProfile),
         cache: "no-store",
-        signal,
+      }),
+    enabled: Boolean(actorUsername),
+  });
+
+  const roles = data?.roles ?? [];
+  const members = data?.members ?? [];
+
+  const assignMemberMutation = useMutation({
+    mutationFn: async ({
+      roleId,
+      assignedUsername,
+    }: {
+      roleId: number;
+      assignedUsername: string;
+    }) =>
+      fetchApi<{ success: true; role: CommitteeRole }>(
+        `/api/committee-roles/${roleId}`,
+        {
+          method: "PUT",
+          headers: buildHeaders(currentUserProfile),
+          cache: "no-store",
+          body: JSON.stringify({
+            assignedUsername: assignedUsername || null,
+          }),
+        },
+      ),
+    onMutate: ({ roleId }) => {
+      setSavingRoleId(roleId);
+      setError("");
+      setMessage("");
+    },
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({
+        queryKey: committeeQueryKeys.roles(actorUsername),
       });
-      const result = await readJsonResponse(
-        response,
-        "Unable to load committee roles.",
-      );
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to load committee roles.");
-      }
-
-      if (signal?.aborted) {
-        return;
-      }
-
-      setRoles(result.roles ?? []);
-      setMembers(result.members ?? []);
-      setHasLoadedRoles(true);
-    } catch (loadError) {
-      if (!signal?.aborted) {
-        setError(loadError.message);
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
-    }
-  }, [currentUserProfile, hasLoadedRoles]);
-
-  useEffect(() => {
-    const abortController = new AbortController();
-    loadCommitteeRoles(abortController.signal);
-
-    return () => {
-      abortController.abort();
-    };
-  }, [loadCommitteeRoles]);
+      setMessage(`${result.role.title} updated successfully.`);
+    },
+    onError: (saveError: Error) => {
+      setError(saveError.message);
+    },
+    onSettled: () => {
+      setSavingRoleId(null);
+    },
+  });
 
   const handleAssignMember = async (roleId, assignedUsername) => {
-    setSavingRoleId(roleId);
-    setError("");
-    setMessage("");
-
-    try {
-      const response = await fetch(`/api/committee-roles/${roleId}`, {
-        method: "PUT",
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
-        body: JSON.stringify({
-          assignedUsername: assignedUsername || null,
-        }),
-      });
-      const result = await readJsonResponse(
-        response,
-        "Unable to update committee role.",
-      );
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to update committee role.");
-      }
-
-      setRoles((current) =>
-        current.map((role) => (role.id === result.role.id ? result.role : role)),
-      );
-      setMessage(`${result.role.title} updated successfully.`);
-    } catch (saveError) {
-      setError(saveError.message);
-    } finally {
-      setSavingRoleId(null);
-    }
+    await assignMemberMutation.mutateAsync({ roleId, assignedUsername });
   };
 
   return (
@@ -129,11 +106,11 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
         through to associate member positions.
       </p>
 
-      {isLoading && !hasLoadedRoles ? <p>Loading committee roles...</p> : null}
+      {isLoading ? <p>Loading committee roles...</p> : null}
       {error ? <p className="profile-error">{error}</p> : null}
       {message ? <p className="profile-success">{message}</p> : null}
 
-      {hasLoadedRoles ? (
+      {data ? (
         <section className="profile-form committee-roles-panel">
           <h3 className="profile-section-title committee-roles-title">
             Committee Roles Table

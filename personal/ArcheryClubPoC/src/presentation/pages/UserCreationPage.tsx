@@ -1,6 +1,8 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MemberProfileForm } from "../components/MemberProfileForm";
 import { hasPermission } from "../../utils/userProfile";
+import { fetchApi } from "../../lib/api";
 
 const EMPTY_PROFILE = {
   username: "",
@@ -36,84 +38,68 @@ function buildHeaders(currentUserProfile) {
 }
 
 export function UserCreationPage({ currentUserProfile }) {
-  const hasLoadedOptionsRef = useRef(false);
   const [editableProfile, setEditableProfile] = useState(EMPTY_PROFILE);
-  const [disciplineOptions, setDisciplineOptions] = useState([]);
-  const [roleOptions, setRoleOptions] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const actorUsername = currentUserProfile?.auth?.username ?? "";
+  const queryClient = useQueryClient();
 
   const canManageMembers = hasPermission(
     currentUserProfile,
     "manage_members",
   );
 
-  const loadOptions = useEffectEvent(async (signal) => {
-    if (!canManageMembers) {
-      setIsLoading(false);
-      return;
-    }
-
-    if (!hasLoadedOptionsRef.current) {
-      setIsLoading(true);
-    }
-    setError("");
-
-    try {
-      const response = await fetch("/api/profile-options", {
+  const optionsQuery = useQuery({
+    queryKey: ["profile-options", actorUsername],
+    queryFn: () =>
+      fetchApi<{
+        success: true;
+        disciplines?: string[];
+        userTypes?: string[];
+      }>("/api/profile-options", {
         headers: buildHeaders(currentUserProfile),
-        signal,
-      });
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to load user creation options.");
-      }
-
-      if (signal?.aborted) {
-        return;
-      }
-
-      const nextRoleOptions = result.userTypes ?? [];
-      const defaultRole = nextRoleOptions.includes("general")
-        ? "general"
-        : nextRoleOptions[0] ?? "general";
-
-      setRoleOptions(nextRoleOptions);
-      setDisciplineOptions(result.disciplines ?? []);
-      setEditableProfile((current) => ({
-        ...current,
-        userType: nextRoleOptions.includes(current.userType)
-          ? current.userType
-          : defaultRole,
-      }));
-      hasLoadedOptionsRef.current = true;
-    } catch (loadError) {
-      if (!signal?.aborted) {
-        setError(loadError.message);
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
-    }
+      }),
+    enabled: canManageMembers,
   });
 
-  useEffect(() => {
-    const abortController = new AbortController();
-    const refresh = () => loadOptions(abortController.signal);
+  const roleOptions = useMemo(
+    () => optionsQuery.data?.userTypes ?? [],
+    [optionsQuery.data?.userTypes],
+  );
+  const disciplineOptions = useMemo(
+    () => optionsQuery.data?.disciplines ?? [],
+    [optionsQuery.data?.disciplines],
+  );
+  const isLoading = optionsQuery.isLoading;
+  const defaultRole = useMemo(
+    () =>
+      roleOptions.includes("general")
+        ? "general"
+        : roleOptions[0] ?? "general",
+    [roleOptions],
+  );
+  const effectiveEditableProfile = useMemo(
+    () => ({
+      ...editableProfile,
+      userType: roleOptions.includes(editableProfile.userType)
+        ? editableProfile.userType
+        : defaultRole,
+    }),
+    [defaultRole, editableProfile, roleOptions],
+  );
 
-    refresh();
+  useEffect(() => {
+    const refresh = () => {
+      void queryClient.invalidateQueries({ queryKey: ["profile-options", actorUsername] });
+    };
+
     window.addEventListener("profile-data-updated", refresh);
 
     return () => {
-      abortController.abort();
       window.removeEventListener("profile-data-updated", refresh);
     };
-  }, [actorUsername, canManageMembers]);
+  }, [actorUsername, queryClient]);
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
@@ -164,35 +150,41 @@ export function UserCreationPage({ currentUserProfile }) {
     }));
   };
 
-  const handleCreate = async (event) => {
-    event.preventDefault();
-    setIsSaving(true);
-    setError("");
-    setMessage("");
-
-    try {
-      const response = await fetch("/api/user-profiles", {
-        method: "POST",
-        headers: buildHeaders(currentUserProfile),
-        body: JSON.stringify(editableProfile),
-      });
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to create member.");
-      }
-
+  const createUserMutation = useMutation({
+    mutationFn: async () =>
+      fetchApi<{ success: true; editableProfile: { username: string } }>(
+        "/api/user-profiles",
+        {
+          method: "POST",
+          headers: buildHeaders(currentUserProfile),
+          body: JSON.stringify(effectiveEditableProfile),
+        },
+      ),
+    onMutate: () => {
+      setIsSaving(true);
+      setError("");
+      setMessage("");
+    },
+    onSuccess: async (result) => {
       setMessage(`Member ${result.editableProfile.username} created successfully.`);
       setEditableProfile({
         ...EMPTY_PROFILE,
-        userType: roleOptions.includes("general") ? "general" : roleOptions[0] ?? "general",
+        userType: defaultRole,
       });
+      await queryClient.invalidateQueries({ queryKey: ["profile-options", actorUsername] });
       window.dispatchEvent(new Event("profile-data-updated"));
-    } catch (createError) {
+    },
+    onError: (createError: Error) => {
       setError(createError.message);
-    } finally {
+    },
+    onSettled: () => {
       setIsSaving(false);
-    }
+    },
+  });
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    await createUserMutation.mutateAsync();
   };
 
   if (!canManageMembers) {
@@ -210,7 +202,7 @@ export function UserCreationPage({ currentUserProfile }) {
 
       {roleOptions.length > 0 ? (
         <MemberProfileForm
-          editableProfile={editableProfile}
+          editableProfile={effectiveEditableProfile}
           handleChange={handleChange}
           handleBooleanChange={handleBooleanChange}
           handleBooleanSelectChange={handleBooleanSelectChange}

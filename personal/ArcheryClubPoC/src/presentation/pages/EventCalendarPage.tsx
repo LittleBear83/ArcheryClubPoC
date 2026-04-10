@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
-import { useVisiblePolling } from "../state/useVisiblePolling";
+import { fetchApi } from "../../lib/api";
 
 function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
@@ -37,13 +38,55 @@ const VENUE_OPTIONS = [
   { value: "both", label: "Indoor and outdoor" },
 ];
 
+type CalendarEvent = {
+  id: string | number;
+  date: string;
+  startTime: string;
+  endTime: string;
+  title: string;
+  type: string;
+  venue: string;
+  isBookedOn?: boolean;
+  isPendingApproval?: boolean;
+  isRejected?: boolean;
+  isApproved?: boolean;
+  canApprove?: boolean;
+};
+
+type EventCalendarPageProps = {
+  currentUserProfile: any;
+  onBookingsChanged?: () => void;
+};
+
+const eventQueryKeys = {
+  list: (username: string) => ["events", username] as const,
+};
+
 function getVenueLabel(venue) {
   return (
     VENUE_OPTIONS.find((option) => option.value === venue)?.label ??
     "Indoor and outdoor"
   );
 }
-export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
+
+async function fetchEvents(actorUsername: string): Promise<CalendarEvent[]> {
+  const result = await fetchApi<{ success: true; events?: CalendarEvent[] }>(
+    "/api/events",
+    {
+      headers: actorUsername
+        ? { "x-actor-username": actorUsername }
+        : undefined,
+      cache: "no-store",
+    },
+  );
+
+  return result.events ?? [];
+}
+
+export function EventCalendarPage({
+  currentUserProfile,
+  onBookingsChanged,
+}: EventCalendarPageProps) {
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -56,12 +99,12 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
   const [newEventEndTime, setNewEventEndTime] = useState("10:00");
   const [newEventType, setNewEventType] = useState("competition");
   const [newEventVenue, setNewEventVenue] = useState("indoor");
-  const [events, setEvents] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [bookingModalMode, setBookingModalMode] = useState("");
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateString());
   const [bookingMessage, setBookingMessage] = useState("");
   const [eventFormError, setEventFormError] = useState("");
+  const queryClient = useQueryClient();
   const canCreateEvents = hasPermission(
     currentUserProfile,
     "add_events",
@@ -74,89 +117,52 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
     EVENT_TYPE_OPTIONS.find((option) => option.value === type) ??
     EVENT_TYPE_OPTIONS[0];
 
-  const loadEvents = useCallback(async (signal) => {
-    try {
-      const response = await fetch("/api/events", {
-        headers: actorUsername
-          ? { "x-actor-username": actorUsername }
-          : undefined,
-        cache: "no-store",
-        signal,
-      });
-      const result = await response.json();
-
-      if (!response.ok || !result.success || signal?.aborted) {
-        return;
-      }
-
-      setEvents(result.events ?? []);
-    } catch {
-      if (!signal?.aborted) {
-        setEvents([]);
-      }
-    }
-  }, [actorUsername]);
-
-  useVisiblePolling(() => {
-    loadEvents(new AbortController().signal);
-  }, {
-    enabled: true,
-    intervalMs: 60000,
+  const { data: events = [] } = useQuery({
+    queryKey: eventQueryKeys.list(actorUsername),
+    queryFn: () => fetchEvents(actorUsername),
+    refetchInterval: 60000,
   });
 
   useEffect(() => {
-    const abortController = new AbortController();
-    const refresh = () => loadEvents(abortController.signal);
+    const refresh = () =>
+      queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.list(actorUsername),
+      });
 
     window.addEventListener("event-data-updated", refresh);
     window.addEventListener("member-bookings-updated", refresh);
 
     return () => {
-      abortController.abort();
       window.removeEventListener("event-data-updated", refresh);
       window.removeEventListener("member-bookings-updated", refresh);
     };
-  }, [actorUsername, loadEvents]);
+  }, [actorUsername, queryClient]);
 
-  const addEvent = async (e) => {
-    e.preventDefault();
-    if (!newEvent.trim()) return;
-
-    try {
-      const response = await fetch("/api/events", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-actor-username": currentUserProfile?.auth?.username ?? "",
+  const addEventMutation = useMutation({
+    mutationFn: async () =>
+      fetchApi<{ success: true; event: CalendarEvent; message?: string }>(
+        "/api/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-actor-username": currentUserProfile?.auth?.username ?? "",
+          },
+          cache: "no-store",
+          body: JSON.stringify({
+            date: newEventDate,
+            startTime: newEventStartTime,
+            endTime: newEventEndTime,
+            title: newEvent.trim(),
+            type: newEventType,
+            venue: newEventVenue,
+          }),
         },
-        cache: "no-store",
-        body: JSON.stringify({
-          date: newEventDate,
-          startTime: newEventStartTime,
-          endTime: newEventEndTime,
-          title: newEvent.trim(),
-          type: newEventType,
-          venue: newEventVenue,
-        }),
+      ),
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.list(actorUsername),
       });
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        setEventFormError(result.message ?? "Unable to save event.");
-        return;
-      }
-
-      setEvents((prev) =>
-        [...prev, result.event].sort((left, right) => {
-          const byDate = left.date.localeCompare(right.date);
-
-          if (byDate !== 0) {
-            return byDate;
-          }
-
-          return left.startTime.localeCompare(right.startTime);
-        }),
-      );
       setNewEvent("");
       setNewEventStartTime("09:00");
       setNewEventEndTime("10:00");
@@ -166,16 +172,23 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
       setIsModalOpen(false);
       setBookingMessage(result.message ?? "Event saved successfully.");
       window.dispatchEvent(new Event("event-data-updated"));
-    } catch {
-      setEventFormError("Unable to save event.");
-    }
+    },
+    onError: (error: Error) => {
+      setEventFormError(error.message);
+    },
+  });
+
+  const addEvent = async (e) => {
+    e.preventDefault();
+    if (!newEvent.trim()) return;
+    await addEventMutation.mutateAsync();
   };
 
   const eventsByDate = useMemo(
     () =>
       [...events]
         .sort((left, right) => left.startTime.localeCompare(right.startTime))
-        .reduce((acc, evt) => {
+        .reduce<Record<string, CalendarEvent[]>>((acc, evt) => {
           (acc[evt.date] = acc[evt.date] || []).push(evt);
           return acc;
         }, {}),
@@ -224,102 +237,107 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
     setIsModalOpen(true);
   };
 
-  const updateEventInState = (updatedEvent) => {
-    setEvents((current) =>
-      current.map((event) => (event.id === updatedEvent.id ? updatedEvent : event)),
-    );
-  };
+  const approveEventMutation = useMutation({
+    mutationFn: async (event: CalendarEvent) =>
+      fetchApi<{ success: true; event: CalendarEvent; message?: string }>(
+        `/api/events/${event.id}/approve`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-actor-username": actorUsername,
+          },
+          cache: "no-store",
+        },
+      ),
+    onSuccess: async (_result, event) => {
+      await queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.list(actorUsername),
+      });
+      setBookingMessage(`${event.title} approved successfully.`);
+      window.dispatchEvent(new Event("event-data-updated"));
+    },
+    onError: (error: Error) => {
+      setBookingMessage(error.message);
+    },
+  });
 
   const approveEvent = async (event) => {
-    try {
-      const response = await fetch(`/api/events/${event.id}/approve`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-actor-username": actorUsername,
-        },
-        cache: "no-store",
-      });
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to approve this event.");
-      }
-
-      updateEventInState(result.event);
-      setBookingMessage(result.message ?? `${event.title} approved successfully.`);
-      window.dispatchEvent(new Event("event-data-updated"));
-    } catch (approvalError) {
-      setBookingMessage(approvalError.message);
-    }
+    await approveEventMutation.mutateAsync(event);
   };
+
+  const bookEventMutation = useMutation({
+    mutationFn: async (event: CalendarEvent) =>
+      fetchApi<{ success: true; event: CalendarEvent; message?: string }>(
+        `/api/events/${event.id}/book`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-actor-username": actorUsername,
+          },
+          cache: "no-store",
+        },
+      ),
+    onSuccess: async (_result, event) => {
+      await queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.list(actorUsername),
+      });
+      setBookingMessage(
+        `Booked onto ${event.title} on ${formatDate(selectedDate ?? "")} at ${formatClockTime(event.startTime)}.`,
+      );
+      onBookingsChanged?.();
+      window.dispatchEvent(new Event("member-bookings-updated"));
+      window.dispatchEvent(new Event("event-data-updated"));
+      setBookingModalMode("");
+    },
+    onError: (error: Error) => {
+      setBookingMessage(error.message);
+      setBookingModalMode("");
+    },
+  });
 
   const startBookingForEvent = async (event) => {
     if (!selectedDate || !event) {
       return;
     }
+    await bookEventMutation.mutateAsync(event);
+  };
 
-    try {
-      const response = await fetch(`/api/events/${event.id}/book`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-actor-username": actorUsername,
+  const leaveEventMutation = useMutation({
+    mutationFn: async (event: CalendarEvent) =>
+      fetchApi<{ success: true; event: CalendarEvent; message?: string }>(
+        `/api/events/${event.id}/booking`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            "x-actor-username": actorUsername,
+          },
+          cache: "no-store",
         },
-        cache: "no-store",
+      ),
+    onSuccess: async (_result, event) => {
+      await queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.list(actorUsername),
       });
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to book onto this event.");
-      }
-
-      updateEventInState(result.event);
-      setBookingMessage(
-        `Booked onto ${event.title} on ${formatDate(selectedDate)} at ${formatClockTime(event.startTime)}.`,
-      );
+      setBookingMessage(`You have left ${event.title} on ${formatDate(selectedDate ?? "")}.`);
       onBookingsChanged?.();
       window.dispatchEvent(new Event("member-bookings-updated"));
       window.dispatchEvent(new Event("event-data-updated"));
       setBookingModalMode("");
-    } catch (bookingError) {
-      setBookingMessage(bookingError.message);
+    },
+    onError: (error: Error) => {
+      setBookingMessage(error.message);
       setBookingModalMode("");
-    }
-  };
+    },
+  });
 
   const leaveEvent = async (event) => {
     if (!selectedDate || !event) {
       return;
     }
-
-    try {
-      const response = await fetch(`/api/events/${event.id}/booking`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "x-actor-username": actorUsername,
-        },
-        cache: "no-store",
-      });
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to leave this event.");
-      }
-
-      updateEventInState(result.event);
-      setBookingMessage(
-        `You have left ${event.title} on ${formatDate(selectedDate)}.`,
-      );
-      onBookingsChanged?.();
-      window.dispatchEvent(new Event("member-bookings-updated"));
-      window.dispatchEvent(new Event("event-data-updated"));
-      setBookingModalMode("");
-    } catch (leaveError) {
-      setBookingMessage(leaveError.message);
-      setBookingModalMode("");
-    }
+    await leaveEventMutation.mutateAsync(event);
   };
 
   const handleBookOn = () => {
@@ -384,13 +402,13 @@ export function EventCalendarPage({ currentUserProfile, onBookingsChanged }) {
             }}
             itemsByDate={eventsByDate}
             renderDayMeta={(items) => {
-              const typeClasses = [
-                ...new Set(
-                  items.map(
-                    (item) => getEventTypeDetails(item.type).className,
-                  ),
-                ),
-              ];
+	              const typeClasses = [
+	                ...new Set(
+	                  items.map(
+	                    (item) => getEventTypeDetails(item.type).className,
+	                  ),
+	                ),
+	              ] as string[];
 
               return (
                 <span className="calendar-day-key-markers" aria-hidden="true">

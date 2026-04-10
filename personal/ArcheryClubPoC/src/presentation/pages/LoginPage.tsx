@@ -1,9 +1,44 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Modal } from "../components/Modal";
 import { subscribeToRfidScans } from "../../utils/rfidScanHub";
+import { fetchApi } from "../../lib/api";
 
 const SIMULATED_RFID_TAG = "7673CF3D";
+
+type RangeMember = {
+  accountType: string;
+  auth: { username: string };
+  personal: { fullName: string };
+};
+
+type ClubMember = {
+  username: string;
+  surname: string;
+  fullName?: string;
+  personal?: { fullName: string };
+};
+
+function getMemberDisplayName(member: RangeMember | ClubMember | null) {
+  if (!member) {
+    return "";
+  }
+
+  if ("fullName" in member && member.fullName) {
+    return member.fullName;
+  }
+
+  if ("personal" in member && member.personal?.fullName) {
+    return member.personal.fullName;
+  }
+
+  if ("username" in member) {
+    return member.username;
+  }
+
+  return member.auth.username;
+}
 
 export function LoginPage({
   onGuestLogin,
@@ -18,8 +53,6 @@ export function LoginPage({
   const [guestFirstName, setGuestFirstName] = useState("");
   const [guestSurname, setGuestSurname] = useState("");
   const [guestMembershipNumber, setGuestMembershipNumber] = useState("");
-  const [rangeMembers, setRangeMembers] = useState([]);
-  const [allMembers, setAllMembers] = useState([]);
   const [selectedInvitingMemberUsername, setSelectedInvitingMemberUsername] =
     useState("");
   const [memberSearchSurname, setMemberSearchSurname] = useState("");
@@ -27,6 +60,32 @@ export function LoginPage({
     useState(false);
   const [error, setError] = useState(initialMessage);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const guestInviterOptionsQuery = useQuery({
+    queryKey: ["guest-inviter-options"],
+    queryFn: async () => {
+      const [rangeMembersResult, allMembersResult] = await Promise.all([
+        fetchApi<{ success: true; members?: RangeMember[] }>("/api/range-members"),
+        fetchApi<{ success: true; members?: ClubMember[] }>("/api/guest-inviter-members"),
+      ]);
+
+      return {
+        rangeMembers: (rangeMembersResult.members ?? []).filter(
+          (member) => member.accountType === "member",
+        ),
+        allMembers: allMembersResult.members ?? [],
+      };
+    },
+  });
+
+  const rangeMembers = useMemo(
+    () => guestInviterOptionsQuery.data?.rangeMembers ?? [],
+    [guestInviterOptionsQuery.data?.rangeMembers],
+  );
+  const allMembers = useMemo(
+    () => guestInviterOptionsQuery.data?.allMembers ?? [],
+    [guestInviterOptionsQuery.data?.allMembers],
+  );
 
   const attemptRfidLogin = async (rfidTag) => {
     if (!rfidTag) {
@@ -57,53 +116,6 @@ export function LoginPage({
   useEffect(() => {
     setError(initialMessage);
   }, [initialMessage]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    const loadGuestInviterOptions = async () => {
-      try {
-        const [rangeMembersResponse, allMembersResponse] = await Promise.all([
-          fetch("/api/range-members"),
-          fetch("/api/guest-inviter-members"),
-        ]);
-
-        const [rangeMembersResult, allMembersResult] = await Promise.all([
-          rangeMembersResponse.json(),
-          allMembersResponse.json(),
-        ]);
-
-        if (!isActive) {
-          return;
-        }
-
-        if (rangeMembersResponse.ok && rangeMembersResult.success) {
-          setRangeMembers(
-            (rangeMembersResult.members ?? []).filter(
-              (member) => member.accountType === "member",
-            ),
-          );
-        }
-
-        if (allMembersResponse.ok && allMembersResult.success) {
-          setAllMembers(allMembersResult.members ?? []);
-        }
-      } catch {
-        if (!isActive) {
-          return;
-        }
-
-        setRangeMembers([]);
-        setAllMembers([]);
-      }
-    };
-
-    loadGuestInviterOptions();
-
-    return () => {
-      isActive = false;
-    };
-  }, []);
 
   useEffect(() => {
     let isActive = true;
@@ -160,7 +172,7 @@ export function LoginPage({
     setIsInvitingMemberModalOpen(true);
   };
 
-  const handleSelectInvitingMember = (member) => {
+  const handleSelectInvitingMember = (member: ClubMember) => {
     setSelectedInvitingMemberUsername(member.username);
     setIsInvitingMemberModalOpen(false);
     setMemberSearchSurname("");
@@ -379,8 +391,7 @@ export function LoginPage({
                   {selectedInvitingMember &&
                   !isSelectedInvitingMemberAtRange ? (
                     <option value={selectedInvitingMemberUsername}>
-                      {(selectedInvitingMember.fullName ??
-                        selectedInvitingMember.personal?.fullName) +
+                      {getMemberDisplayName(selectedInvitingMember) +
                         " (selected from club list)"}
                     </option>
                   ) : null}
@@ -394,8 +405,7 @@ export function LoginPage({
                 <p className="guest-inviting-member-summary">
                   Invited by{" "}
                   <strong>
-                    {selectedInvitingMember.fullName ??
-                      selectedInvitingMember.personal?.fullName}
+                    {getMemberDisplayName(selectedInvitingMember)}
                   </strong>
                 </p>
               ) : null}

@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   formatDate,
   formatDateRangeLabel,
   formatHourLabel,
 } from "../../utils/dateTime";
+import { fetchApi } from "../../lib/api";
 
 function getUtcDateString(date) {
   return new Date(
@@ -265,81 +267,62 @@ export function RangeUsagePage({ currentUserProfile }) {
   const [startDate, setStartDate] = useState(getTodayString());
   const [endDate, setEndDate] = useState(getTodayString());
   const [activeView, setActiveView] = useState("filteredRange");
-  const [dashboard, setDashboard] = useState(null);
-  const [error, setError] = useState("");
+  const actorUsername = currentUserProfile?.auth?.username ?? "";
 
-  useEffect(() => {
-    let isMounted = true;
+  const { data: dashboard, error } = useQuery({
+    queryKey: ["range-usage-dashboard", actorUsername, startDate, endDate],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        start: startDate,
+        end: endDate,
+      });
+      const result = await fetchApi<{
+        success: true;
+        currentMonth?: unknown;
+        currentWeek?: unknown;
+        filteredRange?: unknown;
+        myCurrentMonth?: unknown;
+        myCurrentWeek?: unknown;
+        myFilteredRange?: unknown;
+      }>(`/api/range-usage-dashboard?${params.toString()}`, {
+        headers: {
+          "x-actor-username": actorUsername,
+        },
+      });
 
-    const loadDashboard = async () => {
-      try {
-        const params = new URLSearchParams({
-          start: startDate,
-          end: endDate,
-        });
-        const response = await fetch(
-          `/api/range-usage-dashboard?${params.toString()}`,
-          {
-            headers: {
-              "x-actor-username": currentUserProfile?.auth?.username ?? "",
-            },
-          },
-        );
-        const result = await response.json();
+      const normalizedCurrentMonth = normalizeUsageWindow(
+        result.currentMonth,
+        "Current month",
+      );
+      const normalizedCurrentWeek = normalizeUsageWindow(
+        result.currentWeek,
+        "Current week",
+      );
+      const normalizedFilteredRange = normalizeUsageWindow(
+        result.filteredRange,
+        formatDateRangeLabel(startDate, endDate),
+      );
 
-        if (!response.ok || !result.success) {
-          if (isMounted) {
-            setError(result.message ?? "Unable to load range usage dashboard.");
-          }
-          return;
-        }
-
-        if (isMounted) {
-          const normalizedCurrentMonth = normalizeUsageWindow(
-            result.currentMonth,
-            "Current month",
-          );
-          const normalizedCurrentWeek = normalizeUsageWindow(
-            result.currentWeek,
-            "Current week",
-          );
-          const normalizedFilteredRange = normalizeUsageWindow(
-            result.filteredRange,
-            formatDateRangeLabel(startDate, endDate),
-          );
-
-          setDashboard({
-            currentMonth: normalizedCurrentMonth,
-            currentWeek: normalizedCurrentWeek,
-            filteredRange: normalizedFilteredRange,
-            myCurrentMonth: normalizeUsageWindow(
-              result.myCurrentMonth ?? result.currentMonth,
-              "Current month",
-            ),
-            myCurrentWeek: normalizeUsageWindow(
-              result.myCurrentWeek ?? result.currentWeek,
-              "Current week",
-            ),
-            myFilteredRange: normalizeUsageWindow(
-              result.myFilteredRange ?? result.filteredRange,
-              formatDateRangeLabel(startDate, endDate),
-            ),
-          });
-          setError("");
-        }
-      } catch {
-        if (isMounted) {
-          setError("Unable to load range usage dashboard.");
-        }
-      }
-    };
-
-    loadDashboard();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [currentUserProfile?.auth?.username, startDate, endDate]);
+      return {
+        currentMonth: normalizedCurrentMonth,
+        currentWeek: normalizedCurrentWeek,
+        filteredRange: normalizedFilteredRange,
+        myCurrentMonth: normalizeUsageWindow(
+          result.myCurrentMonth ?? result.currentMonth,
+          "Current month",
+        ),
+        myCurrentWeek: normalizeUsageWindow(
+          result.myCurrentWeek ?? result.currentWeek,
+          "Current week",
+        ),
+        myFilteredRange: normalizeUsageWindow(
+          result.myFilteredRange ?? result.filteredRange,
+          formatDateRangeLabel(startDate, endDate),
+        ),
+      };
+    },
+    enabled: Boolean(actorUsername),
+  });
 
   const activeData = useMemo(
     () => (dashboard ? dashboard[activeView] : null),
@@ -444,7 +427,7 @@ export function RangeUsagePage({ currentUserProfile }) {
         </label>
       </form>
 
-      {error ? <p className="usage-error">{error}</p> : null}
+      {error ? <p className="usage-error">{error instanceof Error ? error.message : "Unable to load range usage dashboard."}</p> : null}
 
       {dashboard ? (
         <>

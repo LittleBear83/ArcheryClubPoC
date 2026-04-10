@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatClockTime, formatDate, formatDateTime } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
-import { useVisiblePolling } from "../state/useVisiblePolling";
+import { fetchApi } from "../../lib/api";
 
 const VENUE_LABELS = {
   indoor: "Indoor",
@@ -187,27 +188,11 @@ function buildHeaders(currentUserProfile) {
   };
 }
 
-async function readJsonResponse(response, fallbackMessage) {
-  const contentType = response.headers.get("content-type") ?? "";
-
-  if (!contentType.includes("application/json")) {
-    throw new Error(fallbackMessage);
-  }
-
-  const result = await response.json();
-
-  if (!response.ok || !result.success) {
-    throw new Error(result.message ?? fallbackMessage);
-  }
-
-  return result;
-}
+const approvalsQueryKeys = {
+  list: (actorUsername) => ["approvals", actorUsername] as const,
+};
 
 export function ApprovalsPage({ currentUserProfile }) {
-  const [allEvents, setAllEvents] = useState([]);
-  const [allSessions, setAllSessions] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasLoadedApprovals, setHasLoadedApprovals] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [processingKey, setProcessingKey] = useState("");
@@ -218,89 +203,67 @@ export function ApprovalsPage({ currentUserProfile }) {
     "approve_coaching_sessions",
   );
   const canApproveAnything = canApproveEvents || canApproveCoaching;
+  const actorUsername = currentUserProfile?.auth?.username ?? "";
+  const queryClient = useQueryClient();
 
-  const loadApprovals = useCallback(async (signal) => {
-    if (!canApproveAnything) {
-      setAllEvents([]);
-      setAllSessions([]);
-      setIsLoading(false);
-      return;
-    }
-
-    if (!hasLoadedApprovals) {
-      setIsLoading(true);
-    }
-    setError("");
-
-    try {
+  const approvalsQuery = useQuery({
+    queryKey: approvalsQueryKeys.list(actorUsername),
+    queryFn: async () => {
       const headers = buildHeaders(currentUserProfile);
-      const [eventResponse, coachingResponse] = await Promise.all([
+      const [eventResult, coachingResult] = await Promise.all([
         canApproveEvents
-          ? fetch("/api/events", { headers, cache: "no-store", signal })
-          : Promise.resolve(null),
+          ? fetchApi<{ success: true; events?: any[] }>("/api/events", {
+              headers,
+              cache: "no-store",
+            })
+          : Promise.resolve({ success: true, events: [] }),
         canApproveCoaching
-          ? fetch("/api/coaching-sessions", { headers, cache: "no-store", signal })
-          : Promise.resolve(null),
+          ? fetchApi<{ success: true; sessions?: any[] }>("/api/coaching-sessions", {
+              headers,
+              cache: "no-store",
+            })
+          : Promise.resolve({ success: true, sessions: [] }),
       ]);
 
-      const eventResult = eventResponse
-        ? await readJsonResponse(eventResponse, "Unable to load pending events.")
-        : { events: [] };
-      const coachingResult = coachingResponse
-        ? await readJsonResponse(
-            coachingResponse,
-            "Unable to load pending coaching sessions.",
-          )
-        : { sessions: [] };
-
-      if (signal?.aborted) {
-        return;
-      }
-
-      setAllEvents(eventResult.events ?? []);
-      setAllSessions(coachingResult.sessions ?? []);
-      setHasLoadedApprovals(true);
-    } catch (loadError) {
-      if (!signal?.aborted) {
-        setError(loadError.message);
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
-    }
-  }, [
-    canApproveAnything,
-    canApproveCoaching,
-    canApproveEvents,
-    currentUserProfile,
-    hasLoadedApprovals,
-  ]);
-
-  useVisiblePolling(() => {
-    loadApprovals(new AbortController().signal);
-  }, {
+      return {
+        events: eventResult.events ?? [],
+        sessions: coachingResult.sessions ?? [],
+      };
+    },
     enabled: canApproveAnything,
-    intervalMs: 60000,
+    refetchInterval: 60000,
   });
 
   useEffect(() => {
-    const abortController = new AbortController();
-    const refresh = () => loadApprovals(abortController.signal);
+    if (!canApproveAnything) {
+      return undefined;
+    }
 
-    refresh();
+    const refresh = () => {
+      void queryClient.invalidateQueries({
+        queryKey: approvalsQueryKeys.list(actorUsername),
+      });
+    };
+
     window.addEventListener("event-data-updated", refresh);
     window.addEventListener("coaching-data-updated", refresh);
     window.addEventListener("profile-data-updated", refresh);
 
     return () => {
-      abortController.abort();
       window.removeEventListener("event-data-updated", refresh);
       window.removeEventListener("coaching-data-updated", refresh);
       window.removeEventListener("profile-data-updated", refresh);
     };
-  }, [loadApprovals]);
+  }, [actorUsername, canApproveAnything, queryClient]);
 
+  const allEvents = useMemo(
+    () => approvalsQuery.data?.events ?? [],
+    [approvalsQuery.data?.events],
+  );
+  const allSessions = useMemo(
+    () => approvalsQuery.data?.sessions ?? [],
+    [approvalsQuery.data?.sessions],
+  );
   const events = useMemo(
     () => allEvents.filter((event) => event.isPendingApproval),
     [allEvents],
@@ -313,126 +276,44 @@ export function ApprovalsPage({ currentUserProfile }) {
     () => buildConflictWarnings(allEvents, allSessions),
     [allEvents, allSessions],
   );
-  const pendingCount = useMemo(
-    () => events.length + sessions.length,
-    [events.length, sessions.length],
-  );
+  const pendingCount = events.length + sessions.length;
 
-  const handleApproveEvent = async (event) => {
-    setProcessingKey(`event:approve:${event.id}`);
-    setError("");
-    setMessage("");
-
-    try {
-      const response = await fetch(`/api/events/${event.id}/approve`, {
+  const mutateApproval = useMutation({
+    mutationFn: async ({
+      url,
+      successMessage,
+      eventName,
+      processingValue,
+    }: {
+      url: string;
+      successMessage: string;
+      eventName: string;
+      processingValue: string;
+    }) => {
+      setProcessingKey(processingValue);
+      setError("");
+      setMessage("");
+      await fetchApi<{ success: true; message?: string }>(url, {
         method: "POST",
         headers: buildHeaders(currentUserProfile),
         cache: "no-store",
       });
-      const result = await readJsonResponse(response, "Unable to approve event.");
-
-      setAllEvents((current) =>
-        current.map((entry) => (entry.id === event.id ? result.event : entry)),
-      );
-      setMessage(result.message ?? `${event.title} approved successfully.`);
-      window.dispatchEvent(new Event("event-data-updated"));
-    } catch (approvalError) {
-      setError(approvalError.message);
-    } finally {
-      setProcessingKey("");
-    }
-  };
-
-  const handleRejectEvent = async (event) => {
-    setProcessingKey(`event:reject:${event.id}`);
-    setError("");
-    setMessage("");
-
-    try {
-      const response = await fetch(`/api/events/${event.id}/reject`, {
-        method: "POST",
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
+      return { successMessage, eventName };
+    },
+    onSuccess: async ({ successMessage, eventName }) => {
+      await queryClient.invalidateQueries({
+        queryKey: approvalsQueryKeys.list(actorUsername),
       });
-      const result = await readJsonResponse(response, "Unable to reject event.");
-
-      setAllEvents((current) =>
-        current.map((entry) => (entry.id === event.id ? result.event : entry)),
-      );
-      setMessage(result.message ?? `${event.title} rejected.`);
-      window.dispatchEvent(new Event("event-data-updated"));
-    } catch (rejectionError) {
-      setError(rejectionError.message);
-    } finally {
-      setProcessingKey("");
-    }
-  };
-
-  const handleApproveSession = async (session) => {
-    setProcessingKey(`session:approve:${session.id}`);
-    setError("");
-    setMessage("");
-
-    try {
-      const response = await fetch(
-        `/api/coaching-sessions/${session.id}/approve`,
-        {
-          method: "POST",
-          headers: buildHeaders(currentUserProfile),
-          cache: "no-store",
-        },
-      );
-      const result = await readJsonResponse(
-        response,
-        "Unable to approve coaching session.",
-      );
-
-      setAllSessions((current) =>
-        current.map((entry) =>
-          entry.id === session.id ? result.session : entry,
-        ),
-      );
-      setMessage(result.message ?? `${session.topic} approved successfully.`);
-      window.dispatchEvent(new Event("coaching-data-updated"));
-    } catch (approvalError) {
+      setMessage(successMessage);
+      window.dispatchEvent(new Event(eventName));
+    },
+    onError: (approvalError: Error) => {
       setError(approvalError.message);
-    } finally {
+    },
+    onSettled: () => {
       setProcessingKey("");
-    }
-  };
-
-  const handleRejectSession = async (session) => {
-    setProcessingKey(`session:reject:${session.id}`);
-    setError("");
-    setMessage("");
-
-    try {
-      const response = await fetch(
-        `/api/coaching-sessions/${session.id}/reject`,
-        {
-          method: "POST",
-          headers: buildHeaders(currentUserProfile),
-          cache: "no-store",
-        },
-      );
-      const result = await readJsonResponse(
-        response,
-        "Unable to reject coaching session.",
-      );
-
-      setAllSessions((current) =>
-        current.map((entry) =>
-          entry.id === session.id ? result.session : entry,
-        ),
-      );
-      setMessage(result.message ?? `${session.topic} rejected.`);
-      window.dispatchEvent(new Event("coaching-data-updated"));
-    } catch (rejectionError) {
-      setError(rejectionError.message);
-    } finally {
-      setProcessingKey("");
-    }
-  };
+    },
+  });
 
   if (!canApproveAnything) {
     return <p>You do not have permission to approve events or coaching sessions.</p>;
@@ -443,9 +324,9 @@ export function ApprovalsPage({ currentUserProfile }) {
       <p>Review submitted events and coaching sessions before they are published to members.</p>
       {error ? <p className="profile-error">{error}</p> : null}
       {message ? <p className="profile-success">{message}</p> : null}
-      {isLoading && !hasLoadedApprovals ? <p>Loading approval queue...</p> : null}
+      {approvalsQuery.isLoading ? <p>Loading approval queue...</p> : null}
 
-      {!isLoading && pendingCount === 0 ? (
+      {!approvalsQuery.isLoading && pendingCount === 0 ? (
         <p>No items are currently waiting for approval.</p>
       ) : null}
 
@@ -484,7 +365,14 @@ export function ApprovalsPage({ currentUserProfile }) {
                         type="button"
                         className="tournament-secondary-button"
                         disabled={Boolean(processingKey)}
-                        onClick={() => handleApproveEvent(event)}
+                        onClick={() =>
+                          void mutateApproval.mutateAsync({
+                            url: `/api/events/${event.id}/approve`,
+                            successMessage: `${event.title} approved successfully.`,
+                            eventName: "event-data-updated",
+                            processingValue: `event:approve:${event.id}`,
+                          })
+                        }
                       >
                         {processingKey === `event:approve:${event.id}`
                           ? "Approving..."
@@ -494,7 +382,14 @@ export function ApprovalsPage({ currentUserProfile }) {
                         type="button"
                         className="approvals-reject-button"
                         disabled={Boolean(processingKey)}
-                        onClick={() => handleRejectEvent(event)}
+                        onClick={() =>
+                          void mutateApproval.mutateAsync({
+                            url: `/api/events/${event.id}/reject`,
+                            successMessage: `${event.title} rejected.`,
+                            eventName: "event-data-updated",
+                            processingValue: `event:reject:${event.id}`,
+                          })
+                        }
                       >
                         {processingKey === `event:reject:${event.id}`
                           ? "Rejecting..."
@@ -548,7 +443,14 @@ export function ApprovalsPage({ currentUserProfile }) {
                         type="button"
                         className="tournament-secondary-button"
                         disabled={Boolean(processingKey)}
-                        onClick={() => handleApproveSession(session)}
+                        onClick={() =>
+                          void mutateApproval.mutateAsync({
+                            url: `/api/coaching-sessions/${session.id}/approve`,
+                            successMessage: `${session.topic} approved successfully.`,
+                            eventName: "coaching-data-updated",
+                            processingValue: `session:approve:${session.id}`,
+                          })
+                        }
                       >
                         {processingKey === `session:approve:${session.id}`
                           ? "Approving..."
@@ -558,7 +460,14 @@ export function ApprovalsPage({ currentUserProfile }) {
                         type="button"
                         className="approvals-reject-button"
                         disabled={Boolean(processingKey)}
-                        onClick={() => handleRejectSession(session)}
+                        onClick={() =>
+                          void mutateApproval.mutateAsync({
+                            url: `/api/coaching-sessions/${session.id}/reject`,
+                            successMessage: `${session.topic} rejected.`,
+                            eventName: "coaching-data-updated",
+                            processingValue: `session:reject:${session.id}`,
+                          })
+                        }
                       >
                         {processingKey === `session:reject:${session.id}`
                           ? "Rejecting..."

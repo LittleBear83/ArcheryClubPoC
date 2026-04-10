@@ -1,5 +1,6 @@
 import "./App.css";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import lawnmower from "./assets/lawnmower.svg";
 import { HomePage } from "./presentation/pages/HomePage";
@@ -11,6 +12,7 @@ import { GetMembersUseCase } from "./usecases/GetMembersUseCase";
 import { AddMemberUseCase } from "./usecases/AddMemberUseCase";
 import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
+import { fetchApi } from "./lib/api";
 
 const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
@@ -21,7 +23,7 @@ const RFID_SESSION_HANDOFF_IDLE_MS = 15000;
 const DEFAULT_PAYMENT_CARD_MESSAGE =
   "Thank you for your $5000 donation for the children of Namibia, this will go a long way to the PPE equipment they sorely need, your complementary Parker Pen will be dispatched in the next 3-5 business weeks.";
 const PAYMENT_CARD_WARNING_MESSAGE =
-  "please ensure not to use any other token or card other than the one that was issued to you";
+  "No Monies have been taken, Please ensure not to use any other token or card other than the one that was issued to you";
 
 const dataSource = new InMemoryMemberDataSource();
 const memberRepository = new MemberRepositoryImpl({ dataSource });
@@ -43,8 +45,9 @@ function loadStoredUserProfile() {
 }
 
 function App() {
-  const inactivityTimeoutRef = useRef(null);
+  const inactivityTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const lastActivityAtRef = useRef(Date.now());
+  const queryClient = useQueryClient();
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return window.localStorage.getItem(AUTH_STORAGE_KEY) === "true";
   });
@@ -77,7 +80,7 @@ function App() {
     });
   };
 
-  const persistAuthenticatedUser = (userProfile) => {
+  const persistAuthenticatedUser = (userProfile: unknown) => {
     const storedUserProfile = normalizeUserProfile(userProfile);
 
     lastActivityAtRef.current = Date.now();
@@ -94,42 +97,44 @@ function App() {
     window.dispatchEvent(new Event("member-session-updated"));
   };
 
-  const handleCurrentUserProfileUpdate = (userProfile) => {
+  const handleCurrentUserProfileUpdate = (userProfile: unknown) => {
     persistAuthenticatedUser(userProfile);
+    void queryClient.invalidateQueries();
   };
 
-  const handleLogin = async ({ username, password }) => {
+  const handleLogin = async ({
+    username,
+    password,
+  }: {
+    username: string;
+    password: string;
+  }) => {
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const result = await fetchApi<{ success: true; userProfile: any }>(
+        "/api/auth/login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ username, password }),
         },
-        body: JSON.stringify({ username, password }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        return {
-          success: false,
-          message: result.message ?? "Unable to log in.",
-        };
-      }
+      );
 
       persistAuthenticatedUser(result.userProfile);
 
       return { success: true, username: result.userProfile.auth.username };
-    } catch {
+    } catch (error) {
       return {
         success: false,
-        message:
-          "Login service is unavailable. Make sure the local auth server is running.",
+        message: error instanceof Error
+          ? error.message
+          : "Login service is unavailable. Make sure the local auth server is running.",
       };
     }
   };
 
-  const handleLogout = (message = "") => {
+  const handleLogout = useCallback((message = "") => {
     if (inactivityTimeoutRef.current) {
       window.clearTimeout(inactivityTimeoutRef.current);
       inactivityTimeoutRef.current = null;
@@ -147,26 +152,21 @@ function App() {
     window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
     setIsAuthenticated(false);
     setCurrentUserProfile(null);
-  };
+    void queryClient.invalidateQueries();
+  }, [queryClient]);
 
-  const handleRfidLogin = async (rfidTag) => {
+  const handleRfidLogin = async (rfidTag: string) => {
     try {
-      const response = await fetch("/api/auth/rfid", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const result = await fetchApi<{ success: true; userProfile: any }>(
+        "/api/auth/rfid",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ rfidTag }),
         },
-        body: JSON.stringify({ rfidTag }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        return {
-          success: false,
-          message: result.message ?? "Unable to log in with RFID.",
-        };
-      }
+      );
 
       persistAuthenticatedUser(result.userProfile);
 
@@ -174,11 +174,12 @@ function App() {
         success: true,
         username: result.userProfile.auth.username,
       };
-    } catch {
+    } catch (error) {
       return {
         success: false,
-        message:
-          "RFID service is unavailable. Make sure the local auth server is running.",
+        message: error instanceof Error
+          ? error.message
+          : "RFID service is unavailable. Make sure the local auth server is running.",
       };
     }
   };
@@ -188,40 +189,40 @@ function App() {
     surname,
     archeryGbMembershipNumber,
     invitedByUsername,
+  }: {
+    firstName: string;
+    surname: string;
+    archeryGbMembershipNumber: string;
+    invitedByUsername: string;
   }) => {
     try {
-      const response = await fetch("/api/auth/guest-login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
+      const result = await fetchApi<{ success: true; userProfile: unknown }>(
+        "/api/auth/guest-login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            firstName,
+            surname,
+            archeryGbMembershipNumber,
+            invitedByUsername,
+          }),
         },
-        body: JSON.stringify({
-          firstName,
-          surname,
-          archeryGbMembershipNumber,
-          invitedByUsername,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        return {
-          success: false,
-          message: result.message ?? "Unable to create guest login.",
-        };
-      }
+      );
 
       persistAuthenticatedUser(result.userProfile);
 
       return {
         success: true,
       };
-    } catch {
+    } catch (error) {
       return {
         success: false,
-        message:
-          "Guest login service is unavailable. Make sure the local auth server is running.",
+        message: error instanceof Error
+          ? error.message
+          : "Guest login service is unavailable. Make sure the local auth server is running.",
       };
     }
   };
@@ -229,7 +230,7 @@ function App() {
   const handleLogoutEvent = useEffectEvent((message = "") => {
     handleLogout(message);
   });
-  const handleRfidLoginEvent = useEffectEvent(async (rfidTag) => {
+  const handleRfidLoginEvent = useEffectEvent(async (rfidTag: string) => {
     return handleRfidLogin(rfidTag);
   });
 
@@ -237,7 +238,7 @@ function App() {
     if (isAuthenticated && !currentUserProfile) {
       handleLogout();
     }
-  }, [currentUserProfile, isAuthenticated]);
+  }, [currentUserProfile, handleLogout, isAuthenticated]);
 
   useEffect(() => {
     let isActive = true;
@@ -275,23 +276,24 @@ function App() {
 
     const refreshAuthenticatedUser = async () => {
       try {
-        const response = await fetch(`/api/user-profiles/${username}`, {
-          headers: {
-            "x-actor-username": username,
+        const result = await fetchApi<{ success: true; userProfile: unknown }>(
+          `/api/user-profiles/${username}`,
+          {
+            headers: {
+              "x-actor-username": username,
+            },
+            cache: "no-store",
+            signal: abortController.signal,
           },
-          cache: "no-store",
-          signal: abortController.signal,
-        });
-        const result = await response.json();
+        );
 
-        if (!response.ok || !result.success || abortController.signal.aborted) {
+        if (abortController.signal.aborted) {
           return;
         }
 
         persistAuthenticatedUser(result.userProfile);
       } catch {
-        // Keep the active session if the refresh fails; the next successful
-        // profile load or login will rehydrate the latest permissions.
+        return;
       }
     };
 

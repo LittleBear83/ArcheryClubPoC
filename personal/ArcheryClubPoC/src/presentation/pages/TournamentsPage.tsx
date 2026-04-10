@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
 
 const BRACKET_MATCH_HEIGHT = 92;
 const BRACKET_BASE_GAP = 18;
 const BRACKET_WINNER_CARD_HEIGHT = 72;
+type TournamentCssVars = CSSProperties & Record<string, string>;
 
 function createEmptyTournamentForm(today, defaultTournamentType = "portsmouth") {
   return {
@@ -117,7 +119,7 @@ function TournamentBracketGraphic({ tournament }) {
             style={{
               "--tournament-match-gap": `${getBracketRoundMetrics(roundIndex).gap}px`,
               "--tournament-column-padding": `${getBracketRoundMetrics(roundIndex).padding}px`,
-            }}
+            } as TournamentCssVars}
           >
             {round.matches.map((match) => (
               <div
@@ -142,7 +144,7 @@ function TournamentBracketGraphic({ tournament }) {
 
       <div
         className="tournament-bracket-column tournament-bracket-winner-column"
-        style={{ "--tournament-winner-offset": `${winnerOffset}px` }}
+        style={{ "--tournament-winner-offset": `${winnerOffset}px` } as TournamentCssVars}
       >
         <h5>Winner</h5>
         <div className="tournament-bracket-winner-card">

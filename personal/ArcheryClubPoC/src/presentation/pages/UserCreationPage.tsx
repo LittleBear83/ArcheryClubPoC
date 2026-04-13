@@ -13,6 +13,7 @@ const EMPTY_PROFILE = {
   rfidTag: "",
   activeMember: true,
   membershipFeesDue: new Date().toISOString().slice(0, 10),
+  coachingVolunteer: false,
   userType: "general",
   disciplines: [],
   loanBow: {
@@ -21,6 +22,7 @@ const EMPTY_PROFILE = {
     riserNumber: "",
     limbsNumber: "",
     arrowCount: 6,
+    quiver: false,
     fingerTab: false,
     string: false,
     armGuard: false,

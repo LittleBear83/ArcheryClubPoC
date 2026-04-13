@@ -1,7 +1,7 @@
 const ROLE_PERMISSION_FALLBACKS = {
   guest: [],
   general: [],
-  coach: ["add_coaching_sessions", "manage_loan_bows"],
+  coach: ["add_coaching_sessions"],
   admin: [
     "manage_members",
     "manage_roles_permissions",
@@ -11,7 +11,12 @@ const ROLE_PERMISSION_FALLBACKS = {
     "cancel_events",
     "add_coaching_sessions",
     "approve_coaching_sessions",
-    "manage_loan_bows",
+    "add_decommission_equipment",
+    "assign_equipment",
+    "return_equipment",
+    "update_equipment_storage",
+    "manage_beginners_courses",
+    "approve_beginners_courses",
     "manage_tournaments",
   ],
   developer: [
@@ -23,7 +28,12 @@ const ROLE_PERMISSION_FALLBACKS = {
     "cancel_events",
     "add_coaching_sessions",
     "approve_coaching_sessions",
-    "manage_loan_bows",
+    "add_decommission_equipment",
+    "assign_equipment",
+    "return_equipment",
+    "update_equipment_storage",
+    "manage_beginners_courses",
+    "approve_beginners_courses",
     "manage_tournaments",
   ],
 };

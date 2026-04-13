@@ -40,6 +40,8 @@ The app currently includes:
   Express server and SQLite setup.
 - `server/data/auth.sqlite`
   Local SQLite database file used by the backend.
+- `docs/DeveloperGuide.md`
+  Developer-facing architecture and implementation guide for extending the application.
 
 ## Running Locally
 

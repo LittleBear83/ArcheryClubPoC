@@ -37,7 +37,8 @@ const PERMISSION_GROUP_METADATA = {
   },
   "equipment-committee": {
     title: "Equipment and Committee",
-    description: "Loan bow management and equipment administration.",
+    description:
+      "Equipment lifecycle, committee assignments, and beginners course setup.",
   },
   "system-admin": {
     title: "System Administration",
@@ -63,8 +64,15 @@ type Role = {
 function getPermissionGroup(permissionKey: string): PermissionGroupKey {
   switch (permissionKey) {
     case "manage_members":
-    case "manage_committee_roles":
       return "member-setup";
+    case "manage_committee_roles":
+    case "add_decommission_equipment":
+    case "assign_equipment":
+    case "return_equipment":
+    case "update_equipment_storage":
+    case "manage_beginners_courses":
+    case "approve_beginners_courses":
+      return "equipment-committee";
     case "add_events":
     case "approve_events":
     case "cancel_events":
@@ -72,8 +80,6 @@ function getPermissionGroup(permissionKey: string): PermissionGroupKey {
     case "approve_coaching_sessions":
     case "manage_tournaments":
       return "events-coaching";
-    case "manage_loan_bows":
-      return "equipment-committee";
     case "manage_roles_permissions":
       return "system-admin";
     default:
@@ -214,7 +220,8 @@ export function RolePermissionsPage({
   const togglePermission = (permissionKey: string) => {
     setForm((current) => {
       const baseForm = getEffectiveFormState(current);
-      const hasSelectedPermission = baseForm.permissions.includes(permissionKey);
+      const hasSelectedPermission =
+        baseForm.permissions.includes(permissionKey);
 
       return {
         ...baseForm,
@@ -379,28 +386,6 @@ export function RolePermissionsPage({
                 </option>
               ))}
             </LabeledSelect>
-
-            {!isCreating ? (
-              <Button
-                type="button"
-                className="secondary-button"
-                onClick={startCreateRole}
-                disabled={isSaving}
-                variant="secondary"
-              >
-                Create role
-              </Button>
-            ) : (
-              <Button
-                type="button"
-                className="secondary-button"
-                onClick={cancelCreateRole}
-                disabled={isSaving}
-                variant="secondary"
-              >
-                Cancel create
-              </Button>
-            )}
           </div>
 
           <form onSubmit={handleSaveRole} className="left-align-form">
@@ -464,6 +449,26 @@ export function RolePermissionsPage({
             </fieldset>
 
             <div className="role-permissions-actions">
+              {!isCreating ? (
+                <Button
+                  type="button"
+                  onClick={startCreateRole}
+                  disabled={isSaving}
+                >
+                  Create role
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  className="secondary-button"
+                  onClick={cancelCreateRole}
+                  disabled={isSaving}
+                  variant="secondary"
+                >
+                  Cancel create
+                </Button>
+              )}
+
               <Button type="submit" disabled={isSaving}>
                 {isSaving
                   ? isCreating
@@ -491,6 +496,40 @@ export function RolePermissionsPage({
                 </Button>
               ) : null}
             </div>
+
+            <fieldset className="profile-discipline-fieldset">
+              <legend>Roles vs Permissions</legend>
+              <div className="committee-roles-table-wrap">
+                <table className="committee-roles-table">
+                  <thead>
+                    <tr>
+                      <th>Role</th>
+                      {permissionOptions.map((permission) => (
+                        <th key={permission.key}>{permission.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roles.map((role) => (
+                      <tr key={role.roleKey}>
+                        <td>{role.title}</td>
+                        {permissionOptions.map((permission) => (
+                          <td key={`${role.roleKey}-${permission.key}`}>
+                            {role.permissions.includes(permission.key) ? (
+                              <span className="role-permission-tick" aria-label="Granted">
+                                ✓
+                              </span>
+                            ) : (
+                              ""
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </fieldset>
           </form>
         </section>
       ) : null}

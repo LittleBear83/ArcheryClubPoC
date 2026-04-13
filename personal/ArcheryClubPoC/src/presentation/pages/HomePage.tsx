@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocation, useNavigate, Routes, Route } from "react-router-dom";
+import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
 import { SideDrawer } from "../components/SideDrawer";
 import { Button } from "../components/Button";
 import archeryBanner from "../../assets/archery_banner.svg";
@@ -10,13 +10,13 @@ import { LostAndFoundPage } from "./LostAndFoundPage";
 import { FeedbackFormPage } from "./FeedbackFormPage";
 import { IdeasFormPage } from "./IdeasFormPage";
 import { EventCalendarPage } from "./EventCalendarPage";
-import { CoachingCalendarPage } from "./CoachingCalendarPage";
 import { TournamentsPage } from "./TournamentsPage";
 import { RangeUsagePage } from "./RangeUsagePage";
 import { PlaceholderPage } from "./PlaceholderPage";
 import { ProfilePage } from "./ProfilePage";
 import { UserCreationPage } from "./UserCreationPage";
-import { LoanBowRegisterPage } from "./LoanBowRegisterPage";
+import { EquipmentPage } from "./EquipmentPage";
+import { BeginnersCoursesPage } from "./BeginnersCoursesPage";
 import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
 import { RolePermissionsPage } from "./RolePermissionsPage";
 import { ApprovalsPage } from "./ApprovalsPage";
@@ -56,6 +56,28 @@ type TournamentSummary = {
     isClosed?: boolean;
   };
 };
+type BeginnerHomeDashboard = {
+  firstLessonDate: string;
+  showSafetyMessage: boolean;
+  lessonToday: {
+    lessonNumber: number;
+    date: string;
+    startTime: string;
+    endTime: string;
+  } | null;
+  coaches: Array<{ username: string; fullName: string }>;
+  equipment: Array<{ id: string | number; typeLabel: string; reference: string }>;
+} | null;
+type BeginnerCoachAssignment = {
+  id: string | number;
+  courseId: string | number;
+  lessonNumber: number;
+  date: string;
+  startTime: string;
+  endTime: string;
+  coordinatorName: string;
+  beginnerCount: number;
+};
 
 const homeQueryKeys = {
   rangeMembers: () => ["range-members"] as const,
@@ -72,12 +94,12 @@ const pageTitleMap = {
   "user-creation": "User Creation",
   "role-permissions": "Roles & Permissions",
   approvals: "Approvals",
-  "loan-bow-register": "Loan Bow Register",
-  "event-calendar": "Event/Competition Calendar",
+  equipment: "Equipment",
+  "beginners-courses": "Beginners Courses",
+  "event-calendar": "Calendar",
   "range-usage": "Range Usage",
   "feedback-form": "Feedback Form",
   "ideas-form": "Ideas Form",
-  "coaching-calendar": "Coaching Calendar",
   tournaments: "Tournaments",
   "tournament-setup": "Tournament Setup",
   "committee-org-chart": "Committee Org Chart",
@@ -91,12 +113,12 @@ const pathToPageId = {
   "/user-creation": "user-creation",
   "/role-permissions": "role-permissions",
   "/approvals": "approvals",
-  "/loan-bow-register": "loan-bow-register",
+  "/equipment": "equipment",
+  "/beginners-courses": "beginners-courses",
   "/event-calendar": "event-calendar",
   "/range-usage": "range-usage",
   "/feedback-form": "feedback-form",
   "/ideas-form": "ideas-form",
-  "/coaching-calendar": "coaching-calendar",
   "/tournaments": "tournaments",
   "/tournament-setup": "tournament-setup",
   "/committee-org-chart": "committee-org-chart",
@@ -161,9 +183,12 @@ async function fetchRangeMembers(): Promise<HomeMember[]> {
 async function fetchHomeActivity(username: string): Promise<{
   signedUpEvents: HomeEvent[];
   tournamentReminders: TournamentReminder[];
+  beginnerDashboard: BeginnerHomeDashboard;
+  beginnerCoachAssignments: BeginnerCoachAssignment[];
 }> {
   const headers = { "x-actor-username": username };
-  const [coachingResult, eventResult, reminderResult] = await Promise.all([
+  const [coachingResult, eventResult, reminderResult, beginnerResult, coachAssignmentsResult] =
+    await Promise.all([
     fetchApi<{ success: true; bookings?: HomeEvent[] }>("/api/my-coaching-bookings", {
       headers,
       cache: "no-store",
@@ -174,6 +199,17 @@ async function fetchHomeActivity(username: string): Promise<{
     }),
     fetchApi<{ success: true; reminders?: TournamentReminder[] }>(
       "/api/my-tournament-reminders",
+      {
+        headers,
+        cache: "no-store",
+      },
+    ),
+    fetchApi<{ success: true; dashboard?: BeginnerHomeDashboard }>("/api/my-beginner-dashboard", {
+      headers,
+      cache: "no-store",
+    }),
+    fetchApi<{ success: true; lessons?: BeginnerCoachAssignment[] }>(
+      "/api/my-beginner-coaching-assignments",
       {
         headers,
         cache: "no-store",
@@ -190,6 +226,8 @@ async function fetchHomeActivity(username: string): Promise<{
           : (left.startTime ?? "").localeCompare(right.startTime ?? "");
       }),
     tournamentReminders: reminderResult.reminders ?? [],
+    beginnerDashboard: beginnerResult.dashboard ?? null,
+    beginnerCoachAssignments: coachAssignmentsResult.lessons ?? [],
   };
 }
 
@@ -277,6 +315,8 @@ export function HomePage({
 
   const signedUpEvents = homeActivity?.signedUpEvents ?? [];
   const tournamentReminders = homeActivity?.tournamentReminders ?? [];
+  const beginnerDashboard = homeActivity?.beginnerDashboard ?? null;
+  const beginnerCoachAssignments = homeActivity?.beginnerCoachAssignments ?? [];
 
   const membersAtRange = useMemo(() => {
     if (!currentUserProfile) {
@@ -313,11 +353,13 @@ export function HomePage({
     window.addEventListener("member-bookings-updated", refreshAll);
     window.addEventListener("member-session-updated", refreshAll);
     window.addEventListener("tournament-data-updated", refreshAll);
+    window.addEventListener("beginners-course-data-updated", refreshAll);
 
     return () => {
       window.removeEventListener("member-bookings-updated", refreshAll);
       window.removeEventListener("member-session-updated", refreshAll);
       window.removeEventListener("tournament-data-updated", refreshAll);
+      window.removeEventListener("beginners-course-data-updated", refreshAll);
     };
   }, [
     actorUsername,
@@ -443,9 +485,15 @@ export function HomePage({
               element={<ApprovalsPage currentUserProfile={currentUserProfile} />}
             />
             <Route
-              path="/loan-bow-register"
+              path="/equipment"
               element={
-                <LoanBowRegisterPage currentUserProfile={currentUserProfile} />
+                <EquipmentPage currentUserProfile={currentUserProfile} />
+              }
+            />
+            <Route
+              path="/beginners-courses"
+              element={
+                <BeginnersCoursesPage currentUserProfile={currentUserProfile} />
               }
             />
             <Route
@@ -455,6 +503,8 @@ export function HomePage({
                   members={membersAtRange}
                   signedUpEvents={signedUpEvents}
                   tournamentReminders={tournamentReminders}
+                  beginnerDashboard={beginnerDashboard}
+                  beginnerCoachAssignments={beginnerCoachAssignments}
                 />
               }
             />
@@ -477,7 +527,7 @@ export function HomePage({
             />
             <Route
               path="/coaching-calendar"
-              element={<CoachingCalendarPage currentUserProfile={currentUserProfile} />}
+              element={<Navigate to="/event-calendar" replace />}
             />
             <Route
               path="/tournaments"

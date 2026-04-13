@@ -9,18 +9,13 @@ const pages = [
   { id: "range-usage", label: "Range Usage", path: "/range-usage" },
   {
     id: "event-calendar",
-    label: "Event and Competition",
+    label: "Calendar",
     path: "/event-calendar",
   },
   {
     id: "tournaments",
     label: "Tournaments",
     path: "/tournaments",
-  },
-  {
-    id: "coaching-calendar",
-    label: "Coaching",
-    path: "/coaching-calendar",
   },
   { id: "feedback-form", label: "Feedback Form", path: "/feedback-form" },
   { id: "ideas-form", label: "Ideas Form", path: "/ideas-form" },
@@ -50,10 +45,21 @@ const pages = [
     permissionAny: ["approve_events", "approve_coaching_sessions"],
   },
   {
-    id: "loan-bow-register",
-    label: "Loan Bow Register",
-    path: "/loan-bow-register",
-    permission: "manage_loan_bows",
+    id: "equipment",
+    label: "Equipment",
+    path: "/equipment",
+    permissionAny: [
+      "add_decommission_equipment",
+      "assign_equipment",
+      "return_equipment",
+      "update_equipment_storage",
+    ],
+  },
+  {
+    id: "beginners-courses",
+    label: "Beginners Courses",
+    path: "/beginners-courses",
+    permissionAny: ["manage_beginners_courses", "approve_beginners_courses"],
   },
   {
     id: "tournament-setup",

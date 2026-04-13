@@ -1,4 +1,5 @@
 const LOAN_BOW_BOOLEAN_FIELDS = [
+  { key: "quiver", label: "Quiver" },
   { key: "fingerTab", label: "Finger Tab" },
   { key: "string", label: "String" },
   { key: "armGuard", label: "Arm Guard" },
@@ -12,6 +13,7 @@ const LOAN_BOW_RETURN_STATUS_FIELDS = [
   { key: "returnedRiser", label: "Riser returned" },
   { key: "returnedLimbs", label: "Limbs returned" },
   { key: "returnedArrows", label: "Arrows returned" },
+  { key: "returnedQuiver", label: "Quiver returned" },
   { key: "returnedFingerTab", label: "Finger Tab returned" },
   { key: "returnedString", label: "String returned" },
   { key: "returnedArmGuard", label: "Arm Guard returned" },

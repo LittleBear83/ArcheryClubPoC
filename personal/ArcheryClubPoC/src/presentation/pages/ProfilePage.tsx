@@ -56,6 +56,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
   const [cardIssueStatus, setCardIssueStatus] = useState("");
   const [cardIssueSuccess, setCardIssueSuccess] = useState("");
   const [isIssuingCard, setIsIssuingCard] = useState(false);
+  const [equipmentLoans, setEquipmentLoans] = useState([]);
 
   const canManageMembers = hasPermission(
     currentUserProfile,
@@ -82,6 +83,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     setError("");
     setMessage("");
     setIsCardModalOpen(false);
+    setEquipmentLoans([]);
     setCardIssueError("");
     setCardIssueStatus("");
     setCardIssueSuccess("");
@@ -132,6 +134,26 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
         }
 
         setEditableProfile(result.editableProfile);
+
+        const loansResponse = await fetch(
+          `/api/member-equipment-loans/${username}`,
+          {
+            headers: buildHeaders(currentUserProfile),
+            signal,
+            cache: "no-store",
+          },
+        );
+        const loansResult = await readJsonResponse(loansResponse);
+
+        if (!loansResponse.ok || !loansResult.success) {
+          throw new Error(loansResult.message ?? "Unable to load equipment loans.");
+        }
+
+        if (signal?.aborted) {
+          return;
+        }
+
+        setEquipmentLoans(loansResult.loans ?? []);
         setMessage("");
         hasLoadedProfileRef.current = true;
       } catch (loadError) {
@@ -264,6 +286,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
               rfidTag,
               activeMember: editableProfile.activeMember,
               membershipFeesDue: editableProfile.membershipFeesDue,
+              coachingVolunteer: editableProfile.coachingVolunteer,
               userType: editableProfile.userType,
               disciplines: editableProfile.disciplines,
               loanBow: editableProfile.loanBow,
@@ -354,6 +377,11 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     setEditableProfile((current) => ({ ...current, [field]: value }));
   };
 
+  const handleBooleanChange = (field) => (event) => {
+    const value = event.target.checked;
+    setEditableProfile((current) => ({ ...current, [field]: value }));
+  };
+
   const toggleDiscipline = (discipline) => {
     setEditableProfile((current) => {
       const alreadySelected = current.disciplines.includes(discipline);
@@ -401,6 +429,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
       rfidTag: editableProfile.rfidTag,
       activeMember: editableProfile.activeMember,
       membershipFeesDue: editableProfile.membershipFeesDue,
+      coachingVolunteer: editableProfile.coachingVolunteer,
       userType: editableProfile.userType,
       disciplines: editableProfile.disciplines,
       loanBow: editableProfile.loanBow,
@@ -564,6 +593,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
         <MemberProfileForm
           editableProfile={editableProfile}
           handleChange={handleChange}
+          handleBooleanChange={handleBooleanChange}
           handleBooleanSelectChange={handleBooleanSelectChange}
           toggleDiscipline={toggleDiscipline}
           handleLoanBowFieldChange={handleLoanBowFieldChange}
@@ -588,6 +618,37 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
                 : "Save profile"
           }
         />
+      ) : null}
+
+      {editableProfile ? (
+        <SectionPanel className="profile-form" title="Equipment On Loan">
+          <div className="committee-roles-table-wrap">
+            <table className="committee-roles-table">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Reference</th>
+                  <th>Loan Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {equipmentLoans.length > 0 ? (
+                  equipmentLoans.map((loan) => (
+                    <tr key={loan.id}>
+                      <td>{loan.typeLabel}</td>
+                      <td>{loan.reference || "-"}</td>
+                      <td>{loan.loanDate || "-"}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={3}>No equipment is currently on loan to this member.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SectionPanel>
       ) : null}
 
       {editableProfile ? (

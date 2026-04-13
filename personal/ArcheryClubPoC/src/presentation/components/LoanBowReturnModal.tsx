@@ -19,6 +19,11 @@ const RETURN_ITEM_FIELDS = [
     isAvailable: (loanBow) => Number(loanBow.arrowCount) > 0,
   },
   {
+    key: "returnedQuiver",
+    label: "Quiver",
+    isAvailable: (loanBow) => Boolean(loanBow.quiver),
+  },
+  {
     key: "returnedFingerTab",
     label: "Finger Tab",
     isAvailable: (loanBow) => Boolean(loanBow.fingerTab),
@@ -61,6 +66,7 @@ function buildInitialReturnForm(loanBow) {
     returnedRiser: Boolean(loanBow?.returnedRiser),
     returnedLimbs: Boolean(loanBow?.returnedLimbs),
     returnedArrows: Boolean(loanBow?.returnedArrows),
+    returnedQuiver: Boolean(loanBow?.returnedQuiver),
     returnedFingerTab: Boolean(loanBow?.returnedFingerTab),
     returnedString: Boolean(loanBow?.returnedString),
     returnedArmGuard: Boolean(loanBow?.returnedArmGuard),

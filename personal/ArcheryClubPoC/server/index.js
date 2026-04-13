@@ -22,7 +22,12 @@ const PERMISSIONS = {
   CANCEL_EVENTS: "cancel_events",
   ADD_COACHING_SESSIONS: "add_coaching_sessions",
   APPROVE_COACHING_SESSIONS: "approve_coaching_sessions",
-  MANAGE_LOAN_BOWS: "manage_loan_bows",
+  ADD_DECOMMISSION_EQUIPMENT: "add_decommission_equipment",
+  ASSIGN_EQUIPMENT: "assign_equipment",
+  RETURN_EQUIPMENT: "return_equipment",
+  UPDATE_EQUIPMENT_STORAGE: "update_equipment_storage",
+  MANAGE_BEGINNERS_COURSES: "manage_beginners_courses",
+  APPROVE_BEGINNERS_COURSES: "approve_beginners_courses",
   MANAGE_TOURNAMENTS: "manage_tournaments",
 };
 const DEACTIVATED_RFID_SUFFIX = "-deactivated";
@@ -74,9 +79,34 @@ const PERMISSION_DEFINITIONS = [
     description: "Approve submitted coaching sessions.",
   },
   {
-    key: PERMISSIONS.MANAGE_LOAN_BOWS,
-    label: "Manage Loan Bows",
-    description: "Update loan bow records and returns.",
+    key: PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT,
+    label: "Add And Decommission Equipment",
+    description: "Register new equipment and retire equipment from service.",
+  },
+  {
+    key: PERMISSIONS.ASSIGN_EQUIPMENT,
+    label: "Assign Equipment",
+    description: "Assign equipment to cases or issue it to members.",
+  },
+  {
+    key: PERMISSIONS.RETURN_EQUIPMENT,
+    label: "Return Equipment",
+    description: "Book loaned equipment back in from members.",
+  },
+  {
+    key: PERMISSIONS.UPDATE_EQUIPMENT_STORAGE,
+    label: "Update Storage Location",
+    description: "Update cupboard or case storage for equipment.",
+  },
+  {
+    key: PERMISSIONS.MANAGE_BEGINNERS_COURSES,
+    label: "Manage Beginners Courses",
+    description: "Submit beginners courses, book beginners, and assign course coaches and equipment.",
+  },
+  {
+    key: PERMISSIONS.APPROVE_BEGINNERS_COURSES,
+    label: "Approve Beginners Courses",
+    description: "Approve or reject submitted beginners courses.",
   },
   {
     key: PERMISSIONS.MANAGE_TOURNAMENTS,
@@ -112,8 +142,12 @@ const SYSTEM_ROLE_DEFINITIONS = [
     title: "Coach",
     permissions: [
       PERMISSIONS.ADD_COACHING_SESSIONS,
-      PERMISSIONS.MANAGE_LOAN_BOWS,
     ],
+  },
+  {
+    roleKey: "beginner",
+    title: "Beginner",
+    permissions: [],
   },
 ];
 const ALLOWED_DISCIPLINES = [
@@ -125,6 +159,57 @@ const ALLOWED_DISCIPLINES = [
 ];
 const DEFAULT_LOAN_ARROW_COUNT = 6;
 const DEFAULT_EVENT_DURATION_MINUTES = 60;
+const DEFAULT_EQUIPMENT_CUPBOARD_LABEL = "Main Cupboard";
+const EQUIPMENT_TYPES = {
+  CASE: "case",
+  RISER: "riser",
+  LIMB: "limb",
+  QUIVER: "quiver",
+  SIGHT: "sight",
+  LONG_ROD: "long_rod",
+  ARM_GUARD: "arm_guard",
+  CHEST_GUARD: "chest_guard",
+  FINGER_TAB: "finger_tab",
+  ARROWS: "arrows",
+};
+const EQUIPMENT_TYPE_LABELS = {
+  [EQUIPMENT_TYPES.CASE]: "Case",
+  [EQUIPMENT_TYPES.RISER]: "Riser",
+  [EQUIPMENT_TYPES.LIMB]: "Limb Pair",
+  [EQUIPMENT_TYPES.QUIVER]: "Quiver",
+  [EQUIPMENT_TYPES.SIGHT]: "Sight",
+  [EQUIPMENT_TYPES.LONG_ROD]: "Long Rod",
+  [EQUIPMENT_TYPES.ARM_GUARD]: "Arm Guard",
+  [EQUIPMENT_TYPES.CHEST_GUARD]: "Chest Guard",
+  [EQUIPMENT_TYPES.FINGER_TAB]: "Finger Tab",
+  [EQUIPMENT_TYPES.ARROWS]: "Arrows",
+};
+const EQUIPMENT_TYPE_OPTIONS = Object.values(EQUIPMENT_TYPES);
+const EQUIPMENT_SIZE_CATEGORIES = ["standard", "junior"];
+const EQUIPMENT_LOCATION_TYPES = {
+  CUPBOARD: "cupboard",
+  CASE: "case",
+  MEMBER: "member",
+};
+const EQUIPMENT_CASE_CAPACITY = {
+  [EQUIPMENT_TYPES.RISER]: 1,
+  [EQUIPMENT_TYPES.LIMB]: 1,
+  [EQUIPMENT_TYPES.QUIVER]: 1,
+  [EQUIPMENT_TYPES.SIGHT]: 1,
+  [EQUIPMENT_TYPES.LONG_ROD]: 1,
+  [EQUIPMENT_TYPES.ARM_GUARD]: 1,
+  [EQUIPMENT_TYPES.CHEST_GUARD]: 1,
+  [EQUIPMENT_TYPES.FINGER_TAB]: 1,
+  [EQUIPMENT_TYPES.ARROWS]: 12,
+};
+const EQUIPMENT_NUMBER_REQUIRED_TYPES = new Set([
+  EQUIPMENT_TYPES.CASE,
+  EQUIPMENT_TYPES.RISER,
+  EQUIPMENT_TYPES.LIMB,
+  EQUIPMENT_TYPES.QUIVER,
+  EQUIPMENT_TYPES.SIGHT,
+  EQUIPMENT_TYPES.LONG_ROD,
+]);
 const TOURNAMENT_TYPE_OPTIONS = [
   { value: "portsmouth", label: "Portsmouth" },
   { value: "wa720", label: "WA 720" },
@@ -365,7 +450,8 @@ db.exec(`
     password TEXT,
     rfid_tag TEXT UNIQUE,
     active_member INTEGER NOT NULL DEFAULT 1,
-    membership_fees_due TEXT
+    membership_fees_due TEXT,
+    coaching_volunteer INTEGER NOT NULL DEFAULT 0
   )
 `);
 
@@ -437,6 +523,8 @@ db.exec(`
     returned_riser INTEGER NOT NULL DEFAULT 0,
     returned_limbs INTEGER NOT NULL DEFAULT 0,
     returned_arrows INTEGER NOT NULL DEFAULT 0,
+    quiver INTEGER NOT NULL DEFAULT 0,
+    returned_quiver INTEGER NOT NULL DEFAULT 0,
     finger_tab INTEGER NOT NULL DEFAULT 0,
     returned_finger_tab INTEGER NOT NULL DEFAULT 0,
     string_item INTEGER NOT NULL DEFAULT 0,
@@ -479,6 +567,186 @@ db.exec(`
     assigned_username TEXT,
     FOREIGN KEY (assigned_username) REFERENCES users(username)
   )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS equipment_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    equipment_type TEXT NOT NULL CHECK (
+      equipment_type IN (
+        'case',
+        'riser',
+        'limb',
+        'quiver',
+        'sight',
+        'long_rod',
+        'arm_guard',
+        'chest_guard',
+        'finger_tab',
+        'arrows'
+      )
+    ),
+    item_number TEXT,
+    size_category TEXT NOT NULL DEFAULT 'standard' CHECK (
+      size_category IN ('standard', 'junior')
+    ),
+    arrow_length INTEGER,
+    arrow_quantity INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'active' CHECK (
+      status IN ('active', 'decommissioned')
+    ),
+    location_type TEXT NOT NULL DEFAULT 'cupboard' CHECK (
+      location_type IN ('cupboard', 'case', 'member')
+    ),
+    location_label TEXT,
+    location_case_id INTEGER,
+    location_member_username TEXT,
+    added_by_username TEXT NOT NULL,
+    added_at_date TEXT NOT NULL,
+    added_at_time TEXT NOT NULL,
+    decommissioned_by_username TEXT,
+    decommissioned_at_date TEXT,
+    decommissioned_at_time TEXT,
+    decommission_reason TEXT,
+    last_assignment_by_username TEXT,
+    last_assignment_at_date TEXT,
+    last_assignment_at_time TEXT,
+    last_storage_updated_by_username TEXT,
+    last_storage_updated_at_date TEXT,
+    last_storage_updated_at_time TEXT,
+    FOREIGN KEY (location_case_id) REFERENCES equipment_items(id),
+    FOREIGN KEY (location_member_username) REFERENCES users(username),
+    FOREIGN KEY (added_by_username) REFERENCES users(username),
+    FOREIGN KEY (decommissioned_by_username) REFERENCES users(username),
+    FOREIGN KEY (last_assignment_by_username) REFERENCES users(username),
+    FOREIGN KEY (last_storage_updated_by_username) REFERENCES users(username)
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS equipment_loans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    equipment_item_id INTEGER NOT NULL,
+    member_username TEXT NOT NULL,
+    loaned_by_username TEXT NOT NULL,
+    loaned_at_date TEXT NOT NULL,
+    loaned_at_time TEXT NOT NULL,
+    loan_context_case_id INTEGER,
+    returned_by_username TEXT,
+    returned_at_date TEXT,
+    returned_at_time TEXT,
+    return_location_type TEXT CHECK (
+      return_location_type IN ('cupboard', 'case')
+    ),
+    return_location_label TEXT,
+    return_case_id INTEGER,
+    FOREIGN KEY (equipment_item_id) REFERENCES equipment_items(id),
+    FOREIGN KEY (member_username) REFERENCES users(username),
+    FOREIGN KEY (loaned_by_username) REFERENCES users(username),
+    FOREIGN KEY (loan_context_case_id) REFERENCES equipment_items(id),
+    FOREIGN KEY (returned_by_username) REFERENCES users(username),
+    FOREIGN KEY (return_case_id) REFERENCES equipment_items(id)
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS beginners_courses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    coordinator_username TEXT NOT NULL,
+    submitted_by_username TEXT NOT NULL,
+    first_lesson_date TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    lesson_count INTEGER NOT NULL,
+    beginner_capacity INTEGER NOT NULL,
+    approval_status TEXT NOT NULL DEFAULT 'pending' CHECK (
+      approval_status IN ('pending', 'approved', 'rejected')
+    ),
+    is_cancelled INTEGER NOT NULL DEFAULT 0,
+    cancellation_reason TEXT,
+    cancelled_by_username TEXT,
+    cancelled_at_date TEXT,
+    cancelled_at_time TEXT,
+    rejection_reason TEXT,
+    approved_by_username TEXT,
+    approved_at_date TEXT,
+    approved_at_time TEXT,
+    created_at_date TEXT NOT NULL,
+    created_at_time TEXT NOT NULL,
+    FOREIGN KEY (coordinator_username) REFERENCES users(username),
+    FOREIGN KEY (submitted_by_username) REFERENCES users(username),
+    FOREIGN KEY (approved_by_username) REFERENCES users(username)
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS beginners_course_lessons (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id INTEGER NOT NULL,
+    lesson_number INTEGER NOT NULL,
+    lesson_date TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    UNIQUE (course_id, lesson_number),
+    FOREIGN KEY (course_id) REFERENCES beginners_courses(id)
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS beginners_course_participants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_id INTEGER NOT NULL,
+    username TEXT NOT NULL UNIQUE,
+    first_name TEXT NOT NULL,
+    surname TEXT NOT NULL,
+    beginner_size_category TEXT NOT NULL CHECK (
+      beginner_size_category IN ('senior', 'junior')
+    ),
+    height_text TEXT,
+    handedness TEXT CHECK (handedness IN ('left', 'right')),
+    eye_dominance TEXT CHECK (eye_dominance IN ('left', 'right')),
+    initial_email_sent INTEGER NOT NULL DEFAULT 0,
+    thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
+    course_fee_paid INTEGER NOT NULL DEFAULT 0,
+    assigned_case_id INTEGER,
+    assigned_case_by_username TEXT,
+    assigned_case_at_date TEXT,
+    assigned_case_at_time TEXT,
+    created_by_username TEXT NOT NULL,
+    created_at_date TEXT NOT NULL,
+    created_at_time TEXT NOT NULL,
+    FOREIGN KEY (course_id) REFERENCES beginners_courses(id),
+    FOREIGN KEY (username) REFERENCES users(username),
+    FOREIGN KEY (assigned_case_id) REFERENCES equipment_items(id),
+    FOREIGN KEY (assigned_case_by_username) REFERENCES users(username),
+    FOREIGN KEY (created_by_username) REFERENCES users(username)
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS beginners_course_lesson_coaches (
+    lesson_id INTEGER NOT NULL,
+    coach_username TEXT NOT NULL,
+    assigned_by_username TEXT NOT NULL,
+    assigned_at_date TEXT NOT NULL,
+    assigned_at_time TEXT NOT NULL,
+    PRIMARY KEY (lesson_id, coach_username),
+    FOREIGN KEY (lesson_id) REFERENCES beginners_course_lessons(id),
+    FOREIGN KEY (coach_username) REFERENCES users(username),
+    FOREIGN KEY (assigned_by_username) REFERENCES users(username)
+  )
+`);
+
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS equipment_items_unique_number
+  ON equipment_items (equipment_type, size_category, item_number)
+  WHERE item_number IS NOT NULL AND status = 'active'
+`);
+
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS equipment_loans_one_open_loan
+  ON equipment_loans (equipment_item_id)
+  WHERE returned_at_date IS NULL
 `);
 
 const userTypesTableSchema = db
@@ -726,6 +994,8 @@ const memberLoanBowColumnDefinitions = [
   ["returned_riser", "INTEGER NOT NULL DEFAULT 0"],
   ["returned_limbs", "INTEGER NOT NULL DEFAULT 0"],
   ["returned_arrows", "INTEGER NOT NULL DEFAULT 0"],
+  ["quiver", "INTEGER NOT NULL DEFAULT 0"],
+  ["returned_quiver", "INTEGER NOT NULL DEFAULT 0"],
   ["returned_finger_tab", "INTEGER NOT NULL DEFAULT 0"],
   ["returned_string_item", "INTEGER NOT NULL DEFAULT 0"],
   ["returned_arm_guard", "INTEGER NOT NULL DEFAULT 0"],
@@ -743,6 +1013,283 @@ for (const [columnName, columnDefinition] of memberLoanBowColumnDefinitions) {
   }
 }
 
+const equipmentItemsTable = db
+  .prepare(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'equipment_items'`,
+  )
+  .get();
+
+if (!equipmentItemsTable?.sql?.includes("'quiver'")) {
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    ALTER TABLE equipment_items RENAME TO equipment_items_old;
+    CREATE TABLE equipment_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      equipment_type TEXT NOT NULL CHECK (
+        equipment_type IN (
+          'case',
+          'riser',
+          'limb',
+          'quiver',
+          'sight',
+          'long_rod',
+          'arm_guard',
+          'chest_guard',
+          'finger_tab',
+          'arrows'
+        )
+      ),
+      item_number TEXT,
+      size_category TEXT NOT NULL DEFAULT 'standard' CHECK (
+        size_category IN ('standard', 'junior')
+      ),
+      arrow_length INTEGER,
+      arrow_quantity INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (
+        status IN ('active', 'decommissioned')
+      ),
+      location_type TEXT NOT NULL DEFAULT 'cupboard' CHECK (
+        location_type IN ('cupboard', 'case', 'member')
+      ),
+      location_label TEXT,
+      location_case_id INTEGER,
+      location_member_username TEXT,
+      added_by_username TEXT NOT NULL,
+      added_at_date TEXT NOT NULL,
+      added_at_time TEXT NOT NULL,
+      decommissioned_by_username TEXT,
+      decommissioned_at_date TEXT,
+      decommissioned_at_time TEXT,
+      decommission_reason TEXT,
+      last_assignment_by_username TEXT,
+      last_assignment_at_date TEXT,
+      last_assignment_at_time TEXT,
+      last_storage_updated_by_username TEXT,
+      last_storage_updated_at_date TEXT,
+      last_storage_updated_at_time TEXT,
+      FOREIGN KEY (location_case_id) REFERENCES equipment_items(id),
+      FOREIGN KEY (location_member_username) REFERENCES users(username),
+      FOREIGN KEY (added_by_username) REFERENCES users(username),
+      FOREIGN KEY (decommissioned_by_username) REFERENCES users(username),
+      FOREIGN KEY (last_assignment_by_username) REFERENCES users(username),
+      FOREIGN KEY (last_storage_updated_by_username) REFERENCES users(username)
+    );
+    INSERT INTO equipment_items (
+      id,
+      equipment_type,
+      item_number,
+      size_category,
+      arrow_length,
+      arrow_quantity,
+      status,
+      location_type,
+      location_label,
+      location_case_id,
+      location_member_username,
+      added_by_username,
+      added_at_date,
+      added_at_time,
+      decommissioned_by_username,
+      decommissioned_at_date,
+      decommissioned_at_time,
+      decommission_reason,
+      last_assignment_by_username,
+      last_assignment_at_date,
+      last_assignment_at_time,
+      last_storage_updated_by_username,
+      last_storage_updated_at_date,
+      last_storage_updated_at_time
+    )
+    SELECT
+      id,
+      equipment_type,
+      item_number,
+      size_category,
+      arrow_length,
+      arrow_quantity,
+      status,
+      location_type,
+      location_label,
+      location_case_id,
+      location_member_username,
+      added_by_username,
+      added_at_date,
+      added_at_time,
+      decommissioned_by_username,
+      decommissioned_at_date,
+      decommissioned_at_time,
+      decommission_reason,
+      last_assignment_by_username,
+      last_assignment_at_date,
+      last_assignment_at_time,
+      last_storage_updated_by_username,
+      last_storage_updated_at_date,
+      last_storage_updated_at_time
+    FROM equipment_items_old;
+    DROP TABLE equipment_items_old;
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
+const equipmentLoansTable = db
+  .prepare(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'equipment_loans'`,
+  )
+  .get();
+
+if (equipmentLoansTable?.sql?.includes("equipment_items_old")) {
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    ALTER TABLE equipment_loans RENAME TO equipment_loans_old;
+    CREATE TABLE equipment_loans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      equipment_item_id INTEGER NOT NULL,
+      member_username TEXT NOT NULL,
+      loaned_by_username TEXT NOT NULL,
+      loaned_at_date TEXT NOT NULL,
+      loaned_at_time TEXT NOT NULL,
+      loan_context_case_id INTEGER,
+      returned_by_username TEXT,
+      returned_at_date TEXT,
+      returned_at_time TEXT,
+      return_location_type TEXT CHECK (
+        return_location_type IN ('cupboard', 'case')
+      ),
+      return_location_label TEXT,
+      return_case_id INTEGER,
+      FOREIGN KEY (equipment_item_id) REFERENCES equipment_items(id),
+      FOREIGN KEY (member_username) REFERENCES users(username),
+      FOREIGN KEY (loaned_by_username) REFERENCES users(username),
+      FOREIGN KEY (loan_context_case_id) REFERENCES equipment_items(id),
+      FOREIGN KEY (returned_by_username) REFERENCES users(username),
+      FOREIGN KEY (return_case_id) REFERENCES equipment_items(id)
+    );
+    INSERT INTO equipment_loans (
+      id,
+      equipment_item_id,
+      member_username,
+      loaned_by_username,
+      loaned_at_date,
+      loaned_at_time,
+      loan_context_case_id,
+      returned_by_username,
+      returned_at_date,
+      returned_at_time,
+      return_location_type,
+      return_location_label,
+      return_case_id
+    )
+    SELECT
+      id,
+      equipment_item_id,
+      member_username,
+      loaned_by_username,
+      loaned_at_date,
+      loaned_at_time,
+      loan_context_case_id,
+      returned_by_username,
+      returned_at_date,
+      returned_at_time,
+      return_location_type,
+      return_location_label,
+      return_case_id
+    FROM equipment_loans_old;
+    DROP TABLE equipment_loans_old;
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
+const beginnersCourseParticipantsTable = db
+  .prepare(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'beginners_course_participants'`,
+  )
+  .get();
+
+if (beginnersCourseParticipantsTable?.sql?.includes("equipment_items_old")) {
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    ALTER TABLE beginners_course_participants RENAME TO beginners_course_participants_old;
+    CREATE TABLE beginners_course_participants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL,
+      username TEXT NOT NULL UNIQUE,
+      first_name TEXT NOT NULL,
+      surname TEXT NOT NULL,
+      beginner_size_category TEXT NOT NULL CHECK (
+        beginner_size_category IN ('senior', 'junior')
+      ),
+      height_text TEXT,
+      handedness TEXT CHECK (handedness IN ('left', 'right')),
+      eye_dominance TEXT CHECK (eye_dominance IN ('left', 'right')),
+      initial_email_sent INTEGER NOT NULL DEFAULT 0,
+      thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
+      course_fee_paid INTEGER NOT NULL DEFAULT 0,
+      assigned_case_id INTEGER,
+      assigned_case_by_username TEXT,
+      assigned_case_at_date TEXT,
+      assigned_case_at_time TEXT,
+      created_by_username TEXT NOT NULL,
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      FOREIGN KEY (course_id) REFERENCES beginners_courses(id),
+      FOREIGN KEY (username) REFERENCES users(username),
+      FOREIGN KEY (assigned_case_id) REFERENCES equipment_items(id),
+      FOREIGN KEY (assigned_case_by_username) REFERENCES users(username),
+      FOREIGN KEY (created_by_username) REFERENCES users(username)
+    );
+    INSERT INTO beginners_course_participants (
+      id,
+      course_id,
+      username,
+      first_name,
+      surname,
+      beginner_size_category,
+      height_text,
+      handedness,
+      eye_dominance,
+      initial_email_sent,
+      thirty_day_reminder_sent,
+      course_fee_paid,
+      assigned_case_id,
+      assigned_case_by_username,
+      assigned_case_at_date,
+      assigned_case_at_time,
+      created_by_username,
+      created_at_date,
+      created_at_time
+    )
+    SELECT
+      id,
+      course_id,
+      username,
+      first_name,
+      surname,
+      beginner_size_category,
+      height_text,
+      handedness,
+      eye_dominance,
+      initial_email_sent,
+      thirty_day_reminder_sent,
+      course_fee_paid,
+      assigned_case_id,
+      assigned_case_by_username,
+      assigned_case_at_date,
+      assigned_case_at_time,
+      created_by_username,
+      created_at_date,
+      created_at_time
+    FROM beginners_course_participants_old;
+    DROP TABLE beginners_course_participants_old;
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS equipment_loans_one_open_loan
+  ON equipment_loans (equipment_item_id)
+  WHERE returned_at_date IS NULL
+`);
+
 if (!userColumns.some((column) => column.name === "active_member")) {
   db.exec(
     `ALTER TABLE users ADD COLUMN active_member INTEGER NOT NULL DEFAULT 1`,
@@ -753,6 +1300,12 @@ if (!userColumns.some((column) => column.name === "membership_fees_due")) {
   db.exec(`ALTER TABLE users ADD COLUMN membership_fees_due TEXT`);
 }
 
+if (!userColumns.some((column) => column.name === "coaching_volunteer")) {
+  db.exec(
+    `ALTER TABLE users ADD COLUMN coaching_volunteer INTEGER NOT NULL DEFAULT 0`,
+  );
+}
+
 const coachingSessionApprovalColumns = [
   ["approval_status", "TEXT NOT NULL DEFAULT 'approved'"],
   ["rejection_reason", "TEXT"],
@@ -760,6 +1313,26 @@ const coachingSessionApprovalColumns = [
   ["approved_at_date", "TEXT"],
   ["approved_at_time", "TEXT"],
 ];
+
+const beginnersCoursesColumns = db
+  .prepare(`PRAGMA table_info(beginners_courses)`)
+  .all();
+
+const beginnersCourseCancellationColumns = [
+  ["is_cancelled", "INTEGER NOT NULL DEFAULT 0"],
+  ["cancellation_reason", "TEXT"],
+  ["cancelled_by_username", "TEXT"],
+  ["cancelled_at_date", "TEXT"],
+  ["cancelled_at_time", "TEXT"],
+];
+
+for (const [columnName, columnDefinition] of beginnersCourseCancellationColumns) {
+  if (!beginnersCoursesColumns.some((column) => column.name === columnName)) {
+    db.exec(
+      `ALTER TABLE beginners_courses ADD COLUMN ${columnName} ${columnDefinition}`,
+    );
+  }
+}
 
 for (const [columnName, columnDefinition] of coachingSessionApprovalColumns) {
   if (!coachingSessionsColumns.some((column) => column.name === columnName)) {
@@ -1091,6 +1664,7 @@ const seedUsers = [
     rfidTag: null,
     activeMember: true,
     membershipFeesDue: "2026-12-31",
+    coachingVolunteer: true,
     userType: "coach",
     disciplines: ["Recurve Bow"],
   },
@@ -1102,6 +1676,7 @@ const seedUsers = [
     rfidTag: "7673CF3D",
     activeMember: true,
     membershipFeesDue: "2026-12-31",
+    coachingVolunteer: true,
     userType: "developer",
     disciplines: ["Recurve Bow"],
   },
@@ -1113,6 +1688,7 @@ const seedUsers = [
     rfidTag: "D9DBCF3D-deactivated",
     activeMember: false,
     membershipFeesDue: "2026-01-01",
+    coachingVolunteer: false,
     userType: "general",
     disciplines: ["Recurve Bow"],
   },
@@ -1124,6 +1700,7 @@ const seedUsers = [
     rfidTag: null,
     activeMember: true,
     membershipFeesDue: "2026-12-31",
+    coachingVolunteer: true,
     userType: "admin",
     disciplines: [
       "Bare Bow",
@@ -1141,6 +1718,7 @@ const seedUsers = [
     rfidTag: null,
     activeMember: false,
     membershipFeesDue: "2026-04-03",
+    coachingVolunteer: false,
     userType: "general",
     disciplines: ["Flat Bow"],
   },
@@ -1152,6 +1730,7 @@ const seedUsers = [
     rfidTag: null,
     activeMember: true,
     membershipFeesDue: "2026-12-31",
+    coachingVolunteer: false,
     userType: "general",
     disciplines: ["Bare Bow"],
   },
@@ -1163,6 +1742,7 @@ const seedUsers = [
     rfidTag: null,
     activeMember: true,
     membershipFeesDue: "2026-12-31",
+    coachingVolunteer: false,
     userType: "general",
     disciplines: ["Long Bow"],
   },
@@ -1174,6 +1754,7 @@ const seedUsers = [
     rfidTag: null,
     activeMember: true,
     membershipFeesDue: "2026-05-08",
+    coachingVolunteer: false,
     userType: "general",
     disciplines: ["Bare Bow", "Recurve Bow"],
   },
@@ -1185,6 +1766,7 @@ const seedUsers = [
     rfidTag: null,
     activeMember: true,
     membershipFeesDue: "2026-12-31",
+    coachingVolunteer: false,
     userType: "general",
     disciplines: ["Recurve Bow", "Compound Bow"],
   },
@@ -1231,7 +1813,8 @@ const upsertUser = db.prepare(`
     password,
     rfid_tag,
     active_member,
-    membership_fees_due
+    membership_fees_due,
+    coaching_volunteer
   )
   VALUES (
     @username,
@@ -1240,7 +1823,8 @@ const upsertUser = db.prepare(`
     @password,
     @rfidTag,
     @activeMember,
-    @membershipFeesDue
+    @membershipFeesDue,
+    @coachingVolunteer
   )
   ON CONFLICT(username) DO UPDATE SET
     first_name = excluded.first_name,
@@ -1248,7 +1832,8 @@ const upsertUser = db.prepare(`
     password = excluded.password,
     rfid_tag = excluded.rfid_tag,
     active_member = excluded.active_member,
-    membership_fees_due = excluded.membership_fees_due
+    membership_fees_due = excluded.membership_fees_due,
+    coaching_volunteer = excluded.coaching_volunteer
 `);
 
 const updateUserMembershipStatus = db.prepare(`
@@ -1328,6 +1913,7 @@ const findUserByCredentials = db.prepare(`
     users.rfid_tag,
     users.active_member,
     users.membership_fees_due,
+    users.coaching_volunteer,
     user_types.user_type
   FROM users
   INNER JOIN user_types ON user_types.username = users.username
@@ -1342,6 +1928,7 @@ const findUserByRfid = db.prepare(`
     users.rfid_tag,
     users.active_member,
     users.membership_fees_due,
+    users.coaching_volunteer,
     user_types.user_type
   FROM users
   INNER JOIN user_types ON user_types.username = users.username
@@ -1357,6 +1944,7 @@ const findUserByUsername = db.prepare(`
     users.rfid_tag,
     users.active_member,
     users.membership_fees_due,
+    users.coaching_volunteer,
     user_types.user_type
   FROM users
   INNER JOIN user_types ON user_types.username = users.username
@@ -1371,6 +1959,7 @@ const listAllUsers = db.prepare(`
     users.rfid_tag,
     users.active_member,
     users.membership_fees_due,
+    users.coaching_volunteer,
     user_types.user_type
   FROM users
   INNER JOIN user_types ON user_types.username = users.username
@@ -1483,6 +2072,8 @@ const findLoanBowByUsername = db.prepare(`
     returned_riser,
     returned_limbs,
     returned_arrows,
+    quiver,
+    returned_quiver,
     finger_tab,
     returned_finger_tab,
     string_item,
@@ -1513,6 +2104,8 @@ const upsertLoanBowByUsername = db.prepare(`
     returned_riser,
     returned_limbs,
     returned_arrows,
+    quiver,
+    returned_quiver,
     finger_tab,
     returned_finger_tab,
     string_item,
@@ -1539,6 +2132,8 @@ const upsertLoanBowByUsername = db.prepare(`
     @returnedRiser,
     @returnedLimbs,
     @returnedArrows,
+    @quiver,
+    @returnedQuiver,
     @fingerTab,
     @returnedFingerTab,
     @stringItem,
@@ -1564,6 +2159,8 @@ const upsertLoanBowByUsername = db.prepare(`
     returned_riser = excluded.returned_riser,
     returned_limbs = excluded.returned_limbs,
     returned_arrows = excluded.returned_arrows,
+    quiver = excluded.quiver,
+    returned_quiver = excluded.returned_quiver,
     finger_tab = excluded.finger_tab,
     returned_finger_tab = excluded.returned_finger_tab,
     string_item = excluded.string_item,
@@ -1578,6 +2175,498 @@ const upsertLoanBowByUsername = db.prepare(`
     returned_long_rod = excluded.returned_long_rod,
     pressure_button = excluded.pressure_button,
     returned_pressure_button = excluded.returned_pressure_button
+`);
+
+const listEquipmentItems = db.prepare(`
+  SELECT
+    equipment_items.*,
+    added_by.first_name AS added_by_first_name,
+    added_by.surname AS added_by_surname,
+    decommissioned_by.first_name AS decommissioned_by_first_name,
+    decommissioned_by.surname AS decommissioned_by_surname,
+    assigned_by.first_name AS assigned_by_first_name,
+    assigned_by.surname AS assigned_by_surname,
+    storage_by.first_name AS storage_by_first_name,
+    storage_by.surname AS storage_by_surname,
+    location_member.first_name AS location_member_first_name,
+    location_member.surname AS location_member_surname,
+    location_case.item_number AS location_case_number,
+    location_case.equipment_type AS location_case_type
+  FROM equipment_items
+  LEFT JOIN users AS added_by
+    ON added_by.username = equipment_items.added_by_username
+  LEFT JOIN users AS decommissioned_by
+    ON decommissioned_by.username = equipment_items.decommissioned_by_username
+  LEFT JOIN users AS assigned_by
+    ON assigned_by.username = equipment_items.last_assignment_by_username
+  LEFT JOIN users AS storage_by
+    ON storage_by.username = equipment_items.last_storage_updated_by_username
+  LEFT JOIN users AS location_member
+    ON location_member.username = equipment_items.location_member_username
+  LEFT JOIN equipment_items AS location_case
+    ON location_case.id = equipment_items.location_case_id
+  ORDER BY equipment_items.equipment_type ASC, equipment_items.item_number ASC, equipment_items.id ASC
+`);
+
+const findEquipmentItemById = db.prepare(`
+  SELECT *
+  FROM equipment_items
+  WHERE id = ?
+`);
+
+const findEquipmentItemByIdWithRelations = db.prepare(`
+  SELECT
+    equipment_items.*,
+    location_case.item_number AS location_case_number
+  FROM equipment_items
+  LEFT JOIN equipment_items AS location_case
+    ON location_case.id = equipment_items.location_case_id
+  WHERE equipment_items.id = ?
+`);
+
+const listEquipmentItemsByCaseId = db.prepare(`
+  SELECT *
+  FROM equipment_items
+  WHERE location_case_id = ?
+    AND status = 'active'
+  ORDER BY equipment_type ASC, item_number ASC, id ASC
+`);
+
+const findActiveEquipmentByIdentity = db.prepare(`
+  SELECT id
+  FROM equipment_items
+  WHERE equipment_type = ?
+    AND size_category = ?
+    AND item_number = ?
+    AND status = 'active'
+`);
+
+const insertEquipmentItem = db.prepare(`
+  INSERT INTO equipment_items (
+    equipment_type,
+    item_number,
+    size_category,
+    arrow_length,
+    arrow_quantity,
+    status,
+    location_type,
+    location_label,
+    location_case_id,
+    location_member_username,
+    added_by_username,
+    added_at_date,
+    added_at_time,
+    last_storage_updated_by_username,
+    last_storage_updated_at_date,
+    last_storage_updated_at_time
+  )
+  VALUES (
+    @equipmentType,
+    @itemNumber,
+    @sizeCategory,
+    @arrowLength,
+    @arrowQuantity,
+    'active',
+    @locationType,
+    @locationLabel,
+    @locationCaseId,
+    @locationMemberUsername,
+    @addedByUsername,
+    @addedAtDate,
+    @addedAtTime,
+    @storageByUsername,
+    @storageAtDate,
+    @storageAtTime
+  )
+`);
+
+const updateEquipmentItemForDecommission = db.prepare(`
+  UPDATE equipment_items
+  SET
+    status = 'decommissioned',
+    location_type = 'cupboard',
+    location_label = @locationLabel,
+    location_case_id = NULL,
+    location_member_username = NULL,
+    decommissioned_by_username = @decommissionedByUsername,
+    decommissioned_at_date = @decommissionedAtDate,
+    decommissioned_at_time = @decommissionedAtTime,
+    decommission_reason = @decommissionReason
+  WHERE id = @id
+`);
+
+const updateEquipmentItemStorage = db.prepare(`
+  UPDATE equipment_items
+  SET
+    location_type = @locationType,
+    location_label = @locationLabel,
+    location_case_id = @locationCaseId,
+    location_member_username = @locationMemberUsername,
+    last_storage_updated_by_username = @storageByUsername,
+    last_storage_updated_at_date = @storageAtDate,
+    last_storage_updated_at_time = @storageAtTime
+  WHERE id = @id
+`);
+
+const updateEquipmentAssignmentMetadata = db.prepare(`
+  UPDATE equipment_items
+  SET
+    last_assignment_by_username = @assignedByUsername,
+    last_assignment_at_date = @assignedAtDate,
+    last_assignment_at_time = @assignedAtTime
+  WHERE id = @id
+`);
+
+const listEquipmentLoans = db.prepare(`
+  SELECT
+    equipment_loans.*,
+    member.first_name AS member_first_name,
+    member.surname AS member_surname,
+    loaned_by.first_name AS loaned_by_first_name,
+    loaned_by.surname AS loaned_by_surname,
+    returned_by.first_name AS returned_by_first_name,
+    returned_by.surname AS returned_by_surname,
+    context_case.item_number AS context_case_number
+  FROM equipment_loans
+  LEFT JOIN users AS member
+    ON member.username = equipment_loans.member_username
+  LEFT JOIN users AS loaned_by
+    ON loaned_by.username = equipment_loans.loaned_by_username
+  LEFT JOIN users AS returned_by
+    ON returned_by.username = equipment_loans.returned_by_username
+  LEFT JOIN equipment_items AS context_case
+    ON context_case.id = equipment_loans.loan_context_case_id
+  ORDER BY equipment_loans.loaned_at_date DESC, equipment_loans.loaned_at_time DESC, equipment_loans.id DESC
+`);
+
+const findOpenEquipmentLoanByItemId = db.prepare(`
+  SELECT *
+  FROM equipment_loans
+  WHERE equipment_item_id = ?
+    AND returned_at_date IS NULL
+  LIMIT 1
+`);
+
+const listOpenEquipmentLoansByCaseId = db.prepare(`
+  SELECT *
+  FROM equipment_loans
+  WHERE loan_context_case_id = ?
+    AND returned_at_date IS NULL
+`);
+
+const listOpenEquipmentLoansByMemberUsername = db.prepare(`
+  SELECT
+    equipment_loans.*,
+    equipment_items.equipment_type,
+    equipment_items.item_number,
+    equipment_items.size_category,
+    equipment_items.arrow_length,
+    equipment_items.arrow_quantity
+  FROM equipment_loans
+  INNER JOIN equipment_items
+    ON equipment_items.id = equipment_loans.equipment_item_id
+  WHERE equipment_loans.member_username = ?
+    AND equipment_loans.returned_at_date IS NULL
+  ORDER BY equipment_loans.loaned_at_date DESC, equipment_loans.loaned_at_time DESC, equipment_loans.id DESC
+`);
+
+const insertEquipmentLoan = db.prepare(`
+  INSERT INTO equipment_loans (
+    equipment_item_id,
+    member_username,
+    loaned_by_username,
+    loaned_at_date,
+    loaned_at_time,
+    loan_context_case_id
+  )
+  VALUES (?, ?, ?, ?, ?, ?)
+`);
+
+const closeEquipmentLoan = db.prepare(`
+  UPDATE equipment_loans
+  SET
+    returned_by_username = ?,
+    returned_at_date = ?,
+    returned_at_time = ?,
+    return_location_type = ?,
+    return_location_label = ?,
+    return_case_id = ?
+  WHERE id = ?
+`);
+
+const listBeginnersCourses = db.prepare(`
+  SELECT
+    beginners_courses.*,
+    coordinator.first_name AS coordinator_first_name,
+    coordinator.surname AS coordinator_surname,
+    submitted_by.first_name AS submitted_by_first_name,
+    submitted_by.surname AS submitted_by_surname,
+    approved_by.first_name AS approved_by_first_name,
+    approved_by.surname AS approved_by_surname
+  FROM beginners_courses
+  INNER JOIN users AS coordinator
+    ON coordinator.username = beginners_courses.coordinator_username
+  INNER JOIN users AS submitted_by
+    ON submitted_by.username = beginners_courses.submitted_by_username
+  LEFT JOIN users AS approved_by
+    ON approved_by.username = beginners_courses.approved_by_username
+  ORDER BY beginners_courses.first_lesson_date ASC, beginners_courses.start_time ASC, beginners_courses.id ASC
+`);
+
+const findBeginnersCourseById = db.prepare(`
+  SELECT *
+  FROM beginners_courses
+  WHERE id = ?
+`);
+
+const insertBeginnersCourse = db.prepare(`
+  INSERT INTO beginners_courses (
+    coordinator_username,
+    submitted_by_username,
+    first_lesson_date,
+    start_time,
+    end_time,
+    lesson_count,
+    beginner_capacity,
+    approval_status,
+    rejection_reason,
+    approved_by_username,
+    approved_at_date,
+    approved_at_time,
+    created_at_date,
+    created_at_time
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const updateBeginnersCourseApproval = db.prepare(`
+  UPDATE beginners_courses
+  SET
+    approval_status = ?,
+    rejection_reason = ?,
+    approved_by_username = ?,
+    approved_at_date = ?,
+    approved_at_time = ?
+  WHERE id = ?
+`);
+
+const cancelBeginnersCourse = db.prepare(`
+  UPDATE beginners_courses
+  SET
+    is_cancelled = 1,
+    cancellation_reason = ?,
+    cancelled_by_username = ?,
+    cancelled_at_date = ?,
+    cancelled_at_time = ?
+  WHERE id = ?
+`);
+
+const listBeginnersCourseLessons = db.prepare(`
+  SELECT
+    beginners_course_lessons.*
+  FROM beginners_course_lessons
+  ORDER BY beginners_course_lessons.lesson_date ASC, beginners_course_lessons.start_time ASC, beginners_course_lessons.lesson_number ASC
+`);
+
+const listBeginnersCourseLessonsByCourseId = db.prepare(`
+  SELECT *
+  FROM beginners_course_lessons
+  WHERE course_id = ?
+  ORDER BY lesson_number ASC
+`);
+
+const findBeginnersCourseLessonById = db.prepare(`
+  SELECT *
+  FROM beginners_course_lessons
+  WHERE id = ?
+`);
+
+const insertBeginnersCourseLesson = db.prepare(`
+  INSERT INTO beginners_course_lessons (
+    course_id,
+    lesson_number,
+    lesson_date,
+    start_time,
+    end_time
+  )
+  VALUES (?, ?, ?, ?, ?)
+`);
+
+const listBeginnersCourseParticipants = db.prepare(`
+  SELECT
+    beginners_course_participants.*,
+    users.password,
+    case_item.item_number AS assigned_case_number
+  FROM beginners_course_participants
+  INNER JOIN users
+    ON users.username = beginners_course_participants.username
+  LEFT JOIN equipment_items AS case_item
+    ON case_item.id = beginners_course_participants.assigned_case_id
+  ORDER BY beginners_course_participants.course_id ASC, beginners_course_participants.surname ASC, beginners_course_participants.first_name ASC
+`);
+
+const listBeginnersCourseParticipantsByCourseId = db.prepare(`
+  SELECT
+    beginners_course_participants.*,
+    users.password,
+    case_item.item_number AS assigned_case_number
+  FROM beginners_course_participants
+  INNER JOIN users
+    ON users.username = beginners_course_participants.username
+  LEFT JOIN equipment_items AS case_item
+    ON case_item.id = beginners_course_participants.assigned_case_id
+  WHERE beginners_course_participants.course_id = ?
+  ORDER BY beginners_course_participants.surname ASC, beginners_course_participants.first_name ASC
+`);
+
+const findBeginnersCourseParticipantById = db.prepare(`
+  SELECT *
+  FROM beginners_course_participants
+  WHERE id = ?
+`);
+
+const findBeginnersCourseParticipantByUsername = db.prepare(`
+  SELECT *
+  FROM beginners_course_participants
+  WHERE username = ?
+`);
+
+const insertBeginnersCourseParticipant = db.prepare(`
+  INSERT INTO beginners_course_participants (
+    course_id,
+    username,
+    first_name,
+    surname,
+    beginner_size_category,
+    height_text,
+    handedness,
+    eye_dominance,
+    initial_email_sent,
+    thirty_day_reminder_sent,
+    course_fee_paid,
+    assigned_case_id,
+    assigned_case_by_username,
+    assigned_case_at_date,
+    assigned_case_at_time,
+    created_by_username,
+    created_at_date,
+    created_at_time
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+
+const updateBeginnersCourseParticipant = db.prepare(`
+  UPDATE beginners_course_participants
+  SET
+    first_name = @firstName,
+    surname = @surname,
+    beginner_size_category = @sizeCategory,
+    height_text = @heightText,
+    handedness = @handedness,
+    eye_dominance = @eyeDominance,
+    initial_email_sent = @initialEmailSent,
+    thirty_day_reminder_sent = @thirtyDayReminderSent,
+    course_fee_paid = @courseFeePaid
+  WHERE id = @id
+`);
+
+const updateBeginnersCourseParticipantCase = db.prepare(`
+  UPDATE beginners_course_participants
+  SET
+    assigned_case_id = ?,
+    assigned_case_by_username = ?,
+    assigned_case_at_date = ?,
+    assigned_case_at_time = ?
+  WHERE id = ?
+`);
+
+const listBeginnersLessonCoaches = db.prepare(`
+  SELECT
+    beginners_course_lesson_coaches.lesson_id,
+    beginners_course_lesson_coaches.coach_username,
+    users.first_name,
+    users.surname
+  FROM beginners_course_lesson_coaches
+  INNER JOIN users
+    ON users.username = beginners_course_lesson_coaches.coach_username
+  ORDER BY beginners_course_lesson_coaches.lesson_id ASC, users.surname ASC, users.first_name ASC
+`);
+
+const listBeginnersLessonCoachesByLessonId = db.prepare(`
+  SELECT
+    beginners_course_lesson_coaches.lesson_id,
+    beginners_course_lesson_coaches.coach_username,
+    users.first_name,
+    users.surname
+  FROM beginners_course_lesson_coaches
+  INNER JOIN users
+    ON users.username = beginners_course_lesson_coaches.coach_username
+  WHERE beginners_course_lesson_coaches.lesson_id = ?
+  ORDER BY users.surname ASC, users.first_name ASC
+`);
+
+const insertBeginnersLessonCoach = db.prepare(`
+  INSERT OR IGNORE INTO beginners_course_lesson_coaches (
+    lesson_id,
+    coach_username,
+    assigned_by_username,
+    assigned_at_date,
+    assigned_at_time
+  )
+  VALUES (?, ?, ?, ?, ?)
+`);
+
+const deleteBeginnersLessonCoachesByLessonId = db.prepare(`
+  DELETE FROM beginners_course_lesson_coaches
+  WHERE lesson_id = ?
+`);
+
+const deleteBeginnersLessonCoachesByCourseId = db.prepare(`
+  DELETE FROM beginners_course_lesson_coaches
+  WHERE lesson_id IN (
+    SELECT id
+    FROM beginners_course_lessons
+    WHERE course_id = ?
+  )
+`);
+
+const deleteBeginnersCourseLessonsByCourseId = db.prepare(`
+  DELETE FROM beginners_course_lessons
+  WHERE course_id = ?
+`);
+
+const deleteBeginnersCourseParticipantsByCourseId = db.prepare(`
+  DELETE FROM beginners_course_participants
+  WHERE course_id = ?
+`);
+
+const deleteBeginnersCourseById = db.prepare(`
+  DELETE FROM beginners_courses
+  WHERE id = ?
+`);
+
+const listCoachBeginnersLessonsByUsername = db.prepare(`
+  SELECT
+    beginners_course_lessons.id,
+    beginners_course_lessons.course_id,
+    beginners_course_lessons.lesson_number,
+    beginners_course_lessons.lesson_date,
+    beginners_course_lessons.start_time,
+    beginners_course_lessons.end_time,
+    beginners_courses.first_lesson_date,
+    coordinator.first_name AS coordinator_first_name,
+    coordinator.surname AS coordinator_surname
+  FROM beginners_course_lesson_coaches
+  INNER JOIN beginners_course_lessons
+    ON beginners_course_lessons.id = beginners_course_lesson_coaches.lesson_id
+  INNER JOIN beginners_courses
+    ON beginners_courses.id = beginners_course_lessons.course_id
+  INNER JOIN users AS coordinator
+    ON coordinator.username = beginners_courses.coordinator_username
+  WHERE beginners_course_lesson_coaches.coach_username = ?
+    AND beginners_courses.is_cancelled = 0
+    AND beginners_courses.approval_status = 'approved'
+  ORDER BY beginners_course_lessons.lesson_date ASC, beginners_course_lessons.start_time ASC
 `);
 
 const insertCoachingSession = db.prepare(`
@@ -2241,9 +3330,22 @@ function buildMemberUserProfile(user, disciplines = [], meta = {}) {
     meta: {
       activeMember: Boolean(user.active_member),
       membershipFeesDue: user.membership_fees_due ?? "",
+      coachingVolunteer: Boolean(user.coaching_volunteer),
       ...meta,
     },
   };
+}
+
+function isBeginnersCourseCoachEligible(user) {
+  if (!user) {
+    return false;
+  }
+
+  return (
+    getPermissionsForRole(user.user_type).includes(
+      PERMISSIONS.ADD_COACHING_SESSIONS,
+    ) || Boolean(user.coaching_volunteer)
+  );
 }
 
 function getDefaultLoanBowRecord() {
@@ -2257,6 +3359,8 @@ function getDefaultLoanBowRecord() {
     returnedRiser: false,
     returnedLimbs: false,
     returnedArrows: false,
+    quiver: false,
+    returnedQuiver: false,
     fingerTab: false,
     returnedFingerTab: false,
     string: false,
@@ -2294,6 +3398,8 @@ function buildLoanBowRecord(record) {
     returnedRiser: Boolean(record.returned_riser),
     returnedLimbs: Boolean(record.returned_limbs),
     returnedArrows: Boolean(record.returned_arrows),
+    quiver: Boolean(record.quiver),
+    returnedQuiver: Boolean(record.returned_quiver),
     fingerTab: Boolean(record.finger_tab),
     returnedFingerTab: Boolean(record.returned_finger_tab),
     string: Boolean(record.string_item),
@@ -2320,6 +3426,7 @@ function buildEditableMemberProfile(user, disciplines = [], loanBow = null) {
     rfidTag: user.rfid_tag ?? "",
     activeMember: Boolean(user.active_member),
     membershipFeesDue: user.membership_fees_due ?? "",
+    coachingVolunteer: Boolean(user.coaching_volunteer),
     userType: user.user_type,
     disciplines,
     loanBow: buildLoanBowRecord(loanBow),
@@ -2429,6 +3536,290 @@ function groupRowsBy(rows, keySelector, valueSelector = (value) => value) {
   }
 
   return groupedRows;
+}
+
+function addDaysToIsoDate(dateString, daysToAdd) {
+  const nextDate = new Date(`${dateString}T12:00:00Z`);
+  nextDate.setUTCDate(nextDate.getUTCDate() + daysToAdd);
+  return nextDate.toISOString().slice(0, 10);
+}
+
+function buildBeginnersLessonDates(firstLessonDate, lessonCount) {
+  return Array.from({ length: lessonCount }, (_value, index) => ({
+    lessonNumber: index + 1,
+    lessonDate: addDaysToIsoDate(firstLessonDate, index * 7),
+  }));
+}
+
+function sanitizeBeginnersCoursePayload(payload) {
+  const firstLessonDate =
+    typeof payload?.firstLessonDate === "string" ? payload.firstLessonDate.trim() : "";
+  const startTime =
+    typeof payload?.startTime === "string" ? payload.startTime.trim() : "";
+  const endTime =
+    typeof payload?.endTime === "string" ? payload.endTime.trim() : "";
+  const lessonCount = Number.parseInt(payload?.lessonCount, 10);
+  const beginnerCapacity = Number.parseInt(payload?.beginnerCapacity, 10);
+  const coordinatorUsername =
+    typeof payload?.coordinatorUsername === "string"
+      ? payload.coordinatorUsername.trim()
+      : "";
+
+  if (!coordinatorUsername || !findUserByUsername.get(coordinatorUsername)) {
+    return {
+      success: false,
+      status: 400,
+      message: "Choose a valid course coordinator.",
+    };
+  }
+
+  if (!firstLessonDate) {
+    return {
+      success: false,
+      status: 400,
+      message: "Choose the first lesson date.",
+    };
+  }
+
+  if (!startTime || !endTime || endTime <= startTime) {
+    return {
+      success: false,
+      status: 400,
+      message: "Choose a valid lesson start and end time.",
+    };
+  }
+
+  if (!Number.isInteger(lessonCount) || lessonCount < 1 || lessonCount > 24) {
+    return {
+      success: false,
+      status: 400,
+      message: "Number of lessons must be between 1 and 24.",
+    };
+  }
+
+  if (!Number.isInteger(beginnerCapacity) || beginnerCapacity < 1 || beginnerCapacity > 48) {
+    return {
+      success: false,
+      status: 400,
+      message: "Beginner places must be between 1 and 48.",
+    };
+  }
+
+  return {
+    success: true,
+    value: {
+      coordinatorUsername,
+      firstLessonDate,
+      startTime,
+      endTime,
+      lessonCount,
+      beginnerCapacity,
+    },
+  };
+}
+
+function normalizeOptionalDirection(value) {
+  if (value === "left" || value === "right") {
+    return value;
+  }
+
+  return null;
+}
+
+function sanitizeBeginnersParticipantPayload(payload) {
+  const firstName =
+    typeof payload?.firstName === "string" ? payload.firstName.trim() : "";
+  const surname =
+    typeof payload?.surname === "string" ? payload.surname.trim() : "";
+  const sizeCategory =
+    payload?.sizeCategory === "junior" ? "junior" : "senior";
+  const heightText =
+    typeof payload?.heightText === "string" ? payload.heightText.trim().slice(0, 80) : "";
+
+  if (!firstName || !surname) {
+    return {
+      success: false,
+      status: 400,
+      message: "First name and surname are required for each beginner.",
+    };
+  }
+
+  return {
+    success: true,
+    value: {
+      firstName,
+      surname,
+      sizeCategory,
+      heightText: heightText || null,
+      handedness: normalizeOptionalDirection(payload?.handedness),
+      eyeDominance: normalizeOptionalDirection(payload?.eyeDominance),
+      initialEmailSent: Boolean(payload?.initialEmailSent),
+      thirtyDayReminderSent: Boolean(payload?.thirtyDayReminderSent),
+      courseFeePaid: Boolean(payload?.courseFeePaid),
+    },
+  };
+}
+
+function buildBeginnersPassword() {
+  const letters = "abcdefghjkmnpqrstuvwxyz";
+  const digits = "0123456789";
+  let value = "";
+
+  for (let index = 0; index < 5; index += 1) {
+    value += letters[Math.floor(Math.random() * letters.length)];
+  }
+
+  for (let index = 0; index < 2; index += 1) {
+    value += digits[Math.floor(Math.random() * digits.length)];
+  }
+
+  return value;
+}
+
+function buildBeginnersUsername(firstName, surname) {
+  const base =
+    `${String(firstName ?? "").slice(0, 1)}${String(surname ?? "")}`
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 10) || "beginner";
+  let nextUsername = base;
+  let counter = 2;
+
+  while (findUserByUsername.get(nextUsername)) {
+    const suffix = String(counter);
+    nextUsername = `${base.slice(0, Math.max(1, 12 - suffix.length))}${suffix}`;
+    counter += 1;
+  }
+
+  return nextUsername;
+}
+
+function buildBeginnersCourseDashboard() {
+  const courses = listBeginnersCourses.all();
+  const lessonsByCourseId = groupRowsBy(
+    listBeginnersCourseLessons.all(),
+    (lesson) => lesson.course_id,
+  );
+  const participantsByCourseId = groupRowsBy(
+    listBeginnersCourseParticipants.all(),
+    (participant) => participant.course_id,
+  );
+  const coachesByLessonId = groupRowsBy(
+    listBeginnersLessonCoaches.all(),
+    (row) => row.lesson_id,
+    (row) => ({
+      username: row.coach_username,
+      fullName: `${row.first_name} ${row.surname}`.trim(),
+    }),
+  );
+
+  return courses.map((course) => {
+    const lessons = (lessonsByCourseId.get(course.id) ?? []).map((lesson) => ({
+      id: lesson.id,
+      lessonNumber: lesson.lesson_number,
+      date: lesson.lesson_date,
+      startTime: lesson.start_time,
+      endTime: lesson.end_time,
+      coaches: coachesByLessonId.get(lesson.id) ?? [],
+    }));
+    const beginners = (participantsByCourseId.get(course.id) ?? []).map((participant) => ({
+      id: participant.id,
+      username: participant.username,
+      password: participant.password,
+      firstName: participant.first_name,
+      surname: participant.surname,
+      fullName: `${participant.first_name} ${participant.surname}`.trim(),
+      sizeCategory: participant.beginner_size_category,
+      heightText: participant.height_text ?? "",
+      handedness: participant.handedness ?? "",
+      eyeDominance: participant.eye_dominance ?? "",
+      initialEmailSent: Boolean(participant.initial_email_sent),
+      thirtyDayReminderSent: Boolean(participant.thirty_day_reminder_sent),
+      courseFeePaid: Boolean(participant.course_fee_paid),
+      assignedCaseId: participant.assigned_case_id ?? null,
+      assignedCaseNumber: participant.assigned_case_number ?? "",
+    }));
+
+    return {
+      id: course.id,
+      coordinatorUsername: course.coordinator_username,
+      coordinatorName: getUserDisplayName(course, "coordinator_first_name", "coordinator_surname"),
+      submittedByUsername: course.submitted_by_username,
+      submittedByName: getUserDisplayName(course, "submitted_by_first_name", "submitted_by_surname"),
+      approvedByUsername: course.approved_by_username ?? "",
+      approvedByName: getUserDisplayName(course, "approved_by_first_name", "approved_by_surname"),
+      firstLessonDate: course.first_lesson_date,
+      startTime: course.start_time,
+      endTime: course.end_time,
+      lessonCount: course.lesson_count,
+      beginnerCapacity: course.beginner_capacity,
+      approvalStatus: course.approval_status,
+      isCancelled: Boolean(course.is_cancelled),
+      cancellationReason: course.cancellation_reason ?? "",
+      rejectionReason: course.rejection_reason ?? "",
+      createdAt: `${course.created_at_date} ${course.created_at_time}`.trim(),
+      approvedAt: course.approved_at_date
+        ? `${course.approved_at_date} ${course.approved_at_time}`.trim()
+        : "",
+      lessons,
+      beginners,
+      placesRemaining: Math.max(course.beginner_capacity - beginners.length, 0),
+    };
+  });
+}
+
+function buildBeginnersCourseCalendarLessons() {
+  const approvedCourses = listBeginnersCourses
+    .all()
+    .filter(
+      (course) =>
+        (course.approval_status ?? "pending") === "approved" &&
+        !course.is_cancelled,
+    );
+  const lessonsByCourseId = groupRowsBy(
+    listBeginnersCourseLessons.all(),
+    (lesson) => lesson.course_id,
+  );
+  const participantsByCourseId = groupRowsBy(
+    listBeginnersCourseParticipants.all(),
+    (participant) => participant.course_id,
+  );
+  const coachesByLessonId = groupRowsBy(
+    listBeginnersLessonCoaches.all(),
+    (row) => row.lesson_id,
+    (row) => `${row.first_name} ${row.surname}`.trim(),
+  );
+
+  return approvedCourses
+    .flatMap((course) => {
+      const beginnerCount = (participantsByCourseId.get(course.id) ?? []).length;
+
+      return (lessonsByCourseId.get(course.id) ?? []).map((lesson) => ({
+        id: `beginners-course-${course.id}-lesson-${lesson.id}`,
+        courseId: course.id,
+        lessonId: lesson.id,
+        title: "Beginners course",
+        date: lesson.lesson_date,
+        startTime: lesson.start_time,
+        endTime: lesson.end_time,
+        lessonNumber: lesson.lesson_number,
+        coordinatorName: getUserDisplayName(
+          course,
+          "coordinator_first_name",
+          "coordinator_surname",
+        ),
+        coachNames: coachesByLessonId.get(lesson.id) ?? [],
+        beginnerCount,
+        beginnerCapacity: course.beginner_capacity,
+        placesRemaining: Math.max(course.beginner_capacity - beginnerCount, 0),
+      }));
+    })
+    .sort((left, right) => {
+      const byDate = left.date.localeCompare(right.date);
+      return byDate !== 0
+        ? byDate
+        : left.startTime.localeCompare(right.startTime);
+    });
 }
 
 function buildEventBookingsMap() {
@@ -3390,6 +4781,365 @@ function sanitizeDisciplines(disciplines) {
   ];
 }
 
+function getUserDisplayName(userOrLoanRow, firstNameKey = "first_name", surnameKey = "surname") {
+  if (!userOrLoanRow) {
+    return "";
+  }
+
+  const firstName = userOrLoanRow[firstNameKey] ?? "";
+  const surname = userOrLoanRow[surnameKey] ?? "";
+
+  return `${firstName} ${surname}`.trim();
+}
+
+function normalizeEquipmentType(value) {
+  return EQUIPMENT_TYPE_OPTIONS.includes(value) ? value : "";
+}
+
+function normalizeEquipmentSizeCategory(value) {
+  return EQUIPMENT_SIZE_CATEGORIES.includes(value) ? value : "standard";
+}
+
+function sanitizeEquipmentNumber(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim().slice(0, 60);
+}
+
+function sanitizeCupboardLabel(value) {
+  if (typeof value !== "string") {
+    return DEFAULT_EQUIPMENT_CUPBOARD_LABEL;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || DEFAULT_EQUIPMENT_CUPBOARD_LABEL;
+}
+
+function buildEquipmentDisplayLabel(item) {
+  const typeLabel = EQUIPMENT_TYPE_LABELS[item.equipment_type] ?? item.equipment_type;
+  const sizePrefix = item.size_category === "junior" ? "Junior " : "";
+
+  if (item.equipment_type === EQUIPMENT_TYPES.ARROWS) {
+    return `${sizePrefix}${item.arrow_quantity} x ${item.arrow_length}" ${typeLabel}`;
+  }
+
+  if (item.item_number) {
+    return `${sizePrefix}${typeLabel} ${item.item_number}`.trim();
+  }
+
+  return `${sizePrefix}${typeLabel}`.trim();
+}
+
+function buildEquipmentIdentity(item) {
+  return {
+    id: item.id,
+    type: item.equipment_type,
+    typeLabel: EQUIPMENT_TYPE_LABELS[item.equipment_type] ?? item.equipment_type,
+    label: buildEquipmentDisplayLabel(item),
+    number: item.item_number ?? "",
+    sizeCategory: item.size_category,
+    arrowLength: item.arrow_length ?? null,
+    arrowQuantity: item.arrow_quantity ?? null,
+    status: item.status,
+  };
+}
+
+function buildEquipmentMaps() {
+  const items = listEquipmentItems.all();
+  const loans = listEquipmentLoans.all();
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  const contentsByCaseId = new Map();
+  const openLoanByItemId = new Map();
+
+  for (const loan of loans) {
+    if (!loan.returned_at_date) {
+      openLoanByItemId.set(loan.equipment_item_id, loan);
+    }
+  }
+
+  for (const item of items) {
+    if (!item.location_case_id) {
+      continue;
+    }
+
+    const currentContents = contentsByCaseId.get(item.location_case_id) ?? [];
+    currentContents.push(item);
+    contentsByCaseId.set(item.location_case_id, currentContents);
+  }
+
+  return {
+    items,
+    itemsById,
+    loans,
+    contentsByCaseId,
+    openLoanByItemId,
+  };
+}
+
+function getEquipmentCurrentLocation(item, maps) {
+  const openLoan = maps.openLoanByItemId.get(item.id) ?? null;
+
+  if (openLoan) {
+    return {
+      type: EQUIPMENT_LOCATION_TYPES.MEMBER,
+      label: getUserDisplayName(openLoan, "member_first_name", "member_surname"),
+      memberUsername: openLoan.member_username,
+      caseId: openLoan.loan_context_case_id ?? null,
+      caseNumber: openLoan.context_case_number ?? "",
+      viaCase: Boolean(
+        openLoan.loan_context_case_id &&
+        openLoan.loan_context_case_id !== item.id
+      ),
+      loanedAt: `${openLoan.loaned_at_date} ${openLoan.loaned_at_time}`.trim(),
+      signedOutBy: getUserDisplayName(openLoan, "loaned_by_first_name", "loaned_by_surname"),
+    };
+  }
+
+  if (item.location_type === EQUIPMENT_LOCATION_TYPES.CASE && item.location_case_id) {
+    const caseItem = maps.itemsById.get(item.location_case_id);
+    const caseLoan = caseItem ? maps.openLoanByItemId.get(caseItem.id) : null;
+
+    if (caseLoan) {
+      return {
+        type: EQUIPMENT_LOCATION_TYPES.MEMBER,
+        label: getUserDisplayName(caseLoan, "member_first_name", "member_surname"),
+        memberUsername: caseLoan.member_username,
+        caseId: caseItem?.id ?? null,
+        caseNumber: caseItem?.item_number ?? "",
+        viaCase: true,
+        loanedAt: `${caseLoan.loaned_at_date} ${caseLoan.loaned_at_time}`.trim(),
+        signedOutBy: getUserDisplayName(caseLoan, "loaned_by_first_name", "loaned_by_surname"),
+      };
+    }
+
+    return {
+      type: EQUIPMENT_LOCATION_TYPES.CASE,
+      label: caseItem?.item_number ? `Case ${caseItem.item_number}` : "Case",
+      memberUsername: null,
+      caseId: caseItem?.id ?? item.location_case_id,
+      caseNumber: caseItem?.item_number ?? "",
+      viaCase: false,
+      storageLabel: caseItem?.location_label ?? DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+    };
+  }
+
+  if (item.location_type === EQUIPMENT_LOCATION_TYPES.MEMBER) {
+    return {
+      type: EQUIPMENT_LOCATION_TYPES.MEMBER,
+      label: getUserDisplayName(item, "location_member_first_name", "location_member_surname"),
+      memberUsername: item.location_member_username,
+      caseId: null,
+      caseNumber: "",
+      viaCase: false,
+    };
+  }
+
+  return {
+    type: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+    label: item.location_label || DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+    memberUsername: null,
+    caseId: null,
+    caseNumber: "",
+    viaCase: false,
+  };
+}
+
+function buildEquipmentItemResponse(item, maps) {
+  const currentLocation = getEquipmentCurrentLocation(item, maps);
+  const openLoan = maps.openLoanByItemId.get(item.id) ?? null;
+
+  return {
+    ...buildEquipmentIdentity(item),
+    addedBy: getUserDisplayName(item, "added_by_first_name", "added_by_surname"),
+    addedAt: `${item.added_at_date} ${item.added_at_time}`.trim(),
+    decommissionedBy: getUserDisplayName(
+      item,
+      "decommissioned_by_first_name",
+      "decommissioned_by_surname",
+    ),
+    decommissionedAt: item.decommissioned_at_date
+      ? `${item.decommissioned_at_date} ${item.decommissioned_at_time}`.trim()
+      : "",
+    decommissionReason: item.decommission_reason ?? "",
+    lastAssignedBy: getUserDisplayName(item, "assigned_by_first_name", "assigned_by_surname"),
+    lastAssignedAt: item.last_assignment_at_date
+      ? `${item.last_assignment_at_date} ${item.last_assignment_at_time}`.trim()
+      : "",
+    lastStorageUpdatedBy: getUserDisplayName(
+      item,
+      "storage_by_first_name",
+      "storage_by_surname",
+    ),
+    lastStorageUpdatedAt: item.last_storage_updated_at_date
+      ? `${item.last_storage_updated_at_date} ${item.last_storage_updated_at_time}`.trim()
+      : "",
+    currentLocation,
+    currentLoan: openLoan
+      ? {
+          memberUsername: openLoan.member_username,
+          memberName: getUserDisplayName(openLoan, "member_first_name", "member_surname"),
+          loanedBy: getUserDisplayName(openLoan, "loaned_by_first_name", "loaned_by_surname"),
+          loanedAt: `${openLoan.loaned_at_date} ${openLoan.loaned_at_time}`.trim(),
+          contextCaseId: openLoan.loan_context_case_id ?? null,
+          contextCaseNumber: openLoan.context_case_number ?? "",
+        }
+      : null,
+  };
+}
+
+function buildEquipmentCaseResponse(caseItem, maps) {
+  const contents = (maps.contentsByCaseId.get(caseItem.id) ?? []).map((item) =>
+    buildEquipmentItemResponse(item, maps),
+  );
+
+  return {
+    ...buildEquipmentItemResponse(caseItem, maps),
+    contents,
+  };
+}
+
+function getCaseCapacityUsage(caseId) {
+  const contents = listEquipmentItemsByCaseId.all(caseId);
+  const usage = {
+    [EQUIPMENT_TYPES.RISER]: 0,
+    [EQUIPMENT_TYPES.LIMB]: 0,
+    [EQUIPMENT_TYPES.SIGHT]: 0,
+    [EQUIPMENT_TYPES.LONG_ROD]: 0,
+    [EQUIPMENT_TYPES.ARM_GUARD]: 0,
+    [EQUIPMENT_TYPES.CHEST_GUARD]: 0,
+    [EQUIPMENT_TYPES.FINGER_TAB]: 0,
+    [EQUIPMENT_TYPES.ARROWS]: 0,
+  };
+
+  for (const item of contents) {
+    if (item.equipment_type === EQUIPMENT_TYPES.ARROWS) {
+      usage[EQUIPMENT_TYPES.ARROWS] += item.arrow_quantity ?? 0;
+      continue;
+    }
+
+    if (Object.hasOwn(usage, item.equipment_type)) {
+      usage[item.equipment_type] += 1;
+    }
+  }
+
+  return usage;
+}
+
+function validateCaseAssignment(caseItem, itemToAssign) {
+  if (!caseItem || caseItem.equipment_type !== EQUIPMENT_TYPES.CASE) {
+    return "Choose a valid case.";
+  }
+
+  if (caseItem.status !== "active") {
+    return "You can only assign equipment into an active case.";
+  }
+
+  if (itemToAssign.equipment_type === EQUIPMENT_TYPES.CASE) {
+    return "Cases cannot be stored inside another case.";
+  }
+
+  const isAlreadyInTargetCase =
+    itemToAssign.location_type === EQUIPMENT_LOCATION_TYPES.CASE &&
+    itemToAssign.location_case_id === caseItem.id;
+
+  if (
+    itemToAssign.location_type === EQUIPMENT_LOCATION_TYPES.CASE &&
+    itemToAssign.location_case_id &&
+    !isAlreadyInTargetCase
+  ) {
+    return "Remove the equipment from its current case before assigning it to a different case.";
+  }
+
+  const usage = getCaseCapacityUsage(caseItem.id);
+  const nextUsage =
+    isAlreadyInTargetCase
+      ? usage[itemToAssign.equipment_type]
+      : itemToAssign.equipment_type === EQUIPMENT_TYPES.ARROWS
+      ? usage[EQUIPMENT_TYPES.ARROWS] + (itemToAssign.arrow_quantity ?? 0)
+      : usage[itemToAssign.equipment_type] + 1;
+  const limit = EQUIPMENT_CASE_CAPACITY[itemToAssign.equipment_type];
+
+  if (limit && nextUsage > limit) {
+    return `Case ${caseItem.item_number} does not have capacity for that item.`;
+  }
+
+  return "";
+}
+
+function sanitizeEquipmentCreatePayload(payload) {
+  const equipmentType = normalizeEquipmentType(payload?.equipmentType);
+  const sizeCategory = normalizeEquipmentSizeCategory(payload?.sizeCategory);
+  const itemNumber = sanitizeEquipmentNumber(payload?.itemNumber);
+  const arrowLength = Number.parseInt(payload?.arrowLength, 10);
+  const arrowQuantity = Number.parseInt(payload?.arrowQuantity, 10);
+
+  if (!equipmentType) {
+    return {
+      success: false,
+      status: 400,
+      message: "Choose a valid equipment type.",
+    };
+  }
+
+  if (
+    EQUIPMENT_NUMBER_REQUIRED_TYPES.has(equipmentType) &&
+    !itemNumber
+  ) {
+    return {
+      success: false,
+      status: 400,
+      message: "An equipment number is required for that item type.",
+    };
+  }
+
+  if (equipmentType === EQUIPMENT_TYPES.ARROWS) {
+    if (!Number.isInteger(arrowLength) || arrowLength < 20) {
+      return {
+        success: false,
+        status: 400,
+        message: 'Arrow length must be 20" or longer.',
+      };
+    }
+
+    if (!Number.isInteger(arrowQuantity) || arrowQuantity < 1 || arrowQuantity > 12) {
+      return {
+        success: false,
+        status: 400,
+        message: "Arrow quantity must be between 1 and 12.",
+      };
+    }
+  }
+
+  const duplicateItem = itemNumber
+    ? findActiveEquipmentByIdentity.get(
+        equipmentType,
+        sizeCategory,
+        itemNumber,
+      )
+    : null;
+
+  if (duplicateItem) {
+    return {
+      success: false,
+      status: 409,
+      message: "An active equipment item with that number already exists.",
+    };
+  }
+
+  return {
+    success: true,
+    value: {
+      equipmentType,
+      itemNumber: itemNumber || null,
+      sizeCategory,
+      arrowLength: equipmentType === EQUIPMENT_TYPES.ARROWS ? arrowLength : null,
+      arrowQuantity: equipmentType === EQUIPMENT_TYPES.ARROWS ? arrowQuantity : 1,
+    },
+  };
+}
+
 function sanitizeLoanBow(loanBow) {
   const defaults = getDefaultLoanBowRecord();
 
@@ -3428,6 +5178,8 @@ function sanitizeLoanBow(loanBow) {
     returnedRiser: Boolean(loanBow.returnedRiser),
     returnedLimbs: Boolean(loanBow.returnedLimbs),
     returnedArrows: Boolean(loanBow.returnedArrows),
+    quiver: Boolean(loanBow.quiver),
+    returnedQuiver: Boolean(loanBow.returnedQuiver),
     fingerTab: Boolean(loanBow.fingerTab),
     returnedFingerTab: Boolean(loanBow.returnedFingerTab),
     string: Boolean(loanBow.string),
@@ -3468,6 +5220,7 @@ function sanitizeLoanBowReturn(existingLoanBow, loanBowReturn) {
     returnedRiser: Boolean(loanBowReturn?.returnedRiser),
     returnedLimbs: Boolean(loanBowReturn?.returnedLimbs),
     returnedArrows: Boolean(loanBowReturn?.returnedArrows),
+    returnedQuiver: Boolean(loanBowReturn?.returnedQuiver),
     returnedFingerTab: Boolean(loanBowReturn?.returnedFingerTab),
     returnedString: Boolean(loanBowReturn?.returnedString),
     returnedArmGuard: Boolean(loanBowReturn?.returnedArmGuard),
@@ -3481,6 +5234,7 @@ function sanitizeLoanBowReturn(existingLoanBow, loanBowReturn) {
     returnedLoanBow.returnedRiser,
     returnedLoanBow.returnedLimbs,
     returnedLoanBow.returnedArrows,
+    returnedLoanBow.returnedQuiver,
     returnedLoanBow.returnedFingerTab,
     returnedLoanBow.returnedString,
     returnedLoanBow.returnedArmGuard,
@@ -3516,6 +5270,8 @@ function saveLoanBowRecord(username, loanBow) {
     returnedRiser: loanBow.returnedRiser ? 1 : 0,
     returnedLimbs: loanBow.returnedLimbs ? 1 : 0,
     returnedArrows: loanBow.returnedArrows ? 1 : 0,
+    quiver: loanBow.quiver ? 1 : 0,
+    returnedQuiver: loanBow.returnedQuiver ? 1 : 0,
     fingerTab: loanBow.fingerTab ? 1 : 0,
     returnedFingerTab: loanBow.returnedFingerTab ? 1 : 0,
     stringItem: loanBow.string ? 1 : 0,
@@ -3541,6 +5297,7 @@ function saveMemberProfile({
   rfidTag,
   activeMember,
   membershipFeesDue,
+  coachingVolunteer,
   userType,
   disciplines,
   loanBow,
@@ -3553,6 +5310,7 @@ function saveMemberProfile({
   const trimmedRfidTag = rfidTag?.trim();
   const normalizedActiveMember = Boolean(activeMember);
   const normalizedMembershipFeesDue = membershipFeesDue?.trim() || null;
+  const normalizedCoachingVolunteer = Boolean(coachingVolunteer);
   const normalizedDisciplines = sanitizeDisciplines(disciplines);
   const normalizedLoanBow = sanitizeLoanBow(loanBow);
 
@@ -3586,6 +5344,7 @@ function saveMemberProfile({
     rfid_tag: trimmedRfidTag || null,
     active_member: normalizedActiveMember ? 1 : 0,
     membership_fees_due: normalizedMembershipFeesDue,
+    coaching_volunteer: normalizedCoachingVolunteer ? 1 : 0,
   });
 
   const userPayload = {
@@ -3596,6 +5355,7 @@ function saveMemberProfile({
     rfidTag: provisionalUser.rfid_tag,
     activeMember: provisionalUser.active_member,
     membershipFeesDue: provisionalUser.membership_fees_due,
+    coachingVolunteer: provisionalUser.coaching_volunteer,
   };
 
   try {
@@ -4619,6 +6379,7 @@ app.post("/api/user-profiles", (req, res) => {
     rfidTag,
     activeMember,
     membershipFeesDue,
+    coachingVolunteer,
     userType,
     disciplines,
     loanBow,
@@ -4640,6 +6401,7 @@ app.post("/api/user-profiles", (req, res) => {
     rfidTag,
     activeMember,
     membershipFeesDue,
+    coachingVolunteer,
     userType,
     disciplines,
     loanBow,
@@ -4704,6 +6466,7 @@ app.put("/api/user-profiles/:username", (req, res) => {
     rfidTag,
     activeMember,
     membershipFeesDue,
+    coachingVolunteer,
     userType,
     disciplines,
     loanBow,
@@ -4719,6 +6482,9 @@ app.put("/api/user-profiles/:username", (req, res) => {
     membershipFeesDue: canManageMembers
       ? membershipFeesDue
       : existingUser.membership_fees_due,
+    coachingVolunteer: canManageMembers
+      ? coachingVolunteer
+      : existingUser.coaching_volunteer,
     userType: canManageMembers ? userType : existingUser.user_type,
     disciplines,
     loanBow: canManageMembers
@@ -4975,6 +6741,1397 @@ app.post("/api/loan-bow-profiles/:username/return", (req, res) => {
       userType: user.user_type,
     },
     loanBow: buildLoanBowRecord(findLoanBowByUsername.get(user.username)),
+  });
+});
+
+app.get("/api/equipment/dashboard", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  const permissions = {
+    canAddDecommissionEquipment: actorHasPermission(
+      actor,
+      PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT,
+    ),
+    canAssignEquipment: actorHasPermission(actor, PERMISSIONS.ASSIGN_EQUIPMENT),
+    canReturnEquipment: actorHasPermission(actor, PERMISSIONS.RETURN_EQUIPMENT),
+    canUpdateEquipmentStorage: actorHasPermission(
+      actor,
+      PERMISSIONS.UPDATE_EQUIPMENT_STORAGE,
+    ),
+  };
+
+  if (!Object.values(permissions).some(Boolean)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to manage equipment.",
+    });
+    return;
+  }
+
+  const maps = buildEquipmentMaps();
+  const cases = maps.items
+    .filter((item) => item.equipment_type === EQUIPMENT_TYPES.CASE)
+    .map((item) => buildEquipmentCaseResponse(item, maps));
+  const items = maps.items.map((item) => buildEquipmentItemResponse(item, maps));
+
+  res.json({
+    success: true,
+    permissions,
+    members: listAllUsers.all().map((user) => ({
+      username: user.username,
+      fullName: `${user.first_name} ${user.surname}`,
+      userType: user.user_type,
+    })),
+    equipmentTypeOptions: EQUIPMENT_TYPE_OPTIONS.map((value) => ({
+      value,
+      label: EQUIPMENT_TYPE_LABELS[value],
+    })),
+    sizeCategoryOptions: EQUIPMENT_SIZE_CATEGORIES.map((value) => ({
+      value,
+      label: value === "junior" ? "Junior" : "Standard",
+    })),
+    cupboardOptions: [DEFAULT_EQUIPMENT_CUPBOARD_LABEL],
+    items,
+    cases,
+  });
+});
+
+app.post("/api/equipment/items", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to add equipment.",
+    });
+    return;
+  }
+
+  const sanitized = sanitizeEquipmentCreatePayload(req.body);
+
+  if (!sanitized.success) {
+    res.status(sanitized.status).json(sanitized);
+    return;
+  }
+
+  const [date, time] = getUtcTimestampParts();
+  const payload = sanitized.value;
+
+  try {
+    const result = insertEquipmentItem.run({
+      equipmentType: payload.equipmentType,
+      itemNumber: payload.itemNumber,
+      sizeCategory: payload.sizeCategory,
+      arrowLength: payload.arrowLength,
+      arrowQuantity: payload.arrowQuantity,
+      locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+      locationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+      locationCaseId: null,
+      locationMemberUsername: null,
+      addedByUsername: actor.username,
+      addedAtDate: date,
+      addedAtTime: time,
+      storageByUsername: actor.username,
+      storageAtDate: date,
+      storageAtTime: time,
+    });
+    const maps = buildEquipmentMaps();
+    const createdItem = findEquipmentItemByIdWithRelations.get(result.lastInsertRowid);
+
+    res.status(201).json({
+      success: true,
+      item: buildEquipmentItemResponse(createdItem, maps),
+    });
+  } catch (error) {
+    if (error?.message?.includes("UNIQUE constraint failed")) {
+      res.status(409).json({
+        success: false,
+        message: "An active equipment item with that number already exists.",
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Unable to add equipment.",
+    });
+  }
+});
+
+app.post("/api/equipment/items/:id/decommission", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to decommission equipment.",
+    });
+    return;
+  }
+
+  const item = findEquipmentItemById.get(req.params.id);
+
+  if (!item) {
+    res.status(404).json({
+      success: false,
+      message: "Equipment item not found.",
+    });
+    return;
+  }
+
+  if (item.status !== "active") {
+    res.status(400).json({
+      success: false,
+      message: "This equipment item is already decommissioned.",
+    });
+    return;
+  }
+
+  if (findOpenEquipmentLoanByItemId.get(item.id)) {
+    res.status(400).json({
+      success: false,
+      message: "Equipment cannot be decommissioned while it is on loan.",
+    });
+    return;
+  }
+
+  if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
+    const activeContents = listEquipmentItemsByCaseId.all(item.id);
+
+    if (activeContents.length > 0) {
+      res.status(400).json({
+        success: false,
+        message: "Empty the case before decommissioning it.",
+      });
+      return;
+    }
+  }
+
+  const reason =
+    typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 280) : "";
+
+  if (!reason) {
+    res.status(400).json({
+      success: false,
+      message: "Please record why the equipment was decommissioned.",
+    });
+    return;
+  }
+
+  const [date, time] = getUtcTimestampParts();
+  updateEquipmentItemForDecommission.run({
+    id: item.id,
+    locationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+    decommissionedByUsername: actor.username,
+    decommissionedAtDate: date,
+    decommissionedAtTime: time,
+    decommissionReason: reason,
+  });
+
+  const maps = buildEquipmentMaps();
+  res.json({
+    success: true,
+    item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
+  });
+});
+
+app.post("/api/equipment/assignments", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.ASSIGN_EQUIPMENT)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to assign equipment.",
+    });
+    return;
+  }
+
+  const item = findEquipmentItemById.get(req.body?.itemId);
+
+  if (!item) {
+    res.status(404).json({
+      success: false,
+      message: "Equipment item not found.",
+    });
+    return;
+  }
+
+  if (item.status !== "active") {
+    res.status(400).json({
+      success: false,
+      message: "Only active equipment can be assigned.",
+    });
+    return;
+  }
+
+  const targetType = req.body?.targetType;
+  const [date, time] = getUtcTimestampParts();
+
+  if (targetType === "case") {
+    const caseItem = findEquipmentItemById.get(req.body?.caseId);
+    const validationMessage = validateCaseAssignment(caseItem, item);
+
+    if (validationMessage) {
+      res.status(400).json({
+        success: false,
+        message: validationMessage,
+      });
+      return;
+    }
+
+    if (findOpenEquipmentLoanByItemId.get(item.id)) {
+      res.status(400).json({
+        success: false,
+        message: "Return the equipment before assigning it into a case.",
+      });
+      return;
+    }
+
+    updateEquipmentItemStorage.run({
+      id: item.id,
+      locationType: EQUIPMENT_LOCATION_TYPES.CASE,
+      locationLabel: null,
+      locationCaseId: caseItem.id,
+      locationMemberUsername: null,
+      storageByUsername: actor.username,
+      storageAtDate: date,
+      storageAtTime: time,
+    });
+    updateEquipmentAssignmentMetadata.run({
+      id: item.id,
+      assignedByUsername: actor.username,
+      assignedAtDate: date,
+      assignedAtTime: time,
+    });
+  } else if (targetType === "member") {
+    const memberUsername =
+      typeof req.body?.memberUsername === "string" ? req.body.memberUsername.trim() : "";
+    const member = findUserByUsername.get(memberUsername);
+
+    if (!member) {
+      res.status(404).json({
+        success: false,
+        message: "Choose a valid member.",
+      });
+      return;
+    }
+
+    if (actor.username === member.username) {
+      res.status(400).json({
+        success: false,
+        message: "The staff member signing equipment out cannot also be the borrowing member.",
+      });
+      return;
+    }
+
+    if (findOpenEquipmentLoanByItemId.get(item.id)) {
+      res.status(400).json({
+        success: false,
+        message: "That equipment is already on loan.",
+      });
+      return;
+    }
+
+    const assignTransaction = db.transaction(() => {
+      if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
+        const contents = listEquipmentItemsByCaseId.all(item.id);
+
+        insertEquipmentLoan.run(item.id, member.username, actor.username, date, time, null);
+        updateEquipmentItemStorage.run({
+          id: item.id,
+          locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
+          locationLabel: null,
+          locationCaseId: null,
+          locationMemberUsername: member.username,
+          storageByUsername: actor.username,
+          storageAtDate: date,
+          storageAtTime: time,
+        });
+        updateEquipmentAssignmentMetadata.run({
+          id: item.id,
+          assignedByUsername: actor.username,
+          assignedAtDate: date,
+          assignedAtTime: time,
+        });
+
+        for (const content of contents) {
+          if (findOpenEquipmentLoanByItemId.get(content.id)) {
+            throw new Error(`Case contents must all be returned before the case can be loaned out.`);
+          }
+
+          insertEquipmentLoan.run(
+            content.id,
+            member.username,
+            actor.username,
+            date,
+            time,
+            item.id,
+          );
+          updateEquipmentAssignmentMetadata.run({
+            id: content.id,
+            assignedByUsername: actor.username,
+            assignedAtDate: date,
+            assignedAtTime: time,
+          });
+        }
+      } else {
+        insertEquipmentLoan.run(item.id, member.username, actor.username, date, time, null);
+        updateEquipmentItemStorage.run({
+          id: item.id,
+          locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
+          locationLabel: null,
+          locationCaseId: null,
+          locationMemberUsername: member.username,
+          storageByUsername: actor.username,
+          storageAtDate: date,
+          storageAtTime: time,
+        });
+        updateEquipmentAssignmentMetadata.run({
+          id: item.id,
+          assignedByUsername: actor.username,
+          assignedAtDate: date,
+          assignedAtTime: time,
+        });
+      }
+    });
+
+    try {
+      assignTransaction();
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error instanceof Error ? error.message : "Unable to assign equipment to the member.",
+      });
+      return;
+    }
+  } else {
+    res.status(400).json({
+      success: false,
+      message: "Choose whether the equipment is being assigned to a case or a member.",
+    });
+    return;
+  }
+
+  const maps = buildEquipmentMaps();
+  res.json({
+    success: true,
+    item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
+  });
+});
+
+app.post("/api/equipment/returns", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.RETURN_EQUIPMENT)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to return equipment.",
+    });
+    return;
+  }
+
+  const item = findEquipmentItemById.get(req.body?.itemId);
+
+  if (!item) {
+    res.status(404).json({
+      success: false,
+      message: "Equipment item not found.",
+    });
+    return;
+  }
+
+  const openLoan = findOpenEquipmentLoanByItemId.get(item.id);
+
+  if (!openLoan) {
+    res.status(400).json({
+      success: false,
+      message: "That equipment is not currently on loan.",
+    });
+    return;
+  }
+
+  if (actor.username === openLoan.member_username) {
+    res.status(400).json({
+      success: false,
+      message: "The staff member signing equipment in cannot be the borrowing member.",
+    });
+    return;
+  }
+
+  const returnToCaseId =
+    req.body?.returnToCaseId === "" || req.body?.returnToCaseId == null
+      ? null
+      : Number.parseInt(req.body.returnToCaseId, 10);
+  const returnCase = returnToCaseId ? findEquipmentItemById.get(returnToCaseId) : null;
+  const returnToCupboard = sanitizeCupboardLabel(req.body?.cupboardLabel);
+  const [date, time] = getUtcTimestampParts();
+
+  if (returnCase) {
+    const validationMessage = validateCaseAssignment(returnCase, item);
+
+    if (validationMessage) {
+      res.status(400).json({
+        success: false,
+        message: validationMessage,
+      });
+      return;
+    }
+  }
+
+  const returnTransaction = db.transaction(() => {
+    if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
+      const relatedOpenLoans = listOpenEquipmentLoansByCaseId.all(item.id);
+      closeEquipmentLoan.run(
+        actor.username,
+        date,
+        time,
+        EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        returnToCupboard,
+        null,
+        openLoan.id,
+      );
+      updateEquipmentItemStorage.run({
+        id: item.id,
+        locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        locationLabel: returnToCupboard,
+        locationCaseId: null,
+        locationMemberUsername: null,
+        storageByUsername: actor.username,
+        storageAtDate: date,
+        storageAtTime: time,
+      });
+
+      for (const loan of relatedOpenLoans) {
+        closeEquipmentLoan.run(
+          actor.username,
+          date,
+          time,
+          EQUIPMENT_LOCATION_TYPES.CASE,
+          null,
+          item.id,
+          loan.id,
+        );
+      }
+    } else {
+      closeEquipmentLoan.run(
+        actor.username,
+        date,
+        time,
+        returnCase ? EQUIPMENT_LOCATION_TYPES.CASE : EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        returnCase ? null : returnToCupboard,
+        returnCase?.id ?? null,
+        openLoan.id,
+      );
+      updateEquipmentItemStorage.run({
+        id: item.id,
+        locationType: returnCase ? EQUIPMENT_LOCATION_TYPES.CASE : EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        locationLabel: returnCase ? null : returnToCupboard,
+        locationCaseId: returnCase?.id ?? null,
+        locationMemberUsername: null,
+        storageByUsername: actor.username,
+        storageAtDate: date,
+        storageAtTime: time,
+      });
+    }
+  });
+
+  returnTransaction();
+
+  const maps = buildEquipmentMaps();
+  res.json({
+    success: true,
+    item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
+  });
+});
+
+app.post("/api/equipment/storage", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.UPDATE_EQUIPMENT_STORAGE)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to update equipment storage.",
+    });
+    return;
+  }
+
+  const item = findEquipmentItemById.get(req.body?.itemId);
+
+  if (!item) {
+    res.status(404).json({
+      success: false,
+      message: "Equipment item not found.",
+    });
+    return;
+  }
+
+  if (findOpenEquipmentLoanByItemId.get(item.id)) {
+    res.status(400).json({
+      success: false,
+      message: "Return the equipment before updating its storage location.",
+    });
+    return;
+  }
+
+  const targetCupboard = sanitizeCupboardLabel(req.body?.cupboardLabel);
+  const [date, time] = getUtcTimestampParts();
+
+  updateEquipmentItemStorage.run({
+    id: item.id,
+    locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+    locationLabel: targetCupboard,
+    locationCaseId: null,
+    locationMemberUsername: null,
+    storageByUsername: actor.username,
+    storageAtDate: date,
+    storageAtTime: time,
+  });
+
+  const maps = buildEquipmentMaps();
+  res.json({
+    success: true,
+    item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
+  });
+});
+
+app.get("/api/member-equipment-loans/:username", (req, res) => {
+  const actor = getActorUser(req);
+  const requestedUsername = req.params.username;
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  const requestedUser = findUserByUsername.get(requestedUsername);
+
+  if (!requestedUser) {
+    res.status(404).json({
+      success: false,
+      message: "Member profile not found.",
+    });
+    return;
+  }
+
+  const canManageMembers = actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS);
+  const isSelf = actor.username === requestedUser.username;
+
+  if (!isSelf && !canManageMembers) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to view this member's equipment loans.",
+    });
+    return;
+  }
+
+  const loans = listOpenEquipmentLoansByMemberUsername
+    .all(requestedUser.username)
+    .map((loan) => ({
+      id: loan.id,
+      type: loan.equipment_type,
+      typeLabel: EQUIPMENT_TYPE_LABELS[loan.equipment_type] ?? loan.equipment_type,
+      reference:
+        loan.equipment_type === EQUIPMENT_TYPES.ARROWS
+          ? `${loan.arrow_quantity} x ${loan.arrow_length}"`
+          : loan.item_number ?? "",
+      loanDate: `${loan.loaned_at_date} ${loan.loaned_at_time}`.trim(),
+    }));
+
+  res.json({
+    success: true,
+    loans,
+  });
+});
+
+app.get("/api/beginners-courses/dashboard", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (
+    !actor ||
+    (!actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES) &&
+      !actorHasPermission(actor, PERMISSIONS.APPROVE_BEGINNERS_COURSES))
+  ) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to view beginners courses.",
+    });
+    return;
+  }
+
+  const maps = buildEquipmentMaps();
+  const cases = maps.items
+    .filter((item) => item.equipment_type === EQUIPMENT_TYPES.CASE)
+    .map((item) => buildEquipmentCaseResponse(item, maps));
+  const users = listAllUsers
+    .all()
+    .filter((user) => user.user_type !== "beginner")
+    .map((user) => ({
+      username: user.username,
+      fullName: `${user.first_name} ${user.surname}`.trim(),
+      userType: user.user_type,
+      coachingVolunteer: Boolean(user.coaching_volunteer),
+    }));
+
+  res.json({
+    success: true,
+    permissions: {
+      canManageBeginnersCourses: actorHasPermission(
+        actor,
+        PERMISSIONS.MANAGE_BEGINNERS_COURSES,
+      ),
+      canApproveBeginnersCourses: actorHasPermission(
+        actor,
+        PERMISSIONS.APPROVE_BEGINNERS_COURSES,
+      ),
+    },
+    courses: buildBeginnersCourseDashboard(),
+    coordinators: users,
+    coaches: users.filter((user) =>
+      isBeginnersCourseCoachEligible({
+        user_type: user.userType,
+        coaching_volunteer: user.coachingVolunteer,
+      }),
+    ),
+    availableCases: cases.map((caseItem) => ({
+      id: caseItem.id,
+      reference: caseItem.number || caseItem.label || "",
+      locationLabel: caseItem.currentLocation?.label ?? "",
+      memberUsername: caseItem.currentLocation?.memberUsername ?? "",
+    })),
+  });
+});
+
+app.get("/api/beginners-courses/calendar", (_req, res) => {
+  res.json({
+    success: true,
+    lessons: buildBeginnersCourseCalendarLessons(),
+  });
+});
+
+app.post("/api/beginners-courses", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to submit beginners courses.",
+    });
+    return;
+  }
+
+  const sanitized = sanitizeBeginnersCoursePayload(req.body);
+
+  if (!sanitized.success) {
+    res.status(sanitized.status).json(sanitized);
+    return;
+  }
+
+  const [date, time] = getUtcTimestampParts();
+  const createCourseTransaction = db.transaction(() => {
+    const result = insertBeginnersCourse.run(
+      sanitized.value.coordinatorUsername,
+      actor.username,
+      sanitized.value.firstLessonDate,
+      sanitized.value.startTime,
+      sanitized.value.endTime,
+      sanitized.value.lessonCount,
+      sanitized.value.beginnerCapacity,
+      "pending",
+      null,
+      null,
+      null,
+      null,
+      date,
+      time,
+    );
+
+    for (const lesson of buildBeginnersLessonDates(
+      sanitized.value.firstLessonDate,
+      sanitized.value.lessonCount,
+    )) {
+      insertBeginnersCourseLesson.run(
+        result.lastInsertRowid,
+        lesson.lessonNumber,
+        lesson.lessonDate,
+        sanitized.value.startTime,
+        sanitized.value.endTime,
+      );
+    }
+
+    return result.lastInsertRowid;
+  });
+
+  const courseId = createCourseTransaction();
+
+  res.status(201).json({
+    success: true,
+    course: buildBeginnersCourseDashboard().find((course) => course.id === courseId) ?? null,
+  });
+});
+
+app.post("/api/beginners-courses/:id/approve", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.APPROVE_BEGINNERS_COURSES)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to approve beginners courses.",
+    });
+    return;
+  }
+
+  const course = findBeginnersCourseById.get(req.params.id);
+
+  if (!course) {
+    res.status(404).json({
+      success: false,
+      message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  if (course.is_cancelled) {
+    res.status(400).json({
+      success: false,
+      message: "Cancelled beginners courses cannot be approved.",
+    });
+    return;
+  }
+
+  const [date, time] = getUtcTimestampParts();
+  updateBeginnersCourseApproval.run("approved", null, actor.username, date, time, course.id);
+
+  res.json({
+    success: true,
+    course: buildBeginnersCourseDashboard().find((entry) => entry.id === course.id) ?? null,
+  });
+});
+
+app.post("/api/beginners-courses/:id/reject", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.APPROVE_BEGINNERS_COURSES)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to reject beginners courses.",
+    });
+    return;
+  }
+
+  const course = findBeginnersCourseById.get(req.params.id);
+
+  if (!course) {
+    res.status(404).json({
+      success: false,
+      message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  if (course.is_cancelled) {
+    res.status(400).json({
+      success: false,
+      message: "Cancelled beginners courses cannot be rejected.",
+    });
+    return;
+  }
+
+  const rejectionReason =
+    typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 280) : "";
+
+  if (!rejectionReason) {
+    res.status(400).json({
+      success: false,
+      message: "Please add a short rejection reason.",
+    });
+    return;
+  }
+
+  const [date, time] = getUtcTimestampParts();
+  updateBeginnersCourseApproval.run(
+    "rejected",
+    rejectionReason,
+    actor.username,
+    date,
+    time,
+    course.id,
+  );
+
+  res.json({
+    success: true,
+    course: buildBeginnersCourseDashboard().find((entry) => entry.id === course.id) ?? null,
+  });
+});
+
+app.delete("/api/beginners-courses/:id", (req, res) => {
+  const actor = getActorUser(req);
+  const course = findBeginnersCourseById.get(req.params.id);
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  if (!course) {
+    res.status(404).json({
+      success: false,
+      message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  const canCancelCourse =
+    actorHasPermission(actor, PERMISSIONS.APPROVE_BEGINNERS_COURSES) ||
+    actor.username === course.coordinator_username;
+
+  if (!canCancelCourse) {
+    res.status(403).json({
+      success: false,
+      message: "Only the course coordinator or an admin can cancel this course.",
+    });
+    return;
+  }
+
+  if (course.is_cancelled) {
+    res.status(400).json({
+      success: false,
+      message: "This beginners course is already cancelled.",
+    });
+    return;
+  }
+
+  const cancellationReason =
+    typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 280) : "";
+
+  if (!cancellationReason) {
+    res.status(400).json({
+      success: false,
+      message: "Please add a reason for cancelling this course.",
+    });
+    return;
+  }
+
+  const [date, time] = getUtcTimestampParts();
+  cancelBeginnersCourse.run(
+    cancellationReason,
+    actor.username,
+    date,
+    time,
+    course.id,
+  );
+
+  res.json({
+    success: true,
+  });
+});
+
+app.post("/api/beginners-courses/:id/beginners", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to add beginners to a course.",
+    });
+    return;
+  }
+
+  const course = findBeginnersCourseById.get(req.params.id);
+
+  if (!course) {
+    res.status(404).json({
+      success: false,
+      message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  if (course.is_cancelled) {
+    res.status(400).json({
+      success: false,
+      message: "Cancelled beginners courses cannot accept new beginners.",
+    });
+    return;
+  }
+
+  if (course.approval_status !== "approved") {
+    res.status(400).json({
+      success: false,
+      message: "Approve the course before booking beginners onto it.",
+    });
+    return;
+  }
+
+  if (listBeginnersCourseParticipantsByCourseId.all(course.id).length >= course.beginner_capacity) {
+    res.status(400).json({
+      success: false,
+      message: "This beginners course is already full.",
+    });
+    return;
+  }
+
+  const sanitized = sanitizeBeginnersParticipantPayload(req.body);
+
+  if (!sanitized.success) {
+    res.status(sanitized.status).json(sanitized);
+    return;
+  }
+
+  const password = buildBeginnersPassword();
+  const username = buildBeginnersUsername(
+    sanitized.value.firstName,
+    sanitized.value.surname,
+  );
+  const [date, time] = getUtcTimestampParts();
+  const userResult = saveMemberProfile({
+    username,
+    firstName: sanitized.value.firstName,
+    surname: sanitized.value.surname,
+    password,
+    rfidTag: "",
+    activeMember: true,
+    membershipFeesDue: "",
+    userType: "beginner",
+    disciplines: [],
+    loanBow: getDefaultLoanBowRecord(),
+    existingUser: null,
+  });
+
+  if (!userResult.success) {
+    res.status(userResult.status).json(userResult);
+    return;
+  }
+
+  insertBeginnersCourseParticipant.run(
+    course.id,
+    username,
+    sanitized.value.firstName,
+    sanitized.value.surname,
+    sanitized.value.sizeCategory,
+    sanitized.value.heightText,
+    sanitized.value.handedness,
+    sanitized.value.eyeDominance,
+    sanitized.value.initialEmailSent ? 1 : 0,
+    sanitized.value.thirtyDayReminderSent ? 1 : 0,
+    sanitized.value.courseFeePaid ? 1 : 0,
+    null,
+    null,
+    null,
+    null,
+    actor.username,
+    date,
+    time,
+  );
+
+  res.status(201).json({
+    success: true,
+    course: buildBeginnersCourseDashboard().find((entry) => entry.id === course.id) ?? null,
+  });
+});
+
+app.put("/api/beginners-course-participants/:id", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to update beginners.",
+    });
+    return;
+  }
+
+  const participant = findBeginnersCourseParticipantById.get(req.params.id);
+
+  if (!participant) {
+    res.status(404).json({
+      success: false,
+      message: "Beginner record not found.",
+    });
+    return;
+  }
+
+  const sanitized = sanitizeBeginnersParticipantPayload(req.body);
+
+  if (!sanitized.success) {
+    res.status(sanitized.status).json(sanitized);
+    return;
+  }
+
+  updateBeginnersCourseParticipant.run({
+    id: participant.id,
+    firstName: sanitized.value.firstName,
+    surname: sanitized.value.surname,
+    sizeCategory: sanitized.value.sizeCategory,
+    heightText: sanitized.value.heightText,
+    handedness: sanitized.value.handedness,
+    eyeDominance: sanitized.value.eyeDominance,
+    initialEmailSent: sanitized.value.initialEmailSent ? 1 : 0,
+    thirtyDayReminderSent: sanitized.value.thirtyDayReminderSent ? 1 : 0,
+    courseFeePaid: sanitized.value.courseFeePaid ? 1 : 0,
+  });
+
+  const existingUser = findUserByUsername.get(participant.username);
+
+  if (existingUser) {
+    upsertUser.run({
+      username: existingUser.username,
+      firstName: sanitized.value.firstName,
+      surname: sanitized.value.surname,
+      password: existingUser.password,
+      rfidTag: existingUser.rfid_tag,
+      activeMember: existingUser.active_member,
+      membershipFeesDue: existingUser.membership_fees_due,
+    });
+  }
+
+  res.json({
+    success: true,
+    course: buildBeginnersCourseDashboard().find(
+      (entry) => entry.id === participant.course_id,
+    ) ?? null,
+  });
+});
+
+app.post("/api/beginners-course-participants/:id/assign-case", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to assign course equipment.",
+    });
+    return;
+  }
+
+  const participant = findBeginnersCourseParticipantById.get(req.params.id);
+
+  if (!participant) {
+    res.status(404).json({
+      success: false,
+      message: "Beginner record not found.",
+    });
+    return;
+  }
+
+  if (actor.username === participant.username) {
+    res.status(400).json({
+      success: false,
+      message: "The staff member assigning equipment cannot be the borrowing beginner.",
+    });
+    return;
+  }
+
+  const nextCaseId =
+    req.body?.caseId === "" || req.body?.caseId == null
+      ? null
+      : Number.parseInt(req.body.caseId, 10);
+  const nextCase = nextCaseId ? findEquipmentItemById.get(nextCaseId) : null;
+  const currentCase = participant.assigned_case_id
+    ? findEquipmentItemById.get(participant.assigned_case_id)
+    : null;
+  const [date, time] = getUtcTimestampParts();
+
+  if (nextCase) {
+    if (nextCase.equipment_type !== EQUIPMENT_TYPES.CASE || nextCase.status !== "active") {
+      res.status(400).json({
+        success: false,
+        message: "Choose a valid active case.",
+      });
+      return;
+    }
+
+    if (
+      nextCase.location_type === EQUIPMENT_LOCATION_TYPES.MEMBER &&
+      nextCase.location_member_username &&
+      nextCase.location_member_username !== participant.username
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "That case is already assigned to another member.",
+      });
+      return;
+    }
+
+    if (
+      findOpenEquipmentLoanByItemId.get(nextCase.id) &&
+      nextCase.location_member_username !== participant.username
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "That case is already on loan.",
+      });
+      return;
+    }
+  }
+
+  const assignTransaction = db.transaction(() => {
+    const clearLegacyCaseLoans = (caseItem) => {
+      if (!caseItem) {
+        return;
+      }
+
+      const openCaseLoan = findOpenEquipmentLoanByItemId.get(caseItem.id);
+      const relatedOpenLoans = listOpenEquipmentLoansByCaseId.all(caseItem.id);
+
+      if (openCaseLoan) {
+        closeEquipmentLoan.run(
+          actor.username,
+          date,
+          time,
+          EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+          DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+          null,
+          openCaseLoan.id,
+        );
+      }
+
+      for (const loan of relatedOpenLoans) {
+        closeEquipmentLoan.run(
+          actor.username,
+          date,
+          time,
+          EQUIPMENT_LOCATION_TYPES.CASE,
+          null,
+          caseItem.id,
+          loan.id,
+        );
+      }
+    };
+
+    if (currentCase && (!nextCase || currentCase.id !== nextCase.id)) {
+      clearLegacyCaseLoans(currentCase);
+      updateEquipmentItemStorage.run({
+        id: currentCase.id,
+        locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        locationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+        locationCaseId: null,
+        locationMemberUsername: null,
+        storageByUsername: actor.username,
+        storageAtDate: date,
+        storageAtTime: time,
+      });
+    }
+
+    if (nextCase) {
+      clearLegacyCaseLoans(nextCase);
+      updateEquipmentItemStorage.run({
+        id: nextCase.id,
+        locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
+        locationLabel: null,
+        locationCaseId: null,
+        locationMemberUsername: participant.username,
+        storageByUsername: actor.username,
+        storageAtDate: date,
+        storageAtTime: time,
+      });
+      updateEquipmentAssignmentMetadata.run({
+        id: nextCase.id,
+        assignedByUsername: actor.username,
+        assignedAtDate: date,
+        assignedAtTime: time,
+      });
+    }
+
+    updateBeginnersCourseParticipantCase.run(
+      nextCase?.id ?? null,
+      nextCase ? actor.username : null,
+      nextCase ? date : null,
+      nextCase ? time : null,
+      participant.id,
+    );
+  });
+
+  try {
+    assignTransaction();
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: error instanceof Error ? error.message : "Unable to assign course equipment.",
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    course: buildBeginnersCourseDashboard().find(
+      (entry) => entry.id === participant.course_id,
+    ) ?? null,
+  });
+});
+
+app.post("/api/beginners-course-lessons/:id/coaches", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to assign coaches to beginners lessons.",
+    });
+    return;
+  }
+
+  const lesson = findBeginnersCourseLessonById.get(req.params.id);
+
+  if (!lesson) {
+    res.status(404).json({
+      success: false,
+      message: "Beginners lesson not found.",
+    });
+    return;
+  }
+
+  const coachUsernames = Array.isArray(req.body?.coachUsernames)
+    ? [...new Set(req.body.coachUsernames.filter((value) => typeof value === "string"))]
+    : [];
+  const invalidCoach = coachUsernames.find((username) => {
+    const coach = findUserByUsername.get(username);
+    return !coach || !isBeginnersCourseCoachEligible(coach);
+  });
+
+  if (invalidCoach) {
+    res.status(400).json({
+      success: false,
+      message: "One or more selected coaches are not eligible for beginners lessons.",
+    });
+    return;
+  }
+
+  const [date, time] = getUtcTimestampParts();
+  const coachTransaction = db.transaction(() => {
+    deleteBeginnersLessonCoachesByLessonId.run(lesson.id);
+
+    for (const coachUsername of coachUsernames) {
+      insertBeginnersLessonCoach.run(
+        lesson.id,
+        coachUsername,
+        actor.username,
+        date,
+        time,
+      );
+    }
+  });
+
+  coachTransaction();
+
+  res.json({
+    success: true,
+    course: buildBeginnersCourseDashboard().find((entry) => entry.id === lesson.course_id) ?? null,
+  });
+});
+
+app.get("/api/my-beginner-dashboard", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  const participant = findBeginnersCourseParticipantByUsername.get(actor.username);
+
+  if (!participant) {
+    res.json({
+      success: true,
+      dashboard: null,
+    });
+    return;
+  }
+
+  const course = findBeginnersCourseById.get(participant.course_id);
+  if (
+    !course ||
+    course.is_cancelled ||
+    (course.approval_status ?? "pending") !== "approved"
+  ) {
+    res.json({
+      success: true,
+      dashboard: null,
+    });
+    return;
+  }
+  const today = toUtcDateString(new Date());
+  const lessons = listBeginnersCourseLessonsByCourseId.all(course.id);
+  const todayLesson = lessons.find((lesson) => lesson.lesson_date === today) ?? null;
+  const coaches = todayLesson
+    ? listBeginnersLessonCoachesByLessonId.all(todayLesson.id).map((row) => ({
+        username: row.coach_username,
+        fullName: `${row.first_name} ${row.surname}`.trim(),
+      }))
+    : [];
+  const equipment = listOpenEquipmentLoansByMemberUsername
+    .all(actor.username)
+    .map((loan) => ({
+      id: loan.id,
+      typeLabel: EQUIPMENT_TYPE_LABELS[loan.equipment_type] ?? loan.equipment_type,
+      reference:
+        loan.equipment_type === EQUIPMENT_TYPES.ARROWS
+          ? `${loan.arrow_quantity} x ${loan.arrow_length}"`
+          : loan.item_number ?? "",
+    }));
+
+  res.json({
+    success: true,
+    dashboard: {
+      courseId: course.id,
+      firstLessonDate: course.first_lesson_date,
+      lessonToday: todayLesson
+        ? {
+            id: todayLesson.id,
+            lessonNumber: todayLesson.lesson_number,
+            date: todayLesson.lesson_date,
+            startTime: todayLesson.start_time,
+            endTime: todayLesson.end_time,
+          }
+        : null,
+      coaches,
+      equipment,
+      showSafetyMessage: today === course.first_lesson_date,
+    },
+  });
+});
+
+app.get("/api/my-beginner-coaching-assignments", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  const lessons = listCoachBeginnersLessonsByUsername.all(actor.username).map((lesson) => ({
+    id: lesson.id,
+    courseId: lesson.course_id,
+    lessonNumber: lesson.lesson_number,
+    date: lesson.lesson_date,
+    startTime: lesson.start_time,
+    endTime: lesson.end_time,
+    coordinatorName: `${lesson.coordinator_first_name} ${lesson.coordinator_surname}`.trim(),
+    beginnerCount: listBeginnersCourseParticipantsByCourseId.all(lesson.course_id).length,
+  }));
+
+  res.json({
+    success: true,
+    lessons,
   });
 });
 

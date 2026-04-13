@@ -1,4 +1,3 @@
-import { LoanBowSection } from "./LoanBowSection";
 import { Button } from "./Button";
 
 export function MemberProfileForm({
@@ -111,6 +110,21 @@ export function MemberProfileForm({
         </label>
       </div>
 
+      {isAdmin && !isCreatingNew ? (
+        <fieldset className="profile-discipline-fieldset">
+          <legend>Coaching</legend>
+          <label className="profile-checkbox">
+            <input
+              type="checkbox"
+              checked={Boolean(editableProfile.coachingVolunteer)}
+              onChange={handleBooleanChange("coachingVolunteer")}
+              disabled={isSaving}
+            />
+            <span>Coaching volunteer</span>
+          </label>
+        </fieldset>
+      ) : null}
+
       <fieldset className="profile-discipline-fieldset">
         <legend>Disciplines</legend>
         <div className="profile-discipline-grid">
@@ -127,20 +141,6 @@ export function MemberProfileForm({
           ))}
         </div>
       </fieldset>
-
-      <LoanBowSection
-        loanBow={editableProfile.loanBow}
-        onLoanBowFieldChange={handleLoanBowFieldChange}
-        onLoanBowToggle={toggleLoanBowField}
-        disabled={isSaving || !canEditLoanBow}
-        helperMessage={
-          canEditLoanBow
-            ? ""
-            : "Only admin users can update the loan bow section."
-        }
-        showReturnButton={canReturnLoanBow}
-        onReturnClick={onReturnLoanBow}
-      />
 
       <Button type="submit" disabled={isSaving}>
         {submitLabel}

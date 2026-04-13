@@ -70,3 +70,19 @@ export type ApprovalEvent = {
   isRejected?: boolean;
   rejectionReason?: string;
 };
+
+export type BeginnersCourseCalendarLesson = {
+  id: string | number;
+  courseId: string | number;
+  lessonId: string | number;
+  title: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  lessonNumber: number;
+  coordinatorName: string;
+  coachNames: string[];
+  beginnerCount: number;
+  beginnerCapacity: number;
+  placesRemaining: number;
+};

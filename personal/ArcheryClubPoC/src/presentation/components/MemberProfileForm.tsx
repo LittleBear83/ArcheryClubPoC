@@ -3,7 +3,7 @@ import { Button } from "./Button";
 export function MemberProfileForm({
   editableProfile,
   handleChange,
-  handleBooleanChange: _handleBooleanChange = undefined,
+  handleBooleanChange = undefined,
   handleBooleanSelectChange,
   toggleDiscipline,
   handleLoanBowFieldChange,

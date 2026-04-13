@@ -6,20 +6,32 @@ import { Button } from "./Button";
 const pages = [
   { id: "home", label: "Home", path: "/" },
   { id: "profile", label: "Profile", path: "/profile" },
-  { id: "range-usage", label: "Range Usage", path: "/range-usage" },
+  {
+    id: "range-usage",
+    label: "Range Usage",
+    path: "/range-usage",
+    disabledForRoles: ["beginner"],
+  },
   {
     id: "event-calendar",
     label: "Calendar",
     path: "/event-calendar",
+    disabledForRoles: ["beginner"],
   },
   {
     id: "tournaments",
     label: "Tournaments",
     path: "/tournaments",
+    disabledForRoles: ["beginner"],
   },
   { id: "feedback-form", label: "Feedback Form", path: "/feedback-form" },
   { id: "ideas-form", label: "Ideas Form", path: "/ideas-form" },
-  { id: "lost-and-found", label: "Lost and Found", path: "/lost-and-found" },
+  {
+    id: "lost-and-found",
+    label: "Lost and Found",
+    path: "/lost-and-found",
+    disabledForRoles: ["beginner"],
+  },
   {
     id: "committee-org-chart",
     label: "The Committee",
@@ -81,6 +93,7 @@ export function SideDrawer({
     currentUserProfile?.personal?.fullName ??
     currentUserProfile?.auth?.username ??
     "Member";
+  const currentRole = currentUserProfile?.membership?.role ?? "";
 
   const visiblePages = useMemo(() => {
     return pages.filter(
@@ -102,6 +115,8 @@ export function SideDrawer({
     () => visiblePages.filter((page) => page.permission || page.permissionAny),
     [visiblePages],
   );
+  const isPageDisabled = (page) =>
+    Array.isArray(page.disabledForRoles) && page.disabledForRoles.includes(currentRole);
 
   return (
     <>
@@ -137,7 +152,16 @@ export function SideDrawer({
               <li key={page.id}>
                 <Button
                   className={page.id === selectedPage ? "active" : ""}
+                  disabled={isPageDisabled(page)}
+                  title={
+                    isPageDisabled(page)
+                      ? "This area is not available for beginners."
+                      : undefined
+                  }
                   onClick={() => {
+                    if (isPageDisabled(page)) {
+                      return;
+                    }
                     onSelectPage(page.id);
                     onClose();
                   }}
@@ -156,7 +180,16 @@ export function SideDrawer({
                   <li key={page.id}>
                     <Button
                       className={page.id === selectedPage ? "active" : ""}
+                      disabled={isPageDisabled(page)}
+                      title={
+                        isPageDisabled(page)
+                          ? "This area is not available for beginners."
+                          : undefined
+                      }
                       onClick={() => {
+                        if (isPageDisabled(page)) {
+                          return;
+                        }
                         onSelectPage(page.id);
                         onClose();
                       }}

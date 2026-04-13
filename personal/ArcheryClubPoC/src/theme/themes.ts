@@ -60,8 +60,8 @@ export const themes = {
       "--banner-title-shadow":
         "0 3px 10px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.75)",
       "--membership-ticker-bg":
-        "linear-gradient(90deg, #2f2500 0%, #5a4300 48%, #2f2500 100%)",
-      "--membership-ticker-text": "#fff3bf",
+        "linear-gradient(90deg, #5a0000 0%, #8f1515 48%, #5a0000 100%)",
+      "--membership-ticker-text": "#fff2f2",
       "--admin-ticker-bg":
         "linear-gradient(90deg, #4b0000 0%, #7c0909 48%, #4b0000 100%)",
       "--admin-ticker-text": "#fff6c5",
@@ -174,8 +174,8 @@ export const themes = {
       "--banner-title-shadow":
         "0 3px 10px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.75)",
       "--membership-ticker-bg":
-        "linear-gradient(90deg, #eed7a5 0%, #f4e5bf 48%, #eed7a5 100%)",
-      "--membership-ticker-text": "#5b4200",
+        "linear-gradient(90deg, #f3c2c2 0%, #f7d7d7 48%, #f3c2c2 100%)",
+      "--membership-ticker-text": "#6d1010",
       "--admin-ticker-bg":
         "linear-gradient(90deg, #f2c4b7 0%, #f7d4cb 48%, #f2c4b7 100%)",
       "--admin-ticker-text": "#6a201c",

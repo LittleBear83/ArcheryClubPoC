@@ -89,12 +89,6 @@ function BeginnerTodayCard({ dashboard }) {
       ) : (
         <p>No lesson is scheduled for you today.</p>
       )}
-      {dashboard.showSafetyMessage ? (
-        <p className="equipment-meta-copy">
-          Please do not pick up any equipment until after the safety talk or until a
-          coach asks you to do so.
-        </p>
-      ) : null}
       <ul className="home-info-list">
         {dashboard.equipment.length > 0 ? (
           dashboard.equipment.map((item) => (
@@ -137,12 +131,15 @@ export function HomeSection({
   tournamentReminders,
   beginnerDashboard,
   beginnerCoachAssignments,
+  hideEventPanels = false,
 }) {
   return (
     <div className="home-split-view">
       <MembersAtRangeList members={members} />
-      <SignedUpEventsList events={signedUpEvents} />
-      <TournamentRemindersList reminders={tournamentReminders} />
+      {hideEventPanels ? null : <SignedUpEventsList events={signedUpEvents} />}
+      {hideEventPanels ? null : (
+        <TournamentRemindersList reminders={tournamentReminders} />
+      )}
       <BeginnerTodayCard dashboard={beginnerDashboard} />
       <BeginnerCoachAssignmentsCard assignments={beginnerCoachAssignments} />
     </div>

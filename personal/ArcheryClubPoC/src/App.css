@@ -728,6 +728,16 @@ button:disabled {
   background: var(--surface-hover);
 }
 
+.app-button--info {
+  border: 1px solid #2c7be5;
+  background: #2c7be5;
+  color: #f7fbff;
+}
+
+.app-button--info:hover {
+  background: #2067c0;
+}
+
 .app-button--unstyled {
   border: none;
   background: transparent;

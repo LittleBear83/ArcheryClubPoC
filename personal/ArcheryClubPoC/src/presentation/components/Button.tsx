@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "unstyled";
+type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "info" | "unstyled";
 type ButtonSize = "sm" | "md" | "lg";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -15,6 +15,7 @@ const variantClassMap: Record<ButtonVariant, string> = {
   secondary: "app-button--secondary",
   danger: "app-button--danger",
   ghost: "app-button--ghost",
+  info: "app-button--info",
   unstyled: "app-button--unstyled",
 };
 

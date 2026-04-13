@@ -169,6 +169,20 @@ function getMembershipReminderMessage(currentUserProfile) {
   return `reminder: your membership fees are due on ${formattedDueDate}`;
 }
 
+function getHomeTickerMessage(currentUserProfile, beginnerDashboard) {
+  const membershipReminderMessage = getMembershipReminderMessage(currentUserProfile);
+
+  if (membershipReminderMessage) {
+    return membershipReminderMessage;
+  }
+
+  if (beginnerDashboard?.showSafetyMessage) {
+    return "Please do not pick up any equipment until after the safety talk or until a coach asks you.";
+  }
+
+  return "";
+}
+
 async function fetchRangeMembers(): Promise<HomeMember[]> {
   const result = await fetchApi<{ success: true; members?: HomeMember[] }>(
     "/api/range-members",
@@ -288,10 +302,7 @@ export function HomePage({
     "manage_tournaments",
   );
   const actorUsername = currentUserProfile?.auth?.username ?? "";
-  const membershipReminderMessage = useMemo(
-    () => getMembershipReminderMessage(currentUserProfile),
-    [currentUserProfile],
-  );
+  const isBeginnerMember = currentUserProfile?.membership?.role === "beginner";
   const activePage = pathToPageId[location.pathname] || "home";
   const { data: rangeMembers = [] } = useQuery({
     queryKey: homeQueryKeys.rangeMembers(),
@@ -317,6 +328,10 @@ export function HomePage({
   const tournamentReminders = homeActivity?.tournamentReminders ?? [];
   const beginnerDashboard = homeActivity?.beginnerDashboard ?? null;
   const beginnerCoachAssignments = homeActivity?.beginnerCoachAssignments ?? [];
+  const homeTickerMessage = useMemo(
+    () => getHomeTickerMessage(currentUserProfile, beginnerDashboard),
+    [beginnerDashboard, currentUserProfile],
+  );
 
   const membersAtRange = useMemo(() => {
     if (!currentUserProfile) {
@@ -374,10 +389,10 @@ export function HomePage({
 
   return (
     <>
-      {membershipReminderMessage ? (
+      {homeTickerMessage ? (
         <div className="membership-reminder-ticker" role="status" aria-live="polite">
           <div className="membership-reminder-ticker-track">
-            <span>{membershipReminderMessage}</span>
+            <span>{homeTickerMessage}</span>
           </div>
         </div>
       ) : null}
@@ -505,6 +520,7 @@ export function HomePage({
                   tournamentReminders={tournamentReminders}
                   beginnerDashboard={beginnerDashboard}
                   beginnerCoachAssignments={beginnerCoachAssignments}
+                  hideEventPanels={isBeginnerMember}
                 />
               }
             />

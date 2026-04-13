@@ -51,6 +51,7 @@ type CourseBeginner = {
   id: number;
   username: string;
   password: string;
+  userType: string;
   firstName: string;
   surname: string;
   fullName: string;
@@ -61,6 +62,7 @@ type CourseBeginner = {
   initialEmailSent: boolean;
   thirtyDayReminderSent: boolean;
   courseFeePaid: boolean;
+  convertedToMember: boolean;
   assignedCaseId: number | null;
   assignedCaseNumber: string;
 };
@@ -407,6 +409,16 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
     });
     setMessage("Course equipment updated.");
     window.dispatchEvent(new Event("equipment-data-updated"));
+    await refreshDashboard();
+  };
+
+  const convertBeginnerToMember = async (beginner: CourseBeginner) => {
+    await mutation.mutateAsync({
+      url: `/api/beginners-course-participants/${beginner.id}/convert`,
+      method: "POST",
+    });
+    setMessage(`${beginner.fullName} converted to a full member.`);
+    window.dispatchEvent(new Event("profile-data-updated"));
     await refreshDashboard();
   };
 
@@ -767,6 +779,19 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
                               </select>
                             </td>
                             <td className="beginners-course-row-actions">
+                              {(() => {
+                                const canConvertBeginner = hasCourseFinished(course);
+                                const convertButtonLabel = beginner.convertedToMember
+                                  ? "Converted"
+                                  : "Convert to member";
+                                const convertButtonTitle = beginner.convertedToMember
+                                  ? `${beginner.fullName} is already a full member.`
+                                  : canConvertBeginner
+                                  ? `Convert ${beginner.fullName} to a full member.`
+                                  : "This button becomes available once the course has completed.";
+
+                                return (
+                                  <>
                               <Button
                                 size="sm"
                                 onClick={() => void saveCaseAssignment(beginner.id)}
@@ -775,11 +800,23 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
                               </Button>
                               <Button
                                 size="sm"
+                                variant="info"
+                                disabled={beginner.convertedToMember || !canConvertBeginner}
+                                title={convertButtonTitle}
+                                onClick={() => void convertBeginnerToMember(beginner)}
+                              >
+                                {convertButtonLabel}
+                              </Button>
+                              <Button
+                                size="sm"
                                 variant="secondary"
                                 onClick={() => openBeginnerEdit(beginner)}
                               >
                                 Edit
                               </Button>
+                                  </>
+                                );
+                              })()}
                             </td>
                           </tr>
                         ))

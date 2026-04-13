@@ -444,7 +444,8 @@ const TOURNAMENT_SCORES_TABLE_SQL = `
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
-    username TEXT PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
     password TEXT,
@@ -708,6 +709,7 @@ db.exec(`
     initial_email_sent INTEGER NOT NULL DEFAULT 0,
     thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
     course_fee_paid INTEGER NOT NULL DEFAULT 0,
+    converted_to_member INTEGER NOT NULL DEFAULT 0,
     assigned_case_id INTEGER,
     assigned_case_by_username TEXT,
     assigned_case_at_date TEXT,
@@ -984,7 +986,149 @@ const clubEventsVenueSelect = clubEventsColumns.some(
   ? "CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END"
   : "'both'";
 
-const userColumns = db.prepare(`PRAGMA table_info(users)`).all();
+const usersTableSchema = db
+  .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'`)
+  .get();
+
+if (!usersTableSchema?.sql?.includes("id INTEGER PRIMARY KEY AUTOINCREMENT")) {
+  const applicationTables = db
+    .prepare(
+      `
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table'
+        AND name <> 'users'
+        AND name NOT LIKE 'sqlite_%'
+    `,
+    )
+    .all()
+    .map((row) => row.name);
+  db.exec(`PRAGMA foreign_keys = OFF`);
+
+  try {
+    db.exec(`BEGIN`);
+    db.exec(`ALTER TABLE users RENAME TO users_old`);
+    db.exec(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        first_name TEXT NOT NULL,
+        surname TEXT NOT NULL,
+        password TEXT,
+        rfid_tag TEXT UNIQUE,
+        active_member INTEGER NOT NULL DEFAULT 1,
+        membership_fees_due TEXT,
+        coaching_volunteer INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    db.exec(`
+      INSERT INTO users (
+        username,
+        first_name,
+        surname,
+        password,
+        rfid_tag,
+        active_member,
+        membership_fees_due,
+        coaching_volunteer
+      )
+      SELECT
+        username,
+        first_name,
+        surname,
+        password,
+        rfid_tag,
+        COALESCE(active_member, 1),
+        membership_fees_due,
+        COALESCE(coaching_volunteer, 0)
+      FROM users_old
+    `);
+
+    for (const tableName of applicationTables) {
+      const tableSchema = db
+        .prepare(
+          `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`,
+        )
+        .get(tableName);
+
+      if (!tableSchema?.sql) {
+        continue;
+      }
+
+      const temporaryTableName = `${tableName}_users_pk_old`;
+      const rebuiltTableSql = tableSchema.sql
+        .replace(
+          /REFERENCES\s+["`]?users_old["`]?\s*\(\s*username\s*\)/g,
+          "REFERENCES users(username)",
+        )
+        .replace(
+          /REFERENCES\s+["`]?([A-Za-z0-9_]+)_users_pk_old["`]?\s*\(/g,
+          "REFERENCES $1(",
+        );
+
+      db.exec(`ALTER TABLE ${tableName} RENAME TO ${temporaryTableName}`);
+      db.exec(rebuiltTableSql);
+      db.exec(`INSERT INTO ${tableName} SELECT * FROM ${temporaryTableName}`);
+      db.exec(`DROP TABLE ${temporaryTableName}`);
+    }
+
+    db.exec(`DROP TABLE users_old`);
+    db.exec(`COMMIT`);
+  } catch (error) {
+    db.exec(`ROLLBACK`);
+    throw error;
+  } finally {
+    db.exec(`PRAGMA foreign_keys = ON`);
+  }
+}
+
+let userColumns = db.prepare(`PRAGMA table_info(users)`).all();
+const USER_RELATION_COLUMNS = [
+  { table: "login_events", usernameColumn: "username", userIdColumn: "user_id" },
+  {
+    table: "guest_login_events",
+    usernameColumn: "invited_by_username",
+    userIdColumn: "invited_by_user_id",
+  },
+  { table: "coaching_sessions", usernameColumn: "coach_username", userIdColumn: "coach_user_id" },
+  {
+    table: "coaching_sessions",
+    usernameColumn: "approved_by_username",
+    userIdColumn: "approved_by_user_id",
+  },
+  {
+    table: "coaching_session_bookings",
+    usernameColumn: "member_username",
+    userIdColumn: "member_user_id",
+  },
+  { table: "club_events", usernameColumn: "submitted_by_username", userIdColumn: "submitted_by_user_id" },
+  { table: "club_events", usernameColumn: "approved_by_username", userIdColumn: "approved_by_user_id" },
+  { table: "event_bookings", usernameColumn: "member_username", userIdColumn: "member_user_id" },
+  { table: "tournaments", usernameColumn: "created_by", userIdColumn: "created_by_user_id" },
+  { table: "tournament_registrations", usernameColumn: "member_username", userIdColumn: "member_user_id" },
+  { table: "tournament_scores", usernameColumn: "member_username", userIdColumn: "member_user_id" },
+  { table: "user_types", usernameColumn: "username", userIdColumn: "user_id" },
+  { table: "user_disciplines", usernameColumn: "username", userIdColumn: "user_id" },
+  { table: "member_loan_bows", usernameColumn: "username", userIdColumn: "user_id" },
+  { table: "committee_roles", usernameColumn: "assigned_username", userIdColumn: "assigned_user_id" },
+  { table: "equipment_items", usernameColumn: "location_member_username", userIdColumn: "location_member_user_id" },
+  { table: "equipment_items", usernameColumn: "added_by_username", userIdColumn: "added_by_user_id" },
+  { table: "equipment_items", usernameColumn: "decommissioned_by_username", userIdColumn: "decommissioned_by_user_id" },
+  { table: "equipment_items", usernameColumn: "last_assignment_by_username", userIdColumn: "last_assignment_by_user_id" },
+  { table: "equipment_items", usernameColumn: "last_storage_updated_by_username", userIdColumn: "last_storage_updated_by_user_id" },
+  { table: "equipment_loans", usernameColumn: "member_username", userIdColumn: "member_user_id" },
+  { table: "equipment_loans", usernameColumn: "loaned_by_username", userIdColumn: "loaned_by_user_id" },
+  { table: "equipment_loans", usernameColumn: "returned_by_username", userIdColumn: "returned_by_user_id" },
+  { table: "beginners_courses", usernameColumn: "coordinator_username", userIdColumn: "coordinator_user_id" },
+  { table: "beginners_courses", usernameColumn: "submitted_by_username", userIdColumn: "submitted_by_user_id" },
+  { table: "beginners_courses", usernameColumn: "cancelled_by_username", userIdColumn: "cancelled_by_user_id" },
+  { table: "beginners_courses", usernameColumn: "approved_by_username", userIdColumn: "approved_by_user_id" },
+  { table: "beginners_course_participants", usernameColumn: "username", userIdColumn: "user_id" },
+  { table: "beginners_course_participants", usernameColumn: "assigned_case_by_username", userIdColumn: "assigned_case_by_user_id" },
+  { table: "beginners_course_participants", usernameColumn: "created_by_username", userIdColumn: "created_by_user_id" },
+  { table: "beginners_course_lesson_coaches", usernameColumn: "coach_username", userIdColumn: "coach_user_id" },
+  { table: "beginners_course_lesson_coaches", usernameColumn: "assigned_by_username", userIdColumn: "assigned_by_user_id" },
+];
 const memberLoanBowColumns = db
   .prepare(`PRAGMA table_info(member_loan_bows)`)
   .all();
@@ -1004,6 +1148,71 @@ const memberLoanBowColumnDefinitions = [
   ["returned_long_rod", "INTEGER NOT NULL DEFAULT 0"],
   ["returned_pressure_button", "INTEGER NOT NULL DEFAULT 0"],
 ];
+
+for (const { table, usernameColumn, userIdColumn } of USER_RELATION_COLUMNS) {
+  const relationColumns = db.prepare(`PRAGMA table_info(${table})`).all();
+
+  if (!relationColumns.some((column) => column.name === userIdColumn)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${userIdColumn} INTEGER`);
+  }
+
+  db.exec(`
+    UPDATE ${table}
+    SET ${userIdColumn} = (
+      SELECT id
+      FROM users
+      WHERE users.username = ${table}.${usernameColumn}
+    )
+    WHERE ${usernameColumn} IS NOT NULL
+      AND (
+        ${userIdColumn} IS NULL
+        OR ${userIdColumn} <> (
+          SELECT id
+          FROM users
+          WHERE users.username = ${table}.${usernameColumn}
+        )
+      )
+  `);
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS ${table}_${userIdColumn}_idx
+    ON ${table} (${userIdColumn})
+  `);
+
+  db.exec(`DROP TRIGGER IF EXISTS ${table}_${userIdColumn}_on_insert`);
+  db.exec(`
+    CREATE TRIGGER ${table}_${userIdColumn}_on_insert
+    AFTER INSERT ON ${table}
+    FOR EACH ROW
+    WHEN NEW.${usernameColumn} IS NOT NULL
+    BEGIN
+      UPDATE ${table}
+      SET ${userIdColumn} = (
+        SELECT id
+        FROM users
+        WHERE users.username = NEW.${usernameColumn}
+      )
+      WHERE rowid = NEW.rowid;
+    END
+  `);
+
+  db.exec(`DROP TRIGGER IF EXISTS ${table}_${userIdColumn}_on_update`);
+  db.exec(`
+    CREATE TRIGGER ${table}_${userIdColumn}_on_update
+    AFTER UPDATE OF ${usernameColumn} ON ${table}
+    FOR EACH ROW
+    WHEN NEW.${usernameColumn} IS NOT NULL
+    BEGIN
+      UPDATE ${table}
+      SET ${userIdColumn} = (
+        SELECT id
+        FROM users
+        WHERE users.username = NEW.${usernameColumn}
+      )
+      WHERE rowid = NEW.rowid;
+    END
+  `);
+}
 
 for (const [columnName, columnDefinition] of memberLoanBowColumnDefinitions) {
   if (!memberLoanBowColumns.some((column) => column.name === columnName)) {
@@ -1224,6 +1433,7 @@ if (beginnersCourseParticipantsTable?.sql?.includes("equipment_items_old")) {
       initial_email_sent INTEGER NOT NULL DEFAULT 0,
       thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
       course_fee_paid INTEGER NOT NULL DEFAULT 0,
+      converted_to_member INTEGER NOT NULL DEFAULT 0,
       assigned_case_id INTEGER,
       assigned_case_by_username TEXT,
       assigned_case_at_date TEXT,
@@ -1250,6 +1460,7 @@ if (beginnersCourseParticipantsTable?.sql?.includes("equipment_items_old")) {
       initial_email_sent,
       thirty_day_reminder_sent,
       course_fee_paid,
+      converted_to_member,
       assigned_case_id,
       assigned_case_by_username,
       assigned_case_at_date,
@@ -1271,6 +1482,7 @@ if (beginnersCourseParticipantsTable?.sql?.includes("equipment_items_old")) {
       initial_email_sent,
       thirty_day_reminder_sent,
       course_fee_paid,
+      0,
       assigned_case_id,
       assigned_case_by_username,
       assigned_case_at_date,
@@ -1303,6 +1515,22 @@ if (!userColumns.some((column) => column.name === "membership_fees_due")) {
 if (!userColumns.some((column) => column.name === "coaching_volunteer")) {
   db.exec(
     `ALTER TABLE users ADD COLUMN coaching_volunteer INTEGER NOT NULL DEFAULT 0`,
+  );
+}
+
+userColumns = db.prepare(`PRAGMA table_info(users)`).all();
+
+const beginnersCourseParticipantColumns = db
+  .prepare(`PRAGMA table_info(beginners_course_participants)`)
+  .all();
+
+if (
+  !beginnersCourseParticipantColumns.some(
+    (column) => column.name === "converted_to_member",
+  )
+) {
+  db.exec(
+    `ALTER TABLE beginners_course_participants ADD COLUMN converted_to_member INTEGER NOT NULL DEFAULT 0`,
   );
 }
 
@@ -1907,6 +2135,7 @@ for (const role of COMMITTEE_ROLE_SEED) {
 
 const findUserByCredentials = db.prepare(`
   SELECT
+    users.id,
     users.username,
     users.first_name,
     users.surname,
@@ -1916,12 +2145,13 @@ const findUserByCredentials = db.prepare(`
     users.coaching_volunteer,
     user_types.user_type
   FROM users
-  INNER JOIN user_types ON user_types.username = users.username
+  INNER JOIN user_types ON user_types.user_id = users.id
   WHERE users.username = ? COLLATE NOCASE AND users.password = ?
 `);
 
 const findUserByRfid = db.prepare(`
   SELECT
+    users.id,
     users.username,
     users.first_name,
     users.surname,
@@ -1931,12 +2161,13 @@ const findUserByRfid = db.prepare(`
     users.coaching_volunteer,
     user_types.user_type
   FROM users
-  INNER JOIN user_types ON user_types.username = users.username
+  INNER JOIN user_types ON user_types.user_id = users.id
   WHERE users.rfid_tag = ?
 `);
 
 const findUserByUsername = db.prepare(`
   SELECT
+    users.id,
     users.username,
     users.first_name,
     users.surname,
@@ -1947,12 +2178,13 @@ const findUserByUsername = db.prepare(`
     users.coaching_volunteer,
     user_types.user_type
   FROM users
-  INNER JOIN user_types ON user_types.username = users.username
+  INNER JOIN user_types ON user_types.user_id = users.id
   WHERE users.username = ? COLLATE NOCASE
 `);
 
 const listAllUsers = db.prepare(`
   SELECT
+    users.id,
     users.username,
     users.first_name,
     users.surname,
@@ -1962,7 +2194,7 @@ const listAllUsers = db.prepare(`
     users.coaching_volunteer,
     user_types.user_type
   FROM users
-  INNER JOIN user_types ON user_types.username = users.username
+  INNER JOIN user_types ON user_types.user_id = users.id
   ORDER BY users.surname ASC, users.first_name ASC
 `);
 
@@ -2037,8 +2269,8 @@ const listCommitteeRoles = db.prepare(`
     users.surname AS assigned_surname,
     user_types.user_type AS assigned_user_type
   FROM committee_roles
-  LEFT JOIN users ON users.username = committee_roles.assigned_username
-  LEFT JOIN user_types ON user_types.username = users.username
+  LEFT JOIN users ON users.id = committee_roles.assigned_user_id
+  LEFT JOIN user_types ON user_types.user_id = users.id
   ORDER BY committee_roles.display_order ASC, committee_roles.title ASC
 `);
 
@@ -2194,15 +2426,15 @@ const listEquipmentItems = db.prepare(`
     location_case.equipment_type AS location_case_type
   FROM equipment_items
   LEFT JOIN users AS added_by
-    ON added_by.username = equipment_items.added_by_username
+    ON added_by.id = equipment_items.added_by_user_id
   LEFT JOIN users AS decommissioned_by
-    ON decommissioned_by.username = equipment_items.decommissioned_by_username
+    ON decommissioned_by.id = equipment_items.decommissioned_by_user_id
   LEFT JOIN users AS assigned_by
-    ON assigned_by.username = equipment_items.last_assignment_by_username
+    ON assigned_by.id = equipment_items.last_assignment_by_user_id
   LEFT JOIN users AS storage_by
-    ON storage_by.username = equipment_items.last_storage_updated_by_username
+    ON storage_by.id = equipment_items.last_storage_updated_by_user_id
   LEFT JOIN users AS location_member
-    ON location_member.username = equipment_items.location_member_username
+    ON location_member.id = equipment_items.location_member_user_id
   LEFT JOIN equipment_items AS location_case
     ON location_case.id = equipment_items.location_case_id
   ORDER BY equipment_items.equipment_type ASC, equipment_items.item_number ASC, equipment_items.id ASC
@@ -2329,11 +2561,11 @@ const listEquipmentLoans = db.prepare(`
     context_case.item_number AS context_case_number
   FROM equipment_loans
   LEFT JOIN users AS member
-    ON member.username = equipment_loans.member_username
+    ON member.id = equipment_loans.member_user_id
   LEFT JOIN users AS loaned_by
-    ON loaned_by.username = equipment_loans.loaned_by_username
+    ON loaned_by.id = equipment_loans.loaned_by_user_id
   LEFT JOIN users AS returned_by
-    ON returned_by.username = equipment_loans.returned_by_username
+    ON returned_by.id = equipment_loans.returned_by_user_id
   LEFT JOIN equipment_items AS context_case
     ON context_case.id = equipment_loans.loan_context_case_id
   ORDER BY equipment_loans.loaned_at_date DESC, equipment_loans.loaned_at_time DESC, equipment_loans.id DESC
@@ -2354,7 +2586,7 @@ const listOpenEquipmentLoansByCaseId = db.prepare(`
     AND returned_at_date IS NULL
 `);
 
-const listOpenEquipmentLoansByMemberUsername = db.prepare(`
+const listOpenEquipmentLoansByMemberUserId = db.prepare(`
   SELECT
     equipment_loans.*,
     equipment_items.equipment_type,
@@ -2365,7 +2597,7 @@ const listOpenEquipmentLoansByMemberUsername = db.prepare(`
   FROM equipment_loans
   INNER JOIN equipment_items
     ON equipment_items.id = equipment_loans.equipment_item_id
-  WHERE equipment_loans.member_username = ?
+  WHERE equipment_loans.member_user_id = ?
     AND equipment_loans.returned_at_date IS NULL
   ORDER BY equipment_loans.loaned_at_date DESC, equipment_loans.loaned_at_time DESC, equipment_loans.id DESC
 `);
@@ -2405,11 +2637,11 @@ const listBeginnersCourses = db.prepare(`
     approved_by.surname AS approved_by_surname
   FROM beginners_courses
   INNER JOIN users AS coordinator
-    ON coordinator.username = beginners_courses.coordinator_username
+    ON coordinator.id = beginners_courses.coordinator_user_id
   INNER JOIN users AS submitted_by
-    ON submitted_by.username = beginners_courses.submitted_by_username
+    ON submitted_by.id = beginners_courses.submitted_by_user_id
   LEFT JOIN users AS approved_by
-    ON approved_by.username = beginners_courses.approved_by_username
+    ON approved_by.id = beginners_courses.approved_by_user_id
   ORDER BY beginners_courses.first_lesson_date ASC, beginners_courses.start_time ASC, beginners_courses.id ASC
 `);
 
@@ -2496,10 +2728,13 @@ const listBeginnersCourseParticipants = db.prepare(`
   SELECT
     beginners_course_participants.*,
     users.password,
+    user_types.user_type AS participant_user_type,
     case_item.item_number AS assigned_case_number
   FROM beginners_course_participants
   INNER JOIN users
-    ON users.username = beginners_course_participants.username
+    ON users.id = beginners_course_participants.user_id
+  INNER JOIN user_types
+    ON user_types.user_id = users.id
   LEFT JOIN equipment_items AS case_item
     ON case_item.id = beginners_course_participants.assigned_case_id
   ORDER BY beginners_course_participants.course_id ASC, beginners_course_participants.surname ASC, beginners_course_participants.first_name ASC
@@ -2509,10 +2744,13 @@ const listBeginnersCourseParticipantsByCourseId = db.prepare(`
   SELECT
     beginners_course_participants.*,
     users.password,
+    user_types.user_type AS participant_user_type,
     case_item.item_number AS assigned_case_number
   FROM beginners_course_participants
   INNER JOIN users
-    ON users.username = beginners_course_participants.username
+    ON users.id = beginners_course_participants.user_id
+  INNER JOIN user_types
+    ON user_types.user_id = users.id
   LEFT JOIN equipment_items AS case_item
     ON case_item.id = beginners_course_participants.assigned_case_id
   WHERE beginners_course_participants.course_id = ?
@@ -2580,6 +2818,12 @@ const updateBeginnersCourseParticipantCase = db.prepare(`
   WHERE id = ?
 `);
 
+const markBeginnersCourseParticipantConverted = db.prepare(`
+  UPDATE beginners_course_participants
+  SET converted_to_member = 1
+  WHERE id = ?
+`);
+
 const listBeginnersLessonCoaches = db.prepare(`
   SELECT
     beginners_course_lesson_coaches.lesson_id,
@@ -2588,7 +2832,7 @@ const listBeginnersLessonCoaches = db.prepare(`
     users.surname
   FROM beginners_course_lesson_coaches
   INNER JOIN users
-    ON users.username = beginners_course_lesson_coaches.coach_username
+    ON users.id = beginners_course_lesson_coaches.coach_user_id
   ORDER BY beginners_course_lesson_coaches.lesson_id ASC, users.surname ASC, users.first_name ASC
 `);
 
@@ -2600,7 +2844,7 @@ const listBeginnersLessonCoachesByLessonId = db.prepare(`
     users.surname
   FROM beginners_course_lesson_coaches
   INNER JOIN users
-    ON users.username = beginners_course_lesson_coaches.coach_username
+    ON users.id = beginners_course_lesson_coaches.coach_user_id
   WHERE beginners_course_lesson_coaches.lesson_id = ?
   ORDER BY users.surname ASC, users.first_name ASC
 `);
@@ -2645,7 +2889,7 @@ const deleteBeginnersCourseById = db.prepare(`
   WHERE id = ?
 `);
 
-const listCoachBeginnersLessonsByUsername = db.prepare(`
+const listCoachBeginnersLessonsByUserId = db.prepare(`
   SELECT
     beginners_course_lessons.id,
     beginners_course_lessons.course_id,
@@ -2662,8 +2906,8 @@ const listCoachBeginnersLessonsByUsername = db.prepare(`
   INNER JOIN beginners_courses
     ON beginners_courses.id = beginners_course_lessons.course_id
   INNER JOIN users AS coordinator
-    ON coordinator.username = beginners_courses.coordinator_username
-  WHERE beginners_course_lesson_coaches.coach_username = ?
+    ON coordinator.id = beginners_courses.coordinator_user_id
+  WHERE beginners_course_lesson_coaches.coach_user_id = ?
     AND beginners_courses.is_cancelled = 0
     AND beginners_courses.approval_status = 'approved'
   ORDER BY beginners_course_lessons.lesson_date ASC, beginners_course_lessons.start_time ASC
@@ -2709,7 +2953,7 @@ const listCoachingSessions = db.prepare(`
     users.first_name AS coach_first_name,
     users.surname AS coach_surname
   FROM coaching_sessions
-  INNER JOIN users ON users.username = coaching_sessions.coach_username
+  INNER JOIN users ON users.id = coaching_sessions.coach_user_id
   ORDER BY coaching_sessions.session_date ASC, coaching_sessions.start_time ASC
 `);
 
@@ -2732,7 +2976,7 @@ const findCoachingSessionById = db.prepare(`
     users.first_name AS coach_first_name,
     users.surname AS coach_surname
   FROM coaching_sessions
-  INNER JOIN users ON users.username = coaching_sessions.coach_username
+  INNER JOIN users ON users.id = coaching_sessions.coach_user_id
   WHERE coaching_sessions.id = ?
 `);
 
@@ -2744,7 +2988,7 @@ const listBookingsByCoachingSessionId = db.prepare(`
     users.first_name,
     users.surname
   FROM coaching_session_bookings
-  INNER JOIN users ON users.username = coaching_session_bookings.member_username
+  INNER JOIN users ON users.id = coaching_session_bookings.member_user_id
   WHERE coaching_session_bookings.coaching_session_id = ?
   ORDER BY users.surname ASC, users.first_name ASC
 `);
@@ -2757,7 +3001,7 @@ const listAllCoachingSessionBookings = db.prepare(`
     users.first_name,
     users.surname
   FROM coaching_session_bookings
-  INNER JOIN users ON users.username = coaching_session_bookings.member_username
+  INNER JOIN users ON users.id = coaching_session_bookings.member_user_id
   ORDER BY coaching_session_bookings.coaching_session_id ASC, users.surname ASC, users.first_name ASC
 `);
 
@@ -2773,7 +3017,7 @@ const insertCoachingSessionBooking = db.prepare(`
 
 const deleteCoachingSessionBooking = db.prepare(`
   DELETE FROM coaching_session_bookings
-  WHERE coaching_session_id = ? AND member_username = ?
+  WHERE coaching_session_id = ? AND member_user_id = ?
 `);
 
 const deleteBookingsByCoachingSessionId = db.prepare(`
@@ -2808,7 +3052,7 @@ const rejectCoachingSessionById = db.prepare(`
   WHERE id = ?
 `);
 
-const findMemberBookings = db.prepare(`
+const findMemberCoachingBookingsByUserId = db.prepare(`
   SELECT
     coaching_sessions.id,
     coaching_sessions.session_date,
@@ -2824,8 +3068,8 @@ const findMemberBookings = db.prepare(`
   FROM coaching_session_bookings
   INNER JOIN coaching_sessions
     ON coaching_sessions.id = coaching_session_bookings.coaching_session_id
-  INNER JOIN users ON users.username = coaching_sessions.coach_username
-  WHERE coaching_session_bookings.member_username = ?
+  INNER JOIN users ON users.id = coaching_sessions.coach_user_id
+  WHERE coaching_session_bookings.member_user_id = ?
   ORDER BY coaching_sessions.session_date ASC, coaching_sessions.start_time ASC
 `);
 
@@ -2884,7 +3128,7 @@ const listTournaments = db.prepare(`
     users.first_name AS created_by_first_name,
     users.surname AS created_by_surname
   FROM tournaments
-  INNER JOIN users ON users.username = tournaments.created_by
+  INNER JOIN users ON users.id = tournaments.created_by_user_id
   ORDER BY tournaments.registration_start_date DESC, tournaments.created_at_date DESC, tournaments.created_at_time DESC
 `);
 
@@ -2902,7 +3146,7 @@ const findTournamentById = db.prepare(`
     users.first_name AS created_by_first_name,
     users.surname AS created_by_surname
   FROM tournaments
-  INNER JOIN users ON users.username = tournaments.created_by
+  INNER JOIN users ON users.id = tournaments.created_by_user_id
   WHERE tournaments.id = ?
 `);
 
@@ -2957,8 +3201,8 @@ const listTournamentRegistrationsByTournamentId = db.prepare(`
     users.surname,
     user_types.user_type
   FROM tournament_registrations
-  INNER JOIN users ON users.username = tournament_registrations.member_username
-  INNER JOIN user_types ON user_types.username = users.username
+  INNER JOIN users ON users.id = tournament_registrations.member_user_id
+  INNER JOIN user_types ON user_types.user_id = users.id
   WHERE tournament_registrations.tournament_id = ?
   ORDER BY users.surname ASC, users.first_name ASC
 `);
@@ -2972,8 +3216,8 @@ const listAllTournamentRegistrations = db.prepare(`
     users.surname,
     user_types.user_type
   FROM tournament_registrations
-  INNER JOIN users ON users.username = tournament_registrations.member_username
-  INNER JOIN user_types ON user_types.username = users.username
+  INNER JOIN users ON users.id = tournament_registrations.member_user_id
+  INNER JOIN user_types ON user_types.user_id = users.id
   ORDER BY tournament_registrations.tournament_id ASC, users.surname ASC, users.first_name ASC
 `);
 
@@ -2989,7 +3233,7 @@ const insertTournamentRegistration = db.prepare(`
 
 const deleteTournamentRegistration = db.prepare(`
   DELETE FROM tournament_registrations
-  WHERE tournament_id = ? AND member_username = ?
+  WHERE tournament_id = ? AND member_user_id = ?
 `);
 
 const listTournamentScoresByTournamentId = db.prepare(`
@@ -3039,7 +3283,7 @@ const listEventBookingsByEventId = db.prepare(`
     users.first_name,
     users.surname
   FROM event_bookings
-  INNER JOIN users ON users.username = event_bookings.member_username
+  INNER JOIN users ON users.id = event_bookings.member_user_id
   WHERE event_bookings.club_event_id = ?
   ORDER BY users.surname ASC, users.first_name ASC
 `);
@@ -3052,7 +3296,7 @@ const listAllEventBookings = db.prepare(`
     users.first_name,
     users.surname
   FROM event_bookings
-  INNER JOIN users ON users.username = event_bookings.member_username
+  INNER JOIN users ON users.id = event_bookings.member_user_id
   ORDER BY event_bookings.club_event_id ASC, users.surname ASC, users.first_name ASC
 `);
 
@@ -3068,7 +3312,7 @@ const insertEventBooking = db.prepare(`
 
 const deleteEventBooking = db.prepare(`
   DELETE FROM event_bookings
-  WHERE club_event_id = ? AND member_username = ?
+  WHERE club_event_id = ? AND member_user_id = ?
 `);
 
 const deleteBookingsByEventId = db.prepare(`
@@ -3081,7 +3325,7 @@ const deleteClubEventById = db.prepare(`
   WHERE id = ?
 `);
 
-const findMemberEventBookings = db.prepare(`
+const findMemberEventBookingsByUserId = db.prepare(`
   SELECT
     club_events.id,
     club_events.event_date,
@@ -3092,7 +3336,7 @@ const findMemberEventBookings = db.prepare(`
   FROM event_bookings
   INNER JOIN club_events
     ON club_events.id = event_bookings.club_event_id
-  WHERE event_bookings.member_username = ?
+  WHERE event_bookings.member_user_id = ?
   ORDER BY club_events.event_date ASC, club_events.start_time ASC
 `);
 
@@ -3171,10 +3415,10 @@ const findRecentRangeMembers = db.prepare(`
     user_types.user_type,
     MAX(login_events.logged_in_date || 'T' || login_events.logged_in_time) AS last_logged_in_at
   FROM login_events
-  INNER JOIN users ON users.username = login_events.username
-  INNER JOIN user_types ON user_types.username = users.username
+  INNER JOIN users ON users.id = login_events.user_id
+  INNER JOIN user_types ON user_types.user_id = users.id
   WHERE (login_events.logged_in_date || 'T' || login_events.logged_in_time) >= ?
-  GROUP BY users.username, users.first_name, users.surname, users.rfid_tag, users.active_member, users.membership_fees_due, user_types.user_type
+  GROUP BY users.id, users.username, users.first_name, users.surname, users.rfid_tag, users.active_member, users.membership_fees_due, user_types.user_type
   ORDER BY users.surname ASC, users.first_name ASC
 `);
 
@@ -3311,6 +3555,7 @@ function buildMemberUserProfile(user, disciplines = [], meta = {}) {
 
   return {
     id: user.username,
+    userId: user.id,
     accountType: "member",
     auth: {
       username: user.username,
@@ -3419,6 +3664,7 @@ function buildLoanBowRecord(record) {
 
 function buildEditableMemberProfile(user, disciplines = [], loanBow = null) {
   return {
+    userId: user.id,
     username: user.username,
     firstName: user.first_name,
     surname: user.surname,
@@ -3726,6 +3972,7 @@ function buildBeginnersCourseDashboard() {
       id: participant.id,
       username: participant.username,
       password: participant.password,
+      userType: participant.participant_user_type,
       firstName: participant.first_name,
       surname: participant.surname,
       fullName: `${participant.first_name} ${participant.surname}`.trim(),
@@ -3736,6 +3983,9 @@ function buildBeginnersCourseDashboard() {
       initialEmailSent: Boolean(participant.initial_email_sent),
       thirtyDayReminderSent: Boolean(participant.thirty_day_reminder_sent),
       courseFeePaid: Boolean(participant.course_fee_paid),
+      convertedToMember:
+        Boolean(participant.converted_to_member) ||
+        participant.participant_user_type !== "beginner",
       assignedCaseId: participant.assigned_case_id ?? null,
       assignedCaseNumber: participant.assigned_case_number ?? "",
     }));
@@ -3766,6 +4016,36 @@ function buildBeginnersCourseDashboard() {
       placesRemaining: Math.max(course.beginner_capacity - beginners.length, 0),
     };
   });
+}
+
+function hasBeginnersCourseCompleted(course) {
+  if (!course) {
+    return false;
+  }
+
+  const lessons = listBeginnersCourseLessonsByCourseId.all(course.id);
+
+  if (!lessons.length) {
+    return false;
+  }
+
+  const lastLesson = [...lessons].sort((left, right) => {
+    const byDate = left.lesson_date.localeCompare(right.lesson_date);
+
+    if (byDate !== 0) {
+      return byDate;
+    }
+
+    const byEndTime = left.end_time.localeCompare(right.end_time);
+
+    if (byEndTime !== 0) {
+      return byEndTime;
+    }
+
+    return left.lesson_number - right.lesson_number;
+  })[lessons.length - 1];
+
+  return hasScheduleEntryEnded(lastLesson.lesson_date, lastLesson.end_time);
 }
 
 function buildBeginnersCourseCalendarLessons() {
@@ -5439,6 +5719,62 @@ function addUtcDays(date, days) {
   return nextDate;
 }
 
+function parseUtcTimestampParts(datePart, timePart) {
+  if (!datePart) {
+    return null;
+  }
+
+  const normalizedTime =
+    typeof timePart === "string" && timePart.trim() ? timePart.trim() : "00:00:00.000Z";
+  const timestamp = new Date(`${datePart}T${normalizedTime}`);
+
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp;
+}
+
+function isBeginnerVisibleInProfileOptions(user, participant, now = new Date()) {
+  if (!user || user.user_type !== "beginner") {
+    return true;
+  }
+
+  if (!participant) {
+    return true;
+  }
+
+  if (Boolean(participant.converted_to_member)) {
+    return true;
+  }
+
+  const createdAt = parseUtcTimestampParts(
+    participant.created_at_date,
+    participant.created_at_time,
+  );
+
+  if (!createdAt) {
+    return true;
+  }
+
+  return createdAt.getTime() > addUtcDays(now, -30).getTime();
+}
+
+function listProfilePageMembers(now = new Date()) {
+  const participantsByUsername = new Map(
+    listBeginnersCourseParticipants.all().map((participant) => [
+      participant.username,
+      participant,
+    ]),
+  );
+
+  return listAllUsers
+    .all()
+    .filter((user) =>
+      isBeginnerVisibleInProfileOptions(
+        user,
+        participantsByUsername.get(user.username),
+        now,
+      ),
+    );
+}
+
 function buildUsageTotals(startIso, endIsoExclusive) {
   const members = countMemberLoginsInRange.get(startIso, endIsoExclusive).count;
   const guests = countGuestLoginsInRange.get(startIso, endIsoExclusive).count;
@@ -5969,7 +6305,7 @@ app.get("/api/profile-options", (req, res) => {
 
   res.json({
     success: true,
-    members: listAllUsers.all().map((user) => ({
+    members: listProfilePageMembers().map((user) => ({
       username: user.username,
       fullName: `${user.first_name} ${user.surname}`,
       userType: user.user_type,
@@ -7335,7 +7671,7 @@ app.get("/api/member-equipment-loans/:username", (req, res) => {
     return;
   }
 
-  const loans = listOpenEquipmentLoansByMemberUsername
+  const loans = listOpenEquipmentLoansByMemberUserId
     .all(requestedUser.username)
     .map((loan) => ({
       id: loan.id,
@@ -7806,6 +8142,89 @@ app.put("/api/beginners-course-participants/:id", (req, res) => {
   });
 });
 
+app.post("/api/beginners-course-participants/:id/convert", (req, res) => {
+  const actor = getActorUser(req);
+
+  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to convert beginners into members.",
+    });
+    return;
+  }
+
+  const participant = findBeginnersCourseParticipantById.get(req.params.id);
+
+  if (!participant) {
+    res.status(404).json({
+      success: false,
+      message: "Beginner record not found.",
+    });
+    return;
+  }
+
+  const course = findBeginnersCourseById.get(participant.course_id);
+
+  if (!course) {
+    res.status(404).json({
+      success: false,
+      message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  if (!hasBeginnersCourseCompleted(course)) {
+    res.status(400).json({
+      success: false,
+      message: "Beginners can only be converted after the course has completed.",
+    });
+    return;
+  }
+
+  const existingUser = findUserByUsername.get(participant.username);
+
+  if (!existingUser) {
+    res.status(404).json({
+      success: false,
+      message: "The linked beginner user could not be found.",
+    });
+    return;
+  }
+
+  if (existingUser.user_type === "beginner") {
+    const conversionResult = saveMemberProfile({
+      username: existingUser.username,
+      firstName: existingUser.first_name,
+      surname: existingUser.surname,
+      password: existingUser.password,
+      rfidTag: existingUser.rfid_tag ?? "",
+      activeMember: Boolean(existingUser.active_member),
+      membershipFeesDue: existingUser.membership_fees_due ?? "",
+      coachingVolunteer: Boolean(existingUser.coaching_volunteer),
+      userType: "general",
+      disciplines: findDisciplinesByUsername
+        .all(existingUser.username)
+        .map((entry) => entry.discipline),
+      loanBow: buildLoanBowRecord(findLoanBowByUsername.get(existingUser.username)),
+      existingUser,
+    });
+
+    if (!conversionResult.success) {
+      res.status(conversionResult.status).json(conversionResult);
+      return;
+    }
+  }
+
+  markBeginnersCourseParticipantConverted.run(participant.id);
+
+  res.json({
+    success: true,
+    course: buildBeginnersCourseDashboard().find(
+      (entry) => entry.id === participant.course_id,
+    ) ?? null,
+  });
+});
+
 app.post("/api/beginners-course-participants/:id/assign-case", (req, res) => {
   const actor = getActorUser(req);
 
@@ -8075,16 +8494,28 @@ app.get("/api/my-beginner-dashboard", (req, res) => {
         fullName: `${row.first_name} ${row.surname}`.trim(),
       }))
     : [];
-  const equipment = listOpenEquipmentLoansByMemberUsername
-    .all(actor.username)
+  const equipment = listOpenEquipmentLoansByMemberUserId
+    .all(actor.id)
     .map((loan) => ({
       id: loan.id,
+      equipmentType: loan.equipment_type,
       typeLabel: EQUIPMENT_TYPE_LABELS[loan.equipment_type] ?? loan.equipment_type,
       reference:
         loan.equipment_type === EQUIPMENT_TYPES.ARROWS
           ? `${loan.arrow_quantity} x ${loan.arrow_length}"`
           : loan.item_number ?? "",
-    }));
+    }))
+    .sort((left, right) => {
+      const leftIsCase = left.equipmentType === EQUIPMENT_TYPES.CASE;
+      const rightIsCase = right.equipmentType === EQUIPMENT_TYPES.CASE;
+
+      if (leftIsCase !== rightIsCase) {
+        return leftIsCase ? -1 : 1;
+      }
+
+      return left.typeLabel.localeCompare(right.typeLabel);
+    })
+    .map(({ equipmentType: _equipmentType, ...item }) => item);
 
   res.json({
     success: true,
@@ -8118,7 +8549,7 @@ app.get("/api/my-beginner-coaching-assignments", (req, res) => {
     return;
   }
 
-  const lessons = listCoachBeginnersLessonsByUsername.all(actor.username).map((lesson) => ({
+  const lessons = listCoachBeginnersLessonsByUserId.all(actor.id).map((lesson) => ({
     id: lesson.id,
     courseId: lesson.course_id,
     lessonNumber: lesson.lesson_number,
@@ -8526,7 +8957,7 @@ app.delete("/api/tournaments/:id/register", (req, res) => {
 
   const deleteResult = deleteTournamentRegistration.run(
     tournament.id,
-    actor.username,
+    actor.id,
   );
 
   if (deleteResult.changes === 0) {
@@ -8971,7 +9402,7 @@ app.delete("/api/events/:id/booking", (req, res) => {
     return;
   }
 
-  const deleteResult = deleteEventBooking.run(event.id, actor.username);
+  const deleteResult = deleteEventBooking.run(event.id, actor.id);
 
   if (deleteResult.changes === 0) {
     res.status(404).json({
@@ -9367,7 +9798,7 @@ app.delete("/api/coaching-sessions/:id/booking", (req, res) => {
 
   const deleteResult = deleteCoachingSessionBooking.run(
     session.id,
-    actor.username,
+    actor.id,
   );
 
   if (deleteResult.changes === 0) {
@@ -9447,7 +9878,7 @@ app.get("/api/my-coaching-bookings", (req, res) => {
 
   res.json({
     success: true,
-    bookings: findMemberBookings.all(actor.username).map((booking) => ({
+    bookings: findMemberCoachingBookingsByUserId.all(actor.id).map((booking) => ({
       id: booking.id,
       date: booking.session_date,
       title: `${booking.topic} with ${booking.coach_first_name} ${booking.coach_surname}`,
@@ -9472,7 +9903,7 @@ app.get("/api/my-event-bookings", (req, res) => {
 
   res.json({
     success: true,
-    bookings: findMemberEventBookings.all(actor.username).map((booking) => ({
+    bookings: findMemberEventBookingsByUserId.all(actor.id).map((booking) => ({
       id: `event-${booking.id}`,
       date: booking.event_date,
       title: booking.title,

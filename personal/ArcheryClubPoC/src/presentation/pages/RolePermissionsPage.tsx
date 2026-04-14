@@ -3,14 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { hasPermission } from "../../utils/userProfile";
-import { fetchApi } from "../../lib/api";
-
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
+import type { PermissionOption, Role } from "../../domain/entities/Role";
 
 const EMPTY_ROLE_FORM = {
   title: "",
@@ -48,19 +41,6 @@ const PERMISSION_GROUP_METADATA = {
 
 type PermissionGroupKey = keyof typeof PERMISSION_GROUP_METADATA;
 
-type PermissionOption = {
-  key: string;
-  label: string;
-};
-
-type Role = {
-  roleKey: string;
-  title: string;
-  permissions: string[];
-  assignedUserCount: number;
-  isSystem?: boolean;
-};
-
 function getPermissionGroup(permissionKey: string): PermissionGroupKey {
   switch (permissionKey) {
     case "manage_members":
@@ -90,6 +70,8 @@ function getPermissionGroup(permissionKey: string): PermissionGroupKey {
 export function RolePermissionsPage({
   currentUserProfile,
   onCurrentUserProfileUpdate,
+  memberProfileCrud,
+  roleCrud,
 }) {
   const [selectedRoleKey, setSelectedRoleKey] = useState("");
   const [form, setForm] = useState(EMPTY_ROLE_FORM);
@@ -109,13 +91,8 @@ export function RolePermissionsPage({
   const rolesQuery = useQuery({
     queryKey: ["roles", actorUsername],
     queryFn: () =>
-      fetchApi<{
-        success: true;
-        roles?: Role[];
-        permissions?: PermissionOption[];
-      }>("/api/roles", {
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
+      roleCrud.getRolesSnapshotUseCase.execute({
+        actorUsername,
       }),
     enabled: canManageRoles,
   });
@@ -201,16 +178,13 @@ export function RolePermissionsPage({
     }
 
     try {
-      const result = await fetchApi<{ success: true; userProfile?: unknown }>(
-        `/api/user-profiles/${currentUserProfile.auth.username}`,
-        {
-          headers: buildHeaders(currentUserProfile),
-          cache: "no-store",
-        },
-      );
+      const result = await memberProfileCrud.getUserProfileUseCase.execute({
+        actorUsername,
+        username: currentUserProfile.auth.username,
+      });
 
-      if (result.userProfile) {
-        onCurrentUserProfileUpdate(result.userProfile);
+      if (result) {
+        onCurrentUserProfileUpdate(result);
       }
     } catch {
       return;
@@ -258,25 +232,29 @@ export function RolePermissionsPage({
   const saveRoleMutation = useMutation({
     mutationFn: async () => {
       const payload = {
-        title: form.title,
-        permissions: form.permissions,
+        title: formValues.title,
+        permissions: formValues.permissions,
       };
 
-      return fetchApi<{ success: true; role: Role }>(
-        isCreating ? "/api/roles" : `/api/roles/${selectedRoleKey}`,
-        {
-          method: isCreating ? "POST" : "PUT",
-          headers: buildHeaders(currentUserProfile),
-          body: JSON.stringify(payload),
-        },
-      );
+      if (isCreating) {
+        return roleCrud.createRoleUseCase.execute({
+          actorUsername,
+          roleDefinition: payload,
+        });
+      }
+
+      return roleCrud.updateRoleUseCase.execute({
+        actorUsername,
+        roleKey: selectedRoleKey,
+        roleDefinition: payload,
+      });
     },
     onMutate: () => {
       setIsSaving(true);
       setError("");
       setMessage("");
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result: Role) => {
       setMessage(
         isCreating
           ? "Role created successfully."
@@ -284,7 +262,7 @@ export function RolePermissionsPage({
       );
       setIsCreating(false);
       setIsFormDirty(false);
-      setSelectedRoleKey(result.role.roleKey);
+      setSelectedRoleKey(result.roleKey);
       window.dispatchEvent(new Event("profile-data-updated"));
       await refreshCurrentUserProfile();
       await queryClient.invalidateQueries({
@@ -305,9 +283,9 @@ export function RolePermissionsPage({
         throw new Error("No role selected.");
       }
 
-      return fetchApi<{ success: true }>(`/api/roles/${selectedRole.roleKey}`, {
-        method: "DELETE",
-        headers: buildHeaders(currentUserProfile),
+      return roleCrud.deleteRoleUseCase.execute({
+        actorUsername,
+        roleKey: selectedRole.roleKey,
       });
     },
     onMutate: () => {

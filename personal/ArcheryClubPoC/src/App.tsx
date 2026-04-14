@@ -7,10 +7,7 @@ import { Button } from "./presentation/components/Button";
 import { HomePage } from "./presentation/pages/HomePage";
 import { LoginPage } from "./presentation/pages/LoginPage";
 import { Modal } from "./presentation/components/Modal";
-import { InMemoryMemberDataSource } from "./data/sources/InMemoryMemberDataSource";
-import { MemberRepositoryImpl } from "./data/repositories/MemberRepositoryImpl";
-import { GetMembersUseCase } from "./usecases/GetMembersUseCase";
-import { AddMemberUseCase } from "./usecases/AddMemberUseCase";
+import { appDependencies } from "./appDependencies";
 import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
 import { fetchApi } from "./lib/api";
@@ -26,11 +23,6 @@ const DEFAULT_PAYMENT_CARD_MESSAGE =
   "Thank you for your $5000 donation for the children of Namibia, this will go a long way to the PPE equipment they sorely need, your complementary Parker Pen will be dispatched in the next 3-5 business weeks.";
 const PAYMENT_CARD_WARNING_MESSAGE =
   "No Monies have been taken, Please ensure not to use any other token or card other than the one that was issued to you";
-
-const dataSource = new InMemoryMemberDataSource();
-const memberRepository = new MemberRepositoryImpl({ dataSource });
-const getMembersUseCase = new GetMembersUseCase({ memberRepository });
-const addMemberUseCase = new AddMemberUseCase({ memberRepository });
 
 function loadStoredUserProfile() {
   const storedUser = window.localStorage.getItem(AUTH_USER_STORAGE_KEY);
@@ -156,7 +148,7 @@ function App() {
     password: string;
   }) => {
     try {
-      const result = await fetchApi<{ success: true; userProfile: UserProfile }>(
+        const result = await fetchApi<{ success: true; userProfile: UserProfile }>(
         "/api/auth/login",
         {
           method: "POST",
@@ -322,22 +314,17 @@ function App() {
 
     const refreshAuthenticatedUser = async () => {
       try {
-        const result = await fetchApi<{ success: true; userProfile: unknown }>(
-          `/api/user-profiles/${username}`,
-          {
-            headers: {
-              "x-actor-username": username,
-            },
-            cache: "no-store",
-            signal: abortController.signal,
-          },
-        );
+        const result = await appDependencies.getUserProfileUseCase.execute({
+          actorUsername: username,
+          username,
+          signal: abortController.signal,
+        });
 
         if (abortController.signal.aborted) {
           return;
         }
 
-        persistAuthenticatedUser(result.userProfile);
+        persistAuthenticatedUser(result);
       } catch {
         return;
       }
@@ -464,11 +451,13 @@ function App() {
             path="/*"
             element={
               <HomePage
-                getMembersUseCase={getMembersUseCase}
-                addMemberUseCase={addMemberUseCase}
                 currentUserProfile={currentUserProfile}
                 onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
                 onLogout={handleLogout}
+                memberProfileCrud={appDependencies}
+                roleCrud={appDependencies}
+                tournamentCrud={appDependencies}
+                equipmentCrud={appDependencies}
               />
             }
           />

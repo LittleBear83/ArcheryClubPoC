@@ -49,31 +49,6 @@ function buildTournamentCompetitorExport(tournament) {
   return `${lines.join("\n")}\n`;
 }
 
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
-
-async function readJsonResponse(response, fallbackMessage) {
-  const contentType = response.headers.get("content-type") ?? "";
-
-  if (contentType.includes("application/json")) {
-    return response.json();
-  }
-
-  const responseText = await response.text();
-
-  if (responseText.trim().startsWith("<!DOCTYPE")) {
-    throw new Error(
-      `${fallbackMessage} If the server was already running, restart it and try again.`,
-    );
-  }
-
-  throw new Error(fallbackMessage);
-}
-
 function getBracketRoundMetrics(roundIndex) {
   const unit = BRACKET_MATCH_HEIGHT + BRACKET_BASE_GAP;
 
@@ -169,6 +144,7 @@ export function TournamentsPage({
   currentUserProfile,
   onTournamentActivity,
   showSetupForm = false,
+  tournamentCrud,
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const [tournaments, setTournaments] = useState([]);
@@ -190,6 +166,7 @@ export function TournamentsPage({
     currentUserProfile,
     "manage_tournaments",
   );
+  const actorUsername = currentUserProfile?.auth?.username ?? "";
 
   const loadTournaments = useCallback(async () => {
     if (!hasLoadedTournaments) {
@@ -198,18 +175,9 @@ export function TournamentsPage({
     setError("");
 
     try {
-      const response = await fetch("/api/tournaments", {
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
+      const result = await tournamentCrud.listTournamentsUseCase.execute({
+        actorUsername,
       });
-      const result = await readJsonResponse(
-        response,
-        "Unable to load tournaments.",
-      );
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to load tournaments.");
-      }
 
       setTournaments(result.tournaments ?? []);
       setTournamentTypes(result.tournamentTypes ?? []);
@@ -252,7 +220,7 @@ export function TournamentsPage({
     } finally {
       setIsLoading(false);
     }
-  }, [currentUserProfile, hasLoadedTournaments]);
+  }, [actorUsername, hasLoadedTournaments, tournamentCrud]);
 
   useEffect(() => {
     loadTournaments();
@@ -363,20 +331,10 @@ export function TournamentsPage({
     setMessage("");
 
     try {
-      const response = await fetch("/api/tournaments", {
-        method: "POST",
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
-        body: JSON.stringify(createForm),
+      const result = await tournamentCrud.createTournamentUseCase.execute({
+        actorUsername,
+        form: createForm,
       });
-      const result = await readJsonResponse(
-        response,
-        "Unable to create tournament.",
-      );
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to create tournament.");
-      }
 
       updateTournamentInState(result.tournament);
       setMessage("Tournament created successfully.");
@@ -402,20 +360,11 @@ export function TournamentsPage({
     setMessage("");
 
     try {
-      const response = await fetch(`/api/tournaments/${selectedTournament.id}`, {
-        method: "PUT",
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
-        body: JSON.stringify(form),
+      const result = await tournamentCrud.updateTournamentUseCase.execute({
+        actorUsername,
+        tournamentId: selectedTournament.id,
+        form,
       });
-      const result = await readJsonResponse(
-        response,
-        "Unable to update tournament.",
-      );
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to update tournament.");
-      }
 
       updateTournamentInState(result.tournament);
       setMessage("Tournament updated successfully.");
@@ -445,19 +394,10 @@ export function TournamentsPage({
     setMessage("");
 
     try {
-      const response = await fetch(`/api/tournaments/${selectedTournament.id}`, {
-        method: "DELETE",
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
+      const result = await tournamentCrud.deleteTournamentUseCase.execute({
+        actorUsername,
+        tournamentId: selectedTournament.id,
       });
-      const result = await readJsonResponse(
-        response,
-        "Unable to delete tournament.",
-      );
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to delete tournament.");
-      }
 
       let nextSelectedTournamentId = null;
 
@@ -490,22 +430,10 @@ export function TournamentsPage({
     setMessage("");
 
     try {
-      const response = await fetch(
-        `/api/tournaments/${selectedTournament.id}/register`,
-        {
-          method: "POST",
-          headers: buildHeaders(currentUserProfile),
-          cache: "no-store",
-        },
-      );
-      const result = await readJsonResponse(
-        response,
-        "Unable to register for the tournament.",
-      );
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to register for the tournament.");
-      }
+      const result = await tournamentCrud.registerForTournamentUseCase.execute({
+        actorUsername,
+        tournamentId: selectedTournament.id,
+      });
 
       updateTournamentInState(result.tournament);
       setMessage(`Registered for ${result.tournament.name}.`);
@@ -528,22 +456,10 @@ export function TournamentsPage({
     setMessage("");
 
     try {
-      const response = await fetch(
-        `/api/tournaments/${selectedTournament.id}/register`,
-        {
-          method: "DELETE",
-          headers: buildHeaders(currentUserProfile),
-          cache: "no-store",
-        },
-      );
-      const result = await readJsonResponse(
-        response,
-        "Unable to withdraw from the tournament.",
-      );
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to withdraw from the tournament.");
-      }
+      const result = await tournamentCrud.withdrawFromTournamentUseCase.execute({
+        actorUsername,
+        tournamentId: selectedTournament.id,
+      });
 
       updateTournamentInState(result.tournament);
       setMessage(`Withdrawn from ${result.tournament.name}.`);
@@ -568,23 +484,11 @@ export function TournamentsPage({
     setMessage("");
 
     try {
-      const response = await fetch(
-        `/api/tournaments/${selectedTournament.id}/score`,
-        {
-          method: "POST",
-          headers: buildHeaders(currentUserProfile),
-          cache: "no-store",
-          body: JSON.stringify({ score: scoreValue }),
-        },
-      );
-      const result = await readJsonResponse(
-        response,
-        "Unable to submit score.",
-      );
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to submit score.");
-      }
+      const result = await tournamentCrud.submitTournamentScoreUseCase.execute({
+        actorUsername,
+        tournamentId: selectedTournament.id,
+        scoreSubmission: { score: scoreValue },
+      });
 
       updateTournamentInState(result.tournament);
       setMessage(`Score saved for ${result.tournament.name}.`);

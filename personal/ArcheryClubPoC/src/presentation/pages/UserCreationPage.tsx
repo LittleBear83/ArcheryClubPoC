@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MemberProfileForm } from "../components/MemberProfileForm";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { hasPermission } from "../../utils/userProfile";
-import { fetchApi } from "../../lib/api";
 
 const EMPTY_PROFILE = {
   username: "",
@@ -33,14 +32,7 @@ const EMPTY_PROFILE = {
   },
 };
 
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
-
-export function UserCreationPage({ currentUserProfile }) {
+export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
   const [editableProfile, setEditableProfile] = useState(EMPTY_PROFILE);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -56,12 +48,8 @@ export function UserCreationPage({ currentUserProfile }) {
   const optionsQuery = useQuery({
     queryKey: ["profile-options", actorUsername],
     queryFn: () =>
-      fetchApi<{
-        success: true;
-        disciplines?: string[];
-        userTypes?: string[];
-      }>("/api/profile-options", {
-        headers: buildHeaders(currentUserProfile),
+      memberProfileCrud.getMemberProfileOptionsUseCase.execute({
+        actorUsername,
       }),
     enabled: canManageMembers,
   });
@@ -155,14 +143,10 @@ export function UserCreationPage({ currentUserProfile }) {
 
   const createUserMutation = useMutation({
     mutationFn: async () =>
-      fetchApi<{ success: true; editableProfile: { username: string } }>(
-        "/api/user-profiles",
-        {
-          method: "POST",
-          headers: buildHeaders(currentUserProfile),
-          body: JSON.stringify(effectiveEditableProfile),
-        },
-      ),
+      memberProfileCrud.createMemberProfileUseCase.execute({
+        actorUsername,
+        profile: effectiveEditableProfile,
+      }),
     onMutate: () => {
       setIsSaving(true);
       setError("");

@@ -8,32 +8,18 @@ import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { hasPermission } from "../../utils/userProfile";
 import { subscribeToRfidScans } from "../../utils/rfidScanHub";
-
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
-
-async function readJsonResponse(response) {
-  const responseText = await response.text();
-
-  try {
-    return responseText ? JSON.parse(responseText) : {};
-  } catch {
-    throw new Error(
-      "Unable to load the profile page. If the server was already running, restart it and try again.",
-    );
-  }
-}
+import type { LoanBowReturnPayload } from "../../domain/entities/MemberProfile";
 
 type LoadProfileOptions = {
   signal?: AbortSignal;
   isBackgroundRefresh?: boolean;
 };
 
-export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) {
+export function ProfilePage({
+  currentUserProfile,
+  onCurrentUserProfileUpdate,
+  memberProfileCrud,
+}) {
   const hasLoadedProfileRef = useRef(false);
   const isIssuingCardRef = useRef(false);
   const [editableProfile, setEditableProfile] = useState(null);
@@ -62,6 +48,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     currentUserProfile,
     "manage_members",
   );
+  const actorUsername = currentUserProfile?.auth?.username ?? "";
   const isGuest = currentUserProfile?.accountType === "guest";
   const activeUsername = useMemo(() => {
     if (isGuest) {
@@ -113,47 +100,18 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
       setError("");
 
       try {
-        const response = await fetch(`/api/user-profiles/${username}`, {
-          headers: buildHeaders(currentUserProfile),
+        const result = await memberProfileCrud.getMemberProfilePageDataUseCase.execute({
+          actorUsername,
+          username,
           signal,
-          cache: "no-store",
         });
-        const result = await readJsonResponse(response);
-
-        if (!response.ok || !result.success) {
-          throw new Error(
-            result.message ??
-              (username === currentUserProfile?.auth?.username
-                ? "Unable to load your profile."
-                : "Unable to load member profile."),
-          );
-        }
 
         if (signal?.aborted) {
           return;
         }
 
         setEditableProfile(result.editableProfile);
-
-        const loansResponse = await fetch(
-          `/api/member-equipment-loans/${username}`,
-          {
-            headers: buildHeaders(currentUserProfile),
-            signal,
-            cache: "no-store",
-          },
-        );
-        const loansResult = await readJsonResponse(loansResponse);
-
-        if (!loansResponse.ok || !loansResult.success) {
-          throw new Error(loansResult.message ?? "Unable to load equipment loans.");
-        }
-
-        if (signal?.aborted) {
-          return;
-        }
-
-        setEquipmentLoans(loansResult.loans ?? []);
+        setEquipmentLoans(result.equipmentLoans ?? []);
         setMessage("");
         hasLoadedProfileRef.current = true;
       } catch (loadError) {
@@ -167,7 +125,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
         }
       }
     },
-    [currentUserProfile, isGuest],
+    [actorUsername, isGuest, memberProfileCrud],
   );
 
   const loadProfileOptions = useCallback(
@@ -177,16 +135,10 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
       }
 
       try {
-        const response = await fetch("/api/profile-options", {
-          headers: buildHeaders(currentUserProfile),
+        const result = await memberProfileCrud.getMemberProfileOptionsUseCase.execute({
+          actorUsername,
           signal,
-          cache: "no-store",
         });
-        const result = await readJsonResponse(response);
-
-        if (!response.ok || !result.success) {
-          throw new Error(result.message ?? "Unable to load member options.");
-        }
 
         if (signal?.aborted) {
           return;
@@ -201,7 +153,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
         }
       }
     },
-    [canManageMembers, currentUserProfile, isGuest],
+    [actorUsername, canManageMembers, isGuest, memberProfileCrud],
   );
 
   useEffect(() => {
@@ -265,42 +217,14 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
       setCardIssueStatus(`Registering tag ${rfidTag} to ${editableProfile.firstName} ${editableProfile.surname}...`);
 
       try {
-        let response = await fetch(
-          `/api/user-profiles/${editableProfile.username}/assign-rfid`,
-          {
-            method: "POST",
-            headers: buildHeaders(currentUserProfile),
-            body: JSON.stringify({ rfidTag }),
-          },
-        );
-        let result = await readJsonResponse(response);
-
-        if (response.status === 404) {
-          response = await fetch(`/api/user-profiles/${editableProfile.username}`, {
-            method: "PUT",
-            headers: buildHeaders(currentUserProfile),
-            body: JSON.stringify({
-              firstName: editableProfile.firstName,
-              surname: editableProfile.surname,
-              password: editableProfile.password,
-              rfidTag,
-              activeMember: editableProfile.activeMember,
-              membershipFeesDue: editableProfile.membershipFeesDue,
-              coachingVolunteer: editableProfile.coachingVolunteer,
-              userType: editableProfile.userType,
-              disciplines: editableProfile.disciplines,
-              loanBow: editableProfile.loanBow,
-            }),
-          });
-          result = await readJsonResponse(response);
-        }
+        const result = await memberProfileCrud.assignMemberRfidTagUseCase.execute({
+          actorUsername,
+          username: editableProfile.username,
+          rfidTag,
+        });
 
         if (!isActive) {
           return;
-        }
-
-        if (!response.ok || !result.success) {
-          throw new Error(result.message ?? "Unable to issue the member card.");
         }
 
         setEditableProfile(result.editableProfile);
@@ -360,10 +284,11 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
       }
     });
   }, [
+    actorUsername,
     canManageMembers,
-    currentUserProfile,
     editableProfile,
     isCardModalOpen,
+    memberProfileCrud,
     onCurrentUserProfileUpdate,
   ]);
 
@@ -439,19 +364,11 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
       editableProfile.username === currentUserProfile?.auth?.username;
 
     try {
-      const response = await fetch(
-        `/api/user-profiles/${editableProfile.username}`,
-        {
-          method: "PUT",
-          headers: buildHeaders(currentUserProfile),
-          body: JSON.stringify(requestBody),
-        },
-      );
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to save profile changes.");
-      }
+      const result = await memberProfileCrud.updateMemberProfileUseCase.execute({
+        actorUsername,
+        username: editableProfile.username,
+        profile: requestBody,
+      });
 
       setEditableProfile(result.editableProfile);
       setMessage("Profile updated successfully.");
@@ -486,7 +403,7 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     }
   };
 
-  const handleReturnLoanBow = async (loanBowReturn) => {
+  const handleReturnLoanBow = async (loanBowReturn: LoanBowReturnPayload) => {
     if (!editableProfile) {
       return;
     }
@@ -497,19 +414,11 @@ export function ProfilePage({ currentUserProfile, onCurrentUserProfileUpdate }) 
     setMessage("");
 
     try {
-      const response = await fetch(
-        `/api/loan-bow-profiles/${editableProfile.username}/return`,
-        {
-          method: "POST",
-          headers: buildHeaders(currentUserProfile),
-          body: JSON.stringify({ loanBowReturn }),
-        },
-      );
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message ?? "Unable to save the loan bow return.");
-      }
+      const result = await memberProfileCrud.returnLoanBowUseCase.execute({
+        actorUsername,
+        username: editableProfile.username,
+        loanBowReturn,
+      });
 
       setEditableProfile((current) => ({
         ...current,

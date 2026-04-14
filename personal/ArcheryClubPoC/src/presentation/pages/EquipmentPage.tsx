@@ -6,14 +6,6 @@ import { Modal } from "../components/Modal";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { hasPermission } from "../../utils/userProfile";
-import { fetchApi } from "../../lib/api";
-
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
 
 function describeCaseContentLocation(item, caseItem) {
   if (item.currentLocation?.caseId === caseItem.id) {
@@ -47,7 +39,7 @@ const CASE_ASSIGNMENT_FIELDS = [
   { key: "arrows", label: "Arrows", type: "arrows" },
 ];
 
-export function EquipmentPage({ currentUserProfile }) {
+export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
@@ -79,9 +71,8 @@ export function EquipmentPage({ currentUserProfile }) {
   const equipmentQuery = useQuery({
     queryKey: ["equipment-dashboard", actorUsername],
     queryFn: () =>
-      fetchApi("/api/equipment/dashboard", {
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
+      equipmentCrud.getEquipmentDashboardUseCase.execute({
+        actorUsername,
       }),
     enabled: canAccessEquipment,
   });
@@ -241,10 +232,9 @@ export function EquipmentPage({ currentUserProfile }) {
 
   const addEquipmentMutation = useMutation({
     mutationFn: () =>
-      fetchApi("/api/equipment/items", {
-        method: "POST",
-        headers: buildHeaders(currentUserProfile),
-        body: JSON.stringify(addForm),
+      equipmentCrud.addEquipmentItemUseCase.execute({
+        actorUsername,
+        payload: addForm,
       }),
     onMutate: () => {
       setError("");
@@ -262,10 +252,10 @@ export function EquipmentPage({ currentUserProfile }) {
 
   const decommissionMutation = useMutation({
     mutationFn: () =>
-      fetchApi(`/api/equipment/items/${selectedItemId}/decommission`, {
-        method: "POST",
-        headers: buildHeaders(currentUserProfile),
-        body: JSON.stringify({ reason: decommissionReason }),
+      equipmentCrud.decommissionEquipmentItemUseCase.execute({
+        actorUsername,
+        itemId: selectedItemId,
+        payload: { reason: decommissionReason },
       }),
     onMutate: () => {
       setError("");
@@ -283,16 +273,15 @@ export function EquipmentPage({ currentUserProfile }) {
 
   const assignMutation = useMutation({
     mutationFn: () =>
-      fetchApi("/api/equipment/assignments", {
-        method: "POST",
-        headers: buildHeaders(currentUserProfile),
-        body: JSON.stringify({
+      equipmentCrud.assignEquipmentItemUseCase.execute({
+        actorUsername,
+        payload: {
           itemId: selectedItemId,
           targetType: assignTargetType,
           memberUsername:
             assignTargetType === "member" ? targetMemberUsername : undefined,
           caseId: assignTargetType === "case" ? targetCaseId : undefined,
-        }),
+        },
       }),
     onMutate: () => {
       setError("");
@@ -309,17 +298,16 @@ export function EquipmentPage({ currentUserProfile }) {
 
   const returnMutation = useMutation({
     mutationFn: () =>
-      fetchApi("/api/equipment/returns", {
-        method: "POST",
-        headers: buildHeaders(currentUserProfile),
-        body: JSON.stringify({
+      equipmentCrud.returnEquipmentItemUseCase.execute({
+        actorUsername,
+        payload: {
           itemId: selectedItemId,
           returnToCaseId:
             selectedReturnItem && selectedReturnItem.type !== "case"
               ? returnCaseId || null
               : null,
           cupboardLabel,
-        }),
+        },
       }),
     onMutate: () => {
       setError("");
@@ -337,13 +325,12 @@ export function EquipmentPage({ currentUserProfile }) {
 
   const storageMutation = useMutation({
     mutationFn: () =>
-      fetchApi("/api/equipment/storage", {
-        method: "POST",
-        headers: buildHeaders(currentUserProfile),
-        body: JSON.stringify({
+      equipmentCrud.updateEquipmentStorageUseCase.execute({
+        actorUsername,
+        payload: {
           itemId: selectedItemId,
           cupboardLabel,
-        }),
+        },
       }),
     onMutate: () => {
       setError("");
@@ -434,25 +421,23 @@ export function EquipmentPage({ currentUserProfile }) {
       );
 
       for (const itemId of itemsToRemove) {
-        await fetchApi("/api/equipment/storage", {
-          method: "POST",
-          headers: buildHeaders(currentUserProfile),
-          body: JSON.stringify({
+        await equipmentCrud.updateEquipmentStorageUseCase.execute({
+          actorUsername,
+          payload: {
             itemId: Number(itemId),
             cupboardLabel: "Main Cupboard",
-          }),
+          },
         });
       }
 
       for (const itemId of itemsToAssign) {
-        await fetchApi("/api/equipment/assignments", {
-          method: "POST",
-          headers: buildHeaders(currentUserProfile),
-          body: JSON.stringify({
+        await equipmentCrud.assignEquipmentItemUseCase.execute({
+          actorUsername,
+          payload: {
             itemId: Number(itemId),
             targetType: "case",
             caseId: Number(activeCaseModal.id),
-          }),
+          },
         });
       }
 

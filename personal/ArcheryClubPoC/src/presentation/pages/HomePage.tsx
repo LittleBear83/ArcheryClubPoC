@@ -31,11 +31,41 @@ import {
 } from "../../utils/userProfile";
 
 type HomePageProps = {
-  getMembersUseCase?: unknown;
-  addMemberUseCase?: unknown;
   currentUserProfile: UserProfile | null;
   onCurrentUserProfileUpdate: (userProfile: unknown) => void;
   onLogout: (message?: string) => void;
+  memberProfileCrud: {
+    getMemberProfilePageDataUseCase: unknown;
+    getMemberProfileOptionsUseCase: unknown;
+    createMemberProfileUseCase: unknown;
+    updateMemberProfileUseCase: unknown;
+    assignMemberRfidTagUseCase: unknown;
+    returnLoanBowUseCase: unknown;
+    getUserProfileUseCase: unknown;
+  };
+  roleCrud: {
+    getRolesSnapshotUseCase: unknown;
+    createRoleUseCase: unknown;
+    updateRoleUseCase: unknown;
+    deleteRoleUseCase: unknown;
+  };
+  tournamentCrud: {
+    listTournamentsUseCase: unknown;
+    createTournamentUseCase: unknown;
+    updateTournamentUseCase: unknown;
+    deleteTournamentUseCase: unknown;
+    registerForTournamentUseCase: unknown;
+    withdrawFromTournamentUseCase: unknown;
+    submitTournamentScoreUseCase: unknown;
+  };
+  equipmentCrud: {
+    getEquipmentDashboardUseCase: unknown;
+    addEquipmentItemUseCase: unknown;
+    decommissionEquipmentItemUseCase: unknown;
+    assignEquipmentItemUseCase: unknown;
+    returnEquipmentItemUseCase: unknown;
+    updateEquipmentStorageUseCase: unknown;
+  };
 };
 type HomeEvent = {
   id: string | number;
@@ -291,6 +321,10 @@ export function HomePage({
   currentUserProfile,
   onCurrentUserProfileUpdate,
   onLogout,
+  memberProfileCrud,
+  roleCrud,
+  tournamentCrud,
+  equipmentCrud,
 }: HomePageProps) {
   const { theme, themeName, toggleTheme } = useTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -479,12 +513,18 @@ export function HomePage({
                 <ProfilePage
                   currentUserProfile={currentUserProfile}
                   onCurrentUserProfileUpdate={onCurrentUserProfileUpdate}
+                  memberProfileCrud={memberProfileCrud}
                 />
               }
             />
             <Route
               path="/user-creation"
-              element={<UserCreationPage currentUserProfile={currentUserProfile} />}
+              element={
+                <UserCreationPage
+                  currentUserProfile={currentUserProfile}
+                  memberProfileCrud={memberProfileCrud}
+                />
+              }
             />
             <Route
               path="/role-permissions"
@@ -492,6 +532,8 @@ export function HomePage({
                 <RolePermissionsPage
                   currentUserProfile={currentUserProfile}
                   onCurrentUserProfileUpdate={onCurrentUserProfileUpdate}
+                  memberProfileCrud={memberProfileCrud}
+                  roleCrud={roleCrud}
                 />
               }
             />
@@ -502,7 +544,10 @@ export function HomePage({
             <Route
               path="/equipment"
               element={
-                <EquipmentPage currentUserProfile={currentUserProfile} />
+                <EquipmentPage
+                  currentUserProfile={currentUserProfile}
+                  equipmentCrud={equipmentCrud}
+                />
               }
             />
             <Route
@@ -555,6 +600,7 @@ export function HomePage({
                       queryKey: homeQueryKeys.activity(actorUsername),
                     })
                   }
+                  tournamentCrud={tournamentCrud}
                 />
               }
             />
@@ -569,6 +615,7 @@ export function HomePage({
                     })
                   }
                   showSetupForm
+                  tournamentCrud={tournamentCrud}
                 />
               }
             />

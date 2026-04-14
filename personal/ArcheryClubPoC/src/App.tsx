@@ -7,11 +7,11 @@ import { Button } from "./presentation/components/Button";
 import { HomePage } from "./presentation/pages/HomePage";
 import { LoginPage } from "./presentation/pages/LoginPage";
 import { Modal } from "./presentation/components/Modal";
-import { appDependencies } from "./appDependencies";
 import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
 import { fetchApi } from "./lib/api";
 import type { UserProfile } from "./types/app";
+import type { AppDependencies } from "./bootstrap/createAppDependencies";
 
 const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
@@ -82,7 +82,7 @@ function PaymentCardModal({
   );
 }
 
-function App() {
+function App({ dependencies }: { dependencies: AppDependencies }) {
   const inactivityTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const lastActivityAtRef = useRef(Date.now());
   const queryClient = useQueryClient();
@@ -314,7 +314,7 @@ function App() {
 
     const refreshAuthenticatedUser = async () => {
       try {
-        const result = await appDependencies.getUserProfileUseCase.execute({
+        const result = await dependencies.getUserProfileUseCase.execute({
           actorUsername: username,
           username,
           signal: abortController.signal,
@@ -335,7 +335,11 @@ function App() {
     return () => {
       abortController.abort();
     };
-  }, [currentUserProfile?.auth?.username, isAuthenticated]);
+  }, [
+    currentUserProfile?.auth?.username,
+    dependencies.getUserProfileUseCase,
+    isAuthenticated,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -454,10 +458,10 @@ function App() {
                 currentUserProfile={currentUserProfile}
                 onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
                 onLogout={handleLogout}
-                memberProfileCrud={appDependencies}
-                roleCrud={appDependencies}
-                tournamentCrud={appDependencies}
-                equipmentCrud={appDependencies}
+                memberProfileCrud={dependencies}
+                roleCrud={dependencies}
+                tournamentCrud={dependencies}
+                equipmentCrud={dependencies}
               />
             }
           />

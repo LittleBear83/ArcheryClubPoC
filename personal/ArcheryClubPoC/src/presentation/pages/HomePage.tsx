@@ -24,6 +24,7 @@ import { formatDate } from "../../utils/dateTime";
 import { fetchApi } from "../../lib/api";
 import { useTheme } from "../../theme/ThemeProvider";
 import type { HomeMember, UserProfile } from "../../types/app";
+import type { AppDependencies } from "../../bootstrap/createAppDependencies";
 import {
   hasPermission,
   isSameUserProfile,
@@ -34,38 +35,42 @@ type HomePageProps = {
   currentUserProfile: UserProfile | null;
   onCurrentUserProfileUpdate: (userProfile: unknown) => void;
   onLogout: (message?: string) => void;
-  memberProfileCrud: {
-    getMemberProfilePageDataUseCase: unknown;
-    getMemberProfileOptionsUseCase: unknown;
-    createMemberProfileUseCase: unknown;
-    updateMemberProfileUseCase: unknown;
-    assignMemberRfidTagUseCase: unknown;
-    returnLoanBowUseCase: unknown;
-    getUserProfileUseCase: unknown;
-  };
-  roleCrud: {
-    getRolesSnapshotUseCase: unknown;
-    createRoleUseCase: unknown;
-    updateRoleUseCase: unknown;
-    deleteRoleUseCase: unknown;
-  };
-  tournamentCrud: {
-    listTournamentsUseCase: unknown;
-    createTournamentUseCase: unknown;
-    updateTournamentUseCase: unknown;
-    deleteTournamentUseCase: unknown;
-    registerForTournamentUseCase: unknown;
-    withdrawFromTournamentUseCase: unknown;
-    submitTournamentScoreUseCase: unknown;
-  };
-  equipmentCrud: {
-    getEquipmentDashboardUseCase: unknown;
-    addEquipmentItemUseCase: unknown;
-    decommissionEquipmentItemUseCase: unknown;
-    assignEquipmentItemUseCase: unknown;
-    returnEquipmentItemUseCase: unknown;
-    updateEquipmentStorageUseCase: unknown;
-  };
+  memberProfileCrud: Pick<
+    AppDependencies,
+    | "getMemberProfilePageDataUseCase"
+    | "getMemberProfileOptionsUseCase"
+    | "createMemberProfileUseCase"
+    | "updateMemberProfileUseCase"
+    | "assignMemberRfidTagUseCase"
+    | "returnLoanBowUseCase"
+    | "getUserProfileUseCase"
+  >;
+  roleCrud: Pick<
+    AppDependencies,
+    | "getRolesSnapshotUseCase"
+    | "createRoleUseCase"
+    | "updateRoleUseCase"
+    | "deleteRoleUseCase"
+  >;
+  tournamentCrud: Pick<
+    AppDependencies,
+    | "listTournamentsUseCase"
+    | "createTournamentUseCase"
+    | "updateTournamentUseCase"
+    | "deleteTournamentUseCase"
+    | "registerForTournamentUseCase"
+    | "withdrawFromTournamentUseCase"
+    | "submitTournamentScoreUseCase"
+  >;
+  equipmentCrud: Pick<
+    AppDependencies,
+    | "getEquipmentDashboardUseCase"
+    | "addEquipmentItemUseCase"
+    | "decommissionEquipmentItemUseCase"
+    | "assignEquipmentItemUseCase"
+    | "returnEquipmentItemUseCase"
+    | "updateEquipmentStorageUseCase"
+  >;
 };
 type HomeEvent = {
   id: string | number;

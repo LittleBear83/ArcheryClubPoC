@@ -32,12 +32,28 @@ The app currently includes:
 
 - `src/`
   Frontend application code.
+- `src/bootstrap/`
+  Frontend composition root and provider wiring.
+- `src/application/`
+  Frontend use cases that coordinate domain behaviour.
+- `src/domain/`
+  Frontend entities and repository contracts.
+- `src/data/`
+  Frontend repository implementations and data sources.
 - `src/presentation/pages/`
   Main screens such as home, event calendar, coaching calendar, and range usage.
 - `src/presentation/components/`
   Shared UI pieces such as the calendar, modal, and side drawer.
 - `server/`
-  Express server and SQLite setup.
+  Backend entrypoint and delivery layer.
+- `server/bootstrap/`
+  Backend startup and framework composition.
+- `server/config/`
+  Runtime and environment-derived configuration.
+- `server/domain/`
+  Backend domain constants and business concepts shared across features.
+- `server/infrastructure/`
+  Backend persistence and framework-facing infrastructure.
 - `server/data/auth.sqlite`
   Local SQLite database file used by the backend.
 - `docs/DeveloperGuide.md`

@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
-import { hasPermission } from "../../utils/userProfile";
+import { Modal } from "../components/Modal";
 import { fetchApi } from "../../lib/api";
 
 function buildHeaders(currentUserProfile) {
@@ -21,8 +21,23 @@ type CommitteeRole = {
   id: number;
   title: string;
   summary: string;
+  responsibilities?: string;
+  personalBlurb?: string;
+  photoDataUrl?: string | null;
   assignedMember?: CommitteeMember | null;
 };
+
+function getRoleBlurb(role: CommitteeRole) {
+  if (role.personalBlurb?.trim()) {
+    return role.personalBlurb.trim();
+  }
+
+  const assignedName = role.assignedMember?.fullName ?? "This role";
+
+  return role.assignedMember
+    ? `${assignedName} helps lead this area of club life and gives members a clear point of contact for ${role.title.toLowerCase()} matters.`
+    : `This role supports the day-to-day running of the club and is ready to be assigned when a member takes responsibility for ${role.title.toLowerCase()}.`;
+}
 
 type CommitteeRolesResponse = {
   success: true;
@@ -35,16 +50,8 @@ const committeeQueryKeys = {
 };
 
 export function CommitteeOrgChartPage({ currentUserProfile }) {
-  const [savingRoleId, setSavingRoleId] = useState(null);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
-
-  const canManageCommitteeRoles = hasPermission(
-    currentUserProfile,
-    "manage_committee_roles",
-  );
+  const [selectedRole, setSelectedRole] = useState<CommitteeRole | null>(null);
   const actorUsername = currentUserProfile?.auth?.username ?? "";
-  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: committeeQueryKeys.roles(actorUsername),
@@ -57,49 +64,6 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
   });
 
   const roles = data?.roles ?? [];
-  const members = data?.members ?? [];
-
-  const assignMemberMutation = useMutation({
-    mutationFn: async ({
-      roleId,
-      assignedUsername,
-    }: {
-      roleId: number;
-      assignedUsername: string;
-    }) =>
-      fetchApi<{ success: true; role: CommitteeRole }>(
-        `/api/committee-roles/${roleId}`,
-        {
-          method: "PUT",
-          headers: buildHeaders(currentUserProfile),
-          cache: "no-store",
-          body: JSON.stringify({
-            assignedUsername: assignedUsername || null,
-          }),
-        },
-      ),
-    onMutate: ({ roleId }) => {
-      setSavingRoleId(roleId);
-      setError("");
-      setMessage("");
-    },
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({
-        queryKey: committeeQueryKeys.roles(actorUsername),
-      });
-      setMessage(`${result.role.title} updated successfully.`);
-    },
-    onError: (saveError: Error) => {
-      setError(saveError.message);
-    },
-    onSettled: () => {
-      setSavingRoleId(null);
-    },
-  });
-
-  const handleAssignMember = async (roleId, assignedUsername) => {
-    await assignMemberMutation.mutateAsync({ roleId, assignedUsername });
-  };
 
   return (
     <div className="profile-page">
@@ -109,63 +73,128 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
       </p>
 
       <StatusMessagePanel
-        error={error}
+        error=""
         loading={isLoading}
         loadingLabel="Loading committee roles..."
-        success={message}
+        success=""
       />
 
       {data ? (
         <SectionPanel
           className="profile-form committee-roles-panel"
-          title="Committee Roles Table"
+          title="Committee Roles"
           titleClassName="committee-roles-title"
         >
-          <div className="committee-roles-table-wrap">
-            <table className="committee-roles-table">
-              <thead>
-                <tr>
-                  <th>Committee role</th>
-                  <th>Summary</th>
-                  <th>Assigned member</th>
-                </tr>
-              </thead>
-              <tbody>
-                {roles.map((role) => (
-                  <tr key={role.id}>
-                    <td>{role.title}</td>
-                    <td>{role.summary}</td>
-                    <td>
-                      {canManageCommitteeRoles ? (
-                        <label className="committee-role-assignment">
-                          <select
-                            value={role.assignedMember?.username ?? ""}
-                            onChange={(event) =>
-                              handleAssignMember(role.id, event.target.value)
-                            }
-                            disabled={savingRoleId === role.id}
-                          >
-                            <option value="">Unassigned</option>
-                            {members.map((member) => (
-                              <option key={member.username} value={member.username}>
-                                {member.fullName} ({member.username})
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      ) : role.assignedMember ? (
-                        `${role.assignedMember.fullName} (${role.assignedMember.username})`
-                      ) : (
-                        "Unassigned"
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="committee-role-card-grid">
+            {roles.map((role) => (
+              <button
+                key={role.id}
+                type="button"
+                className="committee-role-card committee-role-card-button"
+                onClick={() => setSelectedRole(role)}
+              >
+                <div className="committee-role-card-header">
+                  {role.photoDataUrl ? (
+                    <img
+                      src={role.photoDataUrl}
+                      alt={`${role.title} profile`}
+                      className="committee-role-photo"
+                    />
+                  ) : (
+                    <div
+                      className="committee-role-photo-placeholder"
+                      aria-hidden="true"
+                    >
+                      <span>Photo</span>
+                    </div>
+                  )}
+                  <div className="committee-role-heading">
+                    <h4>{role.title}</h4>
+                    <p className="committee-role-summary committee-role-summary--compact">
+                      {role.summary}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="committee-role-card-meta">
+                  <p
+                    className={[
+                      "committee-role-member",
+                      role.assignedMember ? "" : "committee-role-member--unassigned",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <strong>Member:</strong>{" "}
+                    {role.assignedMember
+                      ? role.assignedMember.fullName
+                      : "Unassigned"}
+                  </p>
+                  <span className="committee-role-card-cta">View details</span>
+                </div>
+              </button>
+            ))}
           </div>
         </SectionPanel>
       ) : null}
+
+      <Modal
+        open={Boolean(selectedRole)}
+        onClose={() => setSelectedRole(null)}
+        title={selectedRole?.title ?? "Committee Role"}
+        contentClassName="modal-content--wide"
+      >
+        {selectedRole ? (
+          <div className="committee-role-modal">
+            <div className="committee-role-modal-hero">
+              {selectedRole.photoDataUrl ? (
+                <img
+                  src={selectedRole.photoDataUrl}
+                  alt={`${selectedRole.title} profile`}
+                  className="committee-role-photo committee-role-photo--large"
+                />
+              ) : (
+                <div
+                  className="committee-role-photo-placeholder committee-role-photo-placeholder--large"
+                  aria-hidden="true"
+                >
+                  <span>Photo</span>
+                </div>
+              )}
+              <div className="committee-role-modal-hero-copy">
+                <p className="committee-role-summary">{selectedRole.summary}</p>
+                <p className="committee-role-member">
+                  <strong>Assigned member:</strong>{" "}
+                  {selectedRole.assignedMember
+                    ? `${selectedRole.assignedMember.fullName} (${selectedRole.assignedMember.username})`
+                    : "Unassigned"}
+                </p>
+              </div>
+            </div>
+
+            <div className="committee-role-modal-grid">
+              <section className="committee-role-section">
+                <h5>Responsibilities</h5>
+                <p>{selectedRole.responsibilities?.trim() || selectedRole.summary}</p>
+              </section>
+
+              <section className="committee-role-section">
+                <h5>Personal Blurb</h5>
+                <p>{getRoleBlurb(selectedRole)}</p>
+              </section>
+
+              <section className="committee-role-section committee-role-section--full">
+                <h5>Assigned Member</h5>
+                <p className="committee-role-member">
+                  {selectedRole.assignedMember
+                    ? `${selectedRole.assignedMember.fullName} (${selectedRole.assignedMember.username})`
+                    : "Unassigned"}
+                </p>
+              </section>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

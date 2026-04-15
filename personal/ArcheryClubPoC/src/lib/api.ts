@@ -11,7 +11,15 @@ export async function fetchApi<T extends ApiEnvelope>(
   const contentType = response.headers.get("content-type") ?? "";
 
   if (!contentType.includes("application/json")) {
-    throw new Error("The API returned an unexpected response.");
+    const responseText = await response.text();
+    const summary = responseText.trim().slice(0, 160);
+    const statusLabel = `${response.status} ${response.statusText}`.trim();
+
+    throw new Error(
+      summary
+        ? `The API returned an unexpected response (${statusLabel}): ${summary}`
+        : `The API returned an unexpected response (${statusLabel}).`,
+    );
   }
 
   const result = (await response.json()) as T;

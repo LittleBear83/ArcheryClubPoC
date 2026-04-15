@@ -37,6 +37,12 @@ const pages = [
     label: "The Committee",
     path: "/committee-org-chart",
   },
+  {
+    id: "committee-admin",
+    label: "Committee Admin",
+    path: "/committee-admin",
+    permission: "manage_committee_roles",
+  },
   { id: "general-info", label: "General Information", path: "/general-info" },
   {
     id: "user-creation",

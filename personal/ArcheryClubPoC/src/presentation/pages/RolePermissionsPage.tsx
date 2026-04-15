@@ -21,17 +21,16 @@ const PERMISSION_GROUP_METADATA = {
   "member-setup": {
     title: "Member adminstration",
     description:
-      "Member records, user creation, profile structure, role assignment, and committee administration.",
+      "Member records, user creation, profile structure, role assignment, and committee role administration.",
   },
   "events-coaching": {
     title: "Events/Tournaments and Coaching",
     description:
-      "Create and approve events, coaching sessions, and tournament activity.",
+      "Create and approve events, coaching sessions, beginners courses, and tournament activity.",
   },
   "equipment-committee": {
-    title: "Equipment and Committee",
-    description:
-      "Equipment lifecycle, committee assignments, and beginners course setup.",
+    title: "Equipment",
+    description: "Equipment lifecycle and equipment assignment management.",
   },
   "system-admin": {
     title: "System Administration",
@@ -44,20 +43,20 @@ type PermissionGroupKey = keyof typeof PERMISSION_GROUP_METADATA;
 function getPermissionGroup(permissionKey: string): PermissionGroupKey {
   switch (permissionKey) {
     case "manage_members":
-      return "member-setup";
     case "manage_committee_roles":
+      return "member-setup";
     case "add_decommission_equipment":
     case "assign_equipment":
     case "return_equipment":
     case "update_equipment_storage":
-    case "manage_beginners_courses":
-    case "approve_beginners_courses":
       return "equipment-committee";
     case "add_events":
     case "approve_events":
     case "cancel_events":
     case "add_coaching_sessions":
     case "approve_coaching_sessions":
+    case "manage_beginners_courses":
+    case "approve_beginners_courses":
     case "manage_tournaments":
       return "events-coaching";
     case "manage_roles_permissions":
@@ -336,7 +335,7 @@ export function RolePermissionsPage({
 
   return (
     <div className="profile-page">
-      <p>Create ad-hoc roles and choose the permissions each role can use.</p>
+      <p>Create roles and choose the permissions each role can use.</p>
       {rolesQuery.isLoading ? <p>Loading roles and permissions...</p> : null}
       {error ? <p className="profile-error">{error}</p> : null}
       {message ? <p className="profile-success">{message}</p> : null}
@@ -494,7 +493,10 @@ export function RolePermissionsPage({
                         {permissionOptions.map((permission) => (
                           <td key={`${role.roleKey}-${permission.key}`}>
                             {role.permissions.includes(permission.key) ? (
-                              <span className="role-permission-tick" aria-label="Granted">
+                              <span
+                                className="role-permission-tick"
+                                aria-label="Granted"
+                              >
                                 ✓
                               </span>
                             ) : (

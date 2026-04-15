@@ -2,12 +2,22 @@ import React from "react";
 import "./Modal.css";
 import { Button } from "./Button";
 
-export function Modal({ open, onClose, title, children }) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  contentClassName = "",
+}) {
   if (!open) return null;
+
+  const modalContentClassName = ["modal-content", contentClassName]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div className={modalContentClassName} onClick={(e) => e.stopPropagation()}>
         <header className="modal-header">
           <h3>{title}</h3>
           <Button

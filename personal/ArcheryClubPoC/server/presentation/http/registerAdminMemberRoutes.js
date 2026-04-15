@@ -13,12 +13,15 @@ export function registerAdminMemberRoutes({
   deleteRoleDefinition,
   deleteRolePermissionsByRoleKey,
   findCommitteeRoleById,
+  findCommitteeRoleByKey,
   findDisciplinesByUsername,
   findLoanBowByUsername,
   findRoleDefinitionByKey,
   findUserByUsername,
+  findMaxCommitteeRoleDisplayOrder,
   getActorUser,
   getPermissionsForRole,
+  insertCommitteeRole,
   listAllUsers,
   listAssignableRoleKeys,
   listCommitteeRoles,
@@ -31,7 +34,7 @@ export function registerAdminMemberRoutes({
   saveLoanBowRecord,
   saveMemberProfile,
   TOURNAMENT_TYPE_OPTIONS,
-  updateCommitteeRoleAssignment,
+  updateCommitteeRoleDetails,
   updateRoleDefinition,
   upsertRole,
   insertRolePermission,
@@ -320,6 +323,76 @@ export function registerAdminMemberRoutes({
     });
   });
 
+  function normalizeCommitteeRoleText(value, fallback = "") {
+    return typeof value === "string" ? value.trim() : fallback;
+  }
+
+  function normalizeCommitteeRolePhotoDataUrl(value) {
+    if (typeof value !== "string") {
+      return null;
+    }
+
+    const trimmedValue = value.trim();
+
+    if (!trimmedValue) {
+      return null;
+    }
+
+    return trimmedValue.startsWith("data:image/") ? trimmedValue : null;
+  }
+
+  function buildUniqueCommitteeRoleKey(title) {
+    const baseTitle = normalizeCommitteeRoleText(title);
+
+    if (!baseTitle) {
+      return "";
+    }
+
+    let nextKey = buildUniqueRoleKeyFromTitle(baseTitle);
+
+    if (!nextKey) {
+      return "";
+    }
+
+    let counter = 2;
+
+    while (findCommitteeRoleByKey.get(nextKey) || findRoleDefinitionByKey.get(nextKey)) {
+      nextKey = buildUniqueRoleKeyFromTitle(`${baseTitle} ${counter}`);
+      counter += 1;
+    }
+
+    return nextKey;
+  }
+
+  function resolveCommitteeRolePayload(body, existingRole = null) {
+    const title = normalizeCommitteeRoleText(body?.title, existingRole?.title ?? "");
+    const summary = normalizeCommitteeRoleText(body?.summary, existingRole?.summary ?? "");
+    const responsibilities = normalizeCommitteeRoleText(
+      body?.responsibilities,
+      existingRole?.responsibilities ?? summary,
+    );
+    const personalBlurb = normalizeCommitteeRoleText(
+      body?.personalBlurb,
+      existingRole?.personal_blurb ?? "",
+    );
+    const photoDataUrl =
+      body?.photoDataUrl === null
+        ? null
+        : normalizeCommitteeRolePhotoDataUrl(
+            body?.photoDataUrl ?? existingRole?.photo_data_url ?? null,
+          );
+    const assignedUsername = normalizeCommitteeRoleText(body?.assignedUsername);
+
+    return {
+      title,
+      summary,
+      responsibilities: responsibilities || summary,
+      personalBlurb,
+      photoDataUrl,
+      assignedUsername: assignedUsername || null,
+    };
+  }
+
   app.get("/api/committee-roles", (req, res) => {
     const actor = getActorUser(req);
 
@@ -341,6 +414,75 @@ export function registerAdminMemberRoutes({
             userType: user.user_type,
           }))
         : [],
+    });
+  });
+
+  app.post("/api/committee-roles", (req, res) => {
+    const actor = getActorUser(req);
+
+    if (
+      !actor ||
+      !actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)
+    ) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to create committee roles.",
+      });
+      return;
+    }
+
+    const payload = resolveCommitteeRolePayload(req.body);
+
+    if (!payload.title || !payload.summary) {
+      res.status(400).json({
+        success: false,
+        message: "A title and summary are required.",
+      });
+      return;
+    }
+
+    if (
+      payload.assignedUsername &&
+      !findUserByUsername.get(payload.assignedUsername)
+    ) {
+      res.status(404).json({
+        success: false,
+        message: "Assigned member not found.",
+      });
+      return;
+    }
+
+    const roleKey = buildUniqueCommitteeRoleKey(payload.title);
+
+    if (!roleKey) {
+      res.status(400).json({
+        success: false,
+        message: "A valid committee role title is required.",
+      });
+      return;
+    }
+
+    const displayOrder = findMaxCommitteeRoleDisplayOrder.get().maxDisplayOrder + 1;
+
+    insertCommitteeRole.run({
+      roleKey,
+      title: payload.title,
+      summary: payload.summary,
+      responsibilities: payload.responsibilities,
+      personalBlurb: payload.personalBlurb,
+      photoDataUrl: payload.photoDataUrl,
+      displayOrder,
+      assignedUsername: payload.assignedUsername,
+    });
+
+    const createdRole = listCommitteeRoles
+      .all()
+      .map(buildCommitteeRole)
+      .find((entry) => entry.roleKey === roleKey);
+
+    res.status(201).json({
+      success: true,
+      role: createdRole,
     });
   });
 
@@ -368,13 +510,12 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const assignedUsernameRaw = req.body?.assignedUsername;
-    const assignedUsername =
-      typeof assignedUsernameRaw === "string" && assignedUsernameRaw.trim()
-        ? assignedUsernameRaw.trim()
-        : null;
+    const payload = resolveCommitteeRolePayload(req.body, role);
 
-    if (assignedUsername && !findUserByUsername.get(assignedUsername)) {
+    if (
+      payload.assignedUsername &&
+      !findUserByUsername.get(payload.assignedUsername)
+    ) {
       res.status(404).json({
         success: false,
         message: "Assigned member not found.",
@@ -382,7 +523,23 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    updateCommitteeRoleAssignment.run(assignedUsername, role.id);
+    if (!payload.title || !payload.summary) {
+      res.status(400).json({
+        success: false,
+        message: "A title and summary are required.",
+      });
+      return;
+    }
+
+    updateCommitteeRoleDetails.run({
+      id: role.id,
+      title: payload.title,
+      summary: payload.summary,
+      responsibilities: payload.responsibilities,
+      personalBlurb: payload.personalBlurb,
+      photoDataUrl: payload.photoDataUrl,
+      assignedUsername: payload.assignedUsername,
+    });
 
     const updatedRole = listCommitteeRoles
       .all()

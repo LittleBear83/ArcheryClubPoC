@@ -32,6 +32,8 @@ import { registerTournamentRoutes } from "./presentation/http/registerTournament
 import { registerMemberActivityRoutes } from "./presentation/http/registerMemberActivityRoutes.js";
 import { registerScheduleRoutes } from "./presentation/http/registerScheduleRoutes.js";
 import { registerAdminMemberRoutes } from "./presentation/http/registerAdminMemberRoutes.js";
+import { registerAuthRoutes } from "./presentation/http/registerAuthRoutes.js";
+import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRoutes.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
@@ -290,6 +292,38 @@ db.exec(`
     assigned_username TEXT,
     FOREIGN KEY (assigned_username) REFERENCES users(username)
   )
+`);
+
+const committeeRoleColumns = db.prepare(`PRAGMA table_info(committee_roles)`).all();
+
+if (!committeeRoleColumns.some((column) => column.name === "responsibilities")) {
+  db.exec(`ALTER TABLE committee_roles ADD COLUMN responsibilities TEXT`);
+}
+
+if (!committeeRoleColumns.some((column) => column.name === "personal_blurb")) {
+  db.exec(`ALTER TABLE committee_roles ADD COLUMN personal_blurb TEXT`);
+}
+
+if (!committeeRoleColumns.some((column) => column.name === "photo_data_url")) {
+  db.exec(`ALTER TABLE committee_roles ADD COLUMN photo_data_url TEXT`);
+}
+
+db.exec(`
+  UPDATE committee_roles
+  SET responsibilities = summary
+  WHERE responsibilities IS NULL OR trim(responsibilities) = ''
+`);
+
+db.exec(`
+  UPDATE committee_roles
+  SET personal_blurb = ''
+  WHERE personal_blurb IS NULL
+`);
+
+db.exec(`
+  UPDATE committee_roles
+  SET photo_data_url = NULL
+  WHERE photo_data_url IS NOT NULL AND trim(photo_data_url) = ''
 `);
 
 db.exec(`
@@ -1812,10 +1846,13 @@ const insertUserDiscipline = db.prepare(`
 `);
 
 const upsertCommitteeRole = db.prepare(`
-  INSERT INTO committee_roles (
+  INSERT OR IGNORE INTO committee_roles (
     role_key,
     title,
     summary,
+    responsibilities,
+    personal_blurb,
+    photo_data_url,
     display_order,
     assigned_username
   )
@@ -1823,13 +1860,12 @@ const upsertCommitteeRole = db.prepare(`
     @roleKey,
     @title,
     @summary,
+    @responsibilities,
+    @personalBlurb,
+    @photoDataUrl,
     @displayOrder,
     NULL
   )
-  ON CONFLICT(role_key) DO UPDATE SET
-    title = excluded.title,
-    summary = excluded.summary,
-    display_order = excluded.display_order
 `);
 
 const existingUserCount = db
@@ -1852,7 +1888,12 @@ if (existingUserCount === 0) {
 }
 
 for (const role of COMMITTEE_ROLE_SEED) {
-  upsertCommitteeRole.run(role);
+  upsertCommitteeRole.run({
+    ...role,
+    responsibilities: role.responsibilities ?? role.summary,
+    personalBlurb: role.personalBlurb ?? "",
+    photoDataUrl: role.photoDataUrl ?? null,
+  });
 }
 
 const findUserByCredentials = db.prepare(`
@@ -1985,13 +2026,16 @@ const listCommitteeRoles = db.prepare(`
     committee_roles.role_key,
     committee_roles.title,
     committee_roles.summary,
+    committee_roles.responsibilities,
+    committee_roles.personal_blurb,
+    committee_roles.photo_data_url,
     committee_roles.display_order,
     committee_roles.assigned_username,
     users.first_name AS assigned_first_name,
     users.surname AS assigned_surname,
     user_types.user_type AS assigned_user_type
   FROM committee_roles
-  LEFT JOIN users ON users.id = committee_roles.assigned_user_id
+  LEFT JOIN users ON users.username = committee_roles.assigned_username
   LEFT JOIN user_types ON user_types.user_id = users.id
   ORDER BY committee_roles.display_order ASC, committee_roles.title ASC
 `);
@@ -2002,16 +2046,68 @@ const findCommitteeRoleById = db.prepare(`
     role_key,
     title,
     summary,
+    responsibilities,
+    personal_blurb,
+    photo_data_url,
     display_order,
     assigned_username
   FROM committee_roles
   WHERE id = ?
 `);
 
+const findCommitteeRoleByKey = db.prepare(`
+  SELECT
+    id,
+    role_key,
+    title
+  FROM committee_roles
+  WHERE role_key = ?
+`);
+
 const updateCommitteeRoleAssignment = db.prepare(`
   UPDATE committee_roles
   SET assigned_username = ?
   WHERE id = ?
+`);
+
+const updateCommitteeRoleDetails = db.prepare(`
+  UPDATE committee_roles
+  SET
+    title = @title,
+    summary = @summary,
+    responsibilities = @responsibilities,
+    personal_blurb = @personalBlurb,
+    photo_data_url = @photoDataUrl,
+    assigned_username = @assignedUsername
+  WHERE id = @id
+`);
+
+const insertCommitteeRole = db.prepare(`
+  INSERT INTO committee_roles (
+    role_key,
+    title,
+    summary,
+    responsibilities,
+    personal_blurb,
+    photo_data_url,
+    display_order,
+    assigned_username
+  )
+  VALUES (
+    @roleKey,
+    @title,
+    @summary,
+    @responsibilities,
+    @personalBlurb,
+    @photoDataUrl,
+    @displayOrder,
+    @assignedUsername
+  )
+`);
+
+const findMaxCommitteeRoleDisplayOrder = db.prepare(`
+  SELECT COALESCE(MAX(display_order), 0) AS maxDisplayOrder
+  FROM committee_roles
 `);
 
 const findLoanBowByUsername = db.prepare(`
@@ -3270,7 +3366,7 @@ const memberLoginsByDateForUserInRange = db.prepare(`
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 function buildMemberUserProfile(user, disciplines = [], meta = {}) {
   const permissions = getPermissionsForRole(user.user_type);
@@ -4304,16 +4400,24 @@ function canActorViewApprovalEntry(
 }
 
 function buildCommitteeRole(role) {
+  const assignedFullName = [role.assigned_first_name, role.assigned_surname]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
   return {
     id: role.id,
     roleKey: role.role_key,
     title: role.title,
     summary: role.summary,
+    responsibilities: role.responsibilities ?? role.summary,
+    personalBlurb: role.personal_blurb ?? "",
+    photoDataUrl: role.photo_data_url ?? null,
     displayOrder: role.display_order,
     assignedMember: role.assigned_username
       ? {
           username: role.assigned_username,
-          fullName: `${role.assigned_first_name} ${role.assigned_surname}`,
+          fullName: assignedFullName || role.assigned_username,
           userType: role.assigned_user_type,
         }
       : null,
@@ -5813,197 +5917,22 @@ function buildPersonalUsageWindow(username, label, startDate, endDateExclusive) 
   };
 }
 
-app.post("/api/auth/login", (req, res) => {
-  const { username, password } = req.body ?? {};
-
-  if (!username || !password) {
-    res.status(400).json({
-      success: false,
-      message: "Username and password are required.",
-    });
-    return;
-  }
-
-  const user = syncMemberStatusWithFees(
-    findUserByCredentials.get(username, password),
-  );
-
-  if (!user) {
-    res.status(401).json({
-      success: false,
-      message:
-        "Incorrect username or password. have you tried using your Fob instead?",
-    });
-    return;
-  }
-
-  if (!user.active_member) {
-    res.status(403).json({
-      success: false,
-      message:
-        "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
-    });
-    return;
-  }
-
-  insertLoginEvent.run(user.username, "password", ...getUtcTimestampParts());
-
-  res.json({
-    success: true,
-    userProfile: buildMemberUserProfile(
-      user,
-      findDisciplinesByUsername
-        .all(user.username)
-        .map((discipline) => discipline.discipline),
-    ),
-  });
-});
-
-app.post("/api/auth/rfid", (req, res) => {
-  const { rfidTag } = req.body ?? {};
-
-  if (!rfidTag) {
-    res.status(400).json({
-      success: false,
-      message: "RFID tag is required.",
-    });
-    return;
-  }
-
-  const user =
-    syncMemberStatusWithFees(findUserByRfid.get(rfidTag)) ??
-    syncMemberStatusWithFees(findUserByRfid.get(getDeactivatedRfidTag(rfidTag)));
-
-  if (!user) {
-    res.status(401).json({
-      success: false,
-      message: "RFID tag not recognised.",
-    });
-    return;
-  }
-
-  if (!user.active_member) {
-    res.status(403).json({
-      success: false,
-      message:
-        "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
-    });
-    return;
-  }
-
-  insertLoginEvent.run(user.username, "rfid", ...getUtcTimestampParts());
-
-  res.json({
-    success: true,
-    userProfile: buildMemberUserProfile(
-      user,
-      findDisciplinesByUsername
-        .all(user.username)
-        .map((discipline) => discipline.discipline),
-    ),
-  });
-});
-
-app.get("/api/auth/rfid/latest-scan", (_req, res) => {
-  const hasUndeliveredScan =
-    latestRfidScan.sequence > latestRfidScan.deliveredSequence;
-
-  if (hasUndeliveredScan) {
-    latestRfidScan.deliveredSequence = latestRfidScan.sequence;
-  }
-
-  res.json({
-    success: true,
-        scan: hasUndeliveredScan
-      ? {
-          sequence: latestRfidScan.sequence,
-          rfidTag: latestRfidScan.rfidTag,
-          scannedAt: latestRfidScan.scannedAt,
-          source: latestRfidScan.source,
-          scanType: latestRfidScan.scanType,
-          cardBrand: latestRfidScan.cardBrand,
-        }
-      : null,
-  });
-});
-
-app.post("/api/auth/guest-login", (req, res) => {
-  const { firstName, surname, archeryGbMembershipNumber, invitedByUsername } =
-    req.body ?? {};
-  const trimmedMembershipNumber = archeryGbMembershipNumber?.trim() ?? "";
-  const membershipDigits = trimmedMembershipNumber.replace(/\D/g, "");
-  const trimmedInvitedByUsername = invitedByUsername?.trim() ?? "";
-
-  if (
-    !firstName ||
-    !surname ||
-    !archeryGbMembershipNumber ||
-    !trimmedInvitedByUsername
-  ) {
-    res.status(400).json({
-      success: false,
-      message:
-        "First name, surname, Archery GB membership number, and inviting member are required.",
-    });
-    return;
-  }
-
-  if (membershipDigits.length < 7) {
-    res.status(400).json({
-      success: false,
-      message: "Archery GB membership number must contain at least 7 digits.",
-    });
-    return;
-  }
-
-  const invitingMember = findUserByUsername.get(trimmedInvitedByUsername);
-
-  if (!invitingMember) {
-    res.status(400).json({
-      success: false,
-      message: "Inviting member could not be found.",
-    });
-    return;
-  }
-
-  insertGuestLoginEvent.run(
-    firstName.trim(),
-    surname.trim(),
-    trimmedMembershipNumber,
-    invitingMember.username,
-    `${invitingMember.first_name} ${invitingMember.surname}`,
-    ...getUtcTimestampParts(),
-  );
-
-  res.json({
-    success: true,
-    userProfile: buildGuestUserProfile({
-      firstName: firstName.trim(),
-      surname: surname.trim(),
-      archeryGbMembershipNumber: trimmedMembershipNumber,
-      invitedByUsername: invitingMember.username,
-      invitedByName: `${invitingMember.first_name} ${invitingMember.surname}`,
-    }),
-  });
-});
-
-app.get("/api/guest-inviter-members", (_req, res) => {
-  res.json({
-    success: true,
-    members: listAllUsers.all().map((user) => ({
-      username: user.username,
-      firstName: user.first_name,
-      surname: user.surname,
-      fullName: `${user.first_name} ${user.surname}`,
-    })),
-  });
-});
-
-app.get("/api/health", (_req, res) => {
-  res.json({
-    success: true,
-    databasePath,
-  });
+registerAuthRoutes({
+  app,
+  buildGuestUserProfile,
+  buildMemberUserProfile,
+  databasePath,
+  findDisciplinesByUsername,
+  findUserByCredentials,
+  findUserByRfid,
+  findUserByUsername,
+  getDeactivatedRfidTag,
+  getUtcTimestampParts,
+  insertGuestLoginEvent,
+  insertLoginEvent,
+  latestRfidScan,
+  listAllUsers,
+  syncMemberStatusWithFees,
 });
 
 registerAdminMemberRoutes({
@@ -6022,12 +5951,15 @@ registerAdminMemberRoutes({
   deleteRoleDefinition,
   deleteRolePermissionsByRoleKey,
   findCommitteeRoleById,
+  findCommitteeRoleByKey,
   findDisciplinesByUsername,
   findLoanBowByUsername,
   findRoleDefinitionByKey,
+  findMaxCommitteeRoleDisplayOrder,
   findUserByUsername,
   getActorUser,
   getPermissionsForRole,
+  insertCommitteeRole,
   insertRolePermission,
   listAllUsers,
   listAssignableRoleKeys,
@@ -6041,619 +5973,44 @@ registerAdminMemberRoutes({
   saveLoanBowRecord,
   saveMemberProfile,
   TOURNAMENT_TYPE_OPTIONS,
-  updateCommitteeRoleAssignment,
+  updateCommitteeRoleDetails,
   updateRoleDefinition,
   upsertRole,
 });
 
-app.get("/api/equipment/dashboard", (req, res) => {
-  const actor = getActorUser(req);
-
-  if (!actor) {
-    res.status(401).json({
-      success: false,
-      message: "An authenticated member is required.",
-    });
-    return;
-  }
-
-  const permissions = {
-    canAddDecommissionEquipment: actorHasPermission(
-      actor,
-      PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT,
-    ),
-    canAssignEquipment: actorHasPermission(actor, PERMISSIONS.ASSIGN_EQUIPMENT),
-    canReturnEquipment: actorHasPermission(actor, PERMISSIONS.RETURN_EQUIPMENT),
-    canUpdateEquipmentStorage: actorHasPermission(
-      actor,
-      PERMISSIONS.UPDATE_EQUIPMENT_STORAGE,
-    ),
-  };
-
-  if (!Object.values(permissions).some(Boolean)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to manage equipment.",
-    });
-    return;
-  }
-
-  const maps = buildEquipmentMaps();
-  const cases = maps.items
-    .filter((item) => item.equipment_type === EQUIPMENT_TYPES.CASE)
-    .map((item) => buildEquipmentCaseResponse(item, maps));
-  const items = maps.items.map((item) => buildEquipmentItemResponse(item, maps));
-
-  res.json({
-    success: true,
-    permissions,
-    members: listAllUsers.all().map((user) => ({
-      username: user.username,
-      fullName: `${user.first_name} ${user.surname}`,
-      userType: user.user_type,
-    })),
-    equipmentTypeOptions: EQUIPMENT_TYPE_OPTIONS.map((value) => ({
-      value,
-      label: EQUIPMENT_TYPE_LABELS[value],
-    })),
-    sizeCategoryOptions: EQUIPMENT_SIZE_CATEGORIES.map((value) => ({
-      value,
-      label: value === "junior" ? "Junior" : "Standard",
-    })),
-    cupboardOptions: [DEFAULT_EQUIPMENT_CUPBOARD_LABEL],
-    items,
-    cases,
-  });
-});
-
-app.post("/api/equipment/items", (req, res) => {
-  const actor = getActorUser(req);
-
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to add equipment.",
-    });
-    return;
-  }
-
-  const sanitized = sanitizeEquipmentCreatePayload(req.body);
-
-  if (!sanitized.success) {
-    res.status(sanitized.status).json(sanitized);
-    return;
-  }
-
-  const [date, time] = getUtcTimestampParts();
-  const payload = sanitized.value;
-
-  try {
-    const result = insertEquipmentItem.run({
-      equipmentType: payload.equipmentType,
-      itemNumber: payload.itemNumber,
-      sizeCategory: payload.sizeCategory,
-      arrowLength: payload.arrowLength,
-      arrowQuantity: payload.arrowQuantity,
-      locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-      locationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
-      locationCaseId: null,
-      locationMemberUsername: null,
-      addedByUsername: actor.username,
-      addedAtDate: date,
-      addedAtTime: time,
-      storageByUsername: actor.username,
-      storageAtDate: date,
-      storageAtTime: time,
-    });
-    const maps = buildEquipmentMaps();
-    const createdItem = findEquipmentItemByIdWithRelations.get(result.lastInsertRowid);
-
-    res.status(201).json({
-      success: true,
-      item: buildEquipmentItemResponse(createdItem, maps),
-    });
-  } catch (error) {
-    if (error?.message?.includes("UNIQUE constraint failed")) {
-      res.status(409).json({
-        success: false,
-        message: "An active equipment item with that number already exists.",
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Unable to add equipment.",
-    });
-  }
-});
-
-app.post("/api/equipment/items/:id/decommission", (req, res) => {
-  const actor = getActorUser(req);
-
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to decommission equipment.",
-    });
-    return;
-  }
-
-  const item = findEquipmentItemById.get(req.params.id);
-
-  if (!item) {
-    res.status(404).json({
-      success: false,
-      message: "Equipment item not found.",
-    });
-    return;
-  }
-
-  if (item.status !== "active") {
-    res.status(400).json({
-      success: false,
-      message: "This equipment item is already decommissioned.",
-    });
-    return;
-  }
-
-  if (findOpenEquipmentLoanByItemId.get(item.id)) {
-    res.status(400).json({
-      success: false,
-      message: "Equipment cannot be decommissioned while it is on loan.",
-    });
-    return;
-  }
-
-  if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
-    const activeContents = listEquipmentItemsByCaseId.all(item.id);
-
-    if (activeContents.length > 0) {
-      res.status(400).json({
-        success: false,
-        message: "Empty the case before decommissioning it.",
-      });
-      return;
-    }
-  }
-
-  const reason =
-    typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 280) : "";
-
-  if (!reason) {
-    res.status(400).json({
-      success: false,
-      message: "Please record why the equipment was decommissioned.",
-    });
-    return;
-  }
-
-  const [date, time] = getUtcTimestampParts();
-  updateEquipmentItemForDecommission.run({
-    id: item.id,
-    locationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
-    decommissionedByUsername: actor.username,
-    decommissionedAtDate: date,
-    decommissionedAtTime: time,
-    decommissionReason: reason,
-  });
-
-  const maps = buildEquipmentMaps();
-  res.json({
-    success: true,
-    item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
-  });
-});
-
-app.post("/api/equipment/assignments", (req, res) => {
-  const actor = getActorUser(req);
-
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.ASSIGN_EQUIPMENT)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to assign equipment.",
-    });
-    return;
-  }
-
-  const item = findEquipmentItemById.get(req.body?.itemId);
-
-  if (!item) {
-    res.status(404).json({
-      success: false,
-      message: "Equipment item not found.",
-    });
-    return;
-  }
-
-  if (item.status !== "active") {
-    res.status(400).json({
-      success: false,
-      message: "Only active equipment can be assigned.",
-    });
-    return;
-  }
-
-  const targetType = req.body?.targetType;
-  const [date, time] = getUtcTimestampParts();
-
-  if (targetType === "case") {
-    const caseItem = findEquipmentItemById.get(req.body?.caseId);
-    const validationMessage = validateCaseAssignment(caseItem, item);
-
-    if (validationMessage) {
-      res.status(400).json({
-        success: false,
-        message: validationMessage,
-      });
-      return;
-    }
-
-    if (findOpenEquipmentLoanByItemId.get(item.id)) {
-      res.status(400).json({
-        success: false,
-        message: "Return the equipment before assigning it into a case.",
-      });
-      return;
-    }
-
-    updateEquipmentItemStorage.run({
-      id: item.id,
-      locationType: EQUIPMENT_LOCATION_TYPES.CASE,
-      locationLabel: null,
-      locationCaseId: caseItem.id,
-      locationMemberUsername: null,
-      storageByUsername: actor.username,
-      storageAtDate: date,
-      storageAtTime: time,
-    });
-    updateEquipmentAssignmentMetadata.run({
-      id: item.id,
-      assignedByUsername: actor.username,
-      assignedAtDate: date,
-      assignedAtTime: time,
-    });
-  } else if (targetType === "member") {
-    const memberUsername =
-      typeof req.body?.memberUsername === "string" ? req.body.memberUsername.trim() : "";
-    const member = findUserByUsername.get(memberUsername);
-
-    if (!member) {
-      res.status(404).json({
-        success: false,
-        message: "Choose a valid member.",
-      });
-      return;
-    }
-
-    if (actor.username === member.username) {
-      res.status(400).json({
-        success: false,
-        message: "The staff member signing equipment out cannot also be the borrowing member.",
-      });
-      return;
-    }
-
-    if (findOpenEquipmentLoanByItemId.get(item.id)) {
-      res.status(400).json({
-        success: false,
-        message: "That equipment is already on loan.",
-      });
-      return;
-    }
-
-    const assignTransaction = db.transaction(() => {
-      if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
-        const contents = listEquipmentItemsByCaseId.all(item.id);
-
-        insertEquipmentLoan.run(item.id, member.username, actor.username, date, time, null);
-        updateEquipmentItemStorage.run({
-          id: item.id,
-          locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
-          locationLabel: null,
-          locationCaseId: null,
-          locationMemberUsername: member.username,
-          storageByUsername: actor.username,
-          storageAtDate: date,
-          storageAtTime: time,
-        });
-        updateEquipmentAssignmentMetadata.run({
-          id: item.id,
-          assignedByUsername: actor.username,
-          assignedAtDate: date,
-          assignedAtTime: time,
-        });
-
-        for (const content of contents) {
-          if (findOpenEquipmentLoanByItemId.get(content.id)) {
-            throw new Error(`Case contents must all be returned before the case can be loaned out.`);
-          }
-
-          insertEquipmentLoan.run(
-            content.id,
-            member.username,
-            actor.username,
-            date,
-            time,
-            item.id,
-          );
-          updateEquipmentAssignmentMetadata.run({
-            id: content.id,
-            assignedByUsername: actor.username,
-            assignedAtDate: date,
-            assignedAtTime: time,
-          });
-        }
-      } else {
-        insertEquipmentLoan.run(item.id, member.username, actor.username, date, time, null);
-        updateEquipmentItemStorage.run({
-          id: item.id,
-          locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
-          locationLabel: null,
-          locationCaseId: null,
-          locationMemberUsername: member.username,
-          storageByUsername: actor.username,
-          storageAtDate: date,
-          storageAtTime: time,
-        });
-        updateEquipmentAssignmentMetadata.run({
-          id: item.id,
-          assignedByUsername: actor.username,
-          assignedAtDate: date,
-          assignedAtTime: time,
-        });
-      }
-    });
-
-    try {
-      assignTransaction();
-    } catch (error) {
-      res.status(400).json({
-        success: false,
-        message: error instanceof Error ? error.message : "Unable to assign equipment to the member.",
-      });
-      return;
-    }
-  } else {
-    res.status(400).json({
-      success: false,
-      message: "Choose whether the equipment is being assigned to a case or a member.",
-    });
-    return;
-  }
-
-  const maps = buildEquipmentMaps();
-  res.json({
-    success: true,
-    item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
-  });
-});
-
-app.post("/api/equipment/returns", (req, res) => {
-  const actor = getActorUser(req);
-
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.RETURN_EQUIPMENT)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to return equipment.",
-    });
-    return;
-  }
-
-  const item = findEquipmentItemById.get(req.body?.itemId);
-
-  if (!item) {
-    res.status(404).json({
-      success: false,
-      message: "Equipment item not found.",
-    });
-    return;
-  }
-
-  const openLoan = findOpenEquipmentLoanByItemId.get(item.id);
-
-  if (!openLoan) {
-    res.status(400).json({
-      success: false,
-      message: "That equipment is not currently on loan.",
-    });
-    return;
-  }
-
-  if (actor.username === openLoan.member_username) {
-    res.status(400).json({
-      success: false,
-      message: "The staff member signing equipment in cannot be the borrowing member.",
-    });
-    return;
-  }
-
-  const returnToCaseId =
-    req.body?.returnToCaseId === "" || req.body?.returnToCaseId == null
-      ? null
-      : Number.parseInt(req.body.returnToCaseId, 10);
-  const returnCase = returnToCaseId ? findEquipmentItemById.get(returnToCaseId) : null;
-  const returnToCupboard = sanitizeCupboardLabel(req.body?.cupboardLabel);
-  const [date, time] = getUtcTimestampParts();
-
-  if (returnCase) {
-    const validationMessage = validateCaseAssignment(returnCase, item);
-
-    if (validationMessage) {
-      res.status(400).json({
-        success: false,
-        message: validationMessage,
-      });
-      return;
-    }
-  }
-
-  const returnTransaction = db.transaction(() => {
-    if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
-      const relatedOpenLoans = listOpenEquipmentLoansByCaseId.all(item.id);
-      closeEquipmentLoan.run(
-        actor.username,
-        date,
-        time,
-        EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-        returnToCupboard,
-        null,
-        openLoan.id,
-      );
-      updateEquipmentItemStorage.run({
-        id: item.id,
-        locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-        locationLabel: returnToCupboard,
-        locationCaseId: null,
-        locationMemberUsername: null,
-        storageByUsername: actor.username,
-        storageAtDate: date,
-        storageAtTime: time,
-      });
-
-      for (const loan of relatedOpenLoans) {
-        closeEquipmentLoan.run(
-          actor.username,
-          date,
-          time,
-          EQUIPMENT_LOCATION_TYPES.CASE,
-          null,
-          item.id,
-          loan.id,
-        );
-      }
-    } else {
-      closeEquipmentLoan.run(
-        actor.username,
-        date,
-        time,
-        returnCase ? EQUIPMENT_LOCATION_TYPES.CASE : EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-        returnCase ? null : returnToCupboard,
-        returnCase?.id ?? null,
-        openLoan.id,
-      );
-      updateEquipmentItemStorage.run({
-        id: item.id,
-        locationType: returnCase ? EQUIPMENT_LOCATION_TYPES.CASE : EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-        locationLabel: returnCase ? null : returnToCupboard,
-        locationCaseId: returnCase?.id ?? null,
-        locationMemberUsername: null,
-        storageByUsername: actor.username,
-        storageAtDate: date,
-        storageAtTime: time,
-      });
-    }
-  });
-
-  returnTransaction();
-
-  const maps = buildEquipmentMaps();
-  res.json({
-    success: true,
-    item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
-  });
-});
-
-app.post("/api/equipment/storage", (req, res) => {
-  const actor = getActorUser(req);
-
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.UPDATE_EQUIPMENT_STORAGE)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to update equipment storage.",
-    });
-    return;
-  }
-
-  const item = findEquipmentItemById.get(req.body?.itemId);
-
-  if (!item) {
-    res.status(404).json({
-      success: false,
-      message: "Equipment item not found.",
-    });
-    return;
-  }
-
-  if (findOpenEquipmentLoanByItemId.get(item.id)) {
-    res.status(400).json({
-      success: false,
-      message: "Return the equipment before updating its storage location.",
-    });
-    return;
-  }
-
-  const targetCupboard = sanitizeCupboardLabel(req.body?.cupboardLabel);
-  const [date, time] = getUtcTimestampParts();
-
-  updateEquipmentItemStorage.run({
-    id: item.id,
-    locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-    locationLabel: targetCupboard,
-    locationCaseId: null,
-    locationMemberUsername: null,
-    storageByUsername: actor.username,
-    storageAtDate: date,
-    storageAtTime: time,
-  });
-
-  const maps = buildEquipmentMaps();
-  res.json({
-    success: true,
-    item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
-  });
-});
-
-app.get("/api/member-equipment-loans/:username", (req, res) => {
-  const actor = getActorUser(req);
-  const requestedUsername = req.params.username;
-
-  if (!actor) {
-    res.status(401).json({
-      success: false,
-      message: "An authenticated member is required.",
-    });
-    return;
-  }
-
-  const requestedUser = findUserByUsername.get(requestedUsername);
-
-  if (!requestedUser) {
-    res.status(404).json({
-      success: false,
-      message: "Member profile not found.",
-    });
-    return;
-  }
-
-  const canManageMembers = actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS);
-  const isSelf = actor.username === requestedUser.username;
-
-  if (!isSelf && !canManageMembers) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to view this member's equipment loans.",
-    });
-    return;
-  }
-
-  const loans = listOpenEquipmentLoansByMemberUserId
-    .all(requestedUser.username)
-    .map((loan) => ({
-      id: loan.id,
-      type: loan.equipment_type,
-      typeLabel: EQUIPMENT_TYPE_LABELS[loan.equipment_type] ?? loan.equipment_type,
-      reference:
-        loan.equipment_type === EQUIPMENT_TYPES.ARROWS
-          ? `${loan.arrow_quantity} x ${loan.arrow_length}"`
-          : loan.item_number ?? "",
-      loanDate: `${loan.loaned_at_date} ${loan.loaned_at_time}`.trim(),
-    }));
-
-  res.json({
-    success: true,
-    loans,
-  });
+registerEquipmentRoutes({
+  actorHasPermission,
+  app,
+  buildEquipmentCaseResponse,
+  buildEquipmentItemResponse,
+  buildEquipmentMaps,
+  closeEquipmentLoan,
+  db,
+  DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+  EQUIPMENT_LOCATION_TYPES,
+  EQUIPMENT_SIZE_CATEGORIES,
+  EQUIPMENT_TYPES,
+  EQUIPMENT_TYPE_LABELS,
+  EQUIPMENT_TYPE_OPTIONS,
+  findEquipmentItemById,
+  findEquipmentItemByIdWithRelations,
+  findOpenEquipmentLoanByItemId,
+  findUserByUsername,
+  getActorUser,
+  getUtcTimestampParts,
+  insertEquipmentItem,
+  insertEquipmentLoan,
+  listAllUsers,
+  listEquipmentItemsByCaseId,
+  listOpenEquipmentLoansByCaseId,
+  listOpenEquipmentLoansByMemberUserId,
+  PERMISSIONS,
+  sanitizeCupboardLabel,
+  sanitizeEquipmentCreatePayload,
+  updateEquipmentAssignmentMetadata,
+  updateEquipmentItemForDecommission,
+  updateEquipmentItemStorage,
+  validateCaseAssignment,
 });
 
 app.get("/api/beginners-courses/dashboard", (req, res) => {

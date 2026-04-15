@@ -21,6 +21,10 @@
   padding: clamp(16px, 2vw, 22px);
 }
 
+.modal-content--wide {
+  width: min(100%, 980px);
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;

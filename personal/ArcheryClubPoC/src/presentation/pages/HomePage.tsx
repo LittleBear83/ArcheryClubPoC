@@ -18,8 +18,10 @@ import { UserCreationPage } from "./UserCreationPage";
 import { EquipmentPage } from "./EquipmentPage";
 import { BeginnersCoursesPage } from "./BeginnersCoursesPage";
 import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
+import { CommitteeAdminPage } from "./CommitteeAdminPage";
 import { RolePermissionsPage } from "./RolePermissionsPage";
 import { ApprovalsPage } from "./ApprovalsPage";
+import { GeneralInfoPage } from "./GeneralInfoPage";
 import { formatDate } from "../../utils/dateTime";
 import { fetchApi } from "../../lib/api";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -138,6 +140,7 @@ const pageTitleMap = {
   tournaments: "Tournaments",
   "tournament-setup": "Tournament Setup",
   "committee-org-chart": "Committee Org Chart",
+  "committee-admin": "Committee Admin",
   "general-info": "General Info",
   "lost-and-found": "Lost and Found",
 };
@@ -157,6 +160,7 @@ const pathToPageId = {
   "/tournaments": "tournaments",
   "/tournament-setup": "tournament-setup",
   "/committee-org-chart": "committee-org-chart",
+  "/committee-admin": "committee-admin",
   "/general-info": "general-info",
   "/lost-and-found": "lost-and-found",
 };
@@ -503,7 +507,14 @@ export function HomePage({
         </div>
       </div>
 
-      <main className="page-shell">
+      <main
+        className={[
+          "page-shell",
+          activePage === "role-permissions" ? "page-shell--wide" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <section className="page-content">
           {activePage === "home" ? (
             <h1 className="welcome-message">
@@ -630,9 +641,16 @@ export function HomePage({
                 <CommitteeOrgChartPage currentUserProfile={currentUserProfile} />
               }
             />
+            <Route
+              path="/committee-admin"
+              element={
+                <CommitteeAdminPage currentUserProfile={currentUserProfile} />
+              }
+            />
             <Route path="/feedback-form" element={<FeedbackFormPage />} />
             <Route path="/lost-and-found" element={<LostAndFoundPage />} />
             <Route path="/ideas-form" element={<IdeasFormPage />} />
+            <Route path="/general-info" element={<GeneralInfoPage />} />
             <Route
               path="*"
               element={

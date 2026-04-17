@@ -1,22 +1,44 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { LabeledSelect } from "../components/LabeledSelect";
 import { Modal } from "../components/Modal";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
-import { hasPermission } from "../../utils/userProfile";
+import { formatShortDateTime } from "../../utils/dateTime";
+import { formatMemberDisplayName, hasPermission } from "../../utils/userProfile";
 
 function describeCaseContentLocation(item, caseItem) {
   if (item.currentLocation?.caseId === caseItem.id) {
-    if (caseItem.currentLocation?.type === "member") {
-      return `In this case with ${caseItem.currentLocation.label}`;
-    }
-
-    return "In this case";
+    return `In ${caseItem.label}`;
   }
 
   return item.currentLocation?.label || "";
+}
+
+function getEquipmentLocationLabel(item) {
+  if (item.status === "decommissioned") {
+    return "Decommissioned";
+  }
+
+  if (item.currentLocation?.type === "member") {
+    return "On loan";
+  }
+
+  return item.currentLocation?.label || "";
+}
+
+function getEquipmentMemberLabel(item) {
+  return item.currentLoan?.memberName || (
+    item.currentLocation?.type === "member" ? item.currentLocation.label : ""
+  );
+}
+
+function getEquipmentLoanDateLabel(item) {
+  return formatShortDateTime(
+    item.currentLoan?.loanedAt ||
+      (item.currentLocation?.type === "member" ? item.lastAssignedAt : ""),
+  );
 }
 
 const EMPTY_ADD_FORM = {
@@ -51,6 +73,8 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
   const [targetCaseId, setTargetCaseId] = useState("");
   const [returnCaseId, setReturnCaseId] = useState("");
   const [cupboardLabel, setCupboardLabel] = useState("Main Cupboard");
+  const [newStorageLocation, setNewStorageLocation] = useState("");
+  const [removeStorageLocation, setRemoveStorageLocation] = useState("");
   const [decommissionReason, setDecommissionReason] = useState("");
   const [inventoryFilter, setInventoryFilter] = useState("");
   const [inventorySort, setInventorySort] = useState({
@@ -66,6 +90,7 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
     "assign_equipment",
     "return_equipment",
     "update_equipment_storage",
+    "manage_equipment_storage_locations",
   ].some((permissionKey) => hasPermission(currentUserProfile, permissionKey));
 
   const equipmentQuery = useQuery({
@@ -82,12 +107,29 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
     canAssignEquipment: false,
     canReturnEquipment: false,
     canUpdateEquipmentStorage: false,
+    canManageEquipmentStorageLocations: false,
   };
-  const items = equipmentQuery.data?.items ?? [];
-  const cases = equipmentQuery.data?.cases ?? [];
-  const members = equipmentQuery.data?.members ?? [];
-  const equipmentTypeOptions = equipmentQuery.data?.equipmentTypeOptions ?? [];
-  const sizeCategoryOptions = equipmentQuery.data?.sizeCategoryOptions ?? [];
+  const items = useMemo(() => equipmentQuery.data?.items ?? [], [equipmentQuery.data?.items]);
+  const cases = useMemo(() => equipmentQuery.data?.cases ?? [], [equipmentQuery.data?.cases]);
+  const members = useMemo(
+    () => equipmentQuery.data?.members ?? [],
+    [equipmentQuery.data?.members],
+  );
+  const equipmentTypeOptions = useMemo(
+    () => equipmentQuery.data?.equipmentTypeOptions ?? [],
+    [equipmentQuery.data?.equipmentTypeOptions],
+  );
+  const sizeCategoryOptions = useMemo(
+    () => equipmentQuery.data?.sizeCategoryOptions ?? [],
+    [equipmentQuery.data?.sizeCategoryOptions],
+  );
+  const cupboardOptions = useMemo(
+    () =>
+      equipmentQuery.data?.cupboardOptions?.length
+        ? equipmentQuery.data.cupboardOptions
+        : ["Main Cupboard"],
+    [equipmentQuery.data?.cupboardOptions],
+  );
 
   useEffect(() => {
     if (!selectedItemId && items.length > 0) {
@@ -106,6 +148,30 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
       setTargetCaseId(String(cases[0].id));
     }
   }, [cases, targetCaseId]);
+
+  useEffect(() => {
+    if (cupboardOptions.length > 0 && !cupboardOptions.includes(cupboardLabel)) {
+      setCupboardLabel(cupboardOptions[0]);
+    }
+  }, [cupboardLabel, cupboardOptions]);
+
+  useEffect(() => {
+    const removableLocations = cupboardOptions.filter(
+      (option) => option !== "Main Cupboard",
+    );
+
+    if (
+      removableLocations.length > 0 &&
+      !removableLocations.includes(removeStorageLocation)
+    ) {
+      setRemoveStorageLocation(removableLocations[0]);
+      return;
+    }
+
+    if (removableLocations.length === 0 && removeStorageLocation) {
+      setRemoveStorageLocation("");
+    }
+  }, [cupboardOptions, removeStorageLocation]);
 
   const activeItems = useMemo(
     () => items.filter((item) => item.status === "active"),
@@ -130,7 +196,7 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
   const assignableCaseItems = useMemo(
     () =>
       activeItems.filter(
-        (item) => item.type !== "case" && !item.currentLoan,
+        (item) => item.type !== "case",
       ),
     [activeItems],
   );
@@ -149,14 +215,14 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
         item.type === "arrows"
           ? `${item.arrowQuantity} x ${item.arrowLength}"`
           : item.number || "";
-      const memberName = item.currentLoan?.memberName || "";
-      const loanDate = item.currentLoan?.loanedAt || "";
+      const memberName = getEquipmentMemberLabel(item);
+      const loanDate = getEquipmentLoanDateLabel(item);
       const lastAssignedBy = item.lastAssignedBy || "";
 
       return [
         item.typeLabel,
         referenceNumber,
-        item.currentLocation.label,
+        getEquipmentLocationLabel(item),
         memberName,
         loanDate,
         lastAssignedBy,
@@ -174,13 +240,11 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
               ? `${item.arrowLength ?? 0}`.padStart(4, "0")
               : item.number || "";
           case "location":
-            return item.status === "decommissioned"
-              ? "decommissioned"
-              : item.currentLocation.label || "";
+            return getEquipmentLocationLabel(item);
           case "member":
-            return item.currentLoan?.memberName || "";
+            return getEquipmentMemberLabel(item);
           case "loanDate":
-            return item.currentLoan?.loanedAt || "";
+            return item.currentLoan?.loanedAt || item.lastAssignedAt || "";
           case "lastAssignedBy":
             return item.lastAssignedBy || "";
           case "type":
@@ -212,11 +276,11 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
     }));
   };
 
-  const refreshDashboard = async () => {
+  const refreshDashboard = useCallback(async () => {
     await queryClient.invalidateQueries({
       queryKey: ["equipment-dashboard", actorUsername],
     });
-  };
+  }, [actorUsername, queryClient]);
 
   useEffect(() => {
     const refresh = () => {
@@ -228,7 +292,7 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
     return () => {
       window.removeEventListener("equipment-data-updated", refresh);
     };
-  }, [actorUsername, queryClient]);
+  }, [refreshDashboard]);
 
   const addEquipmentMutation = useMutation({
     mutationFn: () =>
@@ -338,6 +402,45 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
     },
     onSuccess: async () => {
       setMessage("Storage location updated successfully.");
+      await refreshDashboard();
+    },
+    onError: (mutationError) => {
+      setError(mutationError.message);
+    },
+  });
+
+  const addStorageLocationMutation = useMutation({
+    mutationFn: () =>
+      equipmentCrud.addEquipmentStorageLocationUseCase.execute({
+        actorUsername,
+        locationLabel: newStorageLocation,
+      }),
+    onMutate: () => {
+      setError("");
+      setMessage("");
+    },
+    onSuccess: async () => {
+      setMessage("Storage location added successfully.");
+      setNewStorageLocation("");
+      await refreshDashboard();
+    },
+    onError: (mutationError) => {
+      setError(mutationError.message);
+    },
+  });
+
+  const removeStorageLocationMutation = useMutation({
+    mutationFn: () =>
+      equipmentCrud.removeEquipmentStorageLocationUseCase.execute({
+        actorUsername,
+        locationLabel: removeStorageLocation,
+      }),
+    onMutate: () => {
+      setError("");
+      setMessage("");
+    },
+    onSuccess: async () => {
+      setMessage("Storage location removed successfully.");
       await refreshDashboard();
     },
     onError: (mutationError) => {
@@ -583,7 +686,7 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
           >
             {items.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.label} | {item.status} | {item.currentLocation.label}
+                {item.label} | {item.status} | {getEquipmentLocationLabel(item)}
               </option>
             ))}
           </LabeledSelect>
@@ -609,7 +712,7 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
                   >
                     {members.map((member) => (
                       <option key={member.username} value={member.username}>
-                        {member.fullName}
+                        {formatMemberDisplayName(member)}
                       </option>
                     ))}
                   </LabeledSelect>
@@ -676,13 +779,17 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
                 </LabeledSelect>
               ) : null}
 
-              <label>
-                Cupboard label
-                <input
-                  value={cupboardLabel}
-                  onChange={(event) => setCupboardLabel(event.target.value)}
-                />
-              </label>
+              <LabeledSelect
+                label="Return to storage"
+                value={cupboardLabel}
+                onChange={(event) => setCupboardLabel(event.target.value)}
+              >
+                {cupboardOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </LabeledSelect>
 
               <Button
                 type="button"
@@ -712,13 +819,17 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
                 ))}
               </LabeledSelect>
 
-              <label>
-                Cupboard label
-                <input
-                  value={cupboardLabel}
-                  onChange={(event) => setCupboardLabel(event.target.value)}
-                />
-              </label>
+              <LabeledSelect
+                label="Storage location"
+                value={cupboardLabel}
+                onChange={(event) => setCupboardLabel(event.target.value)}
+              >
+                {cupboardOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </LabeledSelect>
 
               <Button
                 type="button"
@@ -729,6 +840,82 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
               >
                 {storageMutation.isPending ? "Updating storage..." : "Update storage"}
               </Button>
+            </div>
+          ) : null}
+
+          {permissions.canManageEquipmentStorageLocations ? (
+            <div className="equipment-action-card">
+              <h3>Manage storage locations</h3>
+              <div className="profile-form-grid">
+                <label>
+                  New storage location
+                  <input
+                    value={newStorageLocation}
+                    onChange={(event) =>
+                      setNewStorageLocation(event.target.value)
+                    }
+                    placeholder="Limb Cupboard"
+                  />
+                </label>
+
+                <LabeledSelect
+                  label="Remove storage location"
+                  value={removeStorageLocation}
+                  onChange={(event) =>
+                    setRemoveStorageLocation(event.target.value)
+                  }
+                  disabled={cupboardOptions.length <= 1}
+                >
+                  {cupboardOptions
+                    .filter((option) => option !== "Main Cupboard")
+                    .map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                </LabeledSelect>
+              </div>
+
+              <div className="loan-bow-return-actions">
+                <Button
+                  type="button"
+                  disabled={
+                    !newStorageLocation.trim() ||
+                    addStorageLocationMutation.isPending
+                  }
+                  onClick={() => {
+                    void addStorageLocationMutation.mutateAsync();
+                  }}
+                >
+                  {addStorageLocationMutation.isPending
+                    ? "Adding location..."
+                    : "Add location"}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="danger"
+                  disabled={
+                    !removeStorageLocation ||
+                    removeStorageLocationMutation.isPending
+                  }
+                  onClick={() => {
+                    const confirmed = window.confirm(
+                      `Remove storage location '${removeStorageLocation}'?`,
+                    );
+
+                    if (!confirmed) {
+                      return;
+                    }
+
+                    void removeStorageLocationMutation.mutateAsync();
+                  }}
+                >
+                  {removeStorageLocationMutation.isPending
+                    ? "Removing location..."
+                    : "Remove location"}
+                </Button>
+              </div>
             </div>
           ) : null}
 
@@ -878,12 +1065,10 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
                         : item.number || "-"}
                     </td>
                     <td>
-                      {item.status === "decommissioned"
-                        ? "Decommissioned"
-                        : item.currentLocation.label}
+                      {getEquipmentLocationLabel(item)}
                     </td>
-                    <td>{item.currentLoan?.memberName || "-"}</td>
-                    <td>{item.currentLoan?.loanedAt || "-"}</td>
+                    <td>{getEquipmentMemberLabel(item) || "-"}</td>
+                    <td>{getEquipmentLoanDateLabel(item) || "-"}</td>
                     <td>{item.lastAssignedBy || "-"}</td>
                   </tr>
                 ))

@@ -6,7 +6,7 @@ import {
   formatDateRangeLabel,
   formatHourLabel,
 } from "../../utils/dateTime";
-import { fetchApi } from "../../lib/api";
+import { getRangeUsageDashboard } from "../../api/rangeUsageApi";
 
 function getUtcDateString(date) {
   return new Date(
@@ -18,6 +18,16 @@ function getUtcDateString(date) {
 
 function getTodayString() {
   return getUtcDateString(new Date());
+}
+
+function getCurrentWeekStartString() {
+  const today = new Date();
+  const dayOfWeek = today.getUTCDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const weekStart = new Date(today);
+  weekStart.setUTCDate(today.getUTCDate() + mondayOffset);
+
+  return getUtcDateString(weekStart);
 }
 
 function normalizeUsageWindow(windowData, fallbackLabel = "") {
@@ -265,30 +275,17 @@ function UsageGraph({ rows, keyField, className = "" }) {
 }
 
 export function RangeUsagePage({ currentUserProfile }) {
-  const [startDate, setStartDate] = useState(getTodayString());
+  const [startDate, setStartDate] = useState(getCurrentWeekStartString());
   const [endDate, setEndDate] = useState(getTodayString());
-  const [activeView, setActiveView] = useState("filteredRange");
+  const [activeView, setActiveView] = useState("currentWeek");
   const actorUsername = currentUserProfile?.auth?.username ?? "";
 
   const { data: dashboard, error } = useQuery({
     queryKey: ["range-usage-dashboard", actorUsername, startDate, endDate],
     queryFn: async () => {
-      const params = new URLSearchParams({
-        start: startDate,
-        end: endDate,
-      });
-      const result = await fetchApi<{
-        success: true;
-        currentMonth?: unknown;
-        currentWeek?: unknown;
-        filteredRange?: unknown;
-        myCurrentMonth?: unknown;
-        myCurrentWeek?: unknown;
-        myFilteredRange?: unknown;
-      }>(`/api/range-usage-dashboard?${params.toString()}`, {
-        headers: {
-          "x-actor-username": actorUsername,
-        },
+      const result = await getRangeUsageDashboard(actorUsername, {
+        startDate,
+        endDate,
       });
 
       const normalizedCurrentMonth = normalizeUsageWindow(

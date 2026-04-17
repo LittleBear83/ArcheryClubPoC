@@ -6,7 +6,20 @@ import { formatClockTime, formatDate, formatDateTime } from "../../utils/dateTim
 import { ApprovalCard } from "../components/ApprovalCard";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { hasPermission } from "../../utils/userProfile";
-import { fetchApi } from "../../lib/api";
+import {
+  approveCoachingSession,
+  approveEvent,
+  listCoachingSessions,
+  listEvents,
+  rejectCoachingSession,
+  rejectEvent,
+} from "../../api/scheduleApi";
+import {
+  approveBeginnersCourse,
+  getBeginnersCoursesDashboard,
+  getHaveAGoSessionsDashboard,
+  rejectBeginnersCourse,
+} from "../../api/beginnersCoursesApi";
 import type { ApprovalEvent, CoachingSession, UserProfile } from "../../types/app";
 
 const VENUE_LABELS = {
@@ -189,15 +202,26 @@ function buildConflictWarnings(
   return warningsByKey;
 }
 
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
-
 const approvalsQueryKeys = {
   list: (actorUsername) => ["approvals", actorUsername] as const,
+};
+
+type CourseApprovalType = "beginners" | "have-a-go";
+
+type PendingCourseApproval = {
+  id: number;
+  approvalStatus: string;
+  beginnerCapacity: number;
+  coordinatorName: string;
+  firstLessonDate: string;
+  lessonCount: number;
+  submittedByName: string;
+};
+
+type RejectingCourseApproval = {
+  course: PendingCourseApproval;
+  courseType: CourseApprovalType;
+  itemLabel: string;
 };
 
 export function ApprovalsPage({ currentUserProfile }) {
@@ -208,6 +232,8 @@ export function ApprovalsPage({ currentUserProfile }) {
   const [eventRejectReason, setEventRejectReason] = useState("");
   const [rejectingSession, setRejectingSession] = useState<CoachingSession | null>(null);
   const [sessionRejectReason, setSessionRejectReason] = useState("");
+  const [rejectingCourse, setRejectingCourse] = useState<RejectingCourseApproval | null>(null);
+  const [courseRejectReason, setCourseRejectReason] = useState("");
 
   const currentUser = currentUserProfile as UserProfile | null;
   const canApproveEvents = hasPermission(currentUserProfile, "approve_events");
@@ -215,35 +241,45 @@ export function ApprovalsPage({ currentUserProfile }) {
     currentUserProfile,
     "approve_coaching_sessions",
   );
-  const canApproveAnything = canApproveEvents || canApproveCoaching;
+  const canApproveBeginnersCourses = hasPermission(
+    currentUserProfile,
+    "approve_beginners_courses",
+  );
+  const canApproveHaveAGoSessions = hasPermission(
+    currentUserProfile,
+    "approve_have_a_go_sessions",
+  );
+  const canApproveAnything =
+    canApproveEvents ||
+    canApproveCoaching ||
+    canApproveBeginnersCourses ||
+    canApproveHaveAGoSessions;
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const queryClient = useQueryClient();
 
   const approvalsQuery = useQuery({
     queryKey: approvalsQueryKeys.list(actorUsername),
     queryFn: async () => {
-      const headers = buildHeaders(currentUserProfile);
-      const [eventResult, coachingResult] = await Promise.all([
+      const [eventResult, coachingResult, beginnersResult, haveAGoResult] = await Promise.all([
         canApproveEvents
-          ? fetchApi<{ success: true; events?: ApprovalEvent[] }>("/api/events", {
-              headers,
-              cache: "no-store",
-            })
+          ? listEvents<ApprovalEvent>(currentUserProfile)
           : Promise.resolve({ success: true, events: [] }),
         canApproveCoaching
-          ? fetchApi<{ success: true; sessions?: CoachingSession[] }>(
-              "/api/coaching-sessions",
-              {
-                headers,
-                cache: "no-store",
-              },
-            )
+          ? listCoachingSessions(currentUserProfile)
           : Promise.resolve({ success: true, sessions: [] }),
+        canApproveBeginnersCourses
+          ? getBeginnersCoursesDashboard(currentUserProfile)
+          : Promise.resolve({ success: true, courses: [] }),
+        canApproveHaveAGoSessions
+          ? getHaveAGoSessionsDashboard(currentUserProfile)
+          : Promise.resolve({ success: true, courses: [] }),
       ]);
 
       return {
         events: eventResult.events ?? [],
         sessions: coachingResult.sessions ?? [],
+        beginnersCourses: (beginnersResult.courses ?? []) as PendingCourseApproval[],
+        haveAGoSessions: (haveAGoResult.courses ?? []) as PendingCourseApproval[],
       };
     },
     enabled: canApproveAnything,
@@ -263,11 +299,15 @@ export function ApprovalsPage({ currentUserProfile }) {
 
     window.addEventListener("event-data-updated", refresh);
     window.addEventListener("coaching-data-updated", refresh);
+    window.addEventListener("beginners-course-data-updated", refresh);
+    window.addEventListener("have-a-go-session-data-updated", refresh);
     window.addEventListener("profile-data-updated", refresh);
 
     return () => {
       window.removeEventListener("event-data-updated", refresh);
       window.removeEventListener("coaching-data-updated", refresh);
+      window.removeEventListener("beginners-course-data-updated", refresh);
+      window.removeEventListener("have-a-go-session-data-updated", refresh);
       window.removeEventListener("profile-data-updated", refresh);
     };
   }, [actorUsername, canApproveAnything, queryClient]);
@@ -288,22 +328,47 @@ export function ApprovalsPage({ currentUserProfile }) {
     () => allSessions.filter((session) => session.isPendingApproval),
     [allSessions],
   );
+  const beginnersCourses = useMemo(
+    () =>
+      (approvalsQuery.data?.beginnersCourses ?? []).filter(
+        (course) => course.approvalStatus === "pending",
+      ),
+    [approvalsQuery.data?.beginnersCourses],
+  );
+  const haveAGoSessions = useMemo(
+    () =>
+      (approvalsQuery.data?.haveAGoSessions ?? []).filter(
+        (course) => course.approvalStatus === "pending",
+      ),
+    [approvalsQuery.data?.haveAGoSessions],
+  );
   const conflictWarningsByKey = useMemo(
     () => buildConflictWarnings(allEvents, allSessions),
     [allEvents, allSessions],
   );
-  const pendingCount = events.length + sessions.length;
+  const pendingCount =
+    events.length + sessions.length + beginnersCourses.length + haveAGoSessions.length;
 
   const mutateApproval = useMutation({
     mutationFn: async ({
       body,
-      url,
+      action,
+      id,
+      courseType,
       successMessage,
       eventName,
       processingValue,
     }: {
-      body?: unknown;
-      url: string;
+      body?: { rejectionReason?: string };
+      action:
+        | "approve-event"
+        | "reject-event"
+        | "approve-session"
+        | "reject-session"
+        | "approve-course"
+        | "reject-course";
+      courseType?: CourseApprovalType;
+      id: string | number;
       successMessage: string;
       eventName: string;
       processingValue: string;
@@ -311,12 +376,19 @@ export function ApprovalsPage({ currentUserProfile }) {
       setProcessingKey(processingValue);
       setError("");
       setMessage("");
-      await fetchApi<{ success: true; message?: string }>(url, {
-        method: "POST",
-        headers: buildHeaders(currentUser),
-        cache: "no-store",
-        body: body ? JSON.stringify(body) : undefined,
-      });
+      if (action === "approve-event") {
+        await approveEvent(currentUser, id);
+      } else if (action === "reject-event") {
+        await rejectEvent(currentUser, id, body?.rejectionReason ?? "");
+      } else if (action === "approve-session") {
+        await approveCoachingSession(currentUser, id);
+      } else if (action === "reject-session") {
+        await rejectCoachingSession(currentUser, id, body?.rejectionReason ?? "");
+      } else if (action === "approve-course") {
+        await approveBeginnersCourse(currentUser, id, courseType);
+      } else {
+        await rejectBeginnersCourse(currentUser, id, body?.rejectionReason ?? "", courseType);
+      }
       return { successMessage, eventName };
     },
     onSuccess: async ({ successMessage, eventName }) => {
@@ -335,12 +407,12 @@ export function ApprovalsPage({ currentUserProfile }) {
   });
 
   if (!canApproveAnything) {
-    return <p>You do not have permission to approve events or coaching sessions.</p>;
+    return <p>You do not have permission to approve submitted items.</p>;
   }
 
   return (
     <div className="approvals-page">
-      <p>Review submitted events and coaching sessions before they are published to members.</p>
+      <p>Review submitted events, coaching sessions, beginners courses, and Have a Go sessions before they are published to members.</p>
       <StatusMessagePanel
         error={error}
         loading={approvalsQuery.isLoading}
@@ -374,7 +446,8 @@ export function ApprovalsPage({ currentUserProfile }) {
                             : "Approve event",
                         onClick: () =>
                           void mutateApproval.mutateAsync({
-                            url: `/api/events/${event.id}/approve`,
+                            action: "approve-event",
+                            id: event.id,
                             successMessage: `${event.title} approved successfully.`,
                             eventName: "event-data-updated",
                             processingValue: `event:approve:${event.id}`,
@@ -429,7 +502,8 @@ export function ApprovalsPage({ currentUserProfile }) {
                             : "Approve session",
                         onClick: () =>
                           void mutateApproval.mutateAsync({
-                            url: `/api/coaching-sessions/${session.id}/approve`,
+                            action: "approve-session",
+                            id: session.id,
                             successMessage: `${session.topic} approved successfully.`,
                             eventName: "coaching-data-updated",
                             processingValue: `session:approve:${session.id}`,
@@ -468,6 +542,124 @@ export function ApprovalsPage({ currentUserProfile }) {
             )}
           </section>
         ) : null}
+
+        {canApproveBeginnersCourses ? (
+          <section className="approvals-panel">
+            <h3>Pending beginners courses</h3>
+            {beginnersCourses.length === 0 ? (
+              <p>No beginners courses are waiting for approval.</p>
+            ) : (
+              <div className="approvals-list">
+                {beginnersCourses.map((course) => (
+                  <ApprovalCard
+                    key={course.id}
+                    title={`Beginners course from ${formatDate(course.firstLessonDate)}`}
+                    actions={[
+                      {
+                        disabled: Boolean(processingKey),
+                        label:
+                          processingKey === `beginners:approve:${course.id}`
+                            ? "Approving..."
+                            : "Approve course",
+                        onClick: () =>
+                          void mutateApproval.mutateAsync({
+                            action: "approve-course",
+                            courseType: "beginners",
+                            id: course.id,
+                            successMessage: "Beginners course approved.",
+                            eventName: "beginners-course-data-updated",
+                            processingValue: `beginners:approve:${course.id}`,
+                          }),
+                      },
+                      {
+                        disabled: Boolean(processingKey),
+                        label:
+                          processingKey === `beginners:reject:${course.id}`
+                            ? "Rejecting..."
+                            : "Reject request",
+                        onClick: () => {
+                          setCourseRejectReason("");
+                          setRejectingCourse({
+                            course,
+                            courseType: "beginners",
+                            itemLabel: "beginners course",
+                          });
+                        },
+                        variant: "danger",
+                      },
+                    ]}
+                  >
+                    <p>
+                      Coordinator: {course.coordinatorName} | Lessons: {course.lessonCount}
+                    </p>
+                    <p>
+                      Places: {course.beginnerCapacity} | Submitted by: {course.submittedByName}
+                    </p>
+                  </ApprovalCard>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
+
+        {canApproveHaveAGoSessions ? (
+          <section className="approvals-panel">
+            <h3>Pending Have a Go sessions</h3>
+            {haveAGoSessions.length === 0 ? (
+              <p>No Have a Go sessions are waiting for approval.</p>
+            ) : (
+              <div className="approvals-list">
+                {haveAGoSessions.map((session) => (
+                  <ApprovalCard
+                    key={session.id}
+                    title={`Have a Go session from ${formatDate(session.firstLessonDate)}`}
+                    actions={[
+                      {
+                        disabled: Boolean(processingKey),
+                        label:
+                          processingKey === `have-a-go:approve:${session.id}`
+                            ? "Approving..."
+                            : "Approve session",
+                        onClick: () =>
+                          void mutateApproval.mutateAsync({
+                            action: "approve-course",
+                            courseType: "have-a-go",
+                            id: session.id,
+                            successMessage: "Have a Go session approved.",
+                            eventName: "have-a-go-session-data-updated",
+                            processingValue: `have-a-go:approve:${session.id}`,
+                          }),
+                      },
+                      {
+                        disabled: Boolean(processingKey),
+                        label:
+                          processingKey === `have-a-go:reject:${session.id}`
+                            ? "Rejecting..."
+                            : "Reject request",
+                        onClick: () => {
+                          setCourseRejectReason("");
+                          setRejectingCourse({
+                            course: session,
+                            courseType: "have-a-go",
+                            itemLabel: "Have a Go session",
+                          });
+                        },
+                        variant: "danger",
+                      },
+                    ]}
+                  >
+                    <p>
+                      Coordinator: {session.coordinatorName} | Sessions: {session.lessonCount}
+                    </p>
+                    <p>
+                      Places: {session.beginnerCapacity} | Submitted by: {session.submittedByName}
+                    </p>
+                  </ApprovalCard>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
       </section>
 
       <Modal
@@ -486,7 +678,8 @@ export function ApprovalsPage({ currentUserProfile }) {
             onSubmit={(event) => {
               event.preventDefault();
               void mutateApproval.mutateAsync({
-                url: `/api/events/${rejectingEvent.id}/reject`,
+                action: "reject-event",
+                id: rejectingEvent.id,
                 body: {
                   rejectionReason: eventRejectReason,
                 },
@@ -555,7 +748,8 @@ export function ApprovalsPage({ currentUserProfile }) {
             onSubmit={(event) => {
               event.preventDefault();
               void mutateApproval.mutateAsync({
-                url: `/api/coaching-sessions/${rejectingSession.id}/reject`,
+                action: "reject-session",
+                id: rejectingSession.id,
                 body: {
                   rejectionReason: sessionRejectReason,
                 },
@@ -600,6 +794,102 @@ export function ApprovalsPage({ currentUserProfile }) {
                   setSessionRejectReason("");
                 }}
                 disabled={processingKey === `session:reject:${rejectingSession.id}`}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(rejectingCourse)}
+        onClose={() => {
+          if (!processingKey) {
+            setRejectingCourse(null);
+            setCourseRejectReason("");
+          }
+        }}
+        title={
+          rejectingCourse?.courseType === "have-a-go"
+            ? "Reject Have a Go Session"
+            : "Reject Beginners Course"
+        }
+      >
+        {rejectingCourse ? (
+          <form
+            className="left-align-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void mutateApproval.mutateAsync({
+                action: "reject-course",
+                courseType: rejectingCourse.courseType,
+                id: rejectingCourse.course.id,
+                body: {
+                  rejectionReason: courseRejectReason,
+                },
+                successMessage:
+                  rejectingCourse.courseType === "have-a-go"
+                    ? "Have a Go session rejected."
+                    : "Beginners course rejected.",
+                eventName:
+                  rejectingCourse.courseType === "have-a-go"
+                    ? "have-a-go-session-data-updated"
+                    : "beginners-course-data-updated",
+                processingValue: `${rejectingCourse.courseType}:reject:${rejectingCourse.course.id}`,
+              }).then(() => {
+                setRejectingCourse(null);
+                setCourseRejectReason("");
+              });
+            }}
+          >
+            <p>
+              Rejecting{" "}
+              <strong>
+                {rejectingCourse.itemLabel} from{" "}
+                {formatDate(rejectingCourse.course.firstLessonDate)}
+              </strong>
+              .
+            </p>
+            <label>
+              Reason for rejection
+              <textarea
+                value={courseRejectReason}
+                onChange={(event) => setCourseRejectReason(event.target.value)}
+                maxLength={280}
+                rows={4}
+                placeholder="Add a short note for the coordinator."
+                disabled={
+                  processingKey ===
+                  `${rejectingCourse.courseType}:reject:${rejectingCourse.course.id}`
+                }
+              />
+            </label>
+            <div className="loan-bow-return-actions">
+              <Button
+                type="submit"
+                variant="danger"
+                disabled={
+                  processingKey ===
+                  `${rejectingCourse.courseType}:reject:${rejectingCourse.course.id}`
+                }
+              >
+                {processingKey ===
+                `${rejectingCourse.courseType}:reject:${rejectingCourse.course.id}`
+                  ? "Rejecting..."
+                  : "Reject request"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setRejectingCourse(null);
+                  setCourseRejectReason("");
+                }}
+                disabled={
+                  processingKey ===
+                  `${rejectingCourse.courseType}:reject:${rejectingCourse.course.id}`
+                }
               >
                 Cancel
               </Button>

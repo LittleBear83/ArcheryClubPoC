@@ -15,8 +15,11 @@ const ROLE_PERMISSION_FALLBACKS = {
     "assign_equipment",
     "return_equipment",
     "update_equipment_storage",
+    "manage_equipment_storage_locations",
     "manage_beginners_courses",
     "approve_beginners_courses",
+    "manage_have_a_go_sessions",
+    "approve_have_a_go_sessions",
     "manage_tournaments",
   ],
   developer: [
@@ -32,15 +35,87 @@ const ROLE_PERMISSION_FALLBACKS = {
     "assign_equipment",
     "return_equipment",
     "update_equipment_storage",
+    "manage_equipment_storage_locations",
     "manage_beginners_courses",
     "approve_beginners_courses",
+    "manage_have_a_go_sessions",
+    "approve_have_a_go_sessions",
     "manage_tournaments",
   ],
 };
 
+const SYSTEM_PERMISSION_FALLBACK_ROLES = new Set(["admin", "developer"]);
+const ROLE_DISPLAY_SUFFIXES = {
+  beginner: " - (beginner)",
+  "have-a-go": " - (HAGS)",
+};
+
+export function isBeginnerRole(role) {
+  return role === "beginner";
+}
+
+export function getRoleDisplaySuffix(role) {
+  return ROLE_DISPLAY_SUFFIXES[role] ?? "";
+}
+
+export function withRoleDisplaySuffix(value, role) {
+  if (!value) {
+    return "";
+  }
+
+  const displayValue = String(value);
+  const suffix = getRoleDisplaySuffix(role);
+
+  if (!suffix || displayValue.endsWith(suffix)) {
+    return displayValue;
+  }
+
+  return `${displayValue}${suffix}`;
+}
+
+export function withBeginnerSuffix(value, role) {
+  return withRoleDisplaySuffix(value, role);
+}
+
+export function getDisplayRole(value) {
+  return value?.membership?.role ?? value?.userType ?? value?.role ?? value?.user_type ?? "";
+}
+
+export function formatMemberDisplayName(value) {
+  if (!value) {
+    return "";
+  }
+
+  const role = getDisplayRole(value);
+  const fullName =
+    value.personal?.fullName ??
+    value.fullName ??
+    `${value.firstName ?? value.first_name ?? ""} ${value.surname ?? ""}`.trim();
+
+  return withRoleDisplaySuffix(fullName, role);
+}
+
+export function formatMemberDisplayUsername(value) {
+  if (!value) {
+    return "";
+  }
+
+  const role = getDisplayRole(value);
+  const username = value.auth?.username ?? value.username ?? "";
+
+  return withRoleDisplaySuffix(username, role);
+}
+
 function normalizePermissions(permissions, role) {
   if (Array.isArray(permissions)) {
-    return [...new Set(permissions.filter((permission) => typeof permission === "string"))];
+    const normalizedPermissions = permissions.filter(
+      (permission) => typeof permission === "string",
+    );
+    const roleFallbacks = SYSTEM_PERMISSION_FALLBACK_ROLES.has(role)
+      ? ROLE_PERMISSION_FALLBACKS[role] ?? []
+      : [];
+
+    return [...new Set([...normalizedPermissions, ...roleFallbacks])];
   }
 
   return ROLE_PERMISSION_FALLBACKS[role] ?? [];
@@ -52,6 +127,11 @@ export function normalizeUserProfile(profile) {
   }
 
   if (profile.personal && profile.membership && profile.auth) {
+    const role = profile.membership.role ?? "guest";
+    const fullName =
+      profile.personal.fullName ??
+      `${profile.personal.firstName ?? ""} ${profile.personal.surname ?? ""}`.trim();
+
     return {
       id: profile.id,
       accountType: profile.accountType,
@@ -62,14 +142,12 @@ export function normalizeUserProfile(profile) {
       personal: {
         firstName: profile.personal.firstName ?? "",
         surname: profile.personal.surname ?? "",
-        fullName:
-          profile.personal.fullName ??
-          `${profile.personal.firstName ?? ""} ${profile.personal.surname ?? ""}`.trim(),
+        fullName: withRoleDisplaySuffix(fullName, role),
         archeryGbMembershipNumber:
           profile.personal.archeryGbMembershipNumber ?? null,
       },
       membership: {
-        role: profile.membership.role ?? "guest",
+        role,
         permissions: normalizePermissions(
           profile.membership.permissions,
           profile.membership.role ?? "guest",
@@ -103,7 +181,7 @@ export function normalizeUserProfile(profile) {
     personal: {
       firstName,
       surname,
-      fullName: `${firstName} ${surname}`.trim(),
+      fullName: withRoleDisplaySuffix(`${firstName} ${surname}`.trim(), role),
       archeryGbMembershipNumber,
     },
     membership: {

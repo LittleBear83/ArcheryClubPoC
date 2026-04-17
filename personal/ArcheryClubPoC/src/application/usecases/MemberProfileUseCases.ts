@@ -1,4 +1,8 @@
+import type { MemberProfileRepository } from "../../domain/repositories/MemberProfileRepository";
+
 export class GetMemberProfilePageDataUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
   constructor({ memberProfileRepository }) {
     this.memberProfileRepository = memberProfileRepository;
   }
@@ -21,6 +25,8 @@ export class GetMemberProfilePageDataUseCase {
 }
 
 export class GetMemberProfileOptionsUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
   constructor({ memberProfileRepository }) {
     this.memberProfileRepository = memberProfileRepository;
   }
@@ -35,6 +41,8 @@ export class GetMemberProfileOptionsUseCase {
 }
 
 export class CreateMemberProfileUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
   constructor({ memberProfileRepository }) {
     this.memberProfileRepository = memberProfileRepository;
   }
@@ -57,6 +65,8 @@ export class CreateMemberProfileUseCase {
 }
 
 export class UpdateMemberProfileUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
   constructor({ memberProfileRepository }) {
     this.memberProfileRepository = memberProfileRepository;
   }
@@ -75,6 +85,8 @@ export class UpdateMemberProfileUseCase {
 }
 
 export class AssignMemberRfidTagUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
   constructor({ memberProfileRepository }) {
     this.memberProfileRepository = memberProfileRepository;
   }
@@ -101,6 +113,8 @@ export class AssignMemberRfidTagUseCase {
 }
 
 export class ReturnLoanBowUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
   constructor({ memberProfileRepository }) {
     this.memberProfileRepository = memberProfileRepository;
   }
@@ -123,6 +137,8 @@ export class ReturnLoanBowUseCase {
 }
 
 export class GetUserProfileUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
   constructor({ memberProfileRepository }) {
     this.memberProfileRepository = memberProfileRepository;
   }

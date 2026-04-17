@@ -1,4 +1,8 @@
+import type { RoleRepository } from "../../domain/repositories/RoleRepository";
+
 export class GetRolesSnapshotUseCase {
+  private readonly roleRepository: RoleRepository;
+
   constructor({ roleRepository }) {
     this.roleRepository = roleRepository;
   }
@@ -13,6 +17,8 @@ export class GetRolesSnapshotUseCase {
 }
 
 export class CreateRoleUseCase {
+  private readonly roleRepository: RoleRepository;
+
   constructor({ roleRepository }) {
     this.roleRepository = roleRepository;
   }
@@ -31,6 +37,8 @@ export class CreateRoleUseCase {
 }
 
 export class UpdateRoleUseCase {
+  private readonly roleRepository: RoleRepository;
+
   constructor({ roleRepository }) {
     this.roleRepository = roleRepository;
   }
@@ -49,6 +57,8 @@ export class UpdateRoleUseCase {
 }
 
 export class DeleteRoleUseCase {
+  private readonly roleRepository: RoleRepository;
+
   constructor({ roleRepository }) {
     this.roleRepository = roleRepository;
   }

@@ -11,7 +11,9 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
+    "types": ["node"],
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx"

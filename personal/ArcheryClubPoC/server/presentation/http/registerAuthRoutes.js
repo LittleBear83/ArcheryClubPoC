@@ -197,6 +197,7 @@ export function registerAuthRoutes({
         firstName: user.first_name,
         surname: user.surname,
         fullName: `${user.first_name} ${user.surname}`,
+        userType: user.user_type,
       })),
     });
   });

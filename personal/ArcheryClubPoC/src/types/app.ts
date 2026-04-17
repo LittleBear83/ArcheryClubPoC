@@ -75,6 +75,7 @@ export type BeginnersCourseCalendarLesson = {
   id: string | number;
   courseId: string | number;
   lessonId: string | number;
+  courseType?: "beginners" | "have-a-go";
   title: string;
   date: string;
   startTime: string;
@@ -83,6 +84,8 @@ export type BeginnersCourseCalendarLesson = {
   coordinatorName: string;
   coachNames: string[];
   beginnerCount: number;
+  participantCount?: number;
   beginnerCapacity: number;
+  participantCapacity?: number;
   placesRemaining: number;
 };

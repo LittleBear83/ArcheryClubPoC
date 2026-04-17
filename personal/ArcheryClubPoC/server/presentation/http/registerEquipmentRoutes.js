@@ -4,6 +4,8 @@ export function registerEquipmentRoutes({
   buildEquipmentCaseResponse,
   buildEquipmentItemResponse,
   buildEquipmentMaps,
+  countEquipmentItemsByStorageLocation,
+  deleteEquipmentStorageLocation,
   db,
   DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
   EQUIPMENT_LOCATION_TYPES,
@@ -13,14 +15,17 @@ export function registerEquipmentRoutes({
   EQUIPMENT_TYPE_OPTIONS,
   findEquipmentItemById,
   findEquipmentItemByIdWithRelations,
+  findEquipmentStorageLocationByLabel,
   findOpenEquipmentLoanByItemId,
   findUserByUsername,
   getActorUser,
   getUtcTimestampParts,
   insertEquipmentItem,
   insertEquipmentLoan,
+  insertEquipmentStorageLocation,
   listAllUsers,
   listEquipmentItemsByCaseId,
+  listEquipmentStorageLocations,
   listOpenEquipmentLoansByCaseId,
   listOpenEquipmentLoansByMemberUserId,
   PERMISSIONS,
@@ -32,6 +37,28 @@ export function registerEquipmentRoutes({
   validateCaseAssignment,
   closeEquipmentLoan,
 }) {
+  const getStorageLocationOptions = () => {
+    const labels = listEquipmentStorageLocations.all().map((row) => row.label);
+
+    if (labels.includes(DEFAULT_EQUIPMENT_CUPBOARD_LABEL)) {
+      return labels;
+    }
+
+    return [DEFAULT_EQUIPMENT_CUPBOARD_LABEL, ...labels];
+  };
+
+  const assertStorageLocationExists = (label, res) => {
+    if (!findEquipmentStorageLocationByLabel.get(label)) {
+      res.status(400).json({
+        success: false,
+        message: "Choose a valid equipment storage location.",
+      });
+      return false;
+    }
+
+    return true;
+  };
+
   app.get("/api/equipment/dashboard", (req, res) => {
     const actor = getActorUser(req);
 
@@ -53,6 +80,10 @@ export function registerEquipmentRoutes({
       canUpdateEquipmentStorage: actorHasPermission(
         actor,
         PERMISSIONS.UPDATE_EQUIPMENT_STORAGE,
+      ),
+      canManageEquipmentStorageLocations: actorHasPermission(
+        actor,
+        PERMISSIONS.MANAGE_EQUIPMENT_STORAGE_LOCATIONS,
       ),
     };
 
@@ -86,7 +117,7 @@ export function registerEquipmentRoutes({
         value,
         label: value === "junior" ? "Junior" : "Standard",
       })),
-      cupboardOptions: [DEFAULT_EQUIPMENT_CUPBOARD_LABEL],
+      cupboardOptions: getStorageLocationOptions(),
       items,
       cases,
     });
@@ -460,6 +491,11 @@ export function registerEquipmentRoutes({
         : Number.parseInt(req.body.returnToCaseId, 10);
     const returnCase = returnToCaseId ? findEquipmentItemById.get(returnToCaseId) : null;
     const returnToCupboard = sanitizeCupboardLabel(req.body?.cupboardLabel);
+
+    if (!assertStorageLocationExists(returnToCupboard, res)) {
+      return;
+    }
+
     const [date, time] = getUtcTimestampParts();
 
     if (returnCase) {
@@ -561,7 +597,14 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    if (findOpenEquipmentLoanByItemId.get(item.id)) {
+    const openLoan = findOpenEquipmentLoanByItemId.get(item.id);
+    const isLoanedCaseContent =
+      openLoan &&
+      item.location_type === EQUIPMENT_LOCATION_TYPES.CASE &&
+      item.location_case_id &&
+      openLoan.loan_context_case_id === item.location_case_id;
+
+    if (openLoan && !isLoanedCaseContent) {
       res.status(400).json({
         success: false,
         message: "Return the equipment before updating its storage location.",
@@ -570,23 +613,148 @@ export function registerEquipmentRoutes({
     }
 
     const targetCupboard = sanitizeCupboardLabel(req.body?.cupboardLabel);
+
+    if (!assertStorageLocationExists(targetCupboard, res)) {
+      return;
+    }
+
     const [date, time] = getUtcTimestampParts();
 
-    updateEquipmentItemStorage.run({
-      id: item.id,
-      locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-      locationLabel: targetCupboard,
-      locationCaseId: null,
-      locationMemberUsername: null,
-      storageByUsername: actor.username,
-      storageAtDate: date,
-      storageAtTime: time,
+    const updateStorageTransaction = db.transaction(() => {
+      if (isLoanedCaseContent) {
+        closeEquipmentLoan.run(
+          actor.username,
+          date,
+          time,
+          EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+          targetCupboard,
+          null,
+          openLoan.id,
+        );
+      }
+
+      updateEquipmentItemStorage.run({
+        id: item.id,
+        locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        locationLabel: targetCupboard,
+        locationCaseId: null,
+        locationMemberUsername: null,
+        storageByUsername: actor.username,
+        storageAtDate: date,
+        storageAtTime: time,
+      });
     });
+
+    updateStorageTransaction();
 
     const maps = buildEquipmentMaps();
     res.json({
       success: true,
       item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
+    });
+  });
+
+  app.post("/api/equipment/storage-locations", (req, res) => {
+    const actor = getActorUser(req);
+
+    if (
+      !actor ||
+      !actorHasPermission(actor, PERMISSIONS.MANAGE_EQUIPMENT_STORAGE_LOCATIONS)
+    ) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to manage storage locations.",
+      });
+      return;
+    }
+
+    const rawLabel = typeof req.body?.locationLabel === "string"
+      ? req.body.locationLabel
+      : "";
+    const label = sanitizeCupboardLabel(rawLabel);
+
+    if (!rawLabel.trim()) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a storage location name.",
+      });
+      return;
+    }
+
+    const [date, time] = getUtcTimestampParts();
+
+    try {
+      insertEquipmentStorageLocation.run(label, date, time);
+    } catch (error) {
+      if (error?.message?.includes("UNIQUE constraint failed")) {
+        res.status(409).json({
+          success: false,
+          message: "That storage location already exists.",
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        message: "Unable to add the storage location.",
+      });
+      return;
+    }
+
+    res.status(201).json({
+      success: true,
+      cupboardOptions: getStorageLocationOptions(),
+    });
+  });
+
+  app.delete("/api/equipment/storage-locations/:label", (req, res) => {
+    const actor = getActorUser(req);
+
+    if (
+      !actor ||
+      !actorHasPermission(actor, PERMISSIONS.MANAGE_EQUIPMENT_STORAGE_LOCATIONS)
+    ) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to manage storage locations.",
+      });
+      return;
+    }
+
+    const label = sanitizeCupboardLabel(req.params.label);
+
+    if (label === DEFAULT_EQUIPMENT_CUPBOARD_LABEL) {
+      res.status(400).json({
+        success: false,
+        message: "The main cupboard cannot be removed.",
+      });
+      return;
+    }
+
+    if (!findEquipmentStorageLocationByLabel.get(label)) {
+      res.status(404).json({
+        success: false,
+        message: "Storage location not found.",
+      });
+      return;
+    }
+
+    const assignedItemCount = countEquipmentItemsByStorageLocation.get(label)?.count ?? 0;
+
+    if (assignedItemCount > 0) {
+      res.status(409).json({
+        success: false,
+        message:
+          "Move equipment out of this storage location before removing it.",
+      });
+      return;
+    }
+
+    deleteEquipmentStorageLocation.run(label);
+
+    res.json({
+      success: true,
+      cupboardOptions: getStorageLocationOptions(),
     });
   });
 

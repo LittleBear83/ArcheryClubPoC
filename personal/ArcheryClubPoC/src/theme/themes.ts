@@ -22,7 +22,7 @@ export const themes = {
       "--accent-contrast": "#1f1700",
       "--border": "#444444",
       "--border-strong": "rgba(255, 255, 255, 0.24)",
-      "--panel-border": "rgba(255, 255, 255, 0.14)",
+      "--panel-border": "#ffdd00",
       "--panel-border-strong": "rgba(255, 221, 0, 0.35)",
       "--surface": "rgba(255, 255, 255, 0.04)",
       "--surface-strong": "rgba(16, 16, 16, 0.94)",
@@ -91,8 +91,7 @@ export const themes = {
       "--coaching-badge-bg":
         "linear-gradient(135deg, #d94b5f 0%, #d94b5f 48%, #3f6fd8 52%, #3f6fd8 100%)",
       "--coaching-badge-text": "#fff7f7",
-      "--coaching-badge-border":
-        "color-mix(in srgb, #d94b5f 45%, #3f6fd8 55%)",
+      "--coaching-badge-border": "color-mix(in srgb, #d94b5f 45%, #3f6fd8 55%)",
       "--event-social-bg": "rgb(252, 36, 36)",
       "--event-social-text": "#fff5f5",
       "--event-range-closed-bg": "rgb(10, 114, 241)",
@@ -136,7 +135,7 @@ export const themes = {
       "--accent-contrast": "#2d2107",
       "--border": "#cfbfa8",
       "--border-strong": "rgba(65, 47, 16, 0.24)",
-      "--panel-border": "rgba(89, 64, 23, 0.18)",
+      "--panel-border": "#050505",
       "--panel-border-strong": "rgba(200, 135, 0, 0.35)",
       "--surface": "rgba(255, 255, 255, 0.7)",
       "--surface-strong": "rgba(255, 250, 242, 0.96)",
@@ -205,8 +204,7 @@ export const themes = {
       "--coaching-badge-bg":
         "linear-gradient(135deg, #d94b5f 0%, #d94b5f 48%, #3f6fd8 52%, #3f6fd8 100%)",
       "--coaching-badge-text": "#fff7f7",
-      "--coaching-badge-border":
-        "color-mix(in srgb, #d94b5f 45%, #3f6fd8 55%)",
+      "--coaching-badge-border": "color-mix(in srgb, #d94b5f 45%, #3f6fd8 55%)",
       "--event-social-bg": "#cb6b62",
       "--event-social-text": "#fff8f7",
       "--event-range-closed-bg": "#76a9de",

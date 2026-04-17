@@ -1,5 +1,5 @@
 import { formatDate } from "../../utils/dateTime";
-import { getUserProfileKey } from "../../utils/userProfile";
+import { formatMemberDisplayName, getUserProfileKey } from "../../utils/userProfile";
 
 function SignedUpEventsList({ events }) {
   return (
@@ -49,7 +49,7 @@ function MembersAtRangeList({ members }) {
         {members.length > 0 ? (
           members.map((member) => (
             <li key={getUserProfileKey(member)}>
-              {member.personal.fullName}
+              {formatMemberDisplayName(member)}
               {member.membership.disciplines?.length
                 ? ` - ${member.membership.disciplines.join(", ")}`
                 : member.accountType === "guest"

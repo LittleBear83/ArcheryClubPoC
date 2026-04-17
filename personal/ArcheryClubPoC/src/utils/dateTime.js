@@ -21,12 +21,37 @@ const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
   hour12: false,
 });
 
+const shortDateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
 function parseIsoDate(dateString) {
   if (!dateString) {
     return null;
   }
 
   return new Date(`${dateString}T12:00:00`);
+}
+
+function parseDateTime(dateInput) {
+  if (!dateInput) {
+    return null;
+  }
+
+  if (typeof dateInput === "string") {
+    const normalizedInput = dateInput.includes(" ")
+      ? dateInput.replace(" ", "T")
+      : dateInput;
+
+    return new Date(normalizedInput);
+  }
+
+  return new Date(dateInput);
 }
 
 export function formatDate(dateInput) {
@@ -77,13 +102,27 @@ export function formatDateTime(dateInput) {
     return "";
   }
 
-  const date = new Date(dateInput);
+  const date = parseDateTime(dateInput);
 
-  if (Number.isNaN(date.getTime())) {
+  if (Number.isNaN(date?.getTime())) {
     return String(dateInput);
   }
 
   return dateTimeFormatter.format(date);
+}
+
+export function formatShortDateTime(dateInput) {
+  if (!dateInput) {
+    return "";
+  }
+
+  const date = parseDateTime(dateInput);
+
+  if (Number.isNaN(date?.getTime())) {
+    return String(dateInput);
+  }
+
+  return shortDateTimeFormatter.format(date).replace(",", "");
 }
 
 export function formatHourLabel(hour) {

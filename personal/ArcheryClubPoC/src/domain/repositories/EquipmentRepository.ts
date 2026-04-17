@@ -14,4 +14,14 @@ export abstract class EquipmentRepository {
   abstract returnItem(actorUsername: string, payload: unknown): Promise<unknown>;
 
   abstract updateStorage(actorUsername: string, payload: unknown): Promise<unknown>;
+
+  abstract addStorageLocation(
+    actorUsername: string,
+    payload: unknown,
+  ): Promise<unknown>;
+
+  abstract removeStorageLocation(
+    actorUsername: string,
+    locationLabel: string,
+  ): Promise<unknown>;
 }

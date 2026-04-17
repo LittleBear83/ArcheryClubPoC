@@ -57,9 +57,12 @@ function getPermissionGroup(permissionKey: string): PermissionGroupKey {
     case "approve_coaching_sessions":
     case "manage_beginners_courses":
     case "approve_beginners_courses":
+    case "manage_have_a_go_sessions":
+    case "approve_have_a_go_sessions":
     case "manage_tournaments":
       return "events-coaching";
     case "manage_roles_permissions":
+    case "manage_equipment_storage_locations":
       return "system-admin";
     default:
       return "system-admin";
@@ -477,21 +480,35 @@ export function RolePermissionsPage({
             <fieldset className="profile-discipline-fieldset">
               <legend>Roles vs Permissions</legend>
               <div className="committee-roles-table-wrap">
-                <table className="committee-roles-table">
+                <table
+                  className="committee-roles-table"
+                  style={{
+                    borderCollapse: "separate",
+                    borderSpacing: "12px 0", // 👈 horizontal gap between columns
+                  }}
+                >
                   <thead>
                     <tr>
-                      <th>Role</th>
-                      {permissionOptions.map((permission) => (
-                        <th key={permission.key}>{permission.label}</th>
+                      <th style={{ padding: "8px" }}>Permission</th>
+                      {roles.map((role) => (
+                        <th key={role.roleKey} style={{ padding: "8px" }}>
+                          {role.title}
+                        </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {roles.map((role) => (
-                      <tr key={role.roleKey}>
-                        <td>{role.title}</td>
-                        {permissionOptions.map((permission) => (
-                          <td key={`${role.roleKey}-${permission.key}`}>
+                    {permissionOptions.map((permission) => (
+                      <tr key={permission.key}>
+                        <td style={{ padding: "8px" }}>{permission.label}</td>
+                        {roles.map((role) => (
+                          <td
+                            key={`${permission.key}-${role.roleKey}`}
+                            style={{
+                              padding: "8px",
+                              textAlign: "center",
+                            }}
+                          >
                             {role.permissions.includes(permission.key) ? (
                               <span
                                 className="role-permission-tick"

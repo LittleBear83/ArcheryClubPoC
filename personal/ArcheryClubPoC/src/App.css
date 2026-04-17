@@ -3755,10 +3755,61 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
+.beginners-course-case-heading,
+.beginners-course-case-cell {
+  width: 160px;
+}
+
+.beginners-course-actions-heading,
+.beginners-course-actions-cell {
+  width: 220px;
+  min-width: 220px;
+}
+
+.beginners-course-actions-cell {
+  vertical-align: middle;
+}
+
 .beginners-course-row-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(88px, 1fr) minmax(56px, max-content);
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+}
+
+.beginners-course-row-action-button {
+  width: 100%;
+  white-space: nowrap;
+}
+
+.beginners-course-row-action-button--edit {
+  min-width: 56px;
+}
+
+.beginners-course-row-action-button--convert {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.beginners-course-attendance-table {
+  min-width: 760px;
+}
+
+.beginners-course-attendance-table th:not(:first-child),
+.beginners-course-attendance-cell {
+  text-align: center;
+}
+
+.beginners-course-attendance-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--success-bg);
+  color: var(--success);
+  font-weight: 800;
 }
 
 .beginners-course-coach-modal {

@@ -6,7 +6,11 @@ import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
 import { Modal } from "../components/Modal";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
-import { hasPermission } from "../../utils/userProfile";
+import {
+  formatMemberDisplayName,
+  formatMemberDisplayUsername,
+  hasPermission,
+} from "../../utils/userProfile";
 import { subscribeToRfidScans } from "../../utils/rfidScanHub";
 import type { LoanBowReturnPayload } from "../../domain/entities/MemberProfile";
 
@@ -286,6 +290,7 @@ export function ProfilePage({
   }, [
     actorUsername,
     canManageMembers,
+    currentUserProfile?.auth?.username,
     editableProfile,
     isCardModalOpen,
     memberProfileCrud,
@@ -320,27 +325,6 @@ export function ProfilePage({
     });
   };
 
-  const handleLoanBowFieldChange = (field) => (event) => {
-    const value = event.target.value;
-    setEditableProfile((current) => ({
-      ...current,
-      loanBow: {
-        ...current.loanBow,
-        [field]: field === "arrowCount" ? Number.parseInt(value, 10) || value : value,
-      },
-    }));
-  };
-
-  const toggleLoanBowField = (field) => {
-    setEditableProfile((current) => ({
-      ...current,
-      loanBow: {
-        ...current.loanBow,
-        [field]: !current.loanBow[field],
-      },
-    }));
-  };
-
   const handleSave = async (event) => {
     event.preventDefault();
     setIsSaving(true);
@@ -351,7 +335,7 @@ export function ProfilePage({
       firstName: editableProfile.firstName,
       surname: editableProfile.surname,
       password: editableProfile.password,
-      rfidTag: editableProfile.rfidTag,
+      rfidTag: canManageMembers ? editableProfile.rfidTag : undefined,
       activeMember: editableProfile.activeMember,
       membershipFeesDue: editableProfile.membershipFeesDue,
       coachingVolunteer: editableProfile.coachingVolunteer,
@@ -470,7 +454,7 @@ export function ProfilePage({
           >
             {memberOptions.map((member) => (
               <option key={member.username} value={member.username}>
-                {member.fullName} ({member.username})
+                {formatMemberDisplayName(member)} ({formatMemberDisplayUsername(member)})
               </option>
             ))}
           </LabeledSelect>
@@ -505,19 +489,12 @@ export function ProfilePage({
           handleBooleanChange={handleBooleanChange}
           handleBooleanSelectChange={handleBooleanSelectChange}
           toggleDiscipline={toggleDiscipline}
-          handleLoanBowFieldChange={handleLoanBowFieldChange}
-          toggleLoanBowField={toggleLoanBowField}
           disciplineOptions={disciplineOptions}
           roleOptions={roleOptions}
           isAdmin={canManageMembers}
-          canEditLoanBow={canManageMembers}
-          canReturnLoanBow={canManageMembers && editableProfile.loanBow.hasLoanBow}
-          onReturnLoanBow={() => {
-            setReturnError("");
-            setIsReturnModalOpen(true);
-          }}
           isCreatingNew={false}
           isSaving={isSaving || isRefreshingProfile}
+          canViewRfidTag={canManageMembers}
           onSubmit={handleSave}
           submitLabel={
             isSaving

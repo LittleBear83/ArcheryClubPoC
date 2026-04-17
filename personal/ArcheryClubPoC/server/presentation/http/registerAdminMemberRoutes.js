@@ -10,6 +10,7 @@ export function registerAdminMemberRoutes({
   countUsersByRoleKey,
   CURRENT_PERMISSION_KEY_SET,
   db,
+  deleteCommitteeRoleById,
   deleteRoleDefinition,
   deleteRolePermissionsByRoleKey,
   findCommitteeRoleById,
@@ -393,6 +394,19 @@ export function registerAdminMemberRoutes({
     };
   }
 
+  function buildEditableProfileResponse(user, disciplines, loanBow, canViewRfidTag) {
+    const editableProfile = buildEditableMemberProfile(user, disciplines, loanBow);
+
+    if (canViewRfidTag) {
+      return editableProfile;
+    }
+
+    return {
+      ...editableProfile,
+      rfidTag: "",
+    };
+  }
+
   app.get("/api/committee-roles", (req, res) => {
     const actor = getActorUser(req);
 
@@ -552,6 +566,38 @@ export function registerAdminMemberRoutes({
     });
   });
 
+  app.delete("/api/committee-roles/:id", (req, res) => {
+    const actor = getActorUser(req);
+
+    if (
+      !actor ||
+      !actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)
+    ) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to delete committee roles.",
+      });
+      return;
+    }
+
+    const role = findCommitteeRoleById.get(req.params.id);
+
+    if (!role) {
+      res.status(404).json({
+        success: false,
+        message: "Committee role not found.",
+      });
+      return;
+    }
+
+    deleteCommitteeRoleById.run(role.id);
+
+    res.json({
+      success: true,
+      deletedRoleId: role.id,
+    });
+  });
+
   app.get("/api/user-profiles/:username", (req, res) => {
     const actor = getActorUser(req);
     const requestedUsername = req.params.username;
@@ -599,7 +645,12 @@ export function registerAdminMemberRoutes({
 
     res.json({
       success: true,
-      editableProfile: buildEditableMemberProfile(user, disciplines, loanBow),
+      editableProfile: buildEditableProfileResponse(
+        user,
+        disciplines,
+        loanBow,
+        canManageMembers,
+      ),
       userProfile: buildMemberUserProfile(user, disciplines),
       userTypes: listAssignableRoleKeys(),
       disciplines: ALLOWED_DISCIPLINES,
@@ -723,7 +774,7 @@ export function registerAdminMemberRoutes({
       firstName,
       surname,
       password,
-      rfidTag,
+      rfidTag: canManageMembers ? rfidTag : existingUser.rfid_tag,
       activeMember: canManageMembers ? activeMember : existingUser.active_member,
       membershipFeesDue: canManageMembers
         ? membershipFeesDue
@@ -747,6 +798,12 @@ export function registerAdminMemberRoutes({
     res.json({
       success: true,
       ...result,
+      editableProfile: buildEditableProfileResponse(
+        findUserByUsername.get(existingUser.username),
+        result.editableProfile?.disciplines ?? [],
+        findLoanBowByUsername.get(existingUser.username),
+        canManageMembers,
+      ),
     });
   });
 

@@ -1,6 +1,18 @@
 import { MemberProfileRepository } from "../../domain/repositories/MemberProfileRepository";
 
+type MemberProfileDataSource = {
+  getProfilePageData(actorUsername: string, username: string, signal?: AbortSignal): Promise<unknown>;
+  getProfileOptions(actorUsername: string, signal?: AbortSignal): Promise<unknown>;
+  createProfile(actorUsername: string, profile: unknown): Promise<unknown>;
+  updateProfile(actorUsername: string, username: string, profile: unknown): Promise<unknown>;
+  assignRfidTag(actorUsername: string, username: string, rfidTag: string): Promise<unknown>;
+  returnLoanBow(actorUsername: string, username: string, loanBowReturn: unknown): Promise<unknown>;
+  getUserProfile(actorUsername: string, username: string, signal?: AbortSignal): Promise<unknown>;
+};
+
 export class MemberProfileRepositoryImpl extends MemberProfileRepository {
+  private readonly dataSource: MemberProfileDataSource;
+
   constructor({ dataSource }) {
     super();
     this.dataSource = dataSource;

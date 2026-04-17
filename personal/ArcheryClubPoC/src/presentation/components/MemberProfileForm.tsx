@@ -6,16 +6,12 @@ export function MemberProfileForm({
   handleBooleanChange = undefined,
   handleBooleanSelectChange,
   toggleDiscipline,
-  handleLoanBowFieldChange,
-  toggleLoanBowField,
   disciplineOptions,
   roleOptions,
   isAdmin,
-  canEditLoanBow = true,
-  canReturnLoanBow = false,
-  onReturnLoanBow = undefined,
   isCreatingNew,
   isSaving,
+  canViewRfidTag = false,
   onSubmit,
   submitLabel,
 }) {
@@ -78,14 +74,16 @@ export function MemberProfileForm({
           />
         </label>
 
-        <label>
-          RFID tag
-          <input
-            value={editableProfile.rfidTag}
-            onChange={handleChange("rfidTag")}
-            disabled={isSaving}
-          />
-        </label>
+        {canViewRfidTag ? (
+          <label>
+            RFID tag
+            <input
+              value={editableProfile.rfidTag}
+              onChange={handleChange("rfidTag")}
+              disabled={isSaving}
+            />
+          </label>
+        ) : null}
 
         <label>
           Active member

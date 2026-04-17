@@ -13,8 +13,11 @@ export const PERMISSIONS = {
   ASSIGN_EQUIPMENT: "assign_equipment",
   RETURN_EQUIPMENT: "return_equipment",
   UPDATE_EQUIPMENT_STORAGE: "update_equipment_storage",
+  MANAGE_EQUIPMENT_STORAGE_LOCATIONS: "manage_equipment_storage_locations",
   MANAGE_BEGINNERS_COURSES: "manage_beginners_courses",
   APPROVE_BEGINNERS_COURSES: "approve_beginners_courses",
+  MANAGE_HAVE_A_GO_SESSIONS: "manage_have_a_go_sessions",
+  APPROVE_HAVE_A_GO_SESSIONS: "approve_have_a_go_sessions",
   MANAGE_TOURNAMENTS: "manage_tournaments",
 };
 
@@ -82,6 +85,11 @@ export const PERMISSION_DEFINITIONS = [
     description: "Update cupboard or case storage for equipment.",
   },
   {
+    key: PERMISSIONS.MANAGE_EQUIPMENT_STORAGE_LOCATIONS,
+    label: "Manage Equipment Storage Locations",
+    description: "Add or remove named equipment storage locations.",
+  },
+  {
     key: PERMISSIONS.MANAGE_BEGINNERS_COURSES,
     label: "Manage Beginners Courses",
     description: "Submit beginners courses, book beginners, and assign course coaches and equipment.",
@@ -90,6 +98,16 @@ export const PERMISSION_DEFINITIONS = [
     key: PERMISSIONS.APPROVE_BEGINNERS_COURSES,
     label: "Approve Beginners Courses",
     description: "Approve or reject submitted beginners courses.",
+  },
+  {
+    key: PERMISSIONS.MANAGE_HAVE_A_GO_SESSIONS,
+    label: "Manage Have a Go Sessions",
+    description: "Submit Have a Go sessions, book participants, and assign coaches and equipment.",
+  },
+  {
+    key: PERMISSIONS.APPROVE_HAVE_A_GO_SESSIONS,
+    label: "Approve Have a Go Sessions",
+    description: "Approve or reject submitted Have a Go sessions.",
   },
   {
     key: PERMISSIONS.MANAGE_TOURNAMENTS,
@@ -130,6 +148,11 @@ export const SYSTEM_ROLE_DEFINITIONS = [
   {
     roleKey: "beginner",
     title: "Beginner",
+    permissions: [],
+  },
+  {
+    roleKey: "have-a-go",
+    title: "Have a Go",
     permissions: [],
   },
 ];

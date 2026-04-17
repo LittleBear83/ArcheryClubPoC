@@ -1,20 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   defaultThemeName,
   themes,
-  type ThemeDefinition,
   type ThemeName,
 } from "./themes";
+import { ThemeContext, type ThemeContextValue } from "./ThemeContext";
 
 const THEME_STORAGE_KEY = "archeryclubpoc-theme";
-
-type ThemeContextValue = {
-  availableThemes: typeof themes;
-  theme: ThemeDefinition;
-  themeName: ThemeName;
-  setThemeName: (themeName: ThemeName) => void;
-  toggleTheme: () => void;
-};
 
 function resolveThemeName(value: string | null | undefined): ThemeName {
   if (value && value in themes) {
@@ -23,16 +15,6 @@ function resolveThemeName(value: string | null | undefined): ThemeName {
 
   return defaultThemeName;
 }
-
-const defaultTheme = themes[defaultThemeName];
-
-const ThemeContext = createContext<ThemeContextValue>({
-  availableThemes: themes,
-  theme: defaultTheme,
-  themeName: defaultThemeName,
-  setThemeName: () => undefined,
-  toggleTheme: () => undefined,
-});
 
 export function ThemeProvider({
   children,
@@ -87,8 +69,4 @@ export function ThemeProvider({
       {children}
     </ThemeContext.Provider>
   );
-}
-
-export function useTheme() {
-  return useContext(ThemeContext);
 }

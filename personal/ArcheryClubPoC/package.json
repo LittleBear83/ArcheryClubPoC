@@ -4,14 +4,16 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm:dev:server\" \"npm:dev:client\"",
+    "dev": "concurrently \"node server/index.js\" \"node ./node_modules/vite/bin/vite.js\"",
     "dev:client": "vite",
     "dev:server": "node server/index.js",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "node scripts/run-tests.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "npm run build && node server/index.js",
-    "start": "node server/index.js"
+    "start": "node server/index.js",
+    "start:live": "node scripts/start-live.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.97.0",

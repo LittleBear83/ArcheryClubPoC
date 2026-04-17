@@ -4,19 +4,25 @@ import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Button } from "../components/Button";
 import { Modal } from "../components/Modal";
 import { subscribeToRfidScans } from "../../utils/rfidScanHub";
-import { fetchApi } from "../../lib/api";
+import { formatMemberDisplayName } from "../../utils/userProfile";
+import { listGuestInviterMembers } from "../../api/authApi";
+import { listRangeMembers } from "../../api/memberApi";
 
 const SIMULATED_RFID_TAG = "7673CF3D";
+const ENABLE_RFID_SIMULATOR =
+  import.meta.env.DEV || import.meta.env.VITE_ENABLE_RFID_SIMULATOR === "true";
 
 type RangeMember = {
   accountType: string;
   auth: { username: string };
   personal: { fullName: string };
+  membership?: { role?: string };
 };
 
 type ClubMember = {
   username: string;
   surname: string;
+  userType?: string;
   fullName?: string;
   personal?: { fullName: string };
 };
@@ -26,19 +32,7 @@ function getMemberDisplayName(member: RangeMember | ClubMember | null) {
     return "";
   }
 
-  if ("fullName" in member && member.fullName) {
-    return member.fullName;
-  }
-
-  if ("personal" in member && member.personal?.fullName) {
-    return member.personal.fullName;
-  }
-
-  if ("username" in member) {
-    return member.username;
-  }
-
-  return member.auth.username;
+  return formatMemberDisplayName(member) || ("username" in member ? member.username : member.auth.username);
 }
 
 export function LoginPage({
@@ -66,15 +60,15 @@ export function LoginPage({
     queryKey: ["guest-inviter-options"],
     queryFn: async () => {
       const [rangeMembersResult, allMembersResult] = await Promise.all([
-        fetchApi<{ success: true; members?: RangeMember[] }>("/api/range-members"),
-        fetchApi<{ success: true; members?: ClubMember[] }>("/api/guest-inviter-members"),
+        listRangeMembers(),
+        listGuestInviterMembers(),
       ]);
 
       return {
-        rangeMembers: (rangeMembersResult.members ?? []).filter(
+        rangeMembers: ((rangeMembersResult.members ?? []) as RangeMember[]).filter(
           (member) => member.accountType === "member",
         ),
-        allMembers: allMembersResult.members ?? [],
+        allMembers: (allMembersResult.members ?? []) as ClubMember[],
       };
     },
   });
@@ -309,22 +303,24 @@ export function LoginPage({
               </Button>
             </form>
 
-            <section className="rfid-panel" aria-label="RFID sign in">
-              <p className="section-title">RFID Access</p>
-              <p className="rfid-copy">
-                Tap your club card to sign in. For now, use the simulator below
-                for the {seededUsername} account.
-              </p>
-              <Button
-                type="button"
-                className="rfid-simulate-button"
-                onClick={handleSimulatedRfid}
-                disabled={isSubmitting}
-                variant="secondary"
-              >
-                {isSubmitting ? "Checking RFID..." : "Simulate RFID Tap"}
-              </Button>
-            </section>
+            {ENABLE_RFID_SIMULATOR ? (
+              <section className="rfid-panel" aria-label="RFID sign in">
+                <p className="section-title">RFID Access</p>
+                <p className="rfid-copy">
+                  Tap your club card to sign in. For now, use the simulator below
+                  for the {seededUsername} account.
+                </p>
+                <Button
+                  type="button"
+                  className="rfid-simulate-button"
+                  onClick={handleSimulatedRfid}
+                  disabled={isSubmitting || !ENABLE_RFID_SIMULATOR}
+                  variant="secondary"
+                >
+                  {isSubmitting ? "Checking RFID..." : "Simulate RFID Tap"}
+                </Button>
+              </section>
+            ) : null}
           </section>
 
           <section className="guest-panel" aria-label="Guest sign in">
@@ -387,7 +383,7 @@ export function LoginPage({
                       key={member.auth.username}
                       value={member.auth.username}
                     >
-                      {member.personal.fullName}
+                      {formatMemberDisplayName(member)}
                     </option>
                   ))}
                   {selectedInvitingMember &&
@@ -474,7 +470,7 @@ export function LoginPage({
                   onClick={() => handleSelectInvitingMember(member)}
                   variant="unstyled"
                 >
-                  <span>{member.fullName}</span>
+                  <span>{formatMemberDisplayName(member)}</span>
                 </Button>
               ))
             ) : (

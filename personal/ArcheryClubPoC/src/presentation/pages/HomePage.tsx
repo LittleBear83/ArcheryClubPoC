@@ -17,17 +17,27 @@ import { ProfilePage } from "./ProfilePage";
 import { UserCreationPage } from "./UserCreationPage";
 import { EquipmentPage } from "./EquipmentPage";
 import { BeginnersCoursesPage } from "./BeginnersCoursesPage";
+import { HaveAGoSessionsPage } from "./HaveAGoSessionsPage";
 import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
 import { CommitteeAdminPage } from "./CommitteeAdminPage";
 import { RolePermissionsPage } from "./RolePermissionsPage";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { GeneralInfoPage } from "./GeneralInfoPage";
 import { formatDate } from "../../utils/dateTime";
-import { fetchApi } from "../../lib/api";
-import { useTheme } from "../../theme/ThemeProvider";
+import {
+  getMyBeginnerDashboard,
+  listMyBeginnerCoachingAssignments,
+  listMyCoachingBookings,
+  listMyEventBookings,
+  listMyTournamentReminders,
+} from "../../api/homeApi";
+import { listRangeMembers } from "../../api/memberApi";
+import { listTournaments } from "../../api/tournamentApi";
+import { useTheme } from "../../theme/useTheme";
 import type { HomeMember, UserProfile } from "../../types/app";
 import type { AppDependencies } from "../../bootstrap/createAppDependencies";
 import {
+  formatMemberDisplayName,
   hasPermission,
   isSameUserProfile,
   normalizeUserProfile,
@@ -133,6 +143,7 @@ const pageTitleMap = {
   approvals: "Approvals",
   equipment: "Equipment",
   "beginners-courses": "Beginners Courses",
+  "have-a-go-sessions": "Have a Go Sessions",
   "event-calendar": "Calendar",
   "range-usage": "Range Usage",
   "feedback-form": "Feedback Form",
@@ -153,6 +164,7 @@ const pathToPageId = {
   "/approvals": "approvals",
   "/equipment": "equipment",
   "/beginners-courses": "beginners-courses",
+  "/have-a-go-sessions": "have-a-go-sessions",
   "/event-calendar": "event-calendar",
   "/range-usage": "range-usage",
   "/feedback-form": "feedback-form",
@@ -223,12 +235,7 @@ function getHomeTickerMessage(currentUserProfile, beginnerDashboard) {
 }
 
 async function fetchRangeMembers(): Promise<HomeMember[]> {
-  const result = await fetchApi<{ success: true; members?: HomeMember[] }>(
-    "/api/range-members",
-    {
-      cache: "no-store",
-    },
-  );
+  const result = await listRangeMembers();
 
   return (result.members ?? []).map((member) => normalizeUserProfile(member));
 }
@@ -239,35 +246,13 @@ async function fetchHomeActivity(username: string): Promise<{
   beginnerDashboard: BeginnerHomeDashboard;
   beginnerCoachAssignments: BeginnerCoachAssignment[];
 }> {
-  const headers = { "x-actor-username": username };
   const [coachingResult, eventResult, reminderResult, beginnerResult, coachAssignmentsResult] =
     await Promise.all([
-    fetchApi<{ success: true; bookings?: HomeEvent[] }>("/api/my-coaching-bookings", {
-      headers,
-      cache: "no-store",
-    }),
-    fetchApi<{ success: true; bookings?: HomeEvent[] }>("/api/my-event-bookings", {
-      headers,
-      cache: "no-store",
-    }),
-    fetchApi<{ success: true; reminders?: TournamentReminder[] }>(
-      "/api/my-tournament-reminders",
-      {
-        headers,
-        cache: "no-store",
-      },
-    ),
-    fetchApi<{ success: true; dashboard?: BeginnerHomeDashboard }>("/api/my-beginner-dashboard", {
-      headers,
-      cache: "no-store",
-    }),
-    fetchApi<{ success: true; lessons?: BeginnerCoachAssignment[] }>(
-      "/api/my-beginner-coaching-assignments",
-      {
-        headers,
-        cache: "no-store",
-      },
-    ),
+    listMyCoachingBookings<HomeEvent>(username),
+    listMyEventBookings<HomeEvent>(username),
+    listMyTournamentReminders<TournamentReminder>(username),
+    getMyBeginnerDashboard<BeginnerHomeDashboard>(username),
+    listMyBeginnerCoachingAssignments<BeginnerCoachAssignment>(username),
   ]);
 
   return {
@@ -285,15 +270,7 @@ async function fetchHomeActivity(username: string): Promise<{
 }
 
 async function fetchAdminTournamentWarnings(username: string): Promise<string[]> {
-  const result = await fetchApi<{ success: true; tournaments?: TournamentSummary[] }>(
-    "/api/tournaments",
-    {
-      headers: {
-        "x-actor-username": username,
-      },
-      cache: "no-store",
-    },
-  );
+  const result = await listTournaments<TournamentSummary>(username);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -518,7 +495,7 @@ export function HomePage({
         <section className="page-content">
           {activePage === "home" ? (
             <h1 className="welcome-message">
-              Welcome {currentUserProfile?.personal.fullName}
+              Welcome {formatMemberDisplayName(currentUserProfile)}
             </h1>
           ) : null}
 
@@ -570,6 +547,12 @@ export function HomePage({
               path="/beginners-courses"
               element={
                 <BeginnersCoursesPage currentUserProfile={currentUserProfile} />
+              }
+            />
+            <Route
+              path="/have-a-go-sessions"
+              element={
+                <HaveAGoSessionsPage currentUserProfile={currentUserProfile} />
               }
             />
             <Route

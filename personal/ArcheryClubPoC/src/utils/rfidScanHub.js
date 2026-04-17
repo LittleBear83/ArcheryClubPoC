@@ -1,3 +1,5 @@
+import { getLatestRfidScan } from "../api/authApi";
+
 const RFID_POLL_INTERVAL_MS = 1500;
 
 const subscribers = new Set();
@@ -18,12 +20,9 @@ async function pollLatestScan() {
   isPolling = true;
 
   try {
-    const response = await fetch("/api/auth/rfid/latest-scan", {
-      cache: "no-store",
-    });
-    const result = await response.json();
+    const result = await getLatestRfidScan();
 
-    if (!response.ok || !result.success || !result.scan?.rfidTag) {
+    if (!result.scan?.rfidTag) {
       return;
     }
 

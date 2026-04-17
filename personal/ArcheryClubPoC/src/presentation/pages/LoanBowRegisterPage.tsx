@@ -6,15 +6,17 @@ import { LoanBowSection } from "../components/LoanBowSection";
 import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
-import { hasPermission } from "../../utils/userProfile";
-import { fetchApi } from "../../lib/api";
-
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
+import {
+  formatMemberDisplayName,
+  formatMemberDisplayUsername,
+  hasPermission,
+} from "../../utils/userProfile";
+import {
+  getLoanBowProfile,
+  listLoanBowOptions,
+  returnLoanBowProfile,
+  updateLoanBowProfile,
+} from "../../api/loanBowApi";
 
 export function LoanBowRegisterPage({ currentUserProfile }) {
   const [selectedUsername, setSelectedUsername] = useState("");
@@ -35,12 +37,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
   const memberOptionsQuery = useQuery({
     queryKey: ["loan-bow-options", actorUsername],
     queryFn: () =>
-      fetchApi<{ success: true; members?: Array<{ username: string; fullName: string }> }>(
-        "/api/loan-bow-options",
-        {
-          headers: buildHeaders(currentUserProfile),
-        },
-      ),
+      listLoanBowOptions<{ username: string; fullName: string }>(currentUserProfile),
     enabled: canManageLoanBow,
   });
 
@@ -66,12 +63,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
   const loanBowQuery = useQuery({
     queryKey: ["loan-bow-profile", effectiveSelectedUsername, actorUsername],
     queryFn: () =>
-      fetchApi<{ success: true; loanBow: Record<string, unknown> | null }>(
-        `/api/loan-bow-profiles/${effectiveSelectedUsername}`,
-        {
-          headers: buildHeaders(currentUserProfile),
-        },
-      ),
+      getLoanBowProfile(currentUserProfile, effectiveSelectedUsername),
     enabled: canManageLoanBow && Boolean(effectiveSelectedUsername),
   });
 
@@ -107,14 +99,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
 
   const saveLoanBowMutation = useMutation({
     mutationFn: async () =>
-      fetchApi<{ success: true; loanBow: Record<string, unknown> | null; member: { fullName: string } }>(
-        `/api/loan-bow-profiles/${effectiveSelectedUsername}`,
-        {
-          method: "PUT",
-          headers: buildHeaders(currentUserProfile),
-          body: JSON.stringify({ loanBow }),
-        },
-      ),
+      updateLoanBowProfile(currentUserProfile, effectiveSelectedUsername, loanBow),
     onMutate: () => {
       setIsSaving(true);
       setError("");
@@ -144,14 +129,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
 
   const returnLoanBowMutation = useMutation({
     mutationFn: async (loanBowReturn: Record<string, unknown>) =>
-      fetchApi<{ success: true; loanBow: Record<string, unknown> | null; member: { fullName: string } }>(
-        `/api/loan-bow-profiles/${effectiveSelectedUsername}/return`,
-        {
-          method: "POST",
-          headers: buildHeaders(currentUserProfile),
-          body: JSON.stringify({ loanBowReturn }),
-        },
-      ),
+      returnLoanBowProfile(currentUserProfile, effectiveSelectedUsername, loanBowReturn),
     onMutate: () => {
       setIsSavingReturn(true);
       setReturnError("");
@@ -196,7 +174,7 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
         >
           {memberOptions.map((member) => (
             <option key={member.username} value={member.username}>
-              {member.fullName} ({member.username})
+              {formatMemberDisplayName(member)} ({formatMemberDisplayUsername(member)})
             </option>
           ))}
         </LabeledSelect>

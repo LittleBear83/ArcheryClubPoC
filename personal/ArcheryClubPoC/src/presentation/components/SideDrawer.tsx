@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
-import { hasPermission } from "../../utils/userProfile";
+import { formatMemberDisplayName, hasPermission } from "../../utils/userProfile";
 import { Button } from "./Button";
 
 const pages = [
@@ -60,7 +60,12 @@ const pages = [
     id: "approvals",
     label: "Approvals",
     path: "/approvals",
-    permissionAny: ["approve_events", "approve_coaching_sessions"],
+    permissionAny: [
+      "approve_events",
+      "approve_coaching_sessions",
+      "approve_beginners_courses",
+      "approve_have_a_go_sessions",
+    ],
   },
   {
     id: "equipment",
@@ -71,6 +76,7 @@ const pages = [
       "assign_equipment",
       "return_equipment",
       "update_equipment_storage",
+      "manage_equipment_storage_locations",
     ],
   },
   {
@@ -78,6 +84,12 @@ const pages = [
     label: "Beginners Courses",
     path: "/beginners-courses",
     permissionAny: ["manage_beginners_courses", "approve_beginners_courses"],
+  },
+  {
+    id: "have-a-go-sessions",
+    label: "Have a Go Sessions",
+    path: "/have-a-go-sessions",
+    permissionAny: ["manage_have_a_go_sessions", "approve_have_a_go_sessions"],
   },
   {
     id: "tournament-setup",
@@ -96,8 +108,8 @@ export function SideDrawer({
   onLogout,
 }) {
   const displayName =
-    currentUserProfile?.personal?.fullName ??
-    currentUserProfile?.auth?.username ??
+    formatMemberDisplayName(currentUserProfile) ||
+    currentUserProfile?.auth?.username ||
     "Member";
   const currentRole = currentUserProfile?.membership?.role ?? "";
 

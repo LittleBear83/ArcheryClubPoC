@@ -87,12 +87,23 @@ The backend runs from `server/index.js` and the frontend runs through Vite. Duri
   Builds the frontend and then starts the Express server.
 - `npm run start`
   Starts the Express server.
+- `npm run start:live`
+  Starts the Express server in live mode. An empty live database seeds only the
+  developer account `Cfleetham`.
 - `npm run lint`
   Runs ESLint across the project.
 
 ## Database Notes
 
 The backend creates the SQLite database automatically if it does not already exist. It also seeds a small set of example users for testing the proof of concept.
+
+Live mode uses `server/data/auth.live.sqlite` by default and seeds only the
+developer user `Cfleetham` when that database is empty. You can override the
+database path with `DATABASE_PATH`.
+
+RFID simulation is hidden in production builds by default. To deliberately
+enable it for a non-live test build, set `VITE_ENABLE_RFID_SIMULATOR=true`
+before building the client.
 
 Current backend data includes:
 

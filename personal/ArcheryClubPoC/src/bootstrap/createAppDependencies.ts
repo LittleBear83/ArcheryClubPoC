@@ -1,4 +1,7 @@
-import { ClubApiDataSource } from "../data/sources/ClubApiDataSource";
+import { EquipmentApi } from "../api/equipmentApi";
+import { MemberProfileApi } from "../api/memberProfileApi";
+import { RoleApi } from "../api/roleApi";
+import { TournamentCrudApi } from "../api/tournamentCrudApi";
 import { MemberProfileRepositoryImpl } from "../data/repositories/MemberProfileRepositoryImpl";
 import { RoleRepositoryImpl } from "../data/repositories/RoleRepositoryImpl";
 import { TournamentRepositoryImpl } from "../data/repositories/TournamentRepositoryImpl";
@@ -28,27 +31,32 @@ import {
   WithdrawFromTournamentUseCase,
 } from "../application/usecases/TournamentUseCases";
 import {
+  AddEquipmentStorageLocationUseCase,
   AddEquipmentItemUseCase,
   AssignEquipmentItemUseCase,
   DecommissionEquipmentItemUseCase,
   GetEquipmentDashboardUseCase,
+  RemoveEquipmentStorageLocationUseCase,
   ReturnEquipmentItemUseCase,
   UpdateEquipmentStorageUseCase,
 } from "../application/usecases/EquipmentUseCases";
 
 export function createAppDependencies() {
-  const clubApiDataSource = new ClubApiDataSource();
+  const memberProfileApi = new MemberProfileApi();
+  const roleApi = new RoleApi();
+  const tournamentCrudApi = new TournamentCrudApi();
+  const equipmentApi = new EquipmentApi();
   const memberProfileRepository = new MemberProfileRepositoryImpl({
-    dataSource: clubApiDataSource,
+    dataSource: memberProfileApi,
   });
   const roleRepository = new RoleRepositoryImpl({
-    dataSource: clubApiDataSource,
+    dataSource: roleApi,
   });
   const tournamentRepository = new TournamentRepositoryImpl({
-    dataSource: clubApiDataSource,
+    dataSource: tournamentCrudApi,
   });
   const equipmentRepository = new EquipmentRepositoryImpl({
-    dataSource: clubApiDataSource,
+    dataSource: equipmentApi,
   });
 
   return {
@@ -124,6 +132,13 @@ export function createAppDependencies() {
     updateEquipmentStorageUseCase: new UpdateEquipmentStorageUseCase({
       equipmentRepository,
     }),
+    addEquipmentStorageLocationUseCase: new AddEquipmentStorageLocationUseCase({
+      equipmentRepository,
+    }),
+    removeEquipmentStorageLocationUseCase:
+      new RemoveEquipmentStorageLocationUseCase({
+        equipmentRepository,
+      }),
   };
 }
 

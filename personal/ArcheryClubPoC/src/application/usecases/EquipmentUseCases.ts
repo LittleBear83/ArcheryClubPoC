@@ -1,4 +1,8 @@
+import type { EquipmentRepository } from "../../domain/repositories/EquipmentRepository";
+
 export class GetEquipmentDashboardUseCase {
+  private readonly equipmentRepository: EquipmentRepository;
+
   constructor({ equipmentRepository }) {
     this.equipmentRepository = equipmentRepository;
   }
@@ -13,6 +17,8 @@ export class GetEquipmentDashboardUseCase {
 }
 
 export class AddEquipmentItemUseCase {
+  private readonly equipmentRepository: EquipmentRepository;
+
   constructor({ equipmentRepository }) {
     this.equipmentRepository = equipmentRepository;
   }
@@ -27,6 +33,8 @@ export class AddEquipmentItemUseCase {
 }
 
 export class DecommissionEquipmentItemUseCase {
+  private readonly equipmentRepository: EquipmentRepository;
+
   constructor({ equipmentRepository }) {
     this.equipmentRepository = equipmentRepository;
   }
@@ -45,6 +53,8 @@ export class DecommissionEquipmentItemUseCase {
 }
 
 export class AssignEquipmentItemUseCase {
+  private readonly equipmentRepository: EquipmentRepository;
+
   constructor({ equipmentRepository }) {
     this.equipmentRepository = equipmentRepository;
   }
@@ -59,6 +69,8 @@ export class AssignEquipmentItemUseCase {
 }
 
 export class ReturnEquipmentItemUseCase {
+  private readonly equipmentRepository: EquipmentRepository;
+
   constructor({ equipmentRepository }) {
     this.equipmentRepository = equipmentRepository;
   }
@@ -73,6 +85,8 @@ export class ReturnEquipmentItemUseCase {
 }
 
 export class UpdateEquipmentStorageUseCase {
+  private readonly equipmentRepository: EquipmentRepository;
+
   constructor({ equipmentRepository }) {
     this.equipmentRepository = equipmentRepository;
   }
@@ -83,5 +97,50 @@ export class UpdateEquipmentStorageUseCase {
     }
 
     return this.equipmentRepository.updateStorage(actorUsername, payload);
+  }
+}
+
+export class AddEquipmentStorageLocationUseCase {
+  private readonly equipmentRepository: EquipmentRepository;
+
+  constructor({ equipmentRepository }) {
+    this.equipmentRepository = equipmentRepository;
+  }
+
+  async execute({ actorUsername, locationLabel }) {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!locationLabel?.trim()) {
+      throw new Error("Enter a storage location name.");
+    }
+
+    return this.equipmentRepository.addStorageLocation(actorUsername, {
+      locationLabel,
+    });
+  }
+}
+
+export class RemoveEquipmentStorageLocationUseCase {
+  private readonly equipmentRepository: EquipmentRepository;
+
+  constructor({ equipmentRepository }) {
+    this.equipmentRepository = equipmentRepository;
+  }
+
+  async execute({ actorUsername, locationLabel }) {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!locationLabel?.trim()) {
+      throw new Error("Choose a storage location to remove.");
+    }
+
+    return this.equipmentRepository.removeStorageLocation(
+      actorUsername,
+      locationLabel,
+    );
   }
 }

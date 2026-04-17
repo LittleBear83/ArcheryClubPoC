@@ -1,4 +1,8 @@
+import type { TournamentRepository } from "../../domain/repositories/TournamentRepository";
+
 export class ListTournamentsUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
   constructor({ tournamentRepository }) {
     this.tournamentRepository = tournamentRepository;
   }
@@ -13,6 +17,8 @@ export class ListTournamentsUseCase {
 }
 
 export class CreateTournamentUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
   constructor({ tournamentRepository }) {
     this.tournamentRepository = tournamentRepository;
   }
@@ -31,6 +37,8 @@ export class CreateTournamentUseCase {
 }
 
 export class UpdateTournamentUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
   constructor({ tournamentRepository }) {
     this.tournamentRepository = tournamentRepository;
   }
@@ -49,6 +57,8 @@ export class UpdateTournamentUseCase {
 }
 
 export class DeleteTournamentUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
   constructor({ tournamentRepository }) {
     this.tournamentRepository = tournamentRepository;
   }
@@ -67,6 +77,8 @@ export class DeleteTournamentUseCase {
 }
 
 export class RegisterForTournamentUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
   constructor({ tournamentRepository }) {
     this.tournamentRepository = tournamentRepository;
   }
@@ -85,6 +97,8 @@ export class RegisterForTournamentUseCase {
 }
 
 export class WithdrawFromTournamentUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
   constructor({ tournamentRepository }) {
     this.tournamentRepository = tournamentRepository;
   }
@@ -103,6 +117,8 @@ export class WithdrawFromTournamentUseCase {
 }
 
 export class SubmitTournamentScoreUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
   constructor({ tournamentRepository }) {
     this.tournamentRepository = tournamentRepository;
   }

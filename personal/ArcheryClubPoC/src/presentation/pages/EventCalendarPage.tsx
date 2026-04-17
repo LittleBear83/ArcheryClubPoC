@@ -7,7 +7,21 @@ import { SummaryDate } from "../components/SummaryDate";
 import { SummaryList } from "../components/SummaryList";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
-import { fetchApi } from "../../lib/api";
+import {
+  approveCoachingSession,
+  approveEvent as approveEventApi,
+  bookCoachingSession,
+  bookEvent,
+  cancelCoachingSession,
+  cancelEvent,
+  createCoachingSession,
+  createEvent,
+  leaveCoachingSession,
+  leaveEvent as leaveEventApi,
+  listBeginnersCourseCalendarLessons,
+  listCoachingSessions,
+  listEvents,
+} from "../../api/scheduleApi";
 import type {
   BeginnersCourseCalendarLesson,
   CoachingSession,
@@ -114,13 +128,6 @@ function hasSessionEnded(session) {
   return sessionEnd.getTime() <= Date.now();
 }
 
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
-
 function TrainingIcon({ className = "" }) {
   return (
     <svg
@@ -198,6 +205,14 @@ type CalendarFilterKey =
   | "coaching"
   | "beginners";
 
+function getCourseLessonLabel(lesson: BeginnersCourseCalendarLesson) {
+  return lesson.courseType === "have-a-go" ? "Session" : "Lesson";
+}
+
+function getCourseParticipantLabel(lesson: BeginnersCourseCalendarLesson) {
+  return lesson.courseType === "have-a-go" ? "Participants" : "Beginners";
+}
+
 const eventQueryKeys = {
   list: (username: string) => ["events", username] as const,
 };
@@ -218,15 +233,7 @@ function getVenueLabel(venue) {
 }
 
 async function fetchEvents(actorUsername: string): Promise<CalendarEvent[]> {
-  const result = await fetchApi<{ success: true; events?: CalendarEvent[] }>(
-    "/api/events",
-    {
-      headers: actorUsername
-        ? { "x-actor-username": actorUsername }
-        : undefined,
-      cache: "no-store",
-    },
-  );
+  const result = await listEvents<CalendarEvent>(actorUsername);
 
   return result.events ?? [];
 }
@@ -234,15 +241,7 @@ async function fetchEvents(actorUsername: string): Promise<CalendarEvent[]> {
 async function fetchCoachingSessions(
   actorUsername: string,
 ): Promise<CoachingSession[]> {
-  const result = await fetchApi<{ success: true; sessions?: CoachingSession[] }>(
-    "/api/coaching-sessions",
-    {
-      headers: actorUsername
-        ? { "x-actor-username": actorUsername }
-        : undefined,
-      cache: "no-store",
-    },
-  );
+  const result = await listCoachingSessions(actorUsername);
 
   return result.sessions ?? [];
 }
@@ -250,12 +249,7 @@ async function fetchCoachingSessions(
 async function fetchBeginnersCourseLessons(): Promise<
   BeginnersCourseCalendarLesson[]
 > {
-  const result = await fetchApi<{
-    success: true;
-    lessons?: BeginnersCourseCalendarLesson[];
-  }>("/api/beginners-courses/calendar", {
-    cache: "no-store",
-  });
+  const result = await listBeginnersCourseCalendarLessons();
 
   return result.lessons ?? [];
 }
@@ -387,36 +381,28 @@ export function EventCalendarPage({
     window.addEventListener("event-data-updated", refresh);
     window.addEventListener("coaching-data-updated", refresh);
     window.addEventListener("beginners-course-data-updated", refresh);
+    window.addEventListener("have-a-go-session-data-updated", refresh);
     window.addEventListener("member-bookings-updated", refresh);
 
     return () => {
       window.removeEventListener("event-data-updated", refresh);
       window.removeEventListener("coaching-data-updated", refresh);
       window.removeEventListener("beginners-course-data-updated", refresh);
+      window.removeEventListener("have-a-go-session-data-updated", refresh);
       window.removeEventListener("member-bookings-updated", refresh);
     };
   }, [actorUsername, queryClient]);
 
   const addEventMutation = useMutation({
     mutationFn: async (eventDates: string[]) => {
-      const headers = {
-        "Content-Type": "application/json",
-        "x-actor-username": currentUserProfile?.auth?.username ?? "",
-      };
       const createdEvents: CalendarEvent[] = [];
       const failures: string[] = [];
 
       for (const eventDate of eventDates) {
         try {
-          const result = await fetchApi<{
-            success: true;
-            event: CalendarEvent;
-            message?: string;
-          }>("/api/events", {
-            method: "POST",
-            headers,
-            cache: "no-store",
-            body: JSON.stringify({
+          const result = await createEvent<CalendarEvent>(
+            currentUserProfile,
+            {
               date: eventDate,
               startTime: newEventStartTime,
               endTime: newEventEndTime,
@@ -424,8 +410,8 @@ export function EventCalendarPage({
               details: newEventDetails.trim(),
               type: newEventType,
               venue: newEventVenue,
-            }),
-          });
+            },
+          );
 
           createdEvents.push(result.event);
         } catch (error) {
@@ -654,17 +640,7 @@ export function EventCalendarPage({
 
   const approveEventMutation = useMutation({
     mutationFn: async (event: CalendarEvent) =>
-      fetchApi<{ success: true; event: CalendarEvent; message?: string }>(
-        `/api/events/${event.id}/approve`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-actor-username": actorUsername,
-          },
-          cache: "no-store",
-        },
-      ),
+      approveEventApi<CalendarEvent>(actorUsername, event.id),
     onSuccess: async (_result, event) => {
       await queryClient.invalidateQueries({
         queryKey: eventQueryKeys.list(actorUsername),
@@ -683,17 +659,7 @@ export function EventCalendarPage({
 
   const bookEventMutation = useMutation({
     mutationFn: async (event: CalendarEvent) =>
-      fetchApi<{ success: true; event: CalendarEvent; message?: string }>(
-        `/api/events/${event.id}/book`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-actor-username": actorUsername,
-          },
-          cache: "no-store",
-        },
-      ),
+      bookEvent<CalendarEvent>(actorUsername, event.id),
     onSuccess: async (_result, event) => {
       await queryClient.invalidateQueries({
         queryKey: eventQueryKeys.list(actorUsername),
@@ -719,17 +685,7 @@ export function EventCalendarPage({
 
   const leaveEventMutation = useMutation({
     mutationFn: async (event: CalendarEvent) =>
-      fetchApi<{ success: true; event: CalendarEvent; message?: string }>(
-        `/api/events/${event.id}/booking`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            "x-actor-username": actorUsername,
-          },
-          cache: "no-store",
-        },
-      ),
+      leaveEventApi<CalendarEvent>(actorUsername, event.id),
     onSuccess: async (_result, event) => {
       await queryClient.invalidateQueries({
         queryKey: eventQueryKeys.list(actorUsername),
@@ -753,23 +709,26 @@ export function EventCalendarPage({
 
   const coachingSessionMutation = useMutation({
     mutationFn: async ({
-      url,
-      method,
-      body,
+      action,
+      sessionId,
     }: {
-      url: string;
-      method: string;
-      body?: Record<string, unknown>;
-    }) =>
-      fetchApi<{ success: true; session?: CoachingSession; message?: string }>(
-        url,
-        {
-          method,
-          headers: buildHeaders(currentUserProfile),
-          body: body ? JSON.stringify(body) : undefined,
-          cache: "no-store",
-        },
-      ),
+      action: "approve" | "cancel" | "leave" | "book";
+      sessionId: string | number;
+    }) => {
+      if (action === "approve") {
+        return approveCoachingSession(currentUserProfile, sessionId);
+      }
+
+      if (action === "cancel") {
+        return cancelCoachingSession(currentUserProfile, sessionId);
+      }
+
+      if (action === "leave") {
+        return leaveCoachingSession(currentUserProfile, sessionId);
+      }
+
+      return bookCoachingSession(currentUserProfile, sessionId);
+    },
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({
         queryKey: ["coaching-sessions", actorUsername],
@@ -785,22 +744,19 @@ export function EventCalendarPage({
   });
 
   const performCoachingSessionAction = async ({
-    body,
     successMessage,
-    url,
-    method,
+    action,
+    sessionId,
     afterSuccess,
   }: {
-    body?: Record<string, unknown>;
     successMessage: (session: CoachingSession | undefined, message?: string) => string;
-    url: string;
-    method: string;
+    action: "approve" | "cancel" | "leave" | "book";
+    sessionId: string | number;
     afterSuccess?: () => void;
   }) => {
     const result = await coachingSessionMutation.mutateAsync({
-      url,
-      method,
-      body,
+      action,
+      sessionId,
     });
 
     setBookingMessage(successMessage(result.session, result.message));
@@ -814,18 +770,13 @@ export function EventCalendarPage({
 
       for (const date of dates) {
         try {
-          const result = await fetchApi<{
-            success: true;
-            session?: CoachingSession;
-          }>("/api/coaching-sessions", {
-            method: "POST",
-            headers: buildHeaders(currentUserProfile),
-            body: JSON.stringify({
+          const result = await createCoachingSession(
+            currentUserProfile,
+            {
               ...coachingForm,
               date,
-            }),
-            cache: "no-store",
-          });
+            },
+          );
 
           if (result.session) {
             createdSessions.push(result.session);
@@ -879,14 +830,7 @@ export function EventCalendarPage({
 
   const cancelEventMutation = useMutation({
     mutationFn: async (event: CalendarEvent) =>
-      fetchApi<{ success: true; message?: string }>(`/api/events/${event.id}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "x-actor-username": actorUsername,
-        },
-        cache: "no-store",
-      }),
+      cancelEvent(actorUsername, event.id),
     onSuccess: async (_result, event) => {
       await queryClient.invalidateQueries({
         queryKey: eventQueryKeys.list(actorUsername),
@@ -972,7 +916,7 @@ export function EventCalendarPage({
               variant="ghost"
             >
               <span className="event-key-swatch beginners-course-key-swatch" />
-              Beginners course
+              Beginners / Have a Go
             </Button>
             <Button
               type="button"
@@ -1086,7 +1030,9 @@ export function EventCalendarPage({
 
               return (
                 <span className="calendar-entry-label beginners-course-badge">
-                  Beginners L{item.lessonNumber}
+                  {item.courseType === "have-a-go" ? "Have a Go" : "Beginners"}{" "}
+                  {getCourseLessonLabel(item).slice(0, 1)}
+                  {item.lessonNumber}
                 </span>
               );
             }}
@@ -1189,15 +1135,15 @@ export function EventCalendarPage({
                   ) : null}
                   {selectedBeginnersLessons.length > 0 ? (
                     <>
-                      <h4>Beginners course lessons</h4>
+                      <h4>Beginners and Have a Go sessions</h4>
                       <div className="event-summary-card-list">
                         {selectedBeginnersLessons.map((lesson) => (
                           <div key={lesson.id} className="event-summary-card">
                             <span className="event-type-badge beginners-course-badge">
-                              Beginners course
+                              {lesson.title}
                             </span>
                             <strong className="event-summary-card-title">
-                              Lesson {lesson.lessonNumber}
+                              {getCourseLessonLabel(lesson)} {lesson.lessonNumber}
                             </strong>
                             <span className="event-summary-card-time">
                               {formatClockTime(lesson.startTime)} to{" "}
@@ -1208,7 +1154,9 @@ export function EventCalendarPage({
                               {lesson.coachNames.length > 0
                                 ? lesson.coachNames.join(", ")
                                 : "To be assigned"}{" "}
-                              | Beginners: {lesson.beginnerCount}/{lesson.beginnerCapacity}
+                              | {getCourseParticipantLabel(lesson)}:{" "}
+                              {lesson.participantCount ?? lesson.beginnerCount}/
+                              {lesson.participantCapacity ?? lesson.beginnerCapacity}
                             </span>
                           </div>
                         ))}
@@ -2094,8 +2042,8 @@ export function EventCalendarPage({
                   className="secondary-button"
                   onClick={() =>
                     void performCoachingSessionAction({
-                      url: `/api/coaching-sessions/${selectedCoachingSessionDetail.id}/approve`,
-                      method: "POST",
+                      action: "approve",
+                      sessionId: selectedCoachingSessionDetail.id,
                       successMessage: (session, message) =>
                         message ??
                         `${session?.topic ?? selectedCoachingSessionDetail.topic} approved successfully.`,
@@ -2116,8 +2064,8 @@ export function EventCalendarPage({
                   className="event-cancel-button"
                   onClick={() =>
                     void performCoachingSessionAction({
-                      url: `/api/coaching-sessions/${selectedCoachingSessionDetail.id}`,
-                      method: "DELETE",
+                      action: "cancel",
+                      sessionId: selectedCoachingSessionDetail.id,
                       successMessage: () =>
                         "Coaching session cancelled successfully.",
                       afterSuccess: () => {
@@ -2138,8 +2086,8 @@ export function EventCalendarPage({
                   className="event-cancel-button"
                   onClick={() =>
                     void performCoachingSessionAction({
-                      url: `/api/coaching-sessions/${selectedCoachingSessionDetail.id}/booking`,
-                      method: "DELETE",
+                      action: "leave",
+                      sessionId: selectedCoachingSessionDetail.id,
                       successMessage: (session) =>
                         `Withdrawn from ${session?.topic ?? selectedCoachingSessionDetail.topic} on ${formatDate(session?.date ?? selectedCoachingSessionDetail.date)}.`,
                       afterSuccess: () => {
@@ -2164,8 +2112,8 @@ export function EventCalendarPage({
                   }
                   onClick={() =>
                     void performCoachingSessionAction({
-                      url: `/api/coaching-sessions/${selectedCoachingSessionDetail.id}/book`,
-                      method: "POST",
+                      action: "book",
+                      sessionId: selectedCoachingSessionDetail.id,
                       successMessage: (session) =>
                         `Booked onto ${session?.topic ?? selectedCoachingSessionDetail.topic} on ${formatDate(session?.date ?? selectedCoachingSessionDetail.date)}.`,
                       afterSuccess: () => {

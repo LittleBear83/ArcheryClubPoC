@@ -1,17 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { Modal } from "../components/Modal";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
-import { fetchApi } from "../../lib/api";
+import {
+  addBeginnerToCourse,
+  assignBeginnerCase,
+  assignLessonCoaches,
+  cancelBeginnersCourse,
+  convertBeginnerToMember as convertBeginnerToMemberApi,
+  createBeginnersCourse,
+  createHaveAGoSession,
+  getBeginnersCoursesDashboard,
+  getHaveAGoSessionsDashboard,
+  updateBeginnerParticipant,
+} from "../../api/beginnersCoursesApi";
 import { formatDate, formatClockTime } from "../../utils/dateTime";
-
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
+import {
+  formatMemberDisplayName,
+  formatMemberDisplayUsername,
+} from "../../utils/userProfile";
 
 const EMPTY_COURSE_FORM = {
   coordinatorUsername: "",
@@ -62,6 +70,7 @@ type CourseBeginner = {
   initialEmailSent: boolean;
   thirtyDayReminderSent: boolean;
   courseFeePaid: boolean;
+  attendanceDates: string[];
   convertedToMember: boolean;
   assignedCaseId: number | null;
   assignedCaseNumber: string;
@@ -146,7 +155,7 @@ function hasCourseFinished(course: CourseRecord) {
   return lessonEnd.getTime() < Date.now();
 }
 
-function BeginnerFormFields({ form, onChange, onToggle }) {
+function BeginnerFormFields({ copy, form, onChange, onToggle }) {
   return (
     <div className="beginners-course-form-grid">
       <label>
@@ -166,7 +175,7 @@ function BeginnerFormFields({ form, onChange, onToggle }) {
         />
       </label>
       <label>
-        Beginner type
+        {copy.participantTypeLabel}
         <select value={form.sizeCategory} onChange={onChange("sizeCategory")}>
           <option value="senior">Senior</option>
           <option value="junior">Junior</option>
@@ -219,14 +228,120 @@ function BeginnerFormFields({ form, onChange, onToggle }) {
             checked={form.courseFeePaid}
             onChange={onToggle("courseFeePaid")}
           />
-          Course fee paid
+          {copy.feePaidLabel}
         </label>
       </div>
     </div>
   );
 }
 
-export function BeginnersCoursesPage({ currentUserProfile }) {
+const BEGINNERS_COPY = {
+  courseType: "beginners",
+  participantPlural: "beginners",
+  participantSingular: "beginner",
+  participantLabel: "Beginner",
+  participantListTitle: "Beginners",
+  participantTypeLabel: "Beginner type",
+  feePaidLabel: "Course fee paid",
+  pageDescription:
+    "Submit beginners courses for approval, enrol beginners, assign a case to each beginner, and plan lesson coaches in one place.",
+  submitTitle: "Submit beginners course",
+  submitButton: "Submit course",
+  itemLabel: "Beginners course",
+  itemLowerLabel: "beginners course",
+  coordinatorLabel: "Course coordinator",
+  firstDateLabel: "First lesson date",
+  countLabel: "Number of lessons",
+  capacityLabel: "Beginner places",
+  countMetaLabel: "Lessons",
+  capacityMetaLabel: "Places",
+  remainingMetaLabel: "Remaining",
+  addParticipantTitle: "Add beginner",
+  addParticipantButton: "Add beginner",
+  emptyParticipantText: "No beginners have been added to this course yet.",
+  planTitle: "Lesson coach plan",
+  lessonColumn: "Lesson",
+  assignCoachesTitle: "Assign coaches",
+  assignCoachesButton: "Assign coaches",
+  saveCoachesButton: "Save lesson coaches",
+  cancelButtonLabel: "Cancel course",
+  cancelledTitle: "Cancelled courses",
+  hideCancelledLabel: "Hide cancelled courses",
+  showCancelledLabel: "Show cancelled courses",
+  noCancelledText: "No cancelled beginners courses yet.",
+  rejectPrompt: "Add a short reason for rejecting this course.",
+  cancelPrompt: "Add a short reason for cancelling this course.",
+  equipmentUpdated: "Course equipment updated.",
+  coachesUpdated: "Lesson coaches updated.",
+  participantUpdated: "Beginner details updated.",
+  editParticipantTitle: "Edit beginner",
+  saveParticipantButton: "Save beginner",
+  courseApproved: "Beginners course approved.",
+  courseRejected: "Beginners course rejected.",
+  courseCancelled: "Beginners course cancelled.",
+  noPermission: "You do not have permission to manage beginners courses.",
+  loading: "Loading beginners course setup...",
+  queryKey: "beginners-courses-dashboard",
+  eventName: "beginners-course-data-updated",
+  createCourse: createBeginnersCourse,
+  getDashboard: getBeginnersCoursesDashboard,
+};
+
+const HAVE_A_GO_COPY = {
+  courseType: "have-a-go",
+  participantPlural: "participants",
+  participantSingular: "participant",
+  participantLabel: "Participant",
+  participantListTitle: "Participants",
+  participantTypeLabel: "Participant type",
+  feePaidLabel: "Session fee paid",
+  pageDescription:
+    "Submit Have a Go sessions for approval, enrol participants, assign equipment, and plan coaches in one place.",
+  submitTitle: "Submit Have a Go session",
+  submitButton: "Submit session",
+  itemLabel: "Have a Go session",
+  itemLowerLabel: "have a go session",
+  coordinatorLabel: "Session coordinator",
+  firstDateLabel: "First session date",
+  countLabel: "Number of sessions",
+  capacityLabel: "Participant places",
+  countMetaLabel: "Sessions",
+  capacityMetaLabel: "Places",
+  remainingMetaLabel: "Remaining",
+  addParticipantTitle: "Add participant",
+  addParticipantButton: "Add participant",
+  emptyParticipantText: "No participants have been added to this session yet.",
+  planTitle: "Session coach plan",
+  lessonColumn: "Session",
+  assignCoachesTitle: "Assign coaches",
+  assignCoachesButton: "Assign coaches",
+  saveCoachesButton: "Save session coaches",
+  cancelButtonLabel: "Cancel session",
+  cancelledTitle: "Cancelled sessions",
+  hideCancelledLabel: "Hide cancelled sessions",
+  showCancelledLabel: "Show cancelled sessions",
+  noCancelledText: "No cancelled Have a Go sessions yet.",
+  rejectPrompt: "Add a short reason for rejecting this session.",
+  cancelPrompt: "Add a short reason for cancelling this session.",
+  equipmentUpdated: "Session equipment updated.",
+  coachesUpdated: "Session coaches updated.",
+  participantUpdated: "Participant details updated.",
+  editParticipantTitle: "Edit participant",
+  saveParticipantButton: "Save participant",
+  courseApproved: "Have a Go session approved.",
+  courseRejected: "Have a Go session rejected.",
+  courseCancelled: "Have a Go session cancelled.",
+  noPermission: "You do not have permission to manage Have a Go sessions.",
+  loading: "Loading Have a Go session setup...",
+  queryKey: "have-a-go-sessions-dashboard",
+  eventName: "have-a-go-session-data-updated",
+  createCourse: createHaveAGoSession,
+  getDashboard: getHaveAGoSessionsDashboard,
+};
+
+export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners" }) {
+  const copy = variant === "have-a-go" ? HAVE_A_GO_COPY : BEGINNERS_COPY;
+  const usesEquipmentAssignment = copy.courseType === "beginners";
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const queryClient = useQueryClient();
   const [courseForm, setCourseForm] = useState(EMPTY_COURSE_FORM);
@@ -246,12 +361,11 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
   );
 
   const dashboardQuery = useQuery({
-    queryKey: ["beginners-courses-dashboard", actorUsername],
+    queryKey: [copy.queryKey, actorUsername],
     queryFn: () =>
-      fetchApi<{ success: true } & DashboardPayload>("/api/beginners-courses/dashboard", {
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
-      }),
+      copy.getDashboard(currentUserProfile) as Promise<
+        { success: true } & DashboardPayload
+      >,
     enabled: Boolean(actorUsername),
   });
 
@@ -284,7 +398,7 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
           archiveReason:
             course.cancellationReason ||
             course.rejectionReason ||
-            "Course finished",
+            `${copy.itemLabel} finished`,
         }));
 
       return [...backendCancelledCourses, ...localCancelledCourses].filter(
@@ -292,62 +406,37 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
           allCourses.findIndex((entry) => entry.id === course.id) === index,
       );
     },
-    [courses, localCancelledCourses],
+    [copy.itemLabel, courses, localCancelledCourses],
   );
   const permissions = dashboard?.permissions ?? {
     canManageBeginnersCourses: false,
     canApproveBeginnersCourses: false,
   };
-  const coordinators = dashboard?.coordinators ?? [];
-  const coaches = dashboard?.coaches ?? [];
-  const availableCases = dashboard?.availableCases ?? [];
-
-  useEffect(() => {
-    if (!courseForm.coordinatorUsername && coordinators.length > 0) {
-      setCourseForm((current) => ({
-        ...current,
-        coordinatorUsername: coordinators[0].username,
-      }));
-    }
-  }, [coordinators, courseForm.coordinatorUsername]);
-
-  useEffect(() => {
-    const nextSelections: Record<number, string> = {};
-
-    for (const course of courses) {
-      for (const beginner of course.beginners) {
-        nextSelections[beginner.id] = beginner.assignedCaseId
-          ? String(beginner.assignedCaseId)
-          : "";
-      }
-    }
-
-    setCaseSelections(nextSelections);
-  }, [courses]);
+  const coordinators = useMemo(() => dashboard?.coordinators ?? [], [dashboard?.coordinators]);
+  const coaches = useMemo(() => dashboard?.coaches ?? [], [dashboard?.coaches]);
+  const availableCases = useMemo(
+    () => dashboard?.availableCases ?? [],
+    [dashboard?.availableCases],
+  );
+  const defaultCoordinatorUsername = useMemo(
+    () =>
+      coordinators.some((coordinator) => coordinator.username === actorUsername)
+        ? actorUsername
+        : coordinators[0]?.username || "",
+    [actorUsername, coordinators],
+  );
+  const selectedCoordinatorUsername =
+    courseForm.coordinatorUsername || defaultCoordinatorUsername;
 
   const refreshDashboard = async () => {
     await queryClient.invalidateQueries({
-      queryKey: ["beginners-courses-dashboard", actorUsername],
+      queryKey: [copy.queryKey, actorUsername],
     });
-    window.dispatchEvent(new Event("beginners-course-data-updated"));
+    window.dispatchEvent(new Event(copy.eventName));
   };
 
   const mutation = useMutation({
-    mutationFn: async ({
-      url,
-      method,
-      body,
-    }: {
-      url: string;
-      method: string;
-      body?: unknown;
-    }) =>
-      fetchApi(url, {
-        method,
-        headers: buildHeaders(currentUserProfile),
-        body: body ? JSON.stringify(body) : undefined,
-        cache: "no-store",
-      }),
+    mutationFn: (task: () => Promise<unknown>) => task(),
     onMutate: () => {
       setError("");
       setMessage("");
@@ -370,15 +459,17 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
 
   const submitCourse = async (event) => {
     event.preventDefault();
-    await mutation.mutateAsync({
-      url: "/api/beginners-courses",
-      method: "POST",
-      body: courseForm,
-    });
-    setMessage("Beginners course submitted for approval.");
+    await mutation.mutateAsync(() =>
+      copy.createCourse(currentUserProfile, {
+        ...courseForm,
+        coordinatorUsername: selectedCoordinatorUsername,
+      }),
+    );
+    setMessage(`${copy.itemLabel} submitted for approval.`);
     setCourseForm((current) => ({
       ...EMPTY_COURSE_FORM,
-      coordinatorUsername: current.coordinatorUsername,
+      coordinatorUsername:
+        current.coordinatorUsername || selectedCoordinatorUsername,
     }));
     await refreshDashboard();
   };
@@ -388,12 +479,8 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
       ...EMPTY_BEGINNER_FORM,
       ...beginnerForms[courseId],
     };
-    await mutation.mutateAsync({
-      url: `/api/beginners-courses/${courseId}/beginners`,
-      method: "POST",
-      body: form,
-    });
-    setMessage("Beginner added to the course.");
+    await mutation.mutateAsync(() => addBeginnerToCourse(currentUserProfile, courseId, form));
+    setMessage(`${copy.participantLabel} added.`);
     setBeginnerForms((current) => ({
       ...current,
       [courseId]: EMPTY_BEGINNER_FORM,
@@ -401,67 +488,40 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
     await refreshDashboard();
   };
 
-  const saveCaseAssignment = async (beginnerId: number) => {
-    await mutation.mutateAsync({
-      url: `/api/beginners-course-participants/${beginnerId}/assign-case`,
-      method: "POST",
-      body: { caseId: caseSelections[beginnerId] || null },
-    });
-    setMessage("Course equipment updated.");
+  const saveCaseAssignment = async (beginner: CourseBeginner) => {
+    await mutation.mutateAsync(() =>
+      assignBeginnerCase(
+        currentUserProfile,
+        beginner.id,
+        caseSelections[beginner.id] ??
+          (beginner.assignedCaseId ? String(beginner.assignedCaseId) : null),
+      ),
+    );
+    setMessage(copy.equipmentUpdated);
     window.dispatchEvent(new Event("equipment-data-updated"));
     await refreshDashboard();
   };
 
   const convertBeginnerToMember = async (beginner: CourseBeginner) => {
-    await mutation.mutateAsync({
-      url: `/api/beginners-course-participants/${beginner.id}/convert`,
-      method: "POST",
-    });
-    setMessage(`${beginner.fullName} converted to a full member.`);
+    await mutation.mutateAsync(() => convertBeginnerToMemberApi(currentUserProfile, beginner.id));
+    setMessage(`${formatMemberDisplayName(beginner)} converted to a full member.`);
     window.dispatchEvent(new Event("profile-data-updated"));
-    await refreshDashboard();
-  };
-
-  const approveCourse = async (courseId: number) => {
-    await mutation.mutateAsync({
-      url: `/api/beginners-courses/${courseId}/approve`,
-      method: "POST",
-    });
-    setMessage("Beginners course approved.");
-    await refreshDashboard();
-  };
-
-  const rejectCourse = async (courseId: number) => {
-    const reason = window.prompt("Add a short reason for rejecting this course.");
-
-    if (!reason) {
-      return;
-    }
-
-    await mutation.mutateAsync({
-      url: `/api/beginners-courses/${courseId}/reject`,
-      method: "POST",
-      body: { reason },
-    });
-    setMessage("Beginners course rejected.");
     await refreshDashboard();
   };
 
   const cancelCourse = async (courseId: number) => {
     const course = courses.find((entry) => entry.id === courseId);
     const reason = window.prompt(
-      "Add a short reason for cancelling this course.",
+      copy.cancelPrompt,
     );
 
     if (!reason || !course) {
       return;
     }
 
-    await mutation.mutateAsync({
-      url: `/api/beginners-courses/${courseId}`,
-      method: "DELETE",
-      body: { reason },
-    });
+    await mutation.mutateAsync(() =>
+      cancelBeginnersCourse(currentUserProfile, courseId, reason, copy.courseType),
+    );
     setLocalCancelledCourses((current) => [
       {
         id: course.id,
@@ -472,7 +532,7 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
       ...current.filter((entry) => entry.id !== course.id),
     ]);
     setShowCancelledCourses(true);
-    setMessage("Beginners course cancelled.");
+    setMessage(copy.courseCancelled);
     await refreshDashboard();
   };
 
@@ -486,13 +546,11 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
       return;
     }
 
-    await mutation.mutateAsync({
-      url: `/api/beginners-course-lessons/${coachLesson.id}/coaches`,
-      method: "POST",
-      body: { coachUsernames: selectedCoachUsernames },
-    });
+    await mutation.mutateAsync(() =>
+      assignLessonCoaches(currentUserProfile, coachLesson.id, selectedCoachUsernames),
+    );
     setCoachLesson(null);
-    setMessage("Lesson coaches updated.");
+    setMessage(copy.coachesUpdated);
     await refreshDashboard();
   };
 
@@ -516,43 +574,40 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
       return;
     }
 
-    await mutation.mutateAsync({
-      url: `/api/beginners-course-participants/${editingBeginner.id}`,
-      method: "PUT",
-      body: editBeginnerForm,
-    });
+    await mutation.mutateAsync(() =>
+      updateBeginnerParticipant(currentUserProfile, editingBeginner.id, editBeginnerForm),
+    );
     setEditingBeginner(null);
-    setMessage("Beginner details updated.");
+    setMessage(copy.participantUpdated);
     await refreshDashboard();
   };
 
   if (!permissions.canManageBeginnersCourses && !permissions.canApproveBeginnersCourses) {
-    return <p>You do not have permission to manage beginners courses.</p>;
+    return <p>{copy.noPermission}</p>;
   }
 
   return (
     <div className="beginners-course-page">
       <p>
-        Submit beginners courses for approval, enrol beginners, assign a case to each
-        beginner, and plan lesson coaches in one place.
+        {copy.pageDescription}
       </p>
 
       <StatusMessagePanel
         error={error}
         loading={dashboardQuery.isLoading}
-        loadingLabel="Loading beginners course setup..."
+        loadingLabel={copy.loading}
         success={message}
       />
 
       {permissions.canManageBeginnersCourses ? (
         <section className="equipment-action-card beginners-course-panel">
-          <h3>Submit beginners course</h3>
+          <h3>{copy.submitTitle}</h3>
           <form className="beginners-course-form" onSubmit={submitCourse}>
             <div className="beginners-course-form-grid">
               <label>
-                Course coordinator
+                {copy.coordinatorLabel}
                 <select
-                  value={courseForm.coordinatorUsername}
+                  value={selectedCoordinatorUsername}
                   onChange={(event) =>
                     setCourseForm((current) => ({
                       ...current,
@@ -568,7 +623,7 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
                 </select>
               </label>
               <label>
-                First lesson date
+                {copy.firstDateLabel}
                 <input
                   type="date"
                   value={courseForm.firstLessonDate}
@@ -607,7 +662,7 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
                 />
               </label>
               <label>
-                Number of lessons
+                {copy.countLabel}
                 <input
                   type="number"
                   min={1}
@@ -622,7 +677,7 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
                 />
               </label>
               <label>
-                Beginner places
+                {copy.capacityLabel}
                 <input
                   type="number"
                   min={1}
@@ -638,7 +693,7 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
               </label>
             </div>
             <div className="beginners-course-actions">
-              <Button type="submit">Submit course</Button>
+              <Button type="submit">{copy.submitButton}</Button>
             </div>
           </form>
         </section>
@@ -659,12 +714,12 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
               <div className="beginners-course-header">
                 <div>
                   <h3>
-                    Beginners course from {formatDate(course.firstLessonDate)}
+                    {copy.itemLabel} from {formatDate(course.firstLessonDate)}
                   </h3>
                   <p className="equipment-meta-copy">
-                    Coordinator: {course.coordinatorName} | Lessons: {course.lessonCount} | Places:
+                    Coordinator: {course.coordinatorName} | {copy.countMetaLabel}: {course.lessonCount} | {copy.capacityMetaLabel}:
                     {" "}
-                    {course.beginnerCapacity} | Remaining: {course.placesRemaining}
+                    {course.beginnerCapacity} | {copy.remainingMetaLabel}: {course.placesRemaining}
                   </p>
                   <p className="equipment-meta-copy">
                     Submitted by {course.submittedByName} | Status: {course.approvalStatus}
@@ -674,31 +729,13 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
                     <p className="profile-error">Rejected: {course.rejectionReason}</p>
                   ) : null}
                 </div>
-                {permissions.canApproveBeginnersCourses && course.approvalStatus === "pending" ? (
-                  <div className="beginners-course-actions">
-                    <Button onClick={() => void approveCourse(course.id)}>Approve</Button>
-                    <Button
-                      variant="danger"
-                      onClick={() => void rejectCourse(course.id)}
-                    >
-                      Reject
-                    </Button>
-                    {canCancelCourse ? (
-                      <Button
-                        variant="danger"
-                        onClick={() => void cancelCourse(course.id)}
-                      >
-                        Cancel course
-                      </Button>
-                    ) : null}
-                  </div>
-                ) : canCancelCourse ? (
+                {canCancelCourse ? (
                   <div className="beginners-course-actions">
                     <Button
                       variant="danger"
                       onClick={() => void cancelCourse(course.id)}
                     >
-                      Cancel course
+                      {copy.cancelButtonLabel}
                     </Button>
                   </div>
                 ) : null}
@@ -706,8 +743,9 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
 
               {permissions.canManageBeginnersCourses && course.approvalStatus === "approved" ? (
                 <section className="beginners-course-subpanel">
-                  <h4>Add beginner</h4>
+                  <h4>{copy.addParticipantTitle}</h4>
                   <BeginnerFormFields
+                    copy={copy}
                     form={beginnerForm}
                     onChange={(field) => (event) =>
                       updateBeginnerForm(course.id, field, event.target.value)}
@@ -715,13 +753,15 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
                       updateBeginnerForm(course.id, field, event.target.checked)}
                   />
                   <div className="beginners-course-actions">
-                    <Button onClick={() => void submitBeginner(course.id)}>Add beginner</Button>
+                    <Button onClick={() => void submitBeginner(course.id)}>
+                      {copy.addParticipantButton}
+                    </Button>
                   </div>
                 </section>
               ) : null}
 
               <section className="beginners-course-subpanel">
-                <h4>Beginners</h4>
+                <h4>{copy.participantListTitle}</h4>
                 <div className="equipment-inventory-table-wrap">
                   <table className="equipment-inventory-table">
                     <thead>
@@ -733,96 +773,116 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
                         <th>Initial Email</th>
                         <th>30 Day</th>
                         <th>Fee Paid</th>
-                        <th>Assigned Case</th>
-                        <th>Actions</th>
+                        {usesEquipmentAssignment ? (
+                          <th className="beginners-course-case-heading">
+                            Assigned Case
+                          </th>
+                        ) : null}
+                        <th className="beginners-course-actions-heading">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {course.beginners.length > 0 ? (
                         course.beginners.map((beginner) => (
                           <tr key={beginner.id}>
-                            <td>{beginner.fullName}</td>
-                            <td>{beginner.username}</td>
+                            <td>{formatMemberDisplayName(beginner)}</td>
+                            <td>{formatMemberDisplayUsername(beginner)}</td>
                             <td>{beginner.password}</td>
                             <td>{beginner.sizeCategory === "junior" ? "Jr" : "Snr"}</td>
                             <td>{beginner.initialEmailSent ? "Yes" : "No"}</td>
                             <td>{beginner.thirtyDayReminderSent ? "Yes" : "No"}</td>
                             <td>{beginner.courseFeePaid ? "Yes" : "No"}</td>
-                            <td>
-                              <select
-                                value={caseSelections[beginner.id] ?? ""}
-                                onChange={(event) =>
-                                  setCaseSelections((current) => ({
-                                    ...current,
-                                    [beginner.id]: event.target.value,
-                                  }))
-                                }
-                              >
-                                <option value="">No case assigned</option>
-                                {availableCases
-                                  .filter(
-                                    (caseItem) =>
-                                      caseItem.reference &&
-                                      caseItem.reference !== "Main Cupboard" &&
-                                      (
-                                        !caseItem.memberUsername ||
-                                        caseItem.memberUsername === beginner.username ||
-                                        String(caseItem.id) ===
-                                          String(beginner.assignedCaseId ?? "")
-                                      ),
-                                  )
-                                  .map((caseItem) => (
-                                    <option key={caseItem.id} value={caseItem.id}>
-                                      {caseItem.reference}
-                                    </option>
-                                  ))}
-                              </select>
-                            </td>
-                            <td className="beginners-course-row-actions">
-                              {(() => {
-                                const canConvertBeginner = hasCourseFinished(course);
-                                const convertButtonLabel = beginner.convertedToMember
-                                  ? "Converted"
-                                  : "Convert to member";
-                                const convertButtonTitle = beginner.convertedToMember
-                                  ? `${beginner.fullName} is already a full member.`
-                                  : canConvertBeginner
-                                  ? `Convert ${beginner.fullName} to a full member.`
-                                  : "This button becomes available once the course has completed.";
+                            {usesEquipmentAssignment ? (
+                              <td className="beginners-course-case-cell">
+                                <select
+                                  value={
+                                    caseSelections[beginner.id] ??
+                                    (beginner.assignedCaseId
+                                      ? String(beginner.assignedCaseId)
+                                      : "")
+                                  }
+                                  onChange={(event) =>
+                                    setCaseSelections((current) => ({
+                                      ...current,
+                                      [beginner.id]: event.target.value,
+                                    }))
+                                  }
+                                >
+                                  <option value="">No case assigned</option>
+                                  {availableCases
+                                    .filter(
+                                      (caseItem) =>
+                                        caseItem.reference &&
+                                        caseItem.reference !== "Main Cupboard" &&
+                                        (
+                                          !caseItem.memberUsername ||
+                                          caseItem.memberUsername === beginner.username ||
+                                          String(caseItem.id) ===
+                                            String(beginner.assignedCaseId ?? "")
+                                        ),
+                                    )
+                                    .map((caseItem) => (
+                                      <option key={caseItem.id} value={caseItem.id}>
+                                        {caseItem.reference}
+                                      </option>
+                                    ))}
+                                </select>
+                              </td>
+                            ) : null}
+                            <td className="beginners-course-actions-cell">
+                              <div className="beginners-course-row-actions">
+                                {usesEquipmentAssignment
+                                  ? (() => {
+                                      const canConvertBeginner = hasCourseFinished(course);
+                                      const convertButtonLabel = beginner.convertedToMember
+                                        ? "Converted"
+                                        : "Convert to member";
+                                      const convertButtonTitle = beginner.convertedToMember
+                                        ? `${formatMemberDisplayName(beginner)} is already a full member.`
+                                        : canConvertBeginner
+                                        ? `Convert ${formatMemberDisplayName(beginner)} to a full member.`
+                                        : `This button becomes available once the ${copy.itemLowerLabel} has completed.`;
 
-                                return (
-                                  <>
-                              <Button
-                                size="sm"
-                                onClick={() => void saveCaseAssignment(beginner.id)}
-                              >
-                                Save case
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="info"
-                                disabled={beginner.convertedToMember || !canConvertBeginner}
-                                title={convertButtonTitle}
-                                onClick={() => void convertBeginnerToMember(beginner)}
-                              >
-                                {convertButtonLabel}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => openBeginnerEdit(beginner)}
-                              >
-                                Edit
-                              </Button>
-                                  </>
-                                );
-                              })()}
+                                      return (
+                                        <>
+                                          <Button
+                                            className="beginners-course-row-action-button"
+                                            size="sm"
+                                            onClick={() => void saveCaseAssignment(beginner)}
+                                          >
+                                            Save case
+                                          </Button>
+                                          <Button
+                                            className="beginners-course-row-action-button beginners-course-row-action-button--convert"
+                                            size="sm"
+                                            variant="info"
+                                            disabled={beginner.convertedToMember || !canConvertBeginner}
+                                            title={convertButtonTitle}
+                                            onClick={() => void convertBeginnerToMember(beginner)}
+                                          >
+                                            {convertButtonLabel}
+                                          </Button>
+                                        </>
+                                      );
+                                    })()
+                                  : null}
+                                <Button
+                                  className="beginners-course-row-action-button beginners-course-row-action-button--edit"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => openBeginnerEdit(beginner)}
+                                >
+                                  Edit
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={9}>No beginners have been added to this course yet.</td>
+                          <td colSpan={usesEquipmentAssignment ? 9 : 8}>
+                            {copy.emptyParticipantText}
+                          </td>
                         </tr>
                       )}
                     </tbody>
@@ -831,12 +891,68 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
               </section>
 
               <section className="beginners-course-subpanel">
-                <h4>Lesson coach plan</h4>
+                <h4>Attendance Register</h4>
+                <div className="equipment-inventory-table-wrap">
+                  <table className="equipment-inventory-table beginners-course-attendance-table">
+                    <thead>
+                      <tr>
+                        <th>{copy.participantLabel}</th>
+                        {course.lessons.map((lesson) => (
+                          <th key={lesson.id}>
+                            {formatDate(lesson.date)}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {course.beginners.length > 0 ? (
+                        course.beginners.map((beginner) => (
+                          <tr key={beginner.id}>
+                            <td>{formatMemberDisplayName(beginner)}</td>
+                            {course.lessons.map((lesson) => {
+                              const attended = beginner.attendanceDates?.includes(
+                                lesson.date,
+                              );
+
+                              return (
+                                <td
+                                  key={`${beginner.id}-${lesson.id}`}
+                                  className="beginners-course-attendance-cell"
+                                >
+                                  {attended ? (
+                                    <span
+                                      className="beginners-course-attendance-check"
+                                      aria-label="Attended"
+                                    >
+                                      {"\u2713"}
+                                    </span>
+                                  ) : (
+                                    ""
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={course.lessons.length + 1}>
+                            Add {copy.participantPlural} to start the attendance register.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className="beginners-course-subpanel">
+                <h4>{copy.planTitle}</h4>
                 <div className="equipment-inventory-table-wrap">
                   <table className="equipment-inventory-table">
                     <thead>
                       <tr>
-                        <th>Lesson</th>
+                        <th>{copy.lessonColumn}</th>
                         <th>Date</th>
                         <th>Time</th>
                         <th>Coaches</th>
@@ -863,7 +979,7 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
                                 variant="secondary"
                                 onClick={() => openCoachModal(lesson)}
                               >
-                                Assign coaches
+                                {copy.assignCoachesButton}
                               </Button>
                             ) : null}
                           </td>
@@ -880,13 +996,13 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
 
       <section className="equipment-action-card beginners-course-panel">
         <div className="beginners-course-cancelled-header">
-          <h3>Cancelled courses ({cancelledCourses.length})</h3>
+          <h3>{copy.cancelledTitle} ({cancelledCourses.length})</h3>
           <Button
             type="button"
             variant="ghost"
             onClick={() => setShowCancelledCourses((current) => !current)}
           >
-            {showCancelledCourses ? "Hide cancelled courses" : "Show cancelled courses"}
+            {showCancelledCourses ? copy.hideCancelledLabel : copy.showCancelledLabel}
           </Button>
         </div>
         {showCancelledCourses ? (
@@ -905,7 +1021,7 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
             </div>
           ) : (
             <p className="equipment-meta-copy">
-              No cancelled beginners courses yet.
+              {copy.noCancelledText}
             </p>
           )
         ) : null}
@@ -914,7 +1030,7 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
       <Modal
         open={Boolean(coachLesson)}
         onClose={() => setCoachLesson(null)}
-        title="Assign coaches"
+        title={copy.assignCoachesTitle}
       >
         <div className="beginners-course-coach-modal">
           {coaches.map((coach) => (
@@ -934,7 +1050,7 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
             </label>
           ))}
           <div className="beginners-course-actions">
-            <Button onClick={() => void saveLessonCoaches()}>Save lesson coaches</Button>
+            <Button onClick={() => void saveLessonCoaches()}>{copy.saveCoachesButton}</Button>
           </div>
         </div>
       </Modal>
@@ -942,10 +1058,11 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
       <Modal
         open={Boolean(editingBeginner)}
         onClose={() => setEditingBeginner(null)}
-        title="Edit beginner"
+        title={copy.editParticipantTitle}
       >
         <div className="beginners-course-coach-modal">
           <BeginnerFormFields
+            copy={copy}
             form={editBeginnerForm}
             onChange={(field) => (event) =>
               setEditBeginnerForm((current) => ({
@@ -961,7 +1078,9 @@ export function BeginnersCoursesPage({ currentUserProfile }) {
             }
           />
           <div className="beginners-course-actions">
-            <Button onClick={() => void saveBeginnerEdit()}>Save beginner</Button>
+            <Button onClick={() => void saveBeginnerEdit()}>
+              {copy.saveParticipantButton}
+            </Button>
           </div>
         </div>
       </Modal>

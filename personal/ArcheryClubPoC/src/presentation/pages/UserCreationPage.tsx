@@ -120,27 +120,6 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
     });
   };
 
-  const handleLoanBowFieldChange = (field) => (event) => {
-    const value = event.target.value;
-    setEditableProfile((current) => ({
-      ...current,
-      loanBow: {
-        ...current.loanBow,
-        [field]: field === "arrowCount" ? Number.parseInt(value, 10) || value : value,
-      },
-    }));
-  };
-
-  const toggleLoanBowField = (field) => {
-    setEditableProfile((current) => ({
-      ...current,
-      loanBow: {
-        ...current.loanBow,
-        [field]: !current.loanBow[field],
-      },
-    }));
-  };
-
   const createUserMutation = useMutation({
     mutationFn: async () =>
       memberProfileCrud.createMemberProfileUseCase.execute({
@@ -195,13 +174,12 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
           handleBooleanChange={handleBooleanChange}
           handleBooleanSelectChange={handleBooleanSelectChange}
           toggleDiscipline={toggleDiscipline}
-          handleLoanBowFieldChange={handleLoanBowFieldChange}
-          toggleLoanBowField={toggleLoanBowField}
           disciplineOptions={disciplineOptions}
           roleOptions={roleOptions}
           isAdmin={canManageMembers}
           isCreatingNew
           isSaving={isSaving || isLoading}
+          canViewRfidTag={canManageMembers}
           onSubmit={handleCreate}
           submitLabel={isSaving ? "Creating member..." : "Create member"}
         />

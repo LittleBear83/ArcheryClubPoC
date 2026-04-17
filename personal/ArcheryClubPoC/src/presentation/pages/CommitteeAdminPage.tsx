@@ -1,14 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
-import { hasPermission } from "../../utils/userProfile";
-import { fetchApi } from "../../lib/api";
+import {
+  formatMemberDisplayName,
+  formatMemberDisplayUsername,
+  hasPermission,
+} from "../../utils/userProfile";
+import {
+  createCommitteeRole,
+  deleteCommitteeRole,
+  listCommitteeRoles,
+  updateCommitteeRole,
+} from "../../api/committeeApi";
 
 type CommitteeMember = {
   username: string;
   fullName: string;
+  userType?: string;
 };
 
 type CommitteeRole = {
@@ -52,13 +62,6 @@ const emptyDraft: CommitteeRoleDraft = {
   assignedUsername: "",
 };
 
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
-
 function buildDraft(role: CommitteeRole): CommitteeRoleDraft {
   return {
     title: role.title ?? "",
@@ -91,6 +94,7 @@ export function CommitteeAdminPage({ currentUserProfile }) {
   const [createDraft, setCreateDraft] = useState<CommitteeRoleDraft>(emptyDraft);
   const [selectedRoleId, setSelectedRoleId] = useState<string>(createOptionValue);
   const [savingRoleId, setSavingRoleId] = useState<number | null>(null);
+  const [deletingRoleId, setDeletingRoleId] = useState<number | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -105,53 +109,37 @@ export function CommitteeAdminPage({ currentUserProfile }) {
   const { data, isLoading } = useQuery({
     queryKey: committeeQueryKeys.roles(actorUsername),
     queryFn: () =>
-      fetchApi<CommitteeRolesResponse>("/api/committee-roles", {
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
-      }),
+      listCommitteeRoles<CommitteeRolesResponse>(currentUserProfile),
     enabled: canManageCommitteeRoles && Boolean(actorUsername),
   });
 
-  const roles = data?.roles ?? [];
-  const members = data?.members ?? [];
-
-  useEffect(() => {
-    setDrafts(
-      Object.fromEntries(roles.map((role) => [role.id, buildDraft(role)])),
-    );
-  }, [roles]);
-
-  useEffect(() => {
-    if (
-      selectedRoleId !== createOptionValue &&
-      !roles.some((role) => String(role.id) === selectedRoleId)
-    ) {
-      setSelectedRoleId(createOptionValue);
-    }
-  }, [roles, selectedRoleId]);
+  const roles = useMemo(() => data?.roles ?? [], [data?.roles]);
+  const members = useMemo(() => data?.members ?? [], [data?.members]);
+  const activeSelectedRoleId =
+    selectedRoleId === createOptionValue ||
+    roles.some((role) => String(role.id) === selectedRoleId)
+      ? selectedRoleId
+      : createOptionValue;
 
   const selectedRole = useMemo(
     () =>
-      selectedRoleId === createOptionValue
+      activeSelectedRoleId === createOptionValue
         ? null
-        : roles.find((role) => String(role.id) === selectedRoleId) ?? null,
-    [roles, selectedRoleId],
+        : roles.find((role) => String(role.id) === activeSelectedRoleId) ?? null,
+    [activeSelectedRoleId, roles],
   );
 
   const activeDraft = selectedRole
     ? drafts[selectedRole.id] ?? buildDraft(selectedRole)
     : createDraft;
   const isCreateMode = !selectedRole;
-  const isSavingCurrent = selectedRole ? savingRoleId === selectedRole.id : isCreating;
+  const isSavingCurrent = selectedRole
+    ? savingRoleId === selectedRole.id || deletingRoleId === selectedRole.id
+    : isCreating;
 
   const saveRoleMutation = useMutation({
     mutationFn: async ({ roleId, draft }: { roleId: number; draft: CommitteeRoleDraft }) =>
-      fetchApi<{ success: true; role: CommitteeRole }>(`/api/committee-roles/${roleId}`, {
-        method: "PUT",
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
-        body: JSON.stringify(draft),
-      }),
+      updateCommitteeRole<CommitteeRole>(currentUserProfile, roleId, draft),
     onMutate: ({ roleId }) => {
       setSavingRoleId(roleId);
       setError("");
@@ -161,6 +149,10 @@ export function CommitteeAdminPage({ currentUserProfile }) {
       await queryClient.invalidateQueries({
         queryKey: committeeQueryKeys.roles(actorUsername),
       });
+      setDrafts((current) => ({
+        ...current,
+        [result.role.id]: buildDraft(result.role),
+      }));
       setMessage(`${result.role.title} updated successfully.`);
     },
     onError: (saveError: Error) => {
@@ -173,12 +165,7 @@ export function CommitteeAdminPage({ currentUserProfile }) {
 
   const createRoleMutation = useMutation({
     mutationFn: async (draft: CommitteeRoleDraft) =>
-      fetchApi<{ success: true; role: CommitteeRole }>("/api/committee-roles", {
-        method: "POST",
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
-        body: JSON.stringify(draft),
-      }),
+      createCommitteeRole<CommitteeRole>(currentUserProfile, draft),
     onMutate: () => {
       setIsCreating(true);
       setError("");
@@ -197,6 +184,34 @@ export function CommitteeAdminPage({ currentUserProfile }) {
     },
     onSettled: () => {
       setIsCreating(false);
+    },
+  });
+
+  const deleteRoleMutation = useMutation({
+    mutationFn: async (role: CommitteeRole) =>
+      deleteCommitteeRole(currentUserProfile, role.id),
+    onMutate: (_role) => {
+      setDeletingRoleId(_role.id);
+      setError("");
+      setMessage("");
+    },
+    onSuccess: async (_result, role) => {
+      await queryClient.invalidateQueries({
+        queryKey: committeeQueryKeys.roles(actorUsername),
+      });
+      setDrafts((current) => {
+        const nextDrafts = { ...current };
+        delete nextDrafts[role.id];
+        return nextDrafts;
+      });
+      setSelectedRoleId(createOptionValue);
+      setMessage(`${role.title} deleted successfully.`);
+    },
+    onError: (deleteError: Error) => {
+      setError(deleteError.message);
+    },
+    onSettled: () => {
+      setDeletingRoleId(null);
     },
   });
 
@@ -246,6 +261,22 @@ export function CommitteeAdminPage({ currentUserProfile }) {
     createRoleMutation.mutate(activeDraft);
   };
 
+  const handleDelete = () => {
+    if (!selectedRole) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete committee position '${selectedRole.title}'?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    deleteRoleMutation.mutate(selectedRole);
+  };
+
   if (!canManageCommitteeRoles) {
     return <p>You do not have permission to manage committee roles.</p>;
   }
@@ -269,7 +300,7 @@ export function CommitteeAdminPage({ currentUserProfile }) {
           <label className="committee-admin-selector-field">
             Select position
             <select
-              value={selectedRoleId}
+              value={activeSelectedRoleId}
               onChange={(event) => setSelectedRoleId(event.target.value)}
               disabled={isLoading}
             >
@@ -368,7 +399,7 @@ export function CommitteeAdminPage({ currentUserProfile }) {
                   <option value="">Unassigned</option>
                   {members.map((member) => (
                     <option key={member.username} value={member.username}>
-                      {member.fullName} ({member.username})
+                      {formatMemberDisplayName(member)} ({formatMemberDisplayUsername(member)})
                     </option>
                   ))}
                 </select>
@@ -387,6 +418,18 @@ export function CommitteeAdminPage({ currentUserProfile }) {
                       ? "Saving..."
                       : "Save changes"}
                 </Button>
+                {!isCreateMode ? (
+                  <Button
+                    type="button"
+                    variant="danger"
+                    onClick={handleDelete}
+                    disabled={isSavingCurrent}
+                  >
+                    {deletingRoleId === selectedRole?.id
+                      ? "Deleting..."
+                      : "Delete position"}
+                  </Button>
+                ) : null}
               </div>
             </div>
           </div>

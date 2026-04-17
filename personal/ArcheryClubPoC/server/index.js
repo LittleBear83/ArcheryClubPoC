@@ -37,6 +37,10 @@ import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRo
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
+const COURSE_PARTICIPANT_USER_TYPES = {
+  beginners: "beginner",
+  "have-a-go": "have-a-go",
+};
 const LOGIN_EVENTS_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS login_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -407,8 +411,44 @@ db.exec(`
 `);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS equipment_storage_locations (
+    label TEXT PRIMARY KEY,
+    created_at_date TEXT NOT NULL,
+    created_at_time TEXT NOT NULL
+  )
+`);
+
+db.prepare(`
+  INSERT OR IGNORE INTO equipment_storage_locations (
+    label,
+    created_at_date,
+    created_at_time
+  )
+  VALUES (?, ?, ?)
+`).run(DEFAULT_EQUIPMENT_CUPBOARD_LABEL, "1970-01-01", "00:00:00.000Z");
+
+db.prepare(`
+  INSERT OR IGNORE INTO equipment_storage_locations (
+    label,
+    created_at_date,
+    created_at_time
+  )
+  SELECT DISTINCT
+    trim(location_label),
+    '1970-01-01',
+    '00:00:00.000Z'
+  FROM equipment_items
+  WHERE location_type = 'cupboard'
+    AND location_label IS NOT NULL
+    AND trim(location_label) <> ''
+`).run();
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS beginners_courses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    course_type TEXT NOT NULL DEFAULT 'beginners' CHECK (
+      course_type IN ('beginners', 'have-a-go')
+    ),
     coordinator_username TEXT NOT NULL,
     submitted_by_username TEXT NOT NULL,
     first_lesson_date TEXT NOT NULL,
@@ -1302,6 +1342,12 @@ const beginnersCoursesColumns = db
   .prepare(`PRAGMA table_info(beginners_courses)`)
   .all();
 
+if (!beginnersCoursesColumns.some((column) => column.name === "course_type")) {
+  db.exec(
+    `ALTER TABLE beginners_courses ADD COLUMN course_type TEXT NOT NULL DEFAULT 'beginners'`,
+  );
+}
+
 const beginnersCourseCancellationColumns = [
   ["is_cancelled", "INTEGER NOT NULL DEFAULT 0"],
   ["cancellation_reason", "TEXT"],
@@ -1788,6 +1834,7 @@ const seedUsers = [
     disciplines: ["Bare Bow", "Recurve Bow"],
   },
 ];
+const liveSeedUsers = seedUsers.filter((user) => user.username === "Cfleetham");
 
 const upsertUser = db.prepare(`
   INSERT INTO users (
@@ -1868,15 +1915,20 @@ const upsertCommitteeRole = db.prepare(`
   )
 `);
 
+const existingCommitteeRoleCount = db
+  .prepare(`SELECT COUNT(*) AS count FROM committee_roles`)
+  .get().count;
+
 const existingUserCount = db
   .prepare(`SELECT COUNT(*) AS count FROM users`)
   .get().count;
 
 if (existingUserCount === 0) {
-  for (const user of seedUsers) {
+  for (const user of serverRuntime.isLive ? liveSeedUsers : seedUsers) {
     upsertUser.run({
       ...user,
       activeMember: user.activeMember ? 1 : 0,
+      coachingVolunteer: user.coachingVolunteer ? 1 : 0,
     });
     upsertUserType.run(user);
     deleteUserDisciplines.run(user.username);
@@ -1887,13 +1939,15 @@ if (existingUserCount === 0) {
   }
 }
 
-for (const role of COMMITTEE_ROLE_SEED) {
-  upsertCommitteeRole.run({
-    ...role,
-    responsibilities: role.responsibilities ?? role.summary,
-    personalBlurb: role.personalBlurb ?? "",
-    photoDataUrl: role.photoDataUrl ?? null,
-  });
+if (existingCommitteeRoleCount === 0) {
+  for (const role of COMMITTEE_ROLE_SEED) {
+    upsertCommitteeRole.run({
+      ...role,
+      responsibilities: role.responsibilities ?? role.summary,
+      personalBlurb: role.personalBlurb ?? "",
+      photoDataUrl: role.photoDataUrl ?? null,
+    });
+  }
 }
 
 const findUserByCredentials = db.prepare(`
@@ -2064,12 +2118,6 @@ const findCommitteeRoleByKey = db.prepare(`
   WHERE role_key = ?
 `);
 
-const updateCommitteeRoleAssignment = db.prepare(`
-  UPDATE committee_roles
-  SET assigned_username = ?
-  WHERE id = ?
-`);
-
 const updateCommitteeRoleDetails = db.prepare(`
   UPDATE committee_roles
   SET
@@ -2103,6 +2151,11 @@ const insertCommitteeRole = db.prepare(`
     @displayOrder,
     @assignedUsername
   )
+`);
+
+const deleteCommitteeRoleById = db.prepare(`
+  DELETE FROM committee_roles
+  WHERE id = ?
 `);
 
 const findMaxCommitteeRoleDisplayOrder = db.prepare(`
@@ -2367,6 +2420,40 @@ const updateEquipmentAssignmentMetadata = db.prepare(`
   WHERE id = @id
 `);
 
+const listEquipmentStorageLocations = db.prepare(`
+  SELECT label
+  FROM equipment_storage_locations
+  ORDER BY lower(label) ASC
+`);
+
+const findEquipmentStorageLocationByLabel = db.prepare(`
+  SELECT label
+  FROM equipment_storage_locations
+  WHERE label = ?
+`);
+
+const countEquipmentItemsByStorageLocation = db.prepare(`
+  SELECT COUNT(*) AS count
+  FROM equipment_items
+  WHERE location_type = 'cupboard'
+    AND location_label = ?
+    AND status = 'active'
+`);
+
+const insertEquipmentStorageLocation = db.prepare(`
+  INSERT INTO equipment_storage_locations (
+    label,
+    created_at_date,
+    created_at_time
+  )
+  VALUES (?, ?, ?)
+`);
+
+const deleteEquipmentStorageLocation = db.prepare(`
+  DELETE FROM equipment_storage_locations
+  WHERE label = ?
+`);
+
 const listEquipmentLoans = db.prepare(`
   SELECT
     equipment_loans.*,
@@ -2471,6 +2558,7 @@ const findBeginnersCourseById = db.prepare(`
 
 const insertBeginnersCourse = db.prepare(`
   INSERT INTO beginners_courses (
+    course_type,
     coordinator_username,
     submitted_by_username,
     first_lesson_date,
@@ -2486,7 +2574,7 @@ const insertBeginnersCourse = db.prepare(`
     created_at_date,
     created_at_time
   )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const updateBeginnersCourseApproval = db.prepare(`
@@ -2587,6 +2675,21 @@ const findBeginnersCourseParticipantByUsername = db.prepare(`
   WHERE username = ?
 `);
 
+const listBeginnersCourseParticipantLoginDates = db.prepare(`
+  SELECT
+    beginners_course_participants.course_id,
+    beginners_course_participants.username,
+    login_events.logged_in_date
+  FROM beginners_course_participants
+  INNER JOIN users
+    ON users.id = beginners_course_participants.user_id
+  INNER JOIN login_events
+    ON login_events.user_id = users.id
+  ORDER BY beginners_course_participants.course_id ASC,
+    beginners_course_participants.username ASC,
+    login_events.logged_in_date ASC
+`);
+
 const insertBeginnersCourseParticipant = db.prepare(`
   INSERT INTO beginners_course_participants (
     course_id,
@@ -2681,30 +2784,6 @@ const insertBeginnersLessonCoach = db.prepare(`
 const deleteBeginnersLessonCoachesByLessonId = db.prepare(`
   DELETE FROM beginners_course_lesson_coaches
   WHERE lesson_id = ?
-`);
-
-const deleteBeginnersLessonCoachesByCourseId = db.prepare(`
-  DELETE FROM beginners_course_lesson_coaches
-  WHERE lesson_id IN (
-    SELECT id
-    FROM beginners_course_lessons
-    WHERE course_id = ?
-  )
-`);
-
-const deleteBeginnersCourseLessonsByCourseId = db.prepare(`
-  DELETE FROM beginners_course_lessons
-  WHERE course_id = ?
-`);
-
-const deleteBeginnersCourseParticipantsByCourseId = db.prepare(`
-  DELETE FROM beginners_course_participants
-  WHERE course_id = ?
-`);
-
-const deleteBeginnersCourseById = db.prepare(`
-  DELETE FROM beginners_courses
-  WHERE id = ?
 `);
 
 const listCoachBeginnersLessonsByUserId = db.prepare(`
@@ -3758,8 +3837,53 @@ function buildBeginnersUsername(firstName, surname) {
   return nextUsername;
 }
 
-function buildBeginnersCourseDashboard() {
-  const courses = listBeginnersCourses.all();
+function normalizeCourseType(value) {
+  return value === "have-a-go" ? "have-a-go" : "beginners";
+}
+
+function getRequestedCourseType(req) {
+  if (typeof req.query?.courseType === "string") {
+    return normalizeCourseType(req.query.courseType);
+  }
+
+  if (typeof req.body?.courseType === "string") {
+    return normalizeCourseType(req.body.courseType);
+  }
+
+  return null;
+}
+
+function requestMatchesCourseType(req, course) {
+  const requestedCourseType = getRequestedCourseType(req);
+
+  if (!requestedCourseType) {
+    return true;
+  }
+
+  return requestedCourseType === normalizeCourseType(course?.course_type);
+}
+
+function getCourseTypePermissions(courseType) {
+  return normalizeCourseType(courseType) === "have-a-go"
+    ? {
+        manage: PERMISSIONS.MANAGE_HAVE_A_GO_SESSIONS,
+        approve: PERMISSIONS.APPROVE_HAVE_A_GO_SESSIONS,
+      }
+    : {
+        manage: PERMISSIONS.MANAGE_BEGINNERS_COURSES,
+        approve: PERMISSIONS.APPROVE_BEGINNERS_COURSES,
+      };
+}
+
+function getCourseParticipantUserType(courseType) {
+  return COURSE_PARTICIPANT_USER_TYPES[normalizeCourseType(courseType)] ?? "beginner";
+}
+
+function buildBeginnersCourseDashboard(courseType = "beginners") {
+  const normalizedCourseType = normalizeCourseType(courseType);
+  const courses = listBeginnersCourses
+    .all()
+    .filter((course) => normalizeCourseType(course.course_type) === normalizedCourseType);
   const lessonsByCourseId = groupRowsBy(
     listBeginnersCourseLessons.all(),
     (lesson) => lesson.course_id,
@@ -3767,6 +3891,11 @@ function buildBeginnersCourseDashboard() {
   const participantsByCourseId = groupRowsBy(
     listBeginnersCourseParticipants.all(),
     (participant) => participant.course_id,
+  );
+  const loginDatesByCourseParticipant = groupRowsBy(
+    listBeginnersCourseParticipantLoginDates.all(),
+    (row) => `${row.course_id}:${row.username}`,
+    (row) => row.logged_in_date,
   );
   const coachesByLessonId = groupRowsBy(
     listBeginnersLessonCoaches.all(),
@@ -3801,6 +3930,13 @@ function buildBeginnersCourseDashboard() {
       initialEmailSent: Boolean(participant.initial_email_sent),
       thirtyDayReminderSent: Boolean(participant.thirty_day_reminder_sent),
       courseFeePaid: Boolean(participant.course_fee_paid),
+      attendanceDates: [
+        ...new Set(
+          loginDatesByCourseParticipant.get(
+            `${participant.course_id}:${participant.username}`,
+          ) ?? [],
+        ),
+      ],
       convertedToMember:
         Boolean(participant.converted_to_member) ||
         participant.participant_user_type !== "beginner",
@@ -3866,11 +4002,15 @@ function hasBeginnersCourseCompleted(course) {
   return hasScheduleEntryEnded(lastLesson.lesson_date, lastLesson.end_time);
 }
 
-function buildBeginnersCourseCalendarLessons() {
+function buildBeginnersCourseCalendarLessons(courseType = null) {
+  const requestedCourseType =
+    typeof courseType === "string" ? normalizeCourseType(courseType) : null;
   const approvedCourses = listBeginnersCourses
     .all()
     .filter(
       (course) =>
+        (!requestedCourseType ||
+          normalizeCourseType(course.course_type) === requestedCourseType) &&
         (course.approval_status ?? "pending") === "approved" &&
         !course.is_cancelled,
     );
@@ -3890,13 +4030,19 @@ function buildBeginnersCourseCalendarLessons() {
 
   return approvedCourses
     .flatMap((course) => {
-      const beginnerCount = (participantsByCourseId.get(course.id) ?? []).length;
+      const normalizedCourseType = normalizeCourseType(course.course_type);
+      const participantCount = (participantsByCourseId.get(course.id) ?? []).length;
+      const title =
+        normalizedCourseType === "have-a-go"
+          ? "Have a Go session"
+          : "Beginners course";
 
       return (lessonsByCourseId.get(course.id) ?? []).map((lesson) => ({
-        id: `beginners-course-${course.id}-lesson-${lesson.id}`,
+        id: `${normalizedCourseType}-course-${course.id}-lesson-${lesson.id}`,
         courseId: course.id,
         lessonId: lesson.id,
-        title: "Beginners course",
+        courseType: normalizedCourseType,
+        title,
         date: lesson.lesson_date,
         startTime: lesson.start_time,
         endTime: lesson.end_time,
@@ -3907,9 +4053,11 @@ function buildBeginnersCourseCalendarLessons() {
           "coordinator_surname",
         ),
         coachNames: coachesByLessonId.get(lesson.id) ?? [],
-        beginnerCount,
+        beginnerCount: participantCount,
+        participantCount,
         beginnerCapacity: course.beginner_capacity,
-        placesRemaining: Math.max(course.beginner_capacity - beginnerCount, 0),
+        participantCapacity: course.beginner_capacity,
+        placesRemaining: Math.max(course.beginner_capacity - participantCount, 0),
       }));
     })
     .sort((left, right) => {
@@ -4920,7 +5068,7 @@ function sanitizeCupboardLabel(value) {
   }
 
   const trimmed = value.trim();
-  return trimmed || DEFAULT_EQUIPMENT_CUPBOARD_LABEL;
+  return trimmed.slice(0, 80) || DEFAULT_EQUIPMENT_CUPBOARD_LABEL;
 }
 
 function buildEquipmentDisplayLabel(item) {
@@ -4987,6 +5135,20 @@ function buildEquipmentMaps() {
 function getEquipmentCurrentLocation(item, maps) {
   const openLoan = maps.openLoanByItemId.get(item.id) ?? null;
 
+  if (item.location_type === EQUIPMENT_LOCATION_TYPES.CASE && item.location_case_id) {
+    const caseItem = maps.itemsById.get(item.location_case_id);
+
+    return {
+      type: EQUIPMENT_LOCATION_TYPES.CASE,
+      label: caseItem?.item_number ? `Case ${caseItem.item_number}` : "Case",
+      memberUsername: null,
+      caseId: caseItem?.id ?? item.location_case_id,
+      caseNumber: caseItem?.item_number ?? "",
+      viaCase: false,
+      storageLabel: caseItem?.location_label ?? DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+    };
+  }
+
   if (openLoan) {
     return {
       type: EQUIPMENT_LOCATION_TYPES.MEMBER,
@@ -5000,34 +5162,6 @@ function getEquipmentCurrentLocation(item, maps) {
       ),
       loanedAt: `${openLoan.loaned_at_date} ${openLoan.loaned_at_time}`.trim(),
       signedOutBy: getUserDisplayName(openLoan, "loaned_by_first_name", "loaned_by_surname"),
-    };
-  }
-
-  if (item.location_type === EQUIPMENT_LOCATION_TYPES.CASE && item.location_case_id) {
-    const caseItem = maps.itemsById.get(item.location_case_id);
-    const caseLoan = caseItem ? maps.openLoanByItemId.get(caseItem.id) : null;
-
-    if (caseLoan) {
-      return {
-        type: EQUIPMENT_LOCATION_TYPES.MEMBER,
-        label: getUserDisplayName(caseLoan, "member_first_name", "member_surname"),
-        memberUsername: caseLoan.member_username,
-        caseId: caseItem?.id ?? null,
-        caseNumber: caseItem?.item_number ?? "",
-        viaCase: true,
-        loanedAt: `${caseLoan.loaned_at_date} ${caseLoan.loaned_at_time}`.trim(),
-        signedOutBy: getUserDisplayName(caseLoan, "loaned_by_first_name", "loaned_by_surname"),
-      };
-    }
-
-    return {
-      type: EQUIPMENT_LOCATION_TYPES.CASE,
-      label: caseItem?.item_number ? `Case ${caseItem.item_number}` : "Case",
-      memberUsername: null,
-      caseId: caseItem?.id ?? item.location_case_id,
-      caseNumber: caseItem?.item_number ?? "",
-      viaCase: false,
-      storageLabel: caseItem?.location_label ?? DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
     };
   }
 
@@ -5055,6 +5189,10 @@ function getEquipmentCurrentLocation(item, maps) {
 function buildEquipmentItemResponse(item, maps) {
   const currentLocation = getEquipmentCurrentLocation(item, maps);
   const openLoan = maps.openLoanByItemId.get(item.id) ?? null;
+  const isCaseContentLoan =
+    item.location_type === EQUIPMENT_LOCATION_TYPES.CASE &&
+    item.location_case_id &&
+    openLoan?.loan_context_case_id === item.location_case_id;
 
   return {
     ...buildEquipmentIdentity(item),
@@ -5082,7 +5220,7 @@ function buildEquipmentItemResponse(item, maps) {
       ? `${item.last_storage_updated_at_date} ${item.last_storage_updated_at_time}`.trim()
       : "",
     currentLocation,
-    currentLoan: openLoan
+    currentLoan: openLoan && !isCaseContentLoan
       ? {
           memberUsername: openLoan.member_username,
           memberName: getUserDisplayName(openLoan, "member_first_name", "member_surname"),
@@ -5566,7 +5704,7 @@ function isBeginnerVisibleInProfileOptions(user, participant, now = new Date()) 
     return true;
   }
 
-  if (Boolean(participant.converted_to_member)) {
+  if (participant.converted_to_member) {
     return true;
   }
 
@@ -5948,6 +6086,7 @@ registerAdminMemberRoutes({
   countUsersByRoleKey,
   CURRENT_PERMISSION_KEY_SET,
   db,
+  deleteCommitteeRoleById,
   deleteRoleDefinition,
   deleteRolePermissionsByRoleKey,
   findCommitteeRoleById,
@@ -5985,6 +6124,8 @@ registerEquipmentRoutes({
   buildEquipmentItemResponse,
   buildEquipmentMaps,
   closeEquipmentLoan,
+  countEquipmentItemsByStorageLocation,
+  deleteEquipmentStorageLocation,
   db,
   DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
   EQUIPMENT_LOCATION_TYPES,
@@ -5994,14 +6135,17 @@ registerEquipmentRoutes({
   EQUIPMENT_TYPE_OPTIONS,
   findEquipmentItemById,
   findEquipmentItemByIdWithRelations,
+  findEquipmentStorageLocationByLabel,
   findOpenEquipmentLoanByItemId,
   findUserByUsername,
   getActorUser,
   getUtcTimestampParts,
   insertEquipmentItem,
   insertEquipmentLoan,
+  insertEquipmentStorageLocation,
   listAllUsers,
   listEquipmentItemsByCaseId,
+  listEquipmentStorageLocations,
   listOpenEquipmentLoansByCaseId,
   listOpenEquipmentLoansByMemberUserId,
   PERMISSIONS,
@@ -6015,15 +6159,20 @@ registerEquipmentRoutes({
 
 app.get("/api/beginners-courses/dashboard", (req, res) => {
   const actor = getActorUser(req);
+  const courseType = normalizeCourseType(req.query?.courseType);
+  const coursePermissions = getCourseTypePermissions(courseType);
 
   if (
     !actor ||
-    (!actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES) &&
-      !actorHasPermission(actor, PERMISSIONS.APPROVE_BEGINNERS_COURSES))
+    (!actorHasPermission(actor, coursePermissions.manage) &&
+      !actorHasPermission(actor, coursePermissions.approve))
   ) {
     res.status(403).json({
       success: false,
-      message: "You do not have permission to view beginners courses.",
+      message:
+        courseType === "have-a-go"
+          ? "You do not have permission to view Have a Go sessions."
+          : "You do not have permission to view beginners courses.",
     });
     return;
   }
@@ -6034,7 +6183,7 @@ app.get("/api/beginners-courses/dashboard", (req, res) => {
     .map((item) => buildEquipmentCaseResponse(item, maps));
   const users = listAllUsers
     .all()
-    .filter((user) => user.user_type !== "beginner")
+    .filter((user) => !["beginner", "have-a-go"].includes(user.user_type))
     .map((user) => ({
       username: user.username,
       fullName: `${user.first_name} ${user.surname}`.trim(),
@@ -6047,14 +6196,14 @@ app.get("/api/beginners-courses/dashboard", (req, res) => {
     permissions: {
       canManageBeginnersCourses: actorHasPermission(
         actor,
-        PERMISSIONS.MANAGE_BEGINNERS_COURSES,
+        coursePermissions.manage,
       ),
       canApproveBeginnersCourses: actorHasPermission(
         actor,
-        PERMISSIONS.APPROVE_BEGINNERS_COURSES,
+        coursePermissions.approve,
       ),
     },
-    courses: buildBeginnersCourseDashboard(),
+    courses: buildBeginnersCourseDashboard(courseType),
     coordinators: users,
     coaches: users.filter((user) =>
       isBeginnersCourseCoachEligible({
@@ -6071,20 +6220,25 @@ app.get("/api/beginners-courses/dashboard", (req, res) => {
   });
 });
 
-app.get("/api/beginners-courses/calendar", (_req, res) => {
+app.get("/api/beginners-courses/calendar", (req, res) => {
   res.json({
     success: true,
-    lessons: buildBeginnersCourseCalendarLessons(),
+    lessons: buildBeginnersCourseCalendarLessons(req.query?.courseType),
   });
 });
 
 app.post("/api/beginners-courses", (req, res) => {
   const actor = getActorUser(req);
+  const courseType = normalizeCourseType(req.body?.courseType);
+  const coursePermissions = getCourseTypePermissions(courseType);
 
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES)) {
+  if (!actor || !actorHasPermission(actor, coursePermissions.manage)) {
     res.status(403).json({
       success: false,
-      message: "You do not have permission to submit beginners courses.",
+      message:
+        courseType === "have-a-go"
+          ? "You do not have permission to submit Have a Go sessions."
+          : "You do not have permission to submit beginners courses.",
     });
     return;
   }
@@ -6099,6 +6253,7 @@ app.post("/api/beginners-courses", (req, res) => {
   const [date, time] = getUtcTimestampParts();
   const createCourseTransaction = db.transaction(() => {
     const result = insertBeginnersCourse.run(
+      courseType,
       sanitized.value.coordinatorUsername,
       actor.username,
       sanitized.value.firstLessonDate,
@@ -6135,20 +6290,12 @@ app.post("/api/beginners-courses", (req, res) => {
 
   res.status(201).json({
     success: true,
-    course: buildBeginnersCourseDashboard().find((course) => course.id === courseId) ?? null,
+    course: buildBeginnersCourseDashboard(courseType).find((course) => course.id === courseId) ?? null,
   });
 });
 
 app.post("/api/beginners-courses/:id/approve", (req, res) => {
   const actor = getActorUser(req);
-
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.APPROVE_BEGINNERS_COURSES)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to approve beginners courses.",
-    });
-    return;
-  }
 
   const course = findBeginnersCourseById.get(req.params.id);
 
@@ -6156,6 +6303,28 @@ app.post("/api/beginners-courses/:id/approve", (req, res) => {
     res.status(404).json({
       success: false,
       message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  if (!requestMatchesCourseType(req, course)) {
+    res.status(404).json({
+      success: false,
+      message: "Course not found for the requested course type.",
+    });
+    return;
+  }
+
+  const courseType = normalizeCourseType(course.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
+
+  if (!actor || !actorHasPermission(actor, coursePermissions.approve)) {
+    res.status(403).json({
+      success: false,
+      message:
+        courseType === "have-a-go"
+          ? "You do not have permission to approve Have a Go sessions."
+          : "You do not have permission to approve beginners courses.",
     });
     return;
   }
@@ -6173,20 +6342,12 @@ app.post("/api/beginners-courses/:id/approve", (req, res) => {
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard().find((entry) => entry.id === course.id) ?? null,
+    course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === course.id) ?? null,
   });
 });
 
 app.post("/api/beginners-courses/:id/reject", (req, res) => {
   const actor = getActorUser(req);
-
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.APPROVE_BEGINNERS_COURSES)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to reject beginners courses.",
-    });
-    return;
-  }
 
   const course = findBeginnersCourseById.get(req.params.id);
 
@@ -6194,6 +6355,28 @@ app.post("/api/beginners-courses/:id/reject", (req, res) => {
     res.status(404).json({
       success: false,
       message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  if (!requestMatchesCourseType(req, course)) {
+    res.status(404).json({
+      success: false,
+      message: "Course not found for the requested course type.",
+    });
+    return;
+  }
+
+  const courseType = normalizeCourseType(course.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
+
+  if (!actor || !actorHasPermission(actor, coursePermissions.approve)) {
+    res.status(403).json({
+      success: false,
+      message:
+        courseType === "have-a-go"
+          ? "You do not have permission to reject Have a Go sessions."
+          : "You do not have permission to reject beginners courses.",
     });
     return;
   }
@@ -6229,7 +6412,7 @@ app.post("/api/beginners-courses/:id/reject", (req, res) => {
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard().find((entry) => entry.id === course.id) ?? null,
+    course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === course.id) ?? null,
   });
 });
 
@@ -6253,8 +6436,18 @@ app.delete("/api/beginners-courses/:id", (req, res) => {
     return;
   }
 
+  if (!requestMatchesCourseType(req, course)) {
+    res.status(404).json({
+      success: false,
+      message: "Course not found for the requested course type.",
+    });
+    return;
+  }
+
+  const courseType = normalizeCourseType(course.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
   const canCancelCourse =
-    actorHasPermission(actor, PERMISSIONS.APPROVE_BEGINNERS_COURSES) ||
+    actorHasPermission(actor, coursePermissions.approve) ||
     actor.username === course.coordinator_username;
 
   if (!canCancelCourse) {
@@ -6301,20 +6494,26 @@ app.delete("/api/beginners-courses/:id", (req, res) => {
 app.post("/api/beginners-courses/:id/beginners", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to add beginners to a course.",
-    });
-    return;
-  }
-
   const course = findBeginnersCourseById.get(req.params.id);
 
   if (!course) {
     res.status(404).json({
       success: false,
       message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  const courseType = normalizeCourseType(course.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
+
+  if (!actor || !actorHasPermission(actor, coursePermissions.manage)) {
+    res.status(403).json({
+      success: false,
+      message:
+        courseType === "have-a-go"
+          ? "You do not have permission to add participants to a Have a Go session."
+          : "You do not have permission to add beginners to a course.",
     });
     return;
   }
@@ -6364,7 +6563,7 @@ app.post("/api/beginners-courses/:id/beginners", (req, res) => {
     rfidTag: "",
     activeMember: true,
     membershipFeesDue: "",
-    userType: "beginner",
+    userType: getCourseParticipantUserType(courseType),
     disciplines: [],
     loanBow: getDefaultLoanBowRecord(),
     existingUser: null,
@@ -6398,20 +6597,12 @@ app.post("/api/beginners-courses/:id/beginners", (req, res) => {
 
   res.status(201).json({
     success: true,
-    course: buildBeginnersCourseDashboard().find((entry) => entry.id === course.id) ?? null,
+    course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === course.id) ?? null,
   });
 });
 
 app.put("/api/beginners-course-participants/:id", (req, res) => {
   const actor = getActorUser(req);
-
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to update beginners.",
-    });
-    return;
-  }
 
   const participant = findBeginnersCourseParticipantById.get(req.params.id);
 
@@ -6419,6 +6610,21 @@ app.put("/api/beginners-course-participants/:id", (req, res) => {
     res.status(404).json({
       success: false,
       message: "Beginner record not found.",
+    });
+    return;
+  }
+
+  const course = findBeginnersCourseById.get(participant.course_id);
+  const courseType = normalizeCourseType(course?.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
+
+  if (!actor || !actorHasPermission(actor, coursePermissions.manage)) {
+    res.status(403).json({
+      success: false,
+      message:
+        courseType === "have-a-go"
+          ? "You do not have permission to update Have a Go participants."
+          : "You do not have permission to update beginners.",
     });
     return;
   }
@@ -6459,7 +6665,7 @@ app.put("/api/beginners-course-participants/:id", (req, res) => {
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard().find(
+    course: buildBeginnersCourseDashboard(courseType).find(
       (entry) => entry.id === participant.course_id,
     ) ?? null,
   });
@@ -6539,10 +6745,11 @@ app.post("/api/beginners-course-participants/:id/convert", (req, res) => {
   }
 
   markBeginnersCourseParticipantConverted.run(participant.id);
+  const courseType = normalizeCourseType(course.course_type);
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard().find(
+    course: buildBeginnersCourseDashboard(courseType).find(
       (entry) => entry.id === participant.course_id,
     ) ?? null,
   });
@@ -6551,20 +6758,27 @@ app.post("/api/beginners-course-participants/:id/convert", (req, res) => {
 app.post("/api/beginners-course-participants/:id/assign-case", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to assign course equipment.",
-    });
-    return;
-  }
-
   const participant = findBeginnersCourseParticipantById.get(req.params.id);
 
   if (!participant) {
     res.status(404).json({
       success: false,
       message: "Beginner record not found.",
+    });
+    return;
+  }
+
+  const course = findBeginnersCourseById.get(participant.course_id);
+  const courseType = normalizeCourseType(course?.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
+
+  if (!actor || !actorHasPermission(actor, coursePermissions.manage)) {
+    res.status(403).json({
+      success: false,
+      message:
+        courseType === "have-a-go"
+          ? "You do not have permission to assign Have a Go equipment."
+          : "You do not have permission to assign course equipment.",
     });
     return;
   }
@@ -6709,7 +6923,7 @@ app.post("/api/beginners-course-participants/:id/assign-case", (req, res) => {
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard().find(
+    course: buildBeginnersCourseDashboard(courseType).find(
       (entry) => entry.id === participant.course_id,
     ) ?? null,
   });
@@ -6718,20 +6932,27 @@ app.post("/api/beginners-course-participants/:id/assign-case", (req, res) => {
 app.post("/api/beginners-course-lessons/:id/coaches", (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES)) {
-    res.status(403).json({
-      success: false,
-      message: "You do not have permission to assign coaches to beginners lessons.",
-    });
-    return;
-  }
-
   const lesson = findBeginnersCourseLessonById.get(req.params.id);
 
   if (!lesson) {
     res.status(404).json({
       success: false,
       message: "Beginners lesson not found.",
+    });
+    return;
+  }
+
+  const course = findBeginnersCourseById.get(lesson.course_id);
+  const courseType = normalizeCourseType(course?.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
+
+  if (!actor || !actorHasPermission(actor, coursePermissions.manage)) {
+    res.status(403).json({
+      success: false,
+      message:
+        courseType === "have-a-go"
+          ? "You do not have permission to assign coaches to Have a Go sessions."
+          : "You do not have permission to assign coaches to beginners lessons.",
     });
     return;
   }
@@ -6771,7 +6992,7 @@ app.post("/api/beginners-course-lessons/:id/coaches", (req, res) => {
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard().find((entry) => entry.id === lesson.course_id) ?? null,
+    course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === lesson.course_id) ?? null,
   });
 });
 
@@ -6838,7 +7059,11 @@ app.get("/api/my-beginner-dashboard", (req, res) => {
 
       return left.typeLabel.localeCompare(right.typeLabel);
     })
-    .map(({ equipmentType: _equipmentType, ...item }) => item);
+    .map((item) => ({
+      id: item.id,
+      typeLabel: item.typeLabel,
+      reference: item.reference,
+    }));
 
   res.json({
     success: true,

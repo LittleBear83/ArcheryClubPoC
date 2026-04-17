@@ -9,7 +9,11 @@ import { LoginPage } from "./presentation/pages/LoginPage";
 import { Modal } from "./presentation/components/Modal";
 import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
-import { fetchApi } from "./lib/api";
+import {
+  loginAsGuest,
+  loginWithCredentials,
+  loginWithRfid,
+} from "./api/authApi";
 import type { UserProfile } from "./types/app";
 import type { AppDependencies } from "./bootstrap/createAppDependencies";
 
@@ -83,7 +87,7 @@ function PaymentCardModal({
 }
 
 function App({ dependencies }: { dependencies: AppDependencies }) {
-  const inactivityTimeoutRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const inactivityTimeoutRef = useRef<number | null>(null);
   const lastActivityAtRef = useRef(Date.now());
   const queryClient = useQueryClient();
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -148,16 +152,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     password: string;
   }) => {
     try {
-        const result = await fetchApi<{ success: true; userProfile: UserProfile }>(
-        "/api/auth/login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ username, password }),
-        },
-      );
+      const result = await loginWithCredentials(username, password);
 
       persistAuthenticatedUser(result.userProfile);
 
@@ -195,16 +190,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
 
   const handleRfidLogin = async (rfidTag: string) => {
     try {
-      const result = await fetchApi<{ success: true; userProfile: UserProfile }>(
-        "/api/auth/rfid",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ rfidTag }),
-        },
-      );
+      const result = await loginWithRfid(rfidTag);
 
       persistAuthenticatedUser(result.userProfile);
 
@@ -234,21 +220,12 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     invitedByUsername: string;
   }) => {
     try {
-      const result = await fetchApi<{ success: true; userProfile: unknown }>(
-        "/api/auth/guest-login",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            firstName,
-            surname,
-            archeryGbMembershipNumber,
-            invitedByUsername,
-          }),
-        },
-      );
+      const result = await loginAsGuest({
+        firstName,
+        surname,
+        archeryGbMembershipNumber,
+        invitedByUsername,
+      });
 
       persistAuthenticatedUser(result.userProfile);
 

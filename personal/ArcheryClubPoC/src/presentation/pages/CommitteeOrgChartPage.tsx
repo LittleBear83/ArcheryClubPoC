@@ -3,18 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { Modal } from "../components/Modal";
-import { fetchApi } from "../../lib/api";
-
-function buildHeaders(currentUserProfile) {
-  return {
-    "Content-Type": "application/json",
-    "x-actor-username": currentUserProfile?.auth?.username ?? "",
-  };
-}
+import { listCommitteeRoles } from "../../api/committeeApi";
+import {
+  formatMemberDisplayName,
+  formatMemberDisplayUsername,
+} from "../../utils/userProfile";
 
 type CommitteeMember = {
   username: string;
   fullName: string;
+  userType?: string;
 };
 
 type CommitteeRole = {
@@ -32,7 +30,9 @@ function getRoleBlurb(role: CommitteeRole) {
     return role.personalBlurb.trim();
   }
 
-  const assignedName = role.assignedMember?.fullName ?? "This role";
+  const assignedName = role.assignedMember
+    ? formatMemberDisplayName(role.assignedMember)
+    : "This role";
 
   return role.assignedMember
     ? `${assignedName} helps lead this area of club life and gives members a clear point of contact for ${role.title.toLowerCase()} matters.`
@@ -56,10 +56,7 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
   const { data, isLoading } = useQuery({
     queryKey: committeeQueryKeys.roles(actorUsername),
     queryFn: () =>
-      fetchApi<CommitteeRolesResponse>("/api/committee-roles", {
-        headers: buildHeaders(currentUserProfile),
-        cache: "no-store",
-      }),
+      listCommitteeRoles<CommitteeRolesResponse>(currentUserProfile),
     enabled: Boolean(actorUsername),
   });
 
@@ -127,7 +124,7 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
                   >
                     <strong>Member:</strong>{" "}
                     {role.assignedMember
-                      ? role.assignedMember.fullName
+                      ? formatMemberDisplayName(role.assignedMember)
                       : "Unassigned"}
                   </p>
                   <span className="committee-role-card-cta">View details</span>
@@ -166,7 +163,7 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
                 <p className="committee-role-member">
                   <strong>Assigned member:</strong>{" "}
                   {selectedRole.assignedMember
-                    ? `${selectedRole.assignedMember.fullName} (${selectedRole.assignedMember.username})`
+                    ? `${formatMemberDisplayName(selectedRole.assignedMember)} (${formatMemberDisplayUsername(selectedRole.assignedMember)})`
                     : "Unassigned"}
                 </p>
               </div>
@@ -187,7 +184,7 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
                 <h5>Assigned Member</h5>
                 <p className="committee-role-member">
                   {selectedRole.assignedMember
-                    ? `${selectedRole.assignedMember.fullName} (${selectedRole.assignedMember.username})`
+                    ? `${formatMemberDisplayName(selectedRole.assignedMember)} (${formatMemberDisplayUsername(selectedRole.assignedMember)})`
                     : "Unassigned"}
                 </p>
               </section>

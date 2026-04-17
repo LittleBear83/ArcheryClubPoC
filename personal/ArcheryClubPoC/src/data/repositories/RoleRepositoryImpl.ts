@@ -1,6 +1,22 @@
 import { RoleRepository } from "../../domain/repositories/RoleRepository";
 
+type RoleDataSource = {
+  getRolesSnapshot(actorUsername: string): Promise<{
+    roles?: unknown[];
+    permissions?: unknown[];
+  }>;
+  createRole(actorUsername: string, roleDefinition: unknown): Promise<{ role: unknown }>;
+  updateRole(
+    actorUsername: string,
+    roleKey: string,
+    roleDefinition: unknown,
+  ): Promise<{ role: unknown }>;
+  deleteRole(actorUsername: string, roleKey: string): Promise<void>;
+};
+
 export class RoleRepositoryImpl extends RoleRepository {
+  private readonly dataSource: RoleDataSource;
+
   constructor({ dataSource }) {
     super();
     this.dataSource = dataSource;

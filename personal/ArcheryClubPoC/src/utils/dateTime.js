@@ -1,34 +1,6 @@
-const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-});
-
-const timeFormatter = new Intl.DateTimeFormat("en-GB", {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-
-const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-
-const shortDateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "2-digit",
-  year: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
+function padDatePart(value) {
+  return String(value).padStart(2, "0");
+}
 
 function parseIsoDate(dateString) {
   if (!dateString) {
@@ -68,7 +40,11 @@ export function formatDate(dateInput) {
     return String(dateInput);
   }
 
-  return dateFormatter.format(date);
+  return [
+    padDatePart(date.getDate()),
+    padDatePart(date.getMonth() + 1),
+    date.getFullYear(),
+  ].join("/");
 }
 
 export function formatTime(dateInput) {
@@ -82,7 +58,11 @@ export function formatTime(dateInput) {
     return String(dateInput);
   }
 
-  return timeFormatter.format(date);
+  return [
+    padDatePart(date.getHours()),
+    padDatePart(date.getMinutes()),
+    padDatePart(date.getSeconds()),
+  ].join(":");
 }
 
 export function formatClockTime(timeInput) {
@@ -108,21 +88,11 @@ export function formatDateTime(dateInput) {
     return String(dateInput);
   }
 
-  return dateTimeFormatter.format(date);
+  return `${formatDate(date)} ${formatTime(date)}`;
 }
 
 export function formatShortDateTime(dateInput) {
-  if (!dateInput) {
-    return "";
-  }
-
-  const date = parseDateTime(dateInput);
-
-  if (Number.isNaN(date?.getTime())) {
-    return String(dateInput);
-  }
-
-  return shortDateTimeFormatter.format(date).replace(",", "");
+  return formatDateTime(dateInput);
 }
 
 export function formatHourLabel(hour) {

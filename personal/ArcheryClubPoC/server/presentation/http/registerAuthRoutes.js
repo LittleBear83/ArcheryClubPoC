@@ -2,18 +2,24 @@ export function registerAuthRoutes({
   app,
   buildGuestUserProfile,
   buildMemberUserProfile,
+  clearSessionCookie,
+  createSessionCookie,
   databasePath,
   findDisciplinesByUsername,
   findUserByCredentials,
   findUserByRfid,
   findUserByUsername,
   getDeactivatedRfidTag,
+  getSessionUsername,
   getUtcTimestampParts,
+  hashPassword,
   insertGuestLoginEvent,
   insertLoginEvent,
   latestRfidScan,
   listAllUsers,
   syncMemberStatusWithFees,
+  updateUserPassword,
+  verifyPassword,
 }) {
   app.post("/api/auth/login", (req, res) => {
     const { username, password } = req.body ?? {};
@@ -26,9 +32,9 @@ export function registerAuthRoutes({
       return;
     }
 
-    const user = syncMemberStatusWithFees(
-      findUserByCredentials.get(username, password),
-    );
+    const loginUser = findUserByCredentials.get(username);
+    const isValidPassword = verifyPassword(password, loginUser?.password);
+    const user = syncMemberStatusWithFees(isValidPassword ? loginUser : null);
 
     if (!user) {
       res.status(401).json({
@@ -48,7 +54,12 @@ export function registerAuthRoutes({
       return;
     }
 
+    if (loginUser.password === password) {
+      updateUserPassword.run(hashPassword(password), user.username);
+    }
+
     insertLoginEvent.run(user.username, "password", ...getUtcTimestampParts());
+    res.setHeader("Set-Cookie", createSessionCookie(user.username));
 
     res.json({
       success: true,
@@ -94,6 +105,53 @@ export function registerAuthRoutes({
     }
 
     insertLoginEvent.run(user.username, "rfid", ...getUtcTimestampParts());
+    res.setHeader("Set-Cookie", createSessionCookie(user.username));
+
+    res.json({
+      success: true,
+      userProfile: buildMemberUserProfile(
+        user,
+        findDisciplinesByUsername
+          .all(user.username)
+          .map((discipline) => discipline.discipline),
+      ),
+    });
+  });
+
+  app.post("/api/auth/logout", (_req, res) => {
+    res.setHeader("Set-Cookie", clearSessionCookie());
+    res.json({ success: true });
+  });
+
+  app.get("/api/auth/session", (req, res) => {
+    const sessionUsername = getSessionUsername(req);
+
+    if (!sessionUsername) {
+      res.status(401).json({
+        success: false,
+        message: "Your session has expired. Please sign in again.",
+      });
+      return;
+    }
+
+    const user = syncMemberStatusWithFees(findUserByUsername.get(sessionUsername));
+
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        message: "Your session could not be found. Please sign in again.",
+      });
+      return;
+    }
+
+    if (!user.active_member) {
+      res.status(403).json({
+        success: false,
+        message:
+          "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
+      });
+      return;
+    }
 
     res.json({
       success: true,

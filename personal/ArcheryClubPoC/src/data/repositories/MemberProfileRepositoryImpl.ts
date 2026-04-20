@@ -1,12 +1,49 @@
 import { MemberProfileRepository } from "../../domain/repositories/MemberProfileRepository";
+import type {
+  DistanceSignOffInput,
+  DistanceSignOffResult,
+  LoanBowReturnPayload,
+  LoanBowReturnResult,
+  MemberProfileFormInput,
+  MemberProfilePageData,
+  MemberProfileSaveResult,
+  ProfileOptions,
+} from "../../domain/entities/MemberProfile";
 
 type MemberProfileDataSource = {
-  getProfilePageData(actorUsername: string, username: string, signal?: AbortSignal): Promise<unknown>;
-  getProfileOptions(actorUsername: string, signal?: AbortSignal): Promise<unknown>;
-  createProfile(actorUsername: string, profile: unknown): Promise<unknown>;
-  updateProfile(actorUsername: string, username: string, profile: unknown): Promise<unknown>;
-  assignRfidTag(actorUsername: string, username: string, rfidTag: string): Promise<unknown>;
-  returnLoanBow(actorUsername: string, username: string, loanBowReturn: unknown): Promise<unknown>;
+  getProfilePageData(
+    actorUsername: string,
+    username: string,
+    signal?: AbortSignal,
+  ): Promise<MemberProfilePageData>;
+  getProfileOptions(
+    actorUsername: string,
+    signal?: AbortSignal,
+  ): Promise<ProfileOptions>;
+  createProfile(
+    actorUsername: string,
+    profile: MemberProfileFormInput,
+  ): Promise<MemberProfileSaveResult>;
+  updateProfile(
+    actorUsername: string,
+    username: string,
+    profile: MemberProfileFormInput,
+  ): Promise<MemberProfileSaveResult>;
+  assignRfidTag(
+    actorUsername: string,
+    username: string,
+    rfidTag: string,
+  ): Promise<MemberProfileSaveResult>;
+  returnLoanBow(
+    actorUsername: string,
+    username: string,
+    loanBowReturn: LoanBowReturnPayload,
+  ): Promise<LoanBowReturnResult>;
+  signOffDistance(
+    actorUsername: string,
+    username: string,
+    signOff: DistanceSignOffInput,
+  ): Promise<DistanceSignOffResult>;
   getUserProfile(actorUsername: string, username: string, signal?: AbortSignal): Promise<unknown>;
 };
 
@@ -40,6 +77,10 @@ export class MemberProfileRepositoryImpl extends MemberProfileRepository {
 
   async returnLoanBow(actorUsername, username, loanBowReturn) {
     return this.dataSource.returnLoanBow(actorUsername, username, loanBowReturn);
+  }
+
+  async signOffDistance(actorUsername, username, signOff) {
+    return this.dataSource.signOffDistance(actorUsername, username, signOff);
   }
 
   async getUserProfile(actorUsername, username, signal) {

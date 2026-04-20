@@ -1,4 +1,7 @@
 import express from "express";
+import { Buffer } from "node:buffer";
+import crypto from "node:crypto";
+import process from "node:process";
 import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
@@ -14,6 +17,7 @@ import {
   DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
   DEFAULT_EVENT_DURATION_MINUTES,
   DEFAULT_LOAN_ARROW_COUNT,
+  DISTANCE_SIGN_OFF_YARDS,
   EQUIPMENT_CASE_CAPACITY,
   EQUIPMENT_LOCATION_TYPES,
   EQUIPMENT_NUMBER_REQUIRED_TYPES,
@@ -28,6 +32,7 @@ import {
   TOURNAMENT_TYPE_OPTIONS,
 } from "./domain/constants.js";
 import { createDatabase } from "./infrastructure/persistence/createDatabase.js";
+import { createMemberDistanceSignOffRepository } from "./infrastructure/persistence/memberDistanceSignOffRepository.js";
 import { registerTournamentRoutes } from "./presentation/http/registerTournamentRoutes.js";
 import { registerMemberActivityRoutes } from "./presentation/http/registerMemberActivityRoutes.js";
 import { registerScheduleRoutes } from "./presentation/http/registerScheduleRoutes.js";
@@ -37,6 +42,320 @@ import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRo
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
+const memberDistanceSignOffRepository = createMemberDistanceSignOffRepository(db, {
+  allowedDisciplines: ALLOWED_DISCIPLINES,
+  distanceYards: DISTANCE_SIGN_OFF_YARDS,
+});
+const SESSION_COOKIE_NAME = "archeryclubpoc_session";
+const SESSION_MAX_AGE_SECONDS = 8 * 60 * 60;
+const SESSION_SECRET =
+  process.env.SESSION_SECRET ??
+  (serverRuntime.isLive ? null : "archeryclubpoc-development-session-secret");
+const PASSWORD_HASH_ALGORITHM = "scrypt";
+const PASSWORD_SCRYPT_PARAMS = {
+  N: 16384,
+  r: 8,
+  p: 1,
+  keyLength: 64,
+};
+const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_RATE_LIMIT_MAX_ATTEMPTS = 20;
+const AUTH_RATE_LIMIT_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/rfid",
+  "/api/auth/guest-login",
+]);
+const MUTATING_API_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const AUDIT_EXCLUDED_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/rfid",
+  "/api/auth/logout",
+  "/api/auth/guest-login",
+  "/api/auth/rfid/latest-scan",
+]);
+const authRateLimitBuckets = new Map();
+
+if (!SESSION_SECRET) {
+  throw new Error("SESSION_SECRET must be set when running in live mode.");
+}
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16);
+  const hash = crypto.scryptSync(password, salt, PASSWORD_SCRYPT_PARAMS.keyLength, {
+    N: PASSWORD_SCRYPT_PARAMS.N,
+    r: PASSWORD_SCRYPT_PARAMS.r,
+    p: PASSWORD_SCRYPT_PARAMS.p,
+  });
+
+  return [
+    PASSWORD_HASH_ALGORITHM,
+    PASSWORD_SCRYPT_PARAMS.N,
+    PASSWORD_SCRYPT_PARAMS.r,
+    PASSWORD_SCRYPT_PARAMS.p,
+    salt.toString("hex"),
+    hash.toString("hex"),
+  ].join("$");
+}
+
+function isPasswordHash(value) {
+  return typeof value === "string" && value.startsWith(`${PASSWORD_HASH_ALGORITHM}$`);
+}
+
+function verifyPassword(password, storedPassword) {
+  if (!password || !storedPassword) {
+    return false;
+  }
+
+  if (!isPasswordHash(storedPassword)) {
+    const passwordBuffer = Buffer.from(password);
+    const storedPasswordBuffer = Buffer.from(storedPassword);
+
+    return (
+      passwordBuffer.length === storedPasswordBuffer.length &&
+      crypto.timingSafeEqual(passwordBuffer, storedPasswordBuffer)
+    );
+  }
+
+  const [, N, r, p, saltHex, hashHex] = storedPassword.split("$");
+  const storedHash = Buffer.from(hashHex ?? "", "hex");
+
+  if (!saltHex || storedHash.length === 0) {
+    return false;
+  }
+
+  const suppliedHash = crypto.scryptSync(password, Buffer.from(saltHex, "hex"), storedHash.length, {
+    N: Number(N),
+    r: Number(r),
+    p: Number(p),
+  });
+
+  return crypto.timingSafeEqual(storedHash, suppliedHash);
+}
+
+function encodeSessionPayload(payload) {
+  return Buffer.from(JSON.stringify(payload)).toString("base64url");
+}
+
+function signSessionPayload(encodedPayload) {
+  return crypto
+    .createHmac("sha256", SESSION_SECRET)
+    .update(encodedPayload)
+    .digest("base64url");
+}
+
+function createSessionToken(username) {
+  const payload = encodeSessionPayload({
+    username,
+    exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
+  });
+
+  return `${payload}.${signSessionPayload(payload)}`;
+}
+
+function verifySessionToken(token) {
+  const [encodedPayload, signature] = String(token ?? "").split(".");
+
+  if (!encodedPayload || !signature) {
+    return null;
+  }
+
+  const expectedSignature = signSessionPayload(encodedPayload);
+  const signatureBuffer = Buffer.from(signature);
+  const expectedSignatureBuffer = Buffer.from(expectedSignature);
+
+  if (
+    signatureBuffer.length !== expectedSignatureBuffer.length ||
+    !crypto.timingSafeEqual(signatureBuffer, expectedSignatureBuffer)
+  ) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
+
+    if (!payload?.username || payload.exp < Math.floor(Date.now() / 1000)) {
+      return null;
+    }
+
+    return payload.username;
+  } catch {
+    return null;
+  }
+}
+
+function createSessionCookie(username) {
+  const secureFlag = serverRuntime.isLive ? "; Secure" : "";
+
+  return `${SESSION_COOKIE_NAME}=${createSessionToken(username)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MAX_AGE_SECONDS}${secureFlag}`;
+}
+
+function clearSessionCookie() {
+  const secureFlag = serverRuntime.isLive ? "; Secure" : "";
+
+  return `${SESSION_COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secureFlag}`;
+}
+
+function parseCookies(req) {
+  return Object.fromEntries(
+    String(req.headers.cookie ?? "")
+      .split(";")
+      .map((cookie) => cookie.trim().split("="))
+      .filter(([key, value]) => key && value)
+      .map(([key, value]) => [key, decodeURIComponent(value)]),
+  );
+}
+
+function getSessionUsername(req) {
+  return verifySessionToken(parseCookies(req)[SESSION_COOKIE_NAME]);
+}
+
+function getClientIp(req) {
+  const forwardedFor = req.get("x-forwarded-for");
+
+  if (forwardedFor) {
+    return forwardedFor.split(",")[0].trim();
+  }
+
+  return req.ip ?? req.socket?.remoteAddress ?? "unknown";
+}
+
+function pruneAuthRateLimitBuckets(now = Date.now()) {
+  for (const [key, bucket] of authRateLimitBuckets) {
+    if (bucket.resetAt <= now) {
+      authRateLimitBuckets.delete(key);
+    }
+  }
+}
+
+function authRateLimiter(req, res, next) {
+  if (!AUTH_RATE_LIMIT_PATHS.has(req.path)) {
+    next();
+    return;
+  }
+
+  const now = Date.now();
+  pruneAuthRateLimitBuckets(now);
+
+  const attemptedUsername =
+    typeof req.body?.username === "string"
+      ? req.body.username.trim().toLowerCase()
+      : "";
+  const attemptedRfidTag =
+    typeof req.body?.rfidTag === "string"
+      ? req.body.rfidTag.trim().toLowerCase()
+      : "";
+  const key = [
+    req.path,
+    getClientIp(req),
+    attemptedUsername || attemptedRfidTag || "anonymous",
+  ].join(":");
+  const bucket =
+    authRateLimitBuckets.get(key) ?? {
+      count: 0,
+      resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS,
+    };
+
+  bucket.count += 1;
+  authRateLimitBuckets.set(key, bucket);
+
+  if (bucket.count > AUTH_RATE_LIMIT_MAX_ATTEMPTS) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    res.setHeader("Retry-After", String(retryAfterSeconds));
+    res.status(429).json({
+      success: false,
+      message:
+        "Too many sign-in attempts. Please wait a few minutes and try again.",
+    });
+    return;
+  }
+
+  next();
+}
+
+function sanitizeAuditMetadata(value) {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const redactedKeys = new Set(["password", "rfidTag", "archeryGbMembershipNumber"]);
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, entryValue]) => ["string", "number", "boolean"].includes(typeof entryValue))
+      .map(([key, entryValue]) => [
+        key,
+        redactedKeys.has(key) ? "[redacted]" : entryValue,
+      ]),
+  );
+}
+
+function createAuditMiddleware(insertAuditEvent) {
+  return (req, res, next) => {
+    if (
+      !MUTATING_API_METHODS.has(req.method) ||
+      !req.path.startsWith("/api/") ||
+      AUDIT_EXCLUDED_PATHS.has(req.path)
+    ) {
+      next();
+      return;
+    }
+
+    const startedAt = Date.now();
+
+    res.on("finish", () => {
+      const [loggedInDate, loggedInTime] = getUtcTimestampParts();
+
+      try {
+        insertAuditEvent.run({
+          actorUsername: getSessionUsername(req),
+          action: `${req.method} ${req.route?.path ?? req.path}`,
+          target: req.originalUrl.split("?")[0],
+          statusCode: res.statusCode,
+          ipAddress: getClientIp(req),
+          userAgent: req.get("user-agent") ?? null,
+          metadataJson: JSON.stringify({
+            durationMs: Date.now() - startedAt,
+            body: sanitizeAuditMetadata(req.body),
+          }),
+          createdAtDate: loggedInDate,
+          createdAtTime: loggedInTime,
+        });
+      } catch (auditError) {
+        console.error("Failed to record audit event", auditError);
+      }
+    });
+
+    next();
+  };
+}
+
+function apiErrorHandler(error, req, res, next) {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+
+  const statusCode = Number(error?.statusCode ?? error?.status ?? 500);
+  const safeStatusCode =
+    Number.isInteger(statusCode) && statusCode >= 400 && statusCode < 600
+      ? statusCode
+      : 500;
+
+  console.error("Unhandled API error", {
+    method: req.method,
+    path: req.originalUrl,
+    error,
+  });
+
+  res.status(safeStatusCode).json({
+    success: false,
+    message:
+      safeStatusCode >= 500
+        ? "The server could not complete that request."
+        : error?.message ?? "The request could not be completed.",
+  });
+}
+
 const COURSE_PARTICIPANT_USER_TYPES = {
   beginners: "beginner",
   "have-a-go": "have-a-go",
@@ -187,6 +506,22 @@ db.exec(`
 db.exec(LOGIN_EVENTS_TABLE_SQL);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    actor_username TEXT,
+    action TEXT NOT NULL,
+    target TEXT NOT NULL,
+    status_code INTEGER NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    metadata_json TEXT,
+    created_at_date TEXT NOT NULL,
+    created_at_time TEXT NOT NULL,
+    FOREIGN KEY (actor_username) REFERENCES users(username)
+  )
+`);
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS roles (
     role_key TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -237,6 +572,30 @@ db.exec(`
     ),
     PRIMARY KEY (username, discipline),
     FOREIGN KEY (username) REFERENCES users(username)
+  )
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS member_distance_sign_offs (
+    username TEXT NOT NULL,
+    discipline TEXT NOT NULL CHECK (
+      discipline IN (
+        'Long Bow',
+        'Flat Bow',
+        'Bare Bow',
+        'Recurve Bow',
+        'Compound Bow'
+      )
+    ),
+    distance_yards INTEGER NOT NULL CHECK (
+      distance_yards IN (20, 30, 40, 50, 60, 80, 100)
+    ),
+    signed_off_by_username TEXT NOT NULL,
+    signed_off_at_date TEXT NOT NULL,
+    signed_off_at_time TEXT NOT NULL,
+    PRIMARY KEY (username, discipline, distance_yards),
+    FOREIGN KEY (username) REFERENCES users(username),
+    FOREIGN KEY (signed_off_by_username) REFERENCES users(username)
   )
 `);
 
@@ -1927,6 +2286,7 @@ if (existingUserCount === 0) {
   for (const user of serverRuntime.isLive ? liveSeedUsers : seedUsers) {
     upsertUser.run({
       ...user,
+      password: hashPassword(user.password),
       activeMember: user.activeMember ? 1 : 0,
       coachingVolunteer: user.coachingVolunteer ? 1 : 0,
     });
@@ -1956,6 +2316,7 @@ const findUserByCredentials = db.prepare(`
     users.username,
     users.first_name,
     users.surname,
+    users.password,
     users.rfid_tag,
     users.active_member,
     users.membership_fees_due,
@@ -1963,8 +2324,32 @@ const findUserByCredentials = db.prepare(`
     user_types.user_type
   FROM users
   INNER JOIN user_types ON user_types.user_id = users.id
-  WHERE users.username = ? COLLATE NOCASE AND users.password = ?
+  WHERE users.username = ? COLLATE NOCASE
 `);
+
+const updateUserPassword = db.prepare(`
+  UPDATE users
+  SET password = ?
+  WHERE username = ?
+`);
+
+const migrateLegacyPlaintextPasswords = db.transaction(() => {
+  const usersWithPasswords = db
+    .prepare(`
+      SELECT username, password
+      FROM users
+      WHERE password IS NOT NULL AND password <> ''
+    `)
+    .all();
+
+  for (const user of usersWithPasswords) {
+    if (!isPasswordHash(user.password)) {
+      updateUserPassword.run(hashPassword(user.password), user.username);
+    }
+  }
+});
+
+migrateLegacyPlaintextPasswords();
 
 const findUserByRfid = db.prepare(`
   SELECT
@@ -2633,7 +3018,7 @@ const insertBeginnersCourseLesson = db.prepare(`
 const listBeginnersCourseParticipants = db.prepare(`
   SELECT
     beginners_course_participants.*,
-    users.password,
+    users.password IS NOT NULL AND users.password <> '' AS password_set,
     user_types.user_type AS participant_user_type,
     case_item.item_number AS assigned_case_number
   FROM beginners_course_participants
@@ -2649,7 +3034,7 @@ const listBeginnersCourseParticipants = db.prepare(`
 const listBeginnersCourseParticipantsByCourseId = db.prepare(`
   SELECT
     beginners_course_participants.*,
-    users.password,
+    users.password IS NOT NULL AND users.password <> '' AS password_set,
     user_types.user_type AS participant_user_type,
     case_item.item_number AS assigned_case_number
   FROM beginners_course_participants
@@ -3301,6 +3686,31 @@ const insertGuestLoginEvent = db.prepare(`
   VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 
+const insertAuditEvent = db.prepare(`
+  INSERT INTO audit_events (
+    actor_username,
+    action,
+    target,
+    status_code,
+    ip_address,
+    user_agent,
+    metadata_json,
+    created_at_date,
+    created_at_time
+  )
+  VALUES (
+    @actorUsername,
+    @action,
+    @target,
+    @statusCode,
+    @ipAddress,
+    @userAgent,
+    @metadataJson,
+    @createdAtDate,
+    @createdAtTime
+  )
+`);
+
 const findRecentRangeMembers = db.prepare(`
   SELECT
     users.username,
@@ -3443,9 +3853,43 @@ const memberLoginsByDateForUserInRange = db.prepare(`
   GROUP BY usageDate
 `);
 
+const listReportingMemberLogins = db.prepare(`
+  SELECT
+    login_events.id,
+    COALESCE(users.username, login_events.username) AS username,
+    users.first_name,
+    users.surname,
+    login_events.login_method,
+    login_events.logged_in_date,
+    login_events.logged_in_time
+  FROM login_events
+  LEFT JOIN users ON users.id = login_events.user_id
+  WHERE (login_events.logged_in_date || 'T' || login_events.logged_in_time) >= ?
+    AND (login_events.logged_in_date || 'T' || login_events.logged_in_time) < ?
+  ORDER BY login_events.logged_in_date ASC, login_events.logged_in_time ASC, surname ASC, first_name ASC
+`);
+
+const listReportingGuestLogins = db.prepare(`
+  SELECT
+    id,
+    first_name,
+    surname,
+    archery_gb_membership_number,
+    invited_by_username,
+    invited_by_name,
+    logged_in_date,
+    logged_in_time
+  FROM guest_login_events
+  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
+    AND (logged_in_date || 'T' || logged_in_time) < ?
+  ORDER BY logged_in_date ASC, logged_in_time ASC, surname ASC, first_name ASC
+`);
+
 const app = express();
 
 app.use(express.json({ limit: "10mb" }));
+app.use(authRateLimiter);
+app.use(createAuditMiddleware(insertAuditEvent));
 
 function buildMemberUserProfile(user, disciplines = [], meta = {}) {
   const permissions = getPermissionsForRole(user.user_type);
@@ -3918,7 +4362,7 @@ function buildBeginnersCourseDashboard(courseType = "beginners") {
     const beginners = (participantsByCourseId.get(course.id) ?? []).map((participant) => ({
       id: participant.id,
       username: participant.username,
-      password: participant.password,
+      passwordSet: Boolean(participant.password_set),
       userType: participant.participant_user_type,
       firstName: participant.first_name,
       surname: participant.surname,
@@ -4011,8 +4455,7 @@ function buildBeginnersCourseCalendarLessons(courseType = null) {
       (course) =>
         (!requestedCourseType ||
           normalizeCourseType(course.course_type) === requestedCourseType) &&
-        (course.approval_status ?? "pending") === "approved" &&
-        !course.is_cancelled,
+        (course.approval_status ?? "pending") === "approved",
     );
   const lessonsByCourseId = groupRowsBy(
     listBeginnersCourseLessons.all(),
@@ -4058,6 +4501,8 @@ function buildBeginnersCourseCalendarLessons(courseType = null) {
         beginnerCapacity: course.beginner_capacity,
         participantCapacity: course.beginner_capacity,
         placesRemaining: Math.max(course.beginner_capacity - participantCount, 0),
+        isCancelled: Boolean(course.is_cancelled),
+        cancellationReason: course.cancellation_reason ?? "",
       }));
     })
     .sort((left, right) => {
@@ -4941,15 +5386,7 @@ function findScheduleConflict({ date, startTime, endTime, venue = "both" }) {
 }
 
 function getActorUsername(req) {
-  const headerUsername = req.get("x-actor-username");
-  const queryUsername =
-    typeof req.query.actorUsername === "string"
-      ? req.query.actorUsername
-      : null;
-  const bodyUsername =
-    typeof req.body?.actorUsername === "string" ? req.body.actorUsername : null;
-
-  return headerUsername ?? queryUsername ?? bodyUsername ?? null;
+  return getSessionUsername(req);
 }
 
 function getActorUser(req) {
@@ -5582,7 +6019,9 @@ function saveMemberProfile({
     };
   }
 
-  const passwordToSave = trimmedPassword || existingUser?.password || null;
+  const passwordToSave = trimmedPassword
+    ? hashPassword(trimmedPassword)
+    : existingUser?.password || null;
   const provisionalUser = syncMemberStatusWithFees({
     username: existingUser?.username ?? trimmedUsername,
     rfid_tag: trimmedRfidTag || null,
@@ -6065,12 +6504,18 @@ registerAuthRoutes({
   findUserByRfid,
   findUserByUsername,
   getDeactivatedRfidTag,
+  getSessionUsername,
   getUtcTimestampParts,
+  hashPassword,
   insertGuestLoginEvent,
   insertLoginEvent,
   latestRfidScan,
   listAllUsers,
   syncMemberStatusWithFees,
+  clearSessionCookie,
+  createSessionCookie,
+  updateUserPassword,
+  verifyPassword,
 });
 
 registerAdminMemberRoutes({
@@ -6089,6 +6534,7 @@ registerAdminMemberRoutes({
   deleteCommitteeRoleById,
   deleteRoleDefinition,
   deleteRolePermissionsByRoleKey,
+  DISTANCE_SIGN_OFF_YARDS,
   findCommitteeRoleById,
   findCommitteeRoleByKey,
   findDisciplinesByUsername,
@@ -6097,6 +6543,7 @@ registerAdminMemberRoutes({
   findMaxCommitteeRoleDisplayOrder,
   findUserByUsername,
   getActorUser,
+  getUtcTimestampParts,
   getPermissionsForRole,
   insertCommitteeRole,
   insertRolePermission,
@@ -6106,6 +6553,7 @@ registerAdminMemberRoutes({
   listPermissionDefinitions,
   listProfilePageMembers,
   listRoleDefinitions,
+  memberDistanceSignOffRepository,
   PERMISSIONS,
   sanitizeLoanBow,
   sanitizeLoanBowReturn,
@@ -6597,6 +7045,55 @@ app.post("/api/beginners-courses/:id/beginners", (req, res) => {
 
   res.status(201).json({
     success: true,
+    username,
+    temporaryPassword: password,
+    course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === course.id) ?? null,
+  });
+});
+
+app.post("/api/beginners-course-participants/:id/reset-password", (req, res) => {
+  const actor = getActorUser(req);
+  const participant = findBeginnersCourseParticipantById.get(req.params.id);
+
+  if (!participant) {
+    res.status(404).json({
+      success: false,
+      message: "Beginner record not found.",
+    });
+    return;
+  }
+
+  const course = findBeginnersCourseById.get(participant.course_id);
+
+  if (!course) {
+    res.status(404).json({
+      success: false,
+      message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  const courseType = normalizeCourseType(course.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
+
+  if (!actor || !actorHasPermission(actor, coursePermissions.manage)) {
+    res.status(403).json({
+      success: false,
+      message:
+        courseType === "have-a-go"
+          ? "You do not have permission to reset Have a Go participant passwords."
+          : "You do not have permission to reset beginner passwords.",
+    });
+    return;
+  }
+
+  const password = buildBeginnersPassword();
+  updateUserPassword.run(hashPassword(password), participant.username);
+
+  res.json({
+    success: true,
+    username: participant.username,
+    temporaryPassword: password,
     course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === course.id) ?? null,
   });
 });
@@ -7183,6 +7680,7 @@ registerScheduleRoutes({
 registerMemberActivityRoutes({
   addUtcDays,
   app,
+  actorHasPermission,
   buildDisciplinesByUsernameMap,
   buildGuestUserProfile,
   buildMemberUserProfile,
@@ -7195,10 +7693,15 @@ registerMemberActivityRoutes({
   findRecentGuestLogins,
   findRecentRangeMembers,
   getActorUser,
+  listReportingGuestLogins,
+  listReportingMemberLogins,
   listTournaments,
+  PERMISSIONS,
   startOfUtcDay,
   toUtcDateString,
 });
+
+app.use("/api", apiErrorHandler);
 
 startServer({
   app,

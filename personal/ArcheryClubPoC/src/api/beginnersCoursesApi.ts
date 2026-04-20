@@ -47,10 +47,29 @@ export async function addBeginnerToCourse(
   courseId: string | number,
   beginner: Record<string, unknown>,
 ) {
-  return fetchApi<{ success: true }>(`/api/beginners-courses/${courseId}/beginners`, {
+  return fetchApi<{
+    success: true;
+    username: string;
+    temporaryPassword: string;
+  }>(`/api/beginners-courses/${courseId}/beginners`, {
     method: "POST",
     headers: buildActorHeaders(actor, true),
     body: JSON.stringify(beginner),
+    cache: "no-store",
+  });
+}
+
+export async function resetBeginnerPassword(
+  actor: ActorIdentity | string,
+  beginnerId: string | number,
+) {
+  return fetchApi<{
+    success: true;
+    username: string;
+    temporaryPassword: string;
+  }>(`/api/beginners-course-participants/${beginnerId}/reset-password`, {
+    method: "POST",
+    headers: buildActorHeaders(actor, true),
     cache: "no-store",
   });
 }

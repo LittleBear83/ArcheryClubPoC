@@ -2,6 +2,8 @@ import { serverRuntime } from "../config/runtime.js";
 
 export const PERMISSIONS = {
   MANAGE_MEMBERS: "manage_members",
+  MANAGE_MEMBER_DISCIPLINES: "manage_member_disciplines",
+  SIGN_OFF_DISTANCES: "sign_off_distances",
   MANAGE_ROLES_PERMISSIONS: "manage_roles_permissions",
   MANAGE_COMMITTEE_ROLES: "manage_committee_roles",
   ADD_EVENTS: "add_events",
@@ -19,6 +21,7 @@ export const PERMISSIONS = {
   MANAGE_HAVE_A_GO_SESSIONS: "manage_have_a_go_sessions",
   APPROVE_HAVE_A_GO_SESSIONS: "approve_have_a_go_sessions",
   MANAGE_TOURNAMENTS: "manage_tournaments",
+  VIEW_REPORTS: "view_reports",
 };
 
 export const DEACTIVATED_RFID_SUFFIX = "-deactivated";
@@ -28,6 +31,16 @@ export const PERMISSION_DEFINITIONS = [
     key: PERMISSIONS.MANAGE_MEMBERS,
     label: "Manage Members",
     description: "Create and update member profiles.",
+  },
+  {
+    key: PERMISSIONS.MANAGE_MEMBER_DISCIPLINES,
+    label: "Manage Member Disciplines",
+    description: "Update disciplines recorded on member profiles.",
+  },
+  {
+    key: PERMISSIONS.SIGN_OFF_DISTANCES,
+    label: "Sign Off Distances",
+    description: "Record member distance sign-offs by discipline.",
   },
   {
     key: PERMISSIONS.MANAGE_ROLES_PERMISSIONS,
@@ -114,6 +127,11 @@ export const PERMISSION_DEFINITIONS = [
     label: "Manage Tournaments",
     description: "Create, amend, and delete tournaments.",
   },
+  {
+    key: PERMISSIONS.VIEW_REPORTS,
+    label: "View Reports",
+    description: "View and export member and guest attendance reporting.",
+  },
 ];
 
 export const CURRENT_PERMISSION_KEYS = PERMISSION_DEFINITIONS.map(
@@ -164,6 +182,8 @@ export const ALLOWED_DISCIPLINES = [
   "Recurve Bow",
   "Compound Bow",
 ];
+
+export const DISTANCE_SIGN_OFF_YARDS = [20, 30, 40, 50, 60, 80, 100];
 
 export const DEFAULT_LOAN_ARROW_COUNT = 6;
 export const DEFAULT_EVENT_DURATION_MINUTES = 60;

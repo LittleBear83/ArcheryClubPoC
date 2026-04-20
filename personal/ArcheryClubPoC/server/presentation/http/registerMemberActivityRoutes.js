@@ -1,6 +1,7 @@
 export function registerMemberActivityRoutes({
   addUtcDays,
   app,
+  actorHasPermission,
   buildDisciplinesByUsernameMap,
   buildGuestUserProfile,
   buildMemberUserProfile,
@@ -13,7 +14,10 @@ export function registerMemberActivityRoutes({
   findRecentGuestLogins,
   findRecentRangeMembers,
   getActorUser,
+  listReportingGuestLogins,
+  listReportingMemberLogins,
   listTournaments,
+  PERMISSIONS,
   startOfUtcDay,
   toUtcDateString,
 }) {
@@ -296,6 +300,153 @@ export function registerMemberActivityRoutes({
       myCurrentMonth,
       myCurrentWeek,
       myFilteredRange,
+    });
+  });
+
+  app.get("/api/reporting/attendance", (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actorHasPermission(actor, PERMISSIONS.VIEW_REPORTS)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to view reports.",
+      });
+      return;
+    }
+
+    const requestedStart = req.query.start;
+    const requestedEnd = req.query.end;
+    const includeMembers = req.query.members !== "false";
+    const includeGuests = req.query.guests !== "false";
+    const filteredStart = requestedStart
+      ? new Date(`${requestedStart}T00:00:00.000Z`)
+      : startOfUtcDay(new Date());
+    const filteredEndDay = requestedEnd
+      ? new Date(`${requestedEnd}T00:00:00.000Z`)
+      : startOfUtcDay(new Date());
+
+    if (
+      Number.isNaN(filteredStart.getTime()) ||
+      Number.isNaN(filteredEndDay.getTime())
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid start or end date.",
+      });
+      return;
+    }
+
+    if (filteredStart.getTime() > filteredEndDay.getTime()) {
+      res.status(400).json({
+        success: false,
+        message: "Start date cannot be after end date.",
+      });
+      return;
+    }
+
+    if (!includeMembers && !includeGuests) {
+      res.status(400).json({
+        success: false,
+        message: "Select at least one data source.",
+      });
+      return;
+    }
+
+    const filteredEndExclusive = addUtcDays(filteredEndDay, 1);
+    const startIso = filteredStart.toISOString();
+    const endIso = filteredEndExclusive.toISOString();
+    const rows = [];
+
+    if (includeMembers) {
+      rows.push(
+        ...listReportingMemberLogins.all(startIso, endIso).map((member) => ({
+          id: `member-${member.id}`,
+          type: "Member",
+          date: member.logged_in_date,
+          time: member.logged_in_time,
+          name: `${member.first_name ?? ""} ${member.surname ?? ""}`.trim(),
+          username: member.username ?? "",
+          loginMethod: member.login_method ?? "",
+          archeryGbMembershipNumber: "",
+          attendingWith: "",
+          attendingWithUsername: "",
+        })),
+      );
+    }
+
+    if (includeGuests) {
+      rows.push(
+        ...listReportingGuestLogins.all(startIso, endIso).map((guest) => ({
+          id: `guest-${guest.id}`,
+          type: "Guest",
+          date: guest.logged_in_date,
+          time: guest.logged_in_time,
+          name: `${guest.first_name ?? ""} ${guest.surname ?? ""}`.trim(),
+          username: "",
+          loginMethod: "guest",
+          archeryGbMembershipNumber:
+            guest.archery_gb_membership_number ?? "",
+          attendingWith: guest.invited_by_name ?? "",
+          attendingWithUsername: guest.invited_by_username ?? "",
+        })),
+      );
+    }
+
+    rows.sort((left, right) => {
+      const byTimestamp = `${left.date}T${left.time}`.localeCompare(
+        `${right.date}T${right.time}`,
+      );
+
+      return byTimestamp !== 0 ? byTimestamp : left.name.localeCompare(right.name);
+    });
+
+    const dailyMap = new Map();
+
+    for (
+      let date = new Date(filteredStart);
+      date.getTime() < filteredEndExclusive.getTime();
+      date = addUtcDays(date, 1)
+    ) {
+      const usageDate = toUtcDateString(date);
+      dailyMap.set(usageDate, {
+        usageDate,
+        label: String(date.getUTCDate()),
+        fullLabel: usageDate,
+        members: 0,
+        guests: 0,
+        total: 0,
+      });
+    }
+
+    for (const row of rows) {
+      const dailyRow = dailyMap.get(row.date);
+
+      if (!dailyRow) {
+        continue;
+      }
+
+      if (row.type === "Member") {
+        dailyRow.members += 1;
+      } else {
+        dailyRow.guests += 1;
+      }
+
+      dailyRow.total += 1;
+    }
+
+    res.json({
+      success: true,
+      report: {
+        startDate: toUtcDateString(filteredStart),
+        endDate: toUtcDateString(filteredEndDay),
+        includeMembers,
+        includeGuests,
+        total: rows.length,
+        members: rows.filter((row) => row.type === "Member").length,
+        guests: rows.filter((row) => row.type === "Guest").length,
+        daily: [...dailyMap.values()],
+        rows,
+      },
     });
   });
 }

@@ -14,6 +14,25 @@ export type LoanBow = {
   pressureButton: boolean;
 };
 
+export type DistanceSignOff = {
+  username: string;
+  discipline: string;
+  distanceYards: number;
+  signedOffByUsername: string;
+  signedOffByName: string;
+  signedOffAt: string;
+};
+
+export type DistanceSignOffDistance = {
+  distanceYards: number;
+  signOff: DistanceSignOff | null;
+};
+
+export type DistanceSignOffDiscipline = {
+  discipline: string;
+  distances: DistanceSignOffDistance[];
+};
+
 export type EditableMemberProfile = {
   username: string;
   firstName: string;
@@ -26,6 +45,21 @@ export type EditableMemberProfile = {
   userType: string;
   disciplines: string[];
   loanBow: LoanBow;
+  distanceSignOffs?: DistanceSignOffDiscipline[];
+};
+
+export type MemberProfileFormInput = {
+  username?: string;
+  firstName: string;
+  surname: string;
+  password?: string;
+  rfidTag?: string;
+  activeMember?: boolean;
+  membershipFeesDue?: string;
+  coachingVolunteer?: boolean;
+  userType?: string;
+  disciplines?: string[];
+  loanBow?: LoanBow;
 };
 
 export type MemberOption = {
@@ -51,12 +85,19 @@ export type ProfileOptions = {
 export type MemberProfilePageData = {
   editableProfile: EditableMemberProfile;
   equipmentLoans: EquipmentLoan[];
+  disciplines: string[];
+  userTypes: string[];
   userProfile?: unknown;
 };
 
 export type MemberProfileSaveResult = {
   editableProfile: EditableMemberProfile;
   userProfile?: unknown;
+};
+
+export type MemberProfileApiProfileResult = MemberProfileSaveResult & {
+  disciplines: string[];
+  userTypes: string[];
 };
 
 export type LoanBowReturnPayload = {
@@ -73,4 +114,16 @@ export type LoanBowReturnResult = {
     userType: string;
   };
   loanBow: LoanBow;
+};
+
+export type DistanceSignOffInput = {
+  discipline: string;
+  distanceYards: number;
+  memberUsernameConfirmation: string;
+};
+
+export type DistanceSignOffResult = {
+  message?: string;
+  signOff: DistanceSignOff | null;
+  editableProfile: EditableMemberProfile;
 };

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "../components/Button";
+import { DatePicker } from "../components/DatePicker";
 import {
   formatDate,
   formatDateRangeLabel,
@@ -404,21 +405,19 @@ export function RangeUsagePage({ currentUserProfile }) {
 
       <form className="usage-filter-form usage-filter-panel">
         <label>
-          From
-          <input
-            type="date"
+          <DatePicker
+            label="From"
             value={startDate}
-            onChange={(event) => setStartDate(event.target.value)}
+            onChange={setStartDate}
             max={endDate}
           />
         </label>
 
         <label>
-          To
-          <input
-            type="date"
+          <DatePicker
+            label="To"
             value={endDate}
-            onChange={(event) => setEndDate(event.target.value)}
+            onChange={setEndDate}
             min={startDate}
             max={getTodayString()}
           />

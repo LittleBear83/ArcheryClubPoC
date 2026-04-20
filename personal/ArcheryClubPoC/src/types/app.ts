@@ -44,10 +44,12 @@ export type CoachingSession = {
   isBookedOn?: boolean;
   isPendingApproval?: boolean;
   isRejected?: boolean;
+  isCancelled?: boolean;
   isApproved?: boolean;
   canApprove?: boolean;
   approvalStatus?: string;
   rejectionReason?: string;
+  cancellationReason?: string;
   createdAt?: string;
   coach: {
     username: string;
@@ -88,4 +90,6 @@ export type BeginnersCourseCalendarLesson = {
   beginnerCapacity: number;
   participantCapacity?: number;
   placesRemaining: number;
+  isCancelled?: boolean;
+  cancellationReason?: string;
 };

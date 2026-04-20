@@ -13,6 +13,7 @@ import {
   GetMemberProfilePageDataUseCase,
   GetUserProfileUseCase,
   ReturnLoanBowUseCase,
+  SignOffMemberDistanceUseCase,
   UpdateMemberProfileUseCase,
 } from "../application/usecases/MemberProfileUseCases";
 import {
@@ -76,6 +77,9 @@ export function createAppDependencies() {
       memberProfileRepository,
     }),
     returnLoanBowUseCase: new ReturnLoanBowUseCase({
+      memberProfileRepository,
+    }),
+    signOffMemberDistanceUseCase: new SignOffMemberDistanceUseCase({
       memberProfileRepository,
     }),
     getUserProfileUseCase: new GetUserProfileUseCase({

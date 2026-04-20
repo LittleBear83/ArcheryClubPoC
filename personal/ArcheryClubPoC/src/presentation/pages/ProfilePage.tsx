@@ -6,6 +6,7 @@ import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
 import { Modal } from "../components/Modal";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
+import { formatDate, formatDateTime } from "../../utils/dateTime";
 import {
   formatMemberDisplayName,
   formatMemberDisplayUsername,
@@ -47,11 +48,28 @@ export function ProfilePage({
   const [cardIssueSuccess, setCardIssueSuccess] = useState("");
   const [isIssuingCard, setIsIssuingCard] = useState(false);
   const [equipmentLoans, setEquipmentLoans] = useState([]);
+  const [isDistanceSignOffModalOpen, setIsDistanceSignOffModalOpen] =
+    useState(false);
+  const [distanceSignOffForm, setDistanceSignOffForm] = useState({
+    discipline: "",
+    distanceYards: "20",
+    memberUsernameConfirmation: "",
+  });
+  const [distanceSignOffError, setDistanceSignOffError] = useState("");
+  const [isSavingDistanceSignOff, setIsSavingDistanceSignOff] = useState(false);
 
   const canManageMembers = hasPermission(
     currentUserProfile,
     "manage_members",
   );
+  const canSignOffDistances = hasPermission(
+    currentUserProfile,
+    "sign_off_distances",
+  );
+  const canManageMemberDisciplines =
+    canManageMembers ||
+    hasPermission(currentUserProfile, "manage_member_disciplines");
+  const canSelectMembers = canManageMembers || canSignOffDistances;
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const isGuest = currentUserProfile?.accountType === "guest";
   const activeUsername = useMemo(() => {
@@ -59,10 +77,17 @@ export function ProfilePage({
       return "";
     }
 
-    return canManageMembers
+    return canSelectMembers
       ? selectedUsername || currentUserProfile?.auth?.username || ""
       : currentUserProfile?.auth?.username || "";
-  }, [canManageMembers, currentUserProfile, isGuest, selectedUsername]);
+  }, [canSelectMembers, currentUserProfile, isGuest, selectedUsername]);
+  const distanceSignOffOptions = useMemo(
+    () =>
+      editableProfile?.distanceSignOffs?.[0]?.distances.map(
+        (distance) => distance.distanceYards,
+      ) ?? [],
+    [editableProfile?.distanceSignOffs],
+  );
 
   useEffect(() => {
     hasLoadedProfileRef.current = false;
@@ -79,6 +104,9 @@ export function ProfilePage({
     setCardIssueStatus("");
     setCardIssueSuccess("");
     setIsIssuingCard(false);
+    setIsDistanceSignOffModalOpen(false);
+    setDistanceSignOffError("");
+    setIsSavingDistanceSignOff(false);
   }, [currentUserProfile?.auth?.username]);
 
   useEffect(() => {
@@ -116,6 +144,8 @@ export function ProfilePage({
 
         setEditableProfile(result.editableProfile);
         setEquipmentLoans(result.equipmentLoans ?? []);
+        setDisciplineOptions(result.disciplines ?? []);
+        setRoleOptions(result.userTypes ?? []);
         setMessage("");
         hasLoadedProfileRef.current = true;
       } catch (loadError) {
@@ -134,7 +164,7 @@ export function ProfilePage({
 
   const loadProfileOptions = useCallback(
     async (signal) => {
-      if (!canManageMembers || isGuest) {
+      if (!canSelectMembers || isGuest) {
         return;
       }
 
@@ -157,11 +187,11 @@ export function ProfilePage({
         }
       }
     },
-    [actorUsername, canManageMembers, isGuest, memberProfileCrud],
+    [actorUsername, canSelectMembers, isGuest, memberProfileCrud],
   );
 
   useEffect(() => {
-    if (!canManageMembers || isGuest) {
+    if (!canSelectMembers || isGuest) {
       return undefined;
     }
 
@@ -177,7 +207,7 @@ export function ProfilePage({
       abortController.abort();
       window.removeEventListener("profile-data-updated", refreshOptions);
     };
-  }, [canManageMembers, isGuest, loadProfileOptions]);
+  }, [canSelectMembers, isGuest, loadProfileOptions]);
 
   useEffect(() => {
     if (!activeUsername) {
@@ -436,6 +466,65 @@ export function ProfilePage({
     setCardIssueSuccess("");
   };
 
+  const handleOpenDistanceSignOffModal = () => {
+    if (!editableProfile?.disciplines?.length) {
+      setError("Add at least one discipline before signing off a distance.");
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setDistanceSignOffError("");
+    setDistanceSignOffForm({
+      discipline: editableProfile.disciplines[0],
+      distanceYards: "20",
+      memberUsernameConfirmation: "",
+    });
+    setIsDistanceSignOffModalOpen(true);
+  };
+
+  const handleDistanceSignOffChange = (field) => (event) => {
+    setDistanceSignOffForm((current) => ({
+      ...current,
+      [field]: event.target.value,
+    }));
+  };
+
+  const handleSignOffDistance = async (event) => {
+    event.preventDefault();
+
+    if (!editableProfile) {
+      return;
+    }
+
+    setIsSavingDistanceSignOff(true);
+    setDistanceSignOffError("");
+    setError("");
+    setMessage("");
+
+    try {
+      const result = await memberProfileCrud.signOffMemberDistanceUseCase.execute({
+        actorUsername,
+        username: editableProfile.username,
+        signOff: {
+          discipline: distanceSignOffForm.discipline,
+          distanceYards: Number.parseInt(distanceSignOffForm.distanceYards, 10),
+          memberUsernameConfirmation:
+            distanceSignOffForm.memberUsernameConfirmation,
+        },
+      });
+
+      setEditableProfile(result.editableProfile);
+      setMessage(result.message ?? "Distance signed off successfully.");
+      setIsDistanceSignOffModalOpen(false);
+      window.dispatchEvent(new Event("profile-data-updated"));
+    } catch (signOffError) {
+      setDistanceSignOffError(signOffError.message);
+    } finally {
+      setIsSavingDistanceSignOff(false);
+    }
+  };
+
   if (isGuest) {
     return <p>Guest logins do not have an editable member profile.</p>;
   }
@@ -444,8 +533,8 @@ export function ProfilePage({
     <div className="profile-page">
       <p>Manage your member profile and account details.</p>
 
-      {canManageMembers ? (
-        <SectionPanel className="profile-admin-panel" title="Admin Member Update">
+      {canSelectMembers ? (
+        <SectionPanel className="profile-admin-panel" title="Member Selection">
           <LabeledSelect
             label="Select member"
             value={selectedUsername}
@@ -458,7 +547,7 @@ export function ProfilePage({
               </option>
             ))}
           </LabeledSelect>
-          {editableProfile ? (
+          {canManageMembers && editableProfile ? (
             <div className="profile-admin-actions">
               <Button
                 type="button"
@@ -495,6 +584,11 @@ export function ProfilePage({
           isCreatingNew={false}
           isSaving={isSaving || isRefreshingProfile}
           canViewRfidTag={canManageMembers}
+          canEditProfile={
+            canManageMembers ||
+            editableProfile.username === currentUserProfile?.auth?.username
+          }
+          canEditDisciplines={canManageMemberDisciplines}
           onSubmit={handleSave}
           submitLabel={
             isSaving
@@ -504,6 +598,79 @@ export function ProfilePage({
                 : "Save profile"
           }
         />
+      ) : null}
+
+      {editableProfile ? (
+        <SectionPanel className="profile-form" title="Distance Sign Offs">
+          <div className="profile-distance-signoff-header">
+            <p>
+              Signed-off distances are recorded separately for each discipline on
+              the member profile.
+            </p>
+            {canSignOffDistances ? (
+              <Button
+                type="button"
+                className="secondary-button"
+                onClick={handleOpenDistanceSignOffModal}
+                disabled={isInitialLoading || isRefreshingProfile || isSaving}
+                variant="secondary"
+              >
+                Sign off distance
+              </Button>
+            ) : null}
+          </div>
+          <div className="committee-roles-table-wrap">
+            <table className="committee-roles-table profile-distance-signoff-table">
+              <thead>
+                <tr>
+                  <th>Discipline</th>
+                  {distanceSignOffOptions.map((distance) => (
+                    <th key={distance}>{distance} yds</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {editableProfile.distanceSignOffs?.length > 0 ? (
+                  editableProfile.distanceSignOffs.map((disciplineGroup) => (
+                    <tr key={disciplineGroup.discipline}>
+                      <td>{disciplineGroup.discipline}</td>
+                      {distanceSignOffOptions.map((distance) => {
+                        const signOff = disciplineGroup.distances.find(
+                          (entry) => entry.distanceYards === distance,
+                        )?.signOff;
+
+                        return (
+                          <td
+                            key={`${disciplineGroup.discipline}-${distance}`}
+                            className={signOff ? "is-signed-off" : ""}
+                          >
+                            {signOff?.signedOffAt ? (
+                              <span className="profile-distance-signoff-cell">
+                                <strong>{formatDate(signOff.signedOffAt)}</strong>
+                                <span>{signOff.signedOffByName}</span>
+                              </span>
+                            ) : (
+                              <span className="profile-distance-signoff-empty">
+                                -
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={distanceSignOffOptions.length + 1}>
+                      Add a discipline to this profile before recording distance
+                      sign-offs.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </SectionPanel>
       ) : null}
 
       {editableProfile ? (
@@ -523,7 +690,7 @@ export function ProfilePage({
                     <tr key={loan.id}>
                       <td>{loan.typeLabel}</td>
                       <td>{loan.reference || "-"}</td>
-                      <td>{loan.loanDate || "-"}</td>
+                      <td>{loan.loanDate ? formatDateTime(loan.loanDate) : "-"}</td>
                     </tr>
                   ))
                 ) : (
@@ -535,6 +702,91 @@ export function ProfilePage({
             </table>
           </div>
         </SectionPanel>
+      ) : null}
+
+      {editableProfile ? (
+        <Modal
+          open={isDistanceSignOffModalOpen}
+          onClose={() => {
+            if (!isSavingDistanceSignOff) {
+              setIsDistanceSignOffModalOpen(false);
+              setDistanceSignOffError("");
+            }
+          }}
+          title="Sign Off Distance"
+        >
+          <form
+            className="left-align-form profile-distance-signoff-modal"
+            onSubmit={handleSignOffDistance}
+          >
+            <p>
+              The member must enter their username to confirm they are present
+              for this sign-off.
+            </p>
+            <label>
+              Discipline
+              <select
+                value={distanceSignOffForm.discipline}
+                onChange={handleDistanceSignOffChange("discipline")}
+                disabled={isSavingDistanceSignOff}
+                required
+              >
+                {editableProfile.disciplines.map((discipline) => (
+                  <option key={discipline} value={discipline}>
+                    {discipline}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Distance
+              <select
+                value={distanceSignOffForm.distanceYards}
+                onChange={handleDistanceSignOffChange("distanceYards")}
+                disabled={isSavingDistanceSignOff}
+                required
+              >
+                {distanceSignOffOptions.map((distance) => (
+                  <option key={distance} value={distance}>
+                    {distance} yds
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Member username confirmation
+              <input
+                value={distanceSignOffForm.memberUsernameConfirmation}
+                onChange={handleDistanceSignOffChange(
+                  "memberUsernameConfirmation",
+                )}
+                disabled={isSavingDistanceSignOff}
+                placeholder={editableProfile.username}
+                required
+              />
+            </label>
+            {distanceSignOffError ? (
+              <p className="profile-error">{distanceSignOffError}</p>
+            ) : null}
+            <div className="profile-card-issue-actions">
+              <Button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setIsDistanceSignOffModalOpen(false);
+                  setDistanceSignOffError("");
+                }}
+                disabled={isSavingDistanceSignOff}
+                variant="secondary"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSavingDistanceSignOff}>
+                {isSavingDistanceSignOff ? "Signing off..." : "Confirm sign off"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
       ) : null}
 
       {editableProfile ? (

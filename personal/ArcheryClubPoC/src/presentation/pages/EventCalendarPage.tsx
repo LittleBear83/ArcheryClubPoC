@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
 import { Button } from "../components/Button";
+import { DatePicker } from "../components/DatePicker";
 import { SummaryDate } from "../components/SummaryDate";
 import { SummaryList } from "../components/SummaryList";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
@@ -174,6 +175,8 @@ type CalendarEvent = {
   rejectionReason?: string;
   isApproved?: boolean;
   canApprove?: boolean;
+  isCancelled?: boolean;
+  cancellationReason?: string;
 };
 
 type MixedCalendarEvent = CalendarEvent & {
@@ -211,6 +214,11 @@ function getCourseLessonLabel(lesson: BeginnersCourseCalendarLesson) {
 
 function getCourseParticipantLabel(lesson: BeginnersCourseCalendarLesson) {
   return lesson.courseType === "have-a-go" ? "Participants" : "Beginners";
+}
+
+function getCancelledSummary(reason?: string) {
+  const cancellationReason = reason?.trim();
+  return cancellationReason ? ` | Cancelled: ${cancellationReason}` : " | Cancelled";
 }
 
 const eventQueryKeys = {
@@ -416,7 +424,7 @@ export function EventCalendarPage({
           createdEvents.push(result.event);
         } catch (error) {
           failures.push(
-            `${eventDate}: ${error instanceof Error ? error.message : "Unable to save event."}`,
+            `${formatDate(eventDate)}: ${error instanceof Error ? error.message : "Unable to save event."}`,
           );
         }
       }
@@ -571,14 +579,54 @@ export function EventCalendarPage({
       ),
     [selectedScheduleItems],
   );
+  const activeSelectedEvents = useMemo(
+    () => selectedEvents.filter((event) => !event.isRejected && !event.isCancelled),
+    [selectedEvents],
+  );
+  const activeSelectedCoachingSessions = useMemo(
+    () =>
+      selectedCoachingSessions.filter(
+        (session) => !session.isRejected && !session.isCancelled,
+      ),
+    [selectedCoachingSessions],
+  );
+  const activeSelectedBeginnersLessons = useMemo(
+    () => selectedBeginnersLessons.filter((lesson) => !lesson.isCancelled),
+    [selectedBeginnersLessons],
+  );
   const pendingSelectedEvents = useMemo(
     () => selectedEvents.filter((event) => event.isPendingApproval),
     [selectedEvents],
   );
   const rejectedSelectedEvents = useMemo(
-    () => selectedEvents.filter((event) => event.isRejected),
+    () => selectedEvents.filter((event) => event.isRejected && !event.isCancelled),
     [selectedEvents],
   );
+  const rejectedSelectedCoachingSessions = useMemo(
+    () =>
+      selectedCoachingSessions.filter(
+        (session) => session.isRejected && !session.isCancelled,
+      ),
+    [selectedCoachingSessions],
+  );
+  const cancelledSelectedEvents = useMemo(
+    () => selectedEvents.filter((event) => event.isCancelled),
+    [selectedEvents],
+  );
+  const cancelledSelectedCoachingSessions = useMemo(
+    () => selectedCoachingSessions.filter((session) => session.isCancelled),
+    [selectedCoachingSessions],
+  );
+  const cancelledSelectedBeginnersLessons = useMemo(
+    () => selectedBeginnersLessons.filter((lesson) => lesson.isCancelled),
+    [selectedBeginnersLessons],
+  );
+  const hasRejectedSummaryItems =
+    rejectedSelectedEvents.length > 0 || rejectedSelectedCoachingSessions.length > 0;
+  const hasCancelledSummaryItems =
+    cancelledSelectedEvents.length > 0 ||
+    cancelledSelectedCoachingSessions.length > 0 ||
+    cancelledSelectedBeginnersLessons.length > 0;
   const selectedEventDetail = useMemo(
     () => selectedEvents.find((event) => event.id === selectedEventId) ?? null,
     [selectedEventId, selectedEvents],
@@ -783,7 +831,7 @@ export function EventCalendarPage({
           }
         } catch (error) {
           failures.push(
-            `${date}: ${error instanceof Error ? error.message : "Unable to add coaching session."}`,
+            `${formatDate(date)}: ${error instanceof Error ? error.message : "Unable to add coaching session."}`,
           );
         }
       }
@@ -1002,6 +1050,7 @@ export function EventCalendarPage({
                       "calendar-entry-label",
                       getEventTypeDetails(item.type).className,
                       item.isRejected ? "is-rejected" : "",
+                      item.isCancelled ? "is-cancelled" : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
@@ -1018,6 +1067,7 @@ export function EventCalendarPage({
                       "calendar-entry-label",
                       "coaching-session-badge",
                       item.isRejected ? "is-rejected" : "",
+                      item.isCancelled ? "is-cancelled" : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
@@ -1029,7 +1079,15 @@ export function EventCalendarPage({
               }
 
               return (
-                <span className="calendar-entry-label beginners-course-badge">
+                <span
+                  className={[
+                    "calendar-entry-label",
+                    "beginners-course-badge",
+                    item.isCancelled ? "is-cancelled" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
                   {item.courseType === "have-a-go" ? "Have a Go" : "Beginners"}{" "}
                   {getCourseLessonLabel(item).slice(0, 1)}
                   {item.lessonNumber}
@@ -1054,19 +1112,20 @@ export function EventCalendarPage({
                 </p>
               ) : (
                 <>
-                  {selectedEvents.length > 0 ? (
+                  {activeSelectedEvents.length > 0 ? (
                     <>
                       <p className="event-summary-hint">
                         Click on an event for more information and booking options.
                       </p>
                       <div className="event-summary-card-list">
-                        {selectedEvents.map((evt) => (
+                        {activeSelectedEvents.map((evt) => (
                           <Button
                             key={evt.id}
                             type="button"
                             className={[
                               "event-summary-card",
                               evt.isRejected ? "is-rejected" : "",
+                              evt.isCancelled ? "is-cancelled" : "",
                             ]
                               .filter(Boolean)
                               .join(" ")}
@@ -1078,6 +1137,11 @@ export function EventCalendarPage({
                             >
                               {getEventTypeDetails(evt.type).label}
                             </span>
+                            {evt.isCancelled ? (
+                              <span className="event-summary-status-badge is-cancelled">
+                                Cancelled
+                              </span>
+                            ) : null}
                             <strong className="event-summary-card-title">{evt.title}</strong>
                             <span className="event-summary-card-time">
                               {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)}
@@ -1087,7 +1151,10 @@ export function EventCalendarPage({
                               {evt.isBookedOn ? " | Booked on" : ""}
                               {evt.isPendingApproval ? " | Pending approval" : ""}
                               {evt.isRejected ? " | Request rejected" : ""}
-                              {!evt.isBookedOn && hasEventEnded(evt)
+                              {evt.isCancelled
+                                ? getCancelledSummary(evt.cancellationReason)
+                                : ""}
+                              {!evt.isCancelled && !evt.isBookedOn && hasEventEnded(evt)
                                 ? " | Event finished"
                                 : ""}
                             </span>
@@ -1096,17 +1163,18 @@ export function EventCalendarPage({
                       </div>
                     </>
                   ) : null}
-                  {selectedCoachingSessions.length > 0 ? (
+                  {activeSelectedCoachingSessions.length > 0 ? (
                     <>
                       <h4>Coaching sessions</h4>
                       <div className="event-summary-card-list">
-                        {selectedCoachingSessions.map((session) => (
+                        {activeSelectedCoachingSessions.map((session) => (
                           <Button
                             key={session.id}
                             type="button"
                             className={[
                               "event-summary-card",
                               session.isRejected ? "is-rejected" : "",
+                              session.isCancelled ? "is-cancelled" : "",
                             ]
                               .filter(Boolean)
                               .join(" ")}
@@ -1114,6 +1182,11 @@ export function EventCalendarPage({
                             variant="unstyled"
                           >
                             <span className="coaching-session-badge">Coaching session</span>
+                            {session.isCancelled ? (
+                              <span className="event-summary-status-badge is-cancelled">
+                                Cancelled
+                              </span>
+                            ) : null}
                             <strong className="event-summary-card-title">{session.topic}</strong>
                             <span className="event-summary-card-time">
                               {formatClockTime(session.startTime)} to{" "}
@@ -1124,7 +1197,12 @@ export function EventCalendarPage({
                               {session.isBookedOn ? " | Booked on" : ""}
                               {session.isPendingApproval ? " | Pending approval" : ""}
                               {session.isRejected ? " | Request rejected" : ""}
-                              {!session.isBookedOn && hasSessionEnded(session)
+                              {session.isCancelled
+                                ? getCancelledSummary(session.cancellationReason)
+                                : ""}
+                              {!session.isCancelled &&
+                              !session.isBookedOn &&
+                              hasSessionEnded(session)
                                 ? " | Session finished"
                                 : ""}
                             </span>
@@ -1133,15 +1211,28 @@ export function EventCalendarPage({
                       </div>
                     </>
                   ) : null}
-                  {selectedBeginnersLessons.length > 0 ? (
+                  {activeSelectedBeginnersLessons.length > 0 ? (
                     <>
                       <h4>Beginners and Have a Go sessions</h4>
                       <div className="event-summary-card-list">
-                        {selectedBeginnersLessons.map((lesson) => (
-                          <div key={lesson.id} className="event-summary-card">
+                        {activeSelectedBeginnersLessons.map((lesson) => (
+                          <div
+                            key={lesson.id}
+                            className={[
+                              "event-summary-card",
+                              lesson.isCancelled ? "is-cancelled" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                          >
                             <span className="event-type-badge beginners-course-badge">
                               {lesson.title}
                             </span>
+                            {lesson.isCancelled ? (
+                              <span className="event-summary-status-badge is-cancelled">
+                                Cancelled
+                              </span>
+                            ) : null}
                             <strong className="event-summary-card-title">
                               {getCourseLessonLabel(lesson)} {lesson.lessonNumber}
                             </strong>
@@ -1157,6 +1248,148 @@ export function EventCalendarPage({
                               | {getCourseParticipantLabel(lesson)}:{" "}
                               {lesson.participantCount ?? lesson.beginnerCount}/
                               {lesson.participantCapacity ?? lesson.beginnerCapacity}
+                              {lesson.isCancelled
+                                ? getCancelledSummary(lesson.cancellationReason)
+                                : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                  {hasRejectedSummaryItems ? (
+                    <>
+                      <h4 className="event-summary-status-heading">Rejected</h4>
+                      <div className="event-summary-card-list">
+                        {rejectedSelectedEvents.map((evt) => (
+                          <Button
+                            key={evt.id}
+                            type="button"
+                            className="event-summary-card is-rejected"
+                            onClick={() => setSelectedEventId(evt.id)}
+                            variant="unstyled"
+                          >
+                            <span
+                              className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
+                            >
+                              {getEventTypeDetails(evt.type).label}
+                            </span>
+                            <span className="event-summary-status-badge is-rejected">
+                              Rejected
+                            </span>
+                            <strong className="event-summary-card-title">{evt.title}</strong>
+                            <span className="event-summary-card-time">
+                              {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)}
+                            </span>
+                            <span className="event-summary-card-meta">
+                              {getVenueLabel(evt.venue)} | Request rejected
+                              {evt.rejectionReason ? `: ${evt.rejectionReason}` : ""}
+                            </span>
+                          </Button>
+                        ))}
+                        {rejectedSelectedCoachingSessions.map((session) => (
+                          <Button
+                            key={session.id}
+                            type="button"
+                            className="event-summary-card is-rejected"
+                            onClick={() => setSelectedCoachingSessionId(session.id)}
+                            variant="unstyled"
+                          >
+                            <span className="coaching-session-badge">Coaching session</span>
+                            <span className="event-summary-status-badge is-rejected">
+                              Rejected
+                            </span>
+                            <strong className="event-summary-card-title">{session.topic}</strong>
+                            <span className="event-summary-card-time">
+                              {formatClockTime(session.startTime)} to{" "}
+                              {formatClockTime(session.endTime)}
+                            </span>
+                            <span className="event-summary-card-meta">
+                              {getVenueLabel(session.venue)} | Coach: {session.coach.fullName} |
+                              Request rejected
+                              {session.rejectionReason
+                                ? `: ${session.rejectionReason}`
+                                : ""}
+                            </span>
+                          </Button>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                  {hasCancelledSummaryItems ? (
+                    <>
+                      <h4 className="event-summary-status-heading">Cancelled</h4>
+                      <div className="event-summary-card-list">
+                        {cancelledSelectedEvents.map((evt) => (
+                          <Button
+                            key={evt.id}
+                            type="button"
+                            className="event-summary-card is-cancelled"
+                            onClick={() => setSelectedEventId(evt.id)}
+                            variant="unstyled"
+                          >
+                            <span
+                              className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
+                            >
+                              {getEventTypeDetails(evt.type).label}
+                            </span>
+                            <span className="event-summary-status-badge is-cancelled">
+                              Cancelled
+                            </span>
+                            <strong className="event-summary-card-title">{evt.title}</strong>
+                            <span className="event-summary-card-time">
+                              {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)}
+                            </span>
+                            <span className="event-summary-card-meta">
+                              {getVenueLabel(evt.venue)}
+                              {getCancelledSummary(evt.cancellationReason)}
+                            </span>
+                          </Button>
+                        ))}
+                        {cancelledSelectedCoachingSessions.map((session) => (
+                          <Button
+                            key={session.id}
+                            type="button"
+                            className="event-summary-card is-cancelled"
+                            onClick={() => setSelectedCoachingSessionId(session.id)}
+                            variant="unstyled"
+                          >
+                            <span className="coaching-session-badge">Coaching session</span>
+                            <span className="event-summary-status-badge is-cancelled">
+                              Cancelled
+                            </span>
+                            <strong className="event-summary-card-title">{session.topic}</strong>
+                            <span className="event-summary-card-time">
+                              {formatClockTime(session.startTime)} to{" "}
+                              {formatClockTime(session.endTime)}
+                            </span>
+                            <span className="event-summary-card-meta">
+                              {getVenueLabel(session.venue)} | Coach: {session.coach.fullName}
+                              {getCancelledSummary(session.cancellationReason)}
+                            </span>
+                          </Button>
+                        ))}
+                        {cancelledSelectedBeginnersLessons.map((lesson) => (
+                          <div key={lesson.id} className="event-summary-card is-cancelled">
+                            <span className="event-type-badge beginners-course-badge">
+                              {lesson.title}
+                            </span>
+                            <span className="event-summary-status-badge is-cancelled">
+                              Cancelled
+                            </span>
+                            <strong className="event-summary-card-title">
+                              {getCourseLessonLabel(lesson)} {lesson.lessonNumber}
+                            </strong>
+                            <span className="event-summary-card-time">
+                              {formatClockTime(lesson.startTime)} to{" "}
+                              {formatClockTime(lesson.endTime)}
+                            </span>
+                            <span className="event-summary-card-meta">
+                              Coordinator: {lesson.coordinatorName} | Coaches:{" "}
+                              {lesson.coachNames.length > 0
+                                ? lesson.coachNames.join(", ")
+                                : "To be assigned"}
+                              {getCancelledSummary(lesson.cancellationReason)}
                             </span>
                           </div>
                         ))}
@@ -1167,15 +1400,6 @@ export function EventCalendarPage({
               )}
               {pendingSelectedEvents.length > 0 && !canApproveEvents ? (
                 <p>Pending events cannot be booked until approved.</p>
-              ) : null}
-              {rejectedSelectedEvents.some((event) => event.rejectionReason) ? (
-                <p className="event-form-error">
-                  Rejected event note:{" "}
-                  {
-                    rejectedSelectedEvents.find((event) => event.rejectionReason)
-                      ?.rejectionReason
-                  }
-                </p>
               ) : null}
               {bookingMessage && (
                 <p className="event-booking-message">{bookingMessage}</p>
@@ -1269,13 +1493,12 @@ export function EventCalendarPage({
           </label>
           <label>
             Date
-            <input
-              type="date"
+            <DatePicker
               value={newEventDate}
-              onChange={(e) => {
-                setNewEventDate(e.target.value);
-                if (repeatUntilDate < e.target.value) {
-                  setRepeatUntilDate(e.target.value);
+              onChange={(value) => {
+                setNewEventDate(value);
+                if (repeatUntilDate < value) {
+                  setRepeatUntilDate(value);
                 }
               }}
               required
@@ -1386,11 +1609,10 @@ export function EventCalendarPage({
               </div>
               <label>
                 Repeat until
-                <input
-                  type="date"
+                <DatePicker
                   value={repeatUntilDate}
                   min={newEventDate}
-                  onChange={(e) => setRepeatUntilDate(e.target.value)}
+                  onChange={setRepeatUntilDate}
                   required
                 />
               </label>
@@ -1601,13 +1823,12 @@ export function EventCalendarPage({
           </label>
           <label>
             Coaching date
-            <input
-              type="date"
+            <DatePicker
               value={coachingForm.date}
-              onChange={(event) =>
+              onChange={(value) =>
                 setCoachingForm((current) => ({
                   ...current,
-                  date: event.target.value,
+                  date: value,
                 }))
               }
               required
@@ -1692,13 +1913,10 @@ export function EventCalendarPage({
               </div>
               <label>
                 Repeat until
-                <input
-                  type="date"
+                <DatePicker
                   value={coachingRepeatUntilDate}
                   min={coachingForm.date}
-                  onChange={(event) =>
-                    setCoachingRepeatUntilDate(event.target.value)
-                  }
+                  onChange={setCoachingRepeatUntilDate}
                   required
                 />
               </label>

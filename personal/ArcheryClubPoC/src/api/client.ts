@@ -17,9 +17,8 @@ export function buildActorHeaders(
   actor: ActorIdentity | string,
   includeContentType = false,
 ) {
-  const headers: Record<string, string> = {
-    "x-actor-username": getActorUsername(actor),
-  };
+  void getActorUsername(actor);
+  const headers: Record<string, string> = {};
 
   if (includeContentType) {
     headers["Content-Type"] = "application/json";
@@ -32,7 +31,10 @@ export async function fetchApi<T extends ApiEnvelope = ApiEnvelope & Record<stri
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(input, init);
+  const response = await fetch(input, {
+    credentials: "same-origin",
+    ...init,
+  });
   const contentType = response.headers.get("content-type") ?? "";
 
   if (!contentType.includes("application/json")) {

@@ -1,3 +1,6 @@
+import { DatePicker } from "./DatePicker";
+import { formatDate } from "../../utils/dateTime";
+
 const LOAN_BOW_BOOLEAN_FIELDS = [
   { key: "quiver", label: "Quiver" },
   { key: "fingerTab", label: "Finger Tab" },
@@ -54,11 +57,11 @@ export function LoanBowSection({
           </span>
           {loanBow.returnedDate ? (
             <p className="loan-bow-status-copy">
-              Returned on {loanBow.returnedDate}.
+              Returned on {formatDate(loanBow.returnedDate)}.
             </p>
           ) : (
             <p className="loan-bow-status-copy">
-              Loaned out on {loanBow.dateLoaned}.
+              Loaned out on {formatDate(loanBow.dateLoaned)}.
             </p>
           )}
           {showReturnButton ? (
@@ -89,10 +92,11 @@ export function LoanBowSection({
         <div className="profile-form-grid loan-bow-grid">
           <label>
             Date Loaned
-            <input
-              type="date"
+            <DatePicker
               value={loanBow.dateLoaned}
-              onChange={onLoanBowFieldChange("dateLoaned")}
+              onChange={(value) =>
+                onLoanBowFieldChange("dateLoaned")({ target: { value } })
+              }
               disabled={disabled}
               required={showLoanBowDetails}
             />

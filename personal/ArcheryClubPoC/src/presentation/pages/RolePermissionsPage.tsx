@@ -43,6 +43,8 @@ type PermissionGroupKey = keyof typeof PERMISSION_GROUP_METADATA;
 function getPermissionGroup(permissionKey: string): PermissionGroupKey {
   switch (permissionKey) {
     case "manage_members":
+    case "manage_member_disciplines":
+    case "sign_off_distances":
     case "manage_committee_roles":
       return "member-setup";
     case "add_decommission_equipment":
@@ -63,6 +65,7 @@ function getPermissionGroup(permissionKey: string): PermissionGroupKey {
       return "events-coaching";
     case "manage_roles_permissions":
     case "manage_equipment_storage_locations":
+    case "view_reports":
       return "system-admin";
     default:
       return "system-admin";

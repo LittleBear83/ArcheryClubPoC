@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Modal } from "./Modal";
 import { Button } from "./Button";
+import { DatePicker } from "./DatePicker";
 
 const RETURN_ITEM_FIELDS = [
   {
@@ -95,13 +96,12 @@ function LoanBowReturnModalForm({ loanBow, isSaving, error, onClose, onSubmit })
     >
       <label>
         Date Returned
-        <input
-          type="date"
+        <DatePicker
           value={returnForm.returnedDate}
-          onChange={(event) =>
+          onChange={(value) =>
             setReturnForm((current) => ({
               ...current,
-              returnedDate: event.target.value,
+              returnedDate: value,
             }))
           }
           disabled={isSaving}

@@ -123,11 +123,113 @@
   --banner-height: clamp(96px, 14vw, 160px);
   --logo-size: clamp(60px, 8vw, 86px);
   --banner-title-offset: clamp(40px, 6vw, 84px);
+  --table-cell-padding-block: 12px;
+  --table-cell-padding-inline: 14px;
+  --drawer-width: 340px;
+  --app-font-size: 16px;
+  --banner-title-font-size: 2rem;
+  --drawer-font-size: 1.1rem;
+  --dashboard-card-min: 300px;
+  --admin-card-min: 280px;
+  --dense-table-min-width: 760px;
+  --wide-table-min-width: 1120px;
   --shell-width: min(
     var(--page-max-width),
     calc(100vw - (var(--page-gutter) * 2))
   );
   --banner-title-width: min(68%, 24ch);
+}
+
+@media (max-width: 1180px) {
+  :root {
+    --page-max-width: 1040px;
+    --page-gutter: 20px;
+    --section-gap: 20px;
+    --panel-padding: 18px;
+    --control-height: 48px;
+    --touch-target: 48px;
+    --banner-height: 112px;
+    --logo-size: 68px;
+    --banner-title-offset: 48px;
+    --banner-title-width: min(70%, 22ch);
+    --drawer-width: 360px;
+    --app-font-size: 16px;
+    --banner-title-font-size: 1.65rem;
+    --drawer-font-size: 1.08rem;
+    --dashboard-card-min: 280px;
+    --admin-card-min: 260px;
+    --dense-table-min-width: 720px;
+    --wide-table-min-width: 980px;
+  }
+}
+
+@media (min-width: 1500px) {
+  :root {
+    --page-max-width: 1480px;
+    --page-gutter: 28px;
+    --section-gap: 24px;
+    --panel-padding: 22px;
+    --control-height: 48px;
+    --touch-target: 46px;
+    --banner-height: 132px;
+    --logo-size: 78px;
+    --banner-title-offset: 64px;
+    --banner-title-font-size: 2.05rem;
+    --drawer-font-size: 1.12rem;
+    --dashboard-card-min: 320px;
+    --admin-card-min: 300px;
+    --dense-table-min-width: 860px;
+    --wide-table-min-width: 1240px;
+  }
+}
+
+@media (min-width: 1800px) {
+  :root {
+    --page-max-width: 1760px;
+    --page-gutter: 36px;
+    --section-gap: 28px;
+    --panel-padding: 24px;
+    --banner-height: 144px;
+    --logo-size: 86px;
+    --banner-title-offset: 84px;
+    --banner-title-font-size: 2.2rem;
+    --dashboard-card-min: 340px;
+    --admin-card-min: 320px;
+    --dense-table-min-width: 920px;
+    --wide-table-min-width: 1320px;
+  }
+}
+
+@media (min-width: 2500px) {
+  :root {
+    --page-max-width: 2240px;
+    --page-gutter: 48px;
+    --section-gap: 32px;
+    --panel-padding: 28px;
+    --control-height: 56px;
+    --touch-target: 56px;
+    --banner-height: 168px;
+    --logo-size: 104px;
+    --banner-title-offset: 112px;
+    --banner-title-width: min(64%, 26ch);
+    --table-cell-padding-block: 16px;
+    --table-cell-padding-inline: 18px;
+    --drawer-width: 420px;
+    --app-font-size: 17px;
+    --banner-title-font-size: 2.45rem;
+    --drawer-font-size: 1.22rem;
+    --dashboard-card-min: 380px;
+    --admin-card-min: 340px;
+    --dense-table-min-width: 1120px;
+    --wide-table-min-width: 1540px;
+  }
+}
+
+@media (pointer: coarse) {
+  :root {
+    --control-height: max(52px, var(--control-height));
+    --touch-target: max(52px, var(--touch-target));
+  }
 }
 
 :root[data-theme="archery"] {

@@ -9,12 +9,17 @@ afterEach(() => {
 });
 
 test("MemberProfileApi combines profile and equipment loan data", async () => {
-  const requests: Array<{ url: string; headers: Headers }> = [];
+  const requests: Array<{
+    url: string;
+    credentials?: RequestCredentials;
+    headers: Headers;
+  }> = [];
 
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     requests.push({
       url,
+      credentials: init?.credentials,
       headers: new Headers(init?.headers),
     });
 
@@ -53,6 +58,10 @@ test("MemberProfileApi combines profile and equipment loan data", async () => {
       "/api/user-profiles/member-one",
     ],
   );
-  assert.equal(requests[0].headers.get("x-actor-username"), "admin-user");
-  assert.equal(requests[1].headers.get("x-actor-username"), "admin-user");
+  assert.deepEqual(
+    requests.map((request) => request.credentials),
+    ["same-origin", "same-origin"],
+  );
+  assert.equal(requests[0].headers.get("x-actor-username"), null);
+  assert.equal(requests[1].headers.get("x-actor-username"), null);
 });

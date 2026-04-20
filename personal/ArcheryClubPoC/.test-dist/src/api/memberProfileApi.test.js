@@ -11,6 +11,7 @@ test("MemberProfileApi combines profile and equipment loan data", async () => {
         const url = String(input);
         requests.push({
             url,
+            credentials: init?.credentials,
             headers: new Headers(init?.headers),
         });
         if (url.includes("/member-equipment-loans/")) {
@@ -36,6 +37,7 @@ test("MemberProfileApi combines profile and equipment loan data", async () => {
         "/api/member-equipment-loans/member-one",
         "/api/user-profiles/member-one",
     ]);
-    assert.equal(requests[0].headers.get("x-actor-username"), "admin-user");
-    assert.equal(requests[1].headers.get("x-actor-username"), "admin-user");
+    assert.deepEqual(requests.map((request) => request.credentials), ["same-origin", "same-origin"]);
+    assert.equal(requests[0].headers.get("x-actor-username"), null);
+    assert.equal(requests[1].headers.get("x-actor-username"), null);
 });

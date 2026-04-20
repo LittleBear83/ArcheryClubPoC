@@ -43,6 +43,18 @@ export async function loginAsGuest(guestDetails: {
   });
 }
 
+export async function logoutSession() {
+  return fetchApi<{ success: true }>("/api/auth/logout", {
+    method: "POST",
+  });
+}
+
+export async function getCurrentSession() {
+  return fetchApi<{ success: true; userProfile: UserProfile }>("/api/auth/session", {
+    cache: "no-store",
+  });
+}
+
 export async function getLatestRfidScan() {
   return fetchApi<{ success: true; scan?: RfidScan }>("/api/auth/rfid/latest-scan", {
     cache: "no-store",

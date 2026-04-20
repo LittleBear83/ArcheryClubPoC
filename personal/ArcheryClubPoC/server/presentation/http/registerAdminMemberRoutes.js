@@ -13,6 +13,7 @@ export function registerAdminMemberRoutes({
   deleteCommitteeRoleById,
   deleteRoleDefinition,
   deleteRolePermissionsByRoleKey,
+  DISTANCE_SIGN_OFF_YARDS,
   findCommitteeRoleById,
   findCommitteeRoleByKey,
   findDisciplinesByUsername,
@@ -21,6 +22,7 @@ export function registerAdminMemberRoutes({
   findUserByUsername,
   findMaxCommitteeRoleDisplayOrder,
   getActorUser,
+  getUtcTimestampParts,
   getPermissionsForRole,
   insertCommitteeRole,
   listAllUsers,
@@ -40,7 +42,23 @@ export function registerAdminMemberRoutes({
   upsertRole,
   insertRolePermission,
   buildMemberUserProfile,
+  memberDistanceSignOffRepository,
 }) {
+  function buildEditableProfileWithDistanceSignOffs(
+    user,
+    disciplines,
+    loanBow,
+    canViewRfidTag,
+  ) {
+    return {
+      ...buildEditableProfileResponse(user, disciplines, loanBow, canViewRfidTag),
+      distanceSignOffs: memberDistanceSignOffRepository.listByDiscipline(
+        user.username,
+        disciplines,
+      ),
+    };
+  }
+
   app.get("/api/profile-options", (req, res) => {
     const actor = getActorUser(req);
 
@@ -52,7 +70,10 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    if (!actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
+    if (
+      !actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS) &&
+      !actorHasPermission(actor, PERMISSIONS.SIGN_OFF_DISTANCES)
+    ) {
       res.status(403).json({
         success: false,
         message: "You do not have permission to load member options.",
@@ -619,8 +640,12 @@ export function registerAdminMemberRoutes({
       actor,
       PERMISSIONS.MANAGE_MEMBERS,
     );
+    const canSignOffDistances = actorHasPermission(
+      actor,
+      PERMISSIONS.SIGN_OFF_DISTANCES,
+    );
 
-    if (!isSelf && !canManageMembers) {
+    if (!isSelf && !canManageMembers && !canSignOffDistances) {
       res.status(403).json({
         success: false,
         message: "You do not have permission to edit another member profile.",
@@ -645,7 +670,7 @@ export function registerAdminMemberRoutes({
 
     res.json({
       success: true,
-      editableProfile: buildEditableProfileResponse(
+      editableProfile: buildEditableProfileWithDistanceSignOffs(
         user,
         disciplines,
         loanBow,
@@ -747,6 +772,9 @@ export function registerAdminMemberRoutes({
       actor,
       PERMISSIONS.MANAGE_MEMBERS,
     );
+    const canManageMemberDisciplines =
+      canManageMembers ||
+      actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBER_DISCIPLINES);
 
     if (!isSelf && !canManageMembers) {
       res.status(403).json({
@@ -783,7 +811,11 @@ export function registerAdminMemberRoutes({
         ? coachingVolunteer
         : existingUser.coaching_volunteer,
       userType: canManageMembers ? userType : existingUser.user_type,
-      disciplines,
+      disciplines: canManageMemberDisciplines
+        ? disciplines
+        : findDisciplinesByUsername
+            .all(existingUser.username)
+            .map((entry) => entry.discipline),
       loanBow: canManageMembers
         ? loanBow
         : buildLoanBowRecord(findLoanBowByUsername.get(existingUser.username)),
@@ -798,11 +830,105 @@ export function registerAdminMemberRoutes({
     res.json({
       success: true,
       ...result,
-      editableProfile: buildEditableProfileResponse(
+      editableProfile: buildEditableProfileWithDistanceSignOffs(
         findUserByUsername.get(existingUser.username),
         result.editableProfile?.disciplines ?? [],
         findLoanBowByUsername.get(existingUser.username),
         canManageMembers,
+      ),
+    });
+  });
+
+  app.post("/api/user-profiles/:username/distance-sign-offs", (req, res) => {
+    const actor = getActorUser(req);
+    const requestedUsername = req.params.username;
+
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.SIGN_OFF_DISTANCES)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to sign off member distances.",
+      });
+      return;
+    }
+
+    const member = findUserByUsername.get(requestedUsername);
+
+    if (!member) {
+      res.status(404).json({
+        success: false,
+        message: "Member profile not found.",
+      });
+      return;
+    }
+
+    const discipline =
+      typeof req.body?.discipline === "string" ? req.body.discipline.trim() : "";
+    const distanceYards = Number.parseInt(req.body?.distanceYards, 10);
+    const memberUsernameConfirmation =
+      typeof req.body?.memberUsernameConfirmation === "string"
+        ? req.body.memberUsernameConfirmation.trim()
+        : "";
+    const disciplines = findDisciplinesByUsername
+      .all(member.username)
+      .map((entry) => entry.discipline);
+
+    if (!disciplines.includes(discipline)) {
+      res.status(400).json({
+        success: false,
+        message: "Choose a discipline recorded on this member profile.",
+      });
+      return;
+    }
+
+    if (!DISTANCE_SIGN_OFF_YARDS.includes(distanceYards)) {
+      res.status(400).json({
+        success: false,
+        message: "Choose a valid distance to sign off.",
+      });
+      return;
+    }
+
+    if (
+      member.username.localeCompare(memberUsernameConfirmation, undefined, {
+        sensitivity: "accent",
+      }) !== 0
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "The member username confirmation does not match.",
+      });
+      return;
+    }
+
+    const [signedOffAtDate, signedOffAtTime] = getUtcTimestampParts();
+
+    memberDistanceSignOffRepository.upsert({
+      username: member.username,
+      discipline,
+      distanceYards,
+      signedOffByUsername: actor.username,
+      signedOffAtDate,
+      signedOffAtTime,
+    });
+
+    const loanBow = findLoanBowByUsername.get(member.username);
+
+    res.status(201).json({
+      success: true,
+      message: `${discipline} ${distanceYards} yds signed off for ${member.first_name} ${member.surname}.`,
+      signOff:
+        memberDistanceSignOffRepository
+          .listByUsername(member.username)
+          .find(
+            (entry) =>
+              entry.discipline === discipline &&
+              entry.distanceYards === distanceYards,
+          ) ?? null,
+      editableProfile: buildEditableProfileWithDistanceSignOffs(
+        member,
+        disciplines,
+        loanBow,
+        actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS),
       ),
     });
   });

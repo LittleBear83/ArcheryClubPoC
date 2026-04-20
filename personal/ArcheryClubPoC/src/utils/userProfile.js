@@ -21,6 +21,7 @@ const ROLE_PERMISSION_FALLBACKS = {
     "manage_have_a_go_sessions",
     "approve_have_a_go_sessions",
     "manage_tournaments",
+    "view_reports",
   ],
   developer: [
     "manage_members",
@@ -41,6 +42,7 @@ const ROLE_PERMISSION_FALLBACKS = {
     "manage_have_a_go_sessions",
     "approve_have_a_go_sessions",
     "manage_tournaments",
+    "view_reports",
   ],
 };
 

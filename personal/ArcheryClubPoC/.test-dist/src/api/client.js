@@ -2,16 +2,18 @@ export function getActorUsername(actor) {
     return typeof actor === "string" ? actor : actor?.auth?.username ?? "";
 }
 export function buildActorHeaders(actor, includeContentType = false) {
-    const headers = {
-        "x-actor-username": getActorUsername(actor),
-    };
+    void getActorUsername(actor);
+    const headers = {};
     if (includeContentType) {
         headers["Content-Type"] = "application/json";
     }
     return headers;
 }
 export async function fetchApi(input, init) {
-    const response = await fetch(input, init);
+    const response = await fetch(input, {
+        credentials: "same-origin",
+        ...init,
+    });
     const contentType = response.headers.get("content-type") ?? "";
     if (!contentType.includes("application/json")) {
         const responseText = await response.text();

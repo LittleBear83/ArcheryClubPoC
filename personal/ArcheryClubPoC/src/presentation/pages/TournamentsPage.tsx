@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { Button } from "../components/Button";
+import { DatePicker } from "../components/DatePicker";
 import { formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
 
@@ -34,8 +35,8 @@ function buildTournamentCompetitorExport(tournament) {
   const lines = [
     `Tournament: ${tournament.name}`,
     `Type: ${tournament.typeLabel}`,
-    `Registration window: ${tournament.registrationWindow.startDate} to ${tournament.registrationWindow.endDate}`,
-    `Score window: ${tournament.scoreWindow.startDate} to ${tournament.scoreWindow.endDate}`,
+    `Registration window: ${formatDate(tournament.registrationWindow.startDate)} to ${formatDate(tournament.registrationWindow.endDate)}`,
+    `Score window: ${formatDate(tournament.scoreWindow.startDate)} to ${formatDate(tournament.scoreWindow.endDate)}`,
     `Registered competitors: ${tournament.registrationCount}`,
     "",
     "Competing members:",
@@ -609,13 +610,12 @@ export function TournamentsPage({
 
                 <label>
                   Registration opens
-                  <input
-                    type="date"
+                  <DatePicker
                     value={form.registrationStartDate}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setForm((current) => ({
                         ...current,
-                        registrationStartDate: event.target.value,
+                        registrationStartDate: value,
                       }))
                     }
                     required
@@ -624,13 +624,12 @@ export function TournamentsPage({
 
                 <label>
                   Registration closes
-                  <input
-                    type="date"
+                  <DatePicker
                     value={form.registrationEndDate}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setForm((current) => ({
                         ...current,
-                        registrationEndDate: event.target.value,
+                        registrationEndDate: value,
                       }))
                     }
                     required
@@ -639,13 +638,12 @@ export function TournamentsPage({
 
                 <label>
                   Score submission opens
-                  <input
-                    type="date"
+                  <DatePicker
                     value={form.scoreSubmissionStartDate}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setForm((current) => ({
                         ...current,
-                        scoreSubmissionStartDate: event.target.value,
+                        scoreSubmissionStartDate: value,
                       }))
                     }
                     required
@@ -654,13 +652,12 @@ export function TournamentsPage({
 
                 <label>
                   Score submission closes
-                  <input
-                    type="date"
+                  <DatePicker
                     value={form.scoreSubmissionEndDate}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setForm((current) => ({
                         ...current,
-                        scoreSubmissionEndDate: event.target.value,
+                        scoreSubmissionEndDate: value,
                       }))
                     }
                     required
@@ -767,13 +764,12 @@ export function TournamentsPage({
 
                 <label>
                   Registration opens
-                  <input
-                    type="date"
+                  <DatePicker
                     value={createForm.registrationStartDate}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setCreateForm((current) => ({
                         ...current,
-                        registrationStartDate: event.target.value,
+                        registrationStartDate: value,
                       }))
                     }
                     required
@@ -782,13 +778,12 @@ export function TournamentsPage({
 
                 <label>
                   Registration closes
-                  <input
-                    type="date"
+                  <DatePicker
                     value={createForm.registrationEndDate}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setCreateForm((current) => ({
                         ...current,
-                        registrationEndDate: event.target.value,
+                        registrationEndDate: value,
                       }))
                     }
                     required
@@ -797,13 +792,12 @@ export function TournamentsPage({
 
                 <label>
                   Score submission opens
-                  <input
-                    type="date"
+                  <DatePicker
                     value={createForm.scoreSubmissionStartDate}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setCreateForm((current) => ({
                         ...current,
-                        scoreSubmissionStartDate: event.target.value,
+                        scoreSubmissionStartDate: value,
                       }))
                     }
                     required
@@ -812,13 +806,12 @@ export function TournamentsPage({
 
                 <label>
                   Score submission closes
-                  <input
-                    type="date"
+                  <DatePicker
                     value={createForm.scoreSubmissionEndDate}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setCreateForm((current) => ({
                         ...current,
-                        scoreSubmissionEndDate: event.target.value,
+                        scoreSubmissionEndDate: value,
                       }))
                     }
                     required

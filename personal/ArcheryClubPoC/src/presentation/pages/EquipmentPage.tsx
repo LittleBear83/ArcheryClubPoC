@@ -751,45 +751,50 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
               <p className="equipment-meta-copy">
                 Only equipment currently on loan can be booked back in.
               </p>
-              <LabeledSelect
-                label="Loaned item"
-                value={selectedReturnItem ? String(selectedReturnItem.id) : ""}
-                onChange={(event) => setSelectedItemId(event.target.value)}
-                disabled={loanedItems.length === 0}
-              >
-                {loanedItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label} | {item.currentLoan?.memberName}
-                  </option>
-                ))}
-              </LabeledSelect>
-
-              {selectedReturnItem && selectedReturnItem.type !== "case" ? (
+              <div className="equipment-inline-control-grid">
                 <LabeledSelect
-                  label="Return straight into case"
-                  value={returnCaseId}
-                  onChange={(event) => setReturnCaseId(event.target.value)}
+                  className="equipment-inline-control"
+                  label="Loaned item"
+                  value={selectedReturnItem ? String(selectedReturnItem.id) : ""}
+                  onChange={(event) => setSelectedItemId(event.target.value)}
+                  disabled={loanedItems.length === 0}
                 >
-                  <option value="">No, return to cupboard</option>
-                  {cases.map((caseItem) => (
-                    <option key={caseItem.id} value={caseItem.id}>
-                      {caseItem.label}
+                  {loanedItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label} | {item.currentLoan?.memberName}
                     </option>
                   ))}
                 </LabeledSelect>
-              ) : null}
 
-              <LabeledSelect
-                label="Return to storage"
-                value={cupboardLabel}
-                onChange={(event) => setCupboardLabel(event.target.value)}
-              >
-                {cupboardOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </LabeledSelect>
+                {selectedReturnItem && selectedReturnItem.type !== "case" ? (
+                  <LabeledSelect
+                    className="equipment-inline-control"
+                    label="Return straight into case"
+                    value={returnCaseId}
+                    onChange={(event) => setReturnCaseId(event.target.value)}
+                  >
+                    <option value="">No, return to cupboard</option>
+                    {cases.map((caseItem) => (
+                      <option key={caseItem.id} value={caseItem.id}>
+                        {caseItem.label}
+                      </option>
+                    ))}
+                  </LabeledSelect>
+                ) : null}
+
+                <LabeledSelect
+                  className="equipment-inline-control"
+                  label="Return to storage"
+                  value={cupboardLabel}
+                  onChange={(event) => setCupboardLabel(event.target.value)}
+                >
+                  {cupboardOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </LabeledSelect>
+              </div>
 
               <Button
                 type="button"
@@ -806,30 +811,34 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
           {permissions.canUpdateEquipmentStorage ? (
             <div className="equipment-action-card">
               <h3>Update storage</h3>
-              <LabeledSelect
-                label="Stored item"
-                value={selectedItemId}
-                onChange={(event) => setSelectedItemId(event.target.value)}
-                disabled={storageItems.length === 0}
-              >
-                {storageItems.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </LabeledSelect>
+              <div className="equipment-inline-control-grid">
+                <LabeledSelect
+                  className="equipment-inline-control"
+                  label="Stored item"
+                  value={selectedItemId}
+                  onChange={(event) => setSelectedItemId(event.target.value)}
+                  disabled={storageItems.length === 0}
+                >
+                  {storageItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </LabeledSelect>
 
-              <LabeledSelect
-                label="Storage location"
-                value={cupboardLabel}
-                onChange={(event) => setCupboardLabel(event.target.value)}
-              >
-                {cupboardOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </LabeledSelect>
+                <LabeledSelect
+                  className="equipment-inline-control"
+                  label="Storage location"
+                  value={cupboardLabel}
+                  onChange={(event) => setCupboardLabel(event.target.value)}
+                >
+                  {cupboardOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </LabeledSelect>
+              </div>
 
               <Button
                 type="button"
@@ -972,7 +981,8 @@ export function EquipmentPage({ currentUserProfile, equipmentCrud }) {
 
               {caseItem.lastAssignedAt ? (
                 <p className="equipment-meta-copy">
-                  Assigned by {caseItem.lastAssignedBy || "Unknown"} on {caseItem.lastAssignedAt}
+                  Assigned by {caseItem.lastAssignedBy || "Unknown"} on{" "}
+                  {formatShortDateTime(caseItem.lastAssignedAt)}
                 </p>
               ) : null}
 

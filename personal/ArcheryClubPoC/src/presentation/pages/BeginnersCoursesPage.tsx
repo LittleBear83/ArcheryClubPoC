@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
+import { DatePicker } from "../components/DatePicker";
 import { Modal } from "../components/Modal";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import {
@@ -13,6 +14,7 @@ import {
   createHaveAGoSession,
   getBeginnersCoursesDashboard,
   getHaveAGoSessionsDashboard,
+  resetBeginnerPassword,
   updateBeginnerParticipant,
 } from "../../api/beginnersCoursesApi";
 import { formatDate, formatClockTime } from "../../utils/dateTime";
@@ -58,7 +60,7 @@ type CaseOption = {
 type CourseBeginner = {
   id: number;
   username: string;
-  password: string;
+  passwordSet: boolean;
   userType: string;
   firstName: string;
   surname: string;
@@ -355,6 +357,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const [selectedCoachUsernames, setSelectedCoachUsernames] = useState<string[]>([]);
   const [editingBeginner, setEditingBeginner] = useState<CourseBeginner | null>(null);
   const [editBeginnerForm, setEditBeginnerForm] = useState(EMPTY_BEGINNER_FORM);
+  const [temporaryPasswords, setTemporaryPasswords] = useState<Record<string, string>>({});
   const [showCancelledCourses, setShowCancelledCourses] = useState(false);
   const [localCancelledCourses, setLocalCancelledCourses] = useState<CancelledCourseSummary[]>(
     [],
@@ -370,6 +373,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   });
 
   const dashboard = dashboardQuery.data;
+  const dashboardError =
+    dashboardQuery.error instanceof Error ? dashboardQuery.error.message : "";
   const courses = useMemo(() => dashboard?.courses ?? [], [dashboard?.courses]);
   const activeCourses = useMemo(
     () =>
@@ -479,12 +484,32 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       ...EMPTY_BEGINNER_FORM,
       ...beginnerForms[courseId],
     };
-    await mutation.mutateAsync(() => addBeginnerToCourse(currentUserProfile, courseId, form));
-    setMessage(`${copy.participantLabel} added.`);
+    const result = await mutation.mutateAsync(() =>
+      addBeginnerToCourse(currentUserProfile, courseId, form),
+    ) as Awaited<ReturnType<typeof addBeginnerToCourse>>;
+    setTemporaryPasswords((current) => ({
+      ...current,
+      [result.username]: result.temporaryPassword,
+    }));
+    setMessage(`${copy.participantLabel} added. Temporary password is shown in the Password column.`);
     setBeginnerForms((current) => ({
       ...current,
       [courseId]: EMPTY_BEGINNER_FORM,
     }));
+    await refreshDashboard();
+  };
+
+  const resetPassword = async (beginner: CourseBeginner) => {
+    const result = await mutation.mutateAsync(() =>
+      resetBeginnerPassword(currentUserProfile, beginner.id),
+    ) as Awaited<ReturnType<typeof resetBeginnerPassword>>;
+    setTemporaryPasswords((current) => ({
+      ...current,
+      [result.username]: result.temporaryPassword,
+    }));
+    setMessage(
+      `Temporary password generated for ${formatMemberDisplayName(beginner)}.`,
+    );
     await refreshDashboard();
   };
 
@@ -582,6 +607,19 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     await refreshDashboard();
   };
 
+  if (dashboardQuery.isLoading || dashboardQuery.isError) {
+    return (
+      <div className="beginners-course-page">
+        <StatusMessagePanel
+          error={dashboardError}
+          loading={dashboardQuery.isLoading}
+          loadingLabel={copy.loading}
+          success=""
+        />
+      </div>
+    );
+  }
+
   if (!permissions.canManageBeginnersCourses && !permissions.canApproveBeginnersCourses) {
     return <p>{copy.noPermission}</p>;
   }
@@ -593,7 +631,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       </p>
 
       <StatusMessagePanel
-        error={error}
+        error={error || dashboardError}
         loading={dashboardQuery.isLoading}
         loadingLabel={copy.loading}
         success={message}
@@ -624,13 +662,12 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
               </label>
               <label>
                 {copy.firstDateLabel}
-                <input
-                  type="date"
+                <DatePicker
                   value={courseForm.firstLessonDate}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setCourseForm((current) => ({
                       ...current,
-                      firstLessonDate: event.target.value,
+                      firstLessonDate: value,
                     }))
                   }
                 />
@@ -787,7 +824,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                           <tr key={beginner.id}>
                             <td>{formatMemberDisplayName(beginner)}</td>
                             <td>{formatMemberDisplayUsername(beginner)}</td>
-                            <td>{beginner.password}</td>
+                            <td>
+                              {temporaryPasswords[beginner.username] ??
+                                (beginner.passwordSet ? "Set" : "Not set")}
+                            </td>
                             <td>{beginner.sizeCategory === "junior" ? "Jr" : "Snr"}</td>
                             <td>{beginner.initialEmailSent ? "Yes" : "No"}</td>
                             <td>{beginner.thirtyDayReminderSent ? "Yes" : "No"}</td>
@@ -831,6 +871,14 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                             ) : null}
                             <td className="beginners-course-actions-cell">
                               <div className="beginners-course-row-actions">
+                                <Button
+                                  className="beginners-course-row-action-button beginners-course-row-action-button--edit"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => openBeginnerEdit(beginner)}
+                                >
+                                  Edit
+                                </Button>
                                 {usesEquipmentAssignment
                                   ? (() => {
                                       const canConvertBeginner = hasCourseFinished(course);
@@ -846,7 +894,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                       return (
                                         <>
                                           <Button
-                                            className="beginners-course-row-action-button"
+                                            className="beginners-course-row-action-button beginners-course-row-action-button--save"
                                             size="sm"
                                             onClick={() => void saveCaseAssignment(beginner)}
                                           >
@@ -866,14 +914,16 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                       );
                                     })()
                                   : null}
-                                <Button
-                                  className="beginners-course-row-action-button beginners-course-row-action-button--edit"
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => openBeginnerEdit(beginner)}
-                                >
-                                  Edit
-                                </Button>
+                                {permissions.canManageBeginnersCourses ? (
+                                  <Button
+                                    className="beginners-course-row-action-button beginners-course-row-action-button--reset"
+                                    size="sm"
+                                    variant="danger"
+                                    onClick={() => void resetPassword(beginner)}
+                                  >
+                                    Reset password
+                                  </Button>
+                                ) : null}
                               </div>
                             </td>
                           </tr>

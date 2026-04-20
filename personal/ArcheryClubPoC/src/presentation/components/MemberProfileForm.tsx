@@ -1,4 +1,5 @@
 import { Button } from "./Button";
+import { DatePicker } from "./DatePicker";
 
 export function MemberProfileForm({
   editableProfile,
@@ -12,9 +13,14 @@ export function MemberProfileForm({
   isCreatingNew,
   isSaving,
   canViewRfidTag = false,
+  canEditProfile = true,
+  canEditDisciplines = true,
   onSubmit,
   submitLabel,
 }) {
+  const isProfileLocked = isSaving || !canEditProfile;
+  const areDisciplinesLocked = isSaving || !canEditDisciplines;
+
   return (
     <form onSubmit={onSubmit} className="left-align-form profile-form">
       <div className="profile-form-grid">
@@ -23,7 +29,7 @@ export function MemberProfileForm({
           <input
             value={editableProfile.username}
             onChange={handleChange("username")}
-            disabled={!isAdmin || !isCreatingNew || isSaving}
+            disabled={!isAdmin || !isCreatingNew || isProfileLocked}
             required
           />
         </label>
@@ -33,7 +39,7 @@ export function MemberProfileForm({
           <select
             value={editableProfile.userType}
             onChange={handleChange("userType")}
-            disabled={!isAdmin || isSaving}
+            disabled={!isAdmin || isProfileLocked}
           >
             {roleOptions.map((role) => (
               <option key={role} value={role}>
@@ -48,7 +54,7 @@ export function MemberProfileForm({
           <input
             value={editableProfile.firstName}
             onChange={handleChange("firstName")}
-            disabled={isSaving}
+            disabled={isProfileLocked}
             required
           />
         </label>
@@ -58,7 +64,7 @@ export function MemberProfileForm({
           <input
             value={editableProfile.surname}
             onChange={handleChange("surname")}
-            disabled={isSaving}
+            disabled={isProfileLocked}
             required
           />
         </label>
@@ -69,7 +75,7 @@ export function MemberProfileForm({
             type="password"
             value={editableProfile.password}
             onChange={handleChange("password")}
-            disabled={isSaving}
+            disabled={isProfileLocked}
             autoComplete="new-password"
           />
         </label>
@@ -80,7 +86,7 @@ export function MemberProfileForm({
             <input
               value={editableProfile.rfidTag}
               onChange={handleChange("rfidTag")}
-              disabled={isSaving}
+              disabled={isProfileLocked}
             />
           </label>
         ) : null}
@@ -90,7 +96,7 @@ export function MemberProfileForm({
           <select
             value={editableProfile.activeMember ? "active" : "deactive"}
             onChange={handleBooleanSelectChange("activeMember")}
-            disabled={!isAdmin || isSaving}
+            disabled={!isAdmin || isProfileLocked}
           >
             <option value="active">Active</option>
             <option value="deactive">Deactive</option>
@@ -99,11 +105,12 @@ export function MemberProfileForm({
 
         <label>
           Membership fees due
-          <input
-            type="date"
+          <DatePicker
             value={editableProfile.membershipFeesDue}
-            onChange={handleChange("membershipFeesDue")}
-            disabled={!isAdmin || isSaving}
+            onChange={(value) =>
+              handleChange("membershipFeesDue")({ target: { value } })
+            }
+            disabled={!isAdmin || isProfileLocked}
           />
         </label>
       </div>
@@ -116,7 +123,7 @@ export function MemberProfileForm({
               type="checkbox"
               checked={Boolean(editableProfile.coachingVolunteer)}
               onChange={handleBooleanChange("coachingVolunteer")}
-              disabled={isSaving}
+              disabled={isProfileLocked}
             />
             <span>Coaching volunteer</span>
           </label>
@@ -132,7 +139,7 @@ export function MemberProfileForm({
                 type="checkbox"
                 checked={editableProfile.disciplines.includes(discipline)}
                 onChange={() => toggleDiscipline(discipline)}
-                disabled={isSaving}
+                disabled={areDisciplinesLocked}
               />
               <span>{discipline}</span>
             </label>
@@ -140,9 +147,11 @@ export function MemberProfileForm({
         </div>
       </fieldset>
 
-      <Button type="submit" disabled={isSaving}>
-        {submitLabel}
-      </Button>
+      {canEditProfile ? (
+        <Button type="submit" disabled={isSaving}>
+          {submitLabel}
+        </Button>
+      ) : null}
     </form>
   );
 }

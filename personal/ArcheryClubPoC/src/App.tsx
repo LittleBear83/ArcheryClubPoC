@@ -10,9 +10,11 @@ import { Modal } from "./presentation/components/Modal";
 import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
 import {
+  getCurrentSession,
   loginAsGuest,
   loginWithCredentials,
   loginWithRfid,
+  logoutSession,
 } from "./api/authApi";
 import type { UserProfile } from "./types/app";
 import type { AppDependencies } from "./bootstrap/createAppDependencies";
@@ -183,6 +185,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     }
     window.localStorage.removeItem(AUTH_STORAGE_KEY);
     window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    void logoutSession().catch(() => undefined);
     setIsAuthenticated(false);
     setCurrentUserProfile(null);
     void queryClient.invalidateQueries();
@@ -248,12 +251,45 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   const handleRfidLoginEvent = useEffectEvent(async (rfidTag: string) => {
     return handleRfidLogin(rfidTag);
   });
+  const validateServerSessionEvent = useEffectEvent(async () => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    try {
+      const result = await getCurrentSession();
+      const sessionProfile = normalizeUserProfile(result.userProfile);
+      const storedUsername = currentUserProfile?.auth?.username;
+      const sessionUsername = sessionProfile?.auth?.username;
+
+      if (storedUsername && sessionUsername && storedUsername !== sessionUsername) {
+        handleLogout("Your session has changed. Please sign in again.");
+        return;
+      }
+
+      persistAuthenticatedUser(result.userProfile);
+    } catch (error) {
+      handleLogout(
+        error instanceof Error
+          ? error.message
+          : "Your session has expired. Please sign in again.",
+      );
+    }
+  });
 
   useEffect(() => {
     if (isAuthenticated && !currentUserProfile) {
       handleLogout();
     }
   }, [currentUserProfile, handleLogout, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    void validateServerSessionEvent();
+  }, [isAuthenticated]);
 
   useEffect(() => {
     let isActive = true;

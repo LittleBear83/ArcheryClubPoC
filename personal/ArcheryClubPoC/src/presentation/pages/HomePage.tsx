@@ -21,6 +21,7 @@ import { HaveAGoSessionsPage } from "./HaveAGoSessionsPage";
 import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
 import { CommitteeAdminPage } from "./CommitteeAdminPage";
 import { RolePermissionsPage } from "./RolePermissionsPage";
+import { ReportingPage } from "./ReportingPage";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { GeneralInfoPage } from "./GeneralInfoPage";
 import { formatDate } from "../../utils/dateTime";
@@ -55,6 +56,7 @@ type HomePageProps = {
     | "updateMemberProfileUseCase"
     | "assignMemberRfidTagUseCase"
     | "returnLoanBowUseCase"
+    | "signOffMemberDistanceUseCase"
     | "getUserProfileUseCase"
   >;
   roleCrud: Pick<
@@ -140,6 +142,7 @@ const pageTitleMap = {
   profile: "Profile",
   "user-creation": "User Creation",
   "role-permissions": "Roles & Permissions",
+  reporting: "Reporting",
   approvals: "Approvals",
   equipment: "Equipment",
   "beginners-courses": "Beginners Courses",
@@ -161,6 +164,7 @@ const pathToPageId = {
   "/profile": "profile",
   "/user-creation": "user-creation",
   "/role-permissions": "role-permissions",
+  "/reporting": "reporting",
   "/approvals": "approvals",
   "/equipment": "equipment",
   "/beginners-courses": "beginners-courses",
@@ -298,7 +302,7 @@ async function fetchAdminTournamentWarnings(username: string): Promise<string[]>
     }
 
     return [
-      `${tournament.name} registration closes on ${tournament.registrationWindow.endDate} with an uneven field of ${competitorCount} competing members.`,
+      `${tournament.name} registration closes on ${formatDate(tournament.registrationWindow.endDate)} with an uneven field of ${competitorCount} competing members.`,
     ];
   });
 }
@@ -487,7 +491,9 @@ export function HomePage({
       <main
         className={[
           "page-shell",
-          activePage === "role-permissions" ? "page-shell--wide" : "",
+          activePage === "role-permissions" || activePage === "reporting"
+            ? "page-shell--wide"
+            : "",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -529,6 +535,10 @@ export function HomePage({
                   roleCrud={roleCrud}
                 />
               }
+            />
+            <Route
+              path="/reporting"
+              element={<ReportingPage currentUserProfile={currentUserProfile} />}
             />
             <Route
               path="/approvals"

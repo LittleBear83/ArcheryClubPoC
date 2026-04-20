@@ -1,4 +1,23 @@
 import type { MemberProfileRepository } from "../../domain/repositories/MemberProfileRepository";
+import type {
+  DistanceSignOffInput,
+  DistanceSignOffResult,
+  LoanBowReturnPayload,
+  LoanBowReturnResult,
+  MemberProfileFormInput,
+  MemberProfilePageData,
+  MemberProfileSaveResult,
+  ProfileOptions,
+} from "../../domain/entities/MemberProfile";
+
+type ActorUsernameInput = {
+  actorUsername: string;
+};
+
+type ProfileTargetInput = ActorUsernameInput & {
+  username: string;
+  signal?: AbortSignal;
+};
 
 export class GetMemberProfilePageDataUseCase {
   private readonly memberProfileRepository: MemberProfileRepository;
@@ -7,7 +26,11 @@ export class GetMemberProfilePageDataUseCase {
     this.memberProfileRepository = memberProfileRepository;
   }
 
-  async execute({ actorUsername, username, signal }) {
+  async execute({
+    actorUsername,
+    username,
+    signal,
+  }: ProfileTargetInput): Promise<MemberProfilePageData> {
     if (!actorUsername?.trim()) {
       throw new Error("An authenticated member is required.");
     }
@@ -31,7 +54,10 @@ export class GetMemberProfileOptionsUseCase {
     this.memberProfileRepository = memberProfileRepository;
   }
 
-  async execute({ actorUsername, signal }) {
+  async execute({
+    actorUsername,
+    signal,
+  }: ActorUsernameInput & { signal?: AbortSignal }): Promise<ProfileOptions> {
     if (!actorUsername?.trim()) {
       throw new Error("An authenticated member is required.");
     }
@@ -47,7 +73,12 @@ export class CreateMemberProfileUseCase {
     this.memberProfileRepository = memberProfileRepository;
   }
 
-  async execute({ actorUsername, profile }) {
+  async execute({
+    actorUsername,
+    profile,
+  }: ActorUsernameInput & {
+    profile: MemberProfileFormInput;
+  }): Promise<MemberProfileSaveResult> {
     if (!actorUsername?.trim()) {
       throw new Error("An authenticated member is required.");
     }
@@ -71,7 +102,14 @@ export class UpdateMemberProfileUseCase {
     this.memberProfileRepository = memberProfileRepository;
   }
 
-  async execute({ actorUsername, username, profile }) {
+  async execute({
+    actorUsername,
+    username,
+    profile,
+  }: ActorUsernameInput & {
+    username: string;
+    profile: MemberProfileFormInput;
+  }): Promise<MemberProfileSaveResult> {
     if (!actorUsername?.trim()) {
       throw new Error("An authenticated member is required.");
     }
@@ -91,7 +129,14 @@ export class AssignMemberRfidTagUseCase {
     this.memberProfileRepository = memberProfileRepository;
   }
 
-  async execute({ actorUsername, username, rfidTag }) {
+  async execute({
+    actorUsername,
+    username,
+    rfidTag,
+  }: ActorUsernameInput & {
+    username: string;
+    rfidTag: string;
+  }): Promise<MemberProfileSaveResult> {
     if (!actorUsername?.trim()) {
       throw new Error("An authenticated member is required.");
     }
@@ -119,7 +164,14 @@ export class ReturnLoanBowUseCase {
     this.memberProfileRepository = memberProfileRepository;
   }
 
-  async execute({ actorUsername, username, loanBowReturn }) {
+  async execute({
+    actorUsername,
+    username,
+    loanBowReturn,
+  }: ActorUsernameInput & {
+    username: string;
+    loanBowReturn: LoanBowReturnPayload;
+  }): Promise<LoanBowReturnResult> {
     if (!actorUsername?.trim()) {
       throw new Error("An authenticated member is required.");
     }
@@ -136,6 +188,49 @@ export class ReturnLoanBowUseCase {
   }
 }
 
+export class SignOffMemberDistanceUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
+  constructor({ memberProfileRepository }) {
+    this.memberProfileRepository = memberProfileRepository;
+  }
+
+  async execute({
+    actorUsername,
+    username,
+    signOff,
+  }: ActorUsernameInput & {
+    username: string;
+    signOff: DistanceSignOffInput;
+  }): Promise<DistanceSignOffResult> {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!username?.trim()) {
+      throw new Error("A member username is required.");
+    }
+
+    if (!signOff?.discipline?.trim()) {
+      throw new Error("Choose a discipline.");
+    }
+
+    if (!signOff?.distanceYards) {
+      throw new Error("Choose a distance.");
+    }
+
+    if (!signOff?.memberUsernameConfirmation?.trim()) {
+      throw new Error("The member must enter their username to confirm.");
+    }
+
+    return this.memberProfileRepository.signOffDistance(
+      actorUsername,
+      username,
+      signOff,
+    );
+  }
+}
+
 export class GetUserProfileUseCase {
   private readonly memberProfileRepository: MemberProfileRepository;
 
@@ -143,7 +238,7 @@ export class GetUserProfileUseCase {
     this.memberProfileRepository = memberProfileRepository;
   }
 
-  async execute({ actorUsername, username, signal }) {
+  async execute({ actorUsername, username, signal }: ProfileTargetInput) {
     if (!actorUsername?.trim()) {
       throw new Error("An authenticated member is required.");
     }

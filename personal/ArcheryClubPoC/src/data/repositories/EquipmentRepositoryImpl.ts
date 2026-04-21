@@ -18,6 +18,8 @@ type EquipmentDataSource = {
   ): Promise<unknown>;
 };
 
+// Equipment repository groups inventory actions behind one domain contract so
+// pages do not need to know which HTTP endpoints back each action.
 export class EquipmentRepositoryImpl extends EquipmentRepository {
   private readonly dataSource: EquipmentDataSource;
 

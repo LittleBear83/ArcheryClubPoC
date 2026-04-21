@@ -1,14 +1,14 @@
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Button } from "../components/Button";
 import { Modal } from "../components/Modal";
-import { subscribeToRfidScans } from "../../utils/rfidScanHub";
 import { formatMemberDisplayName } from "../../utils/userProfile";
 import { listGuestInviterMembers } from "../../api/authApi";
 import { listRangeMembers } from "../../api/memberApi";
 
 const SIMULATED_RFID_TAG = "7673CF3D";
+const RFID_LOGIN_POLL_INTERVAL_MS = 1500;
 const ENABLE_RFID_SIMULATOR =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_RFID_SIMULATOR === "true";
 
@@ -37,6 +37,7 @@ function getMemberDisplayName(member: RangeMember | ClubMember | null) {
 
 export function LoginPage({
   onGuestLogin,
+  onLatestRfidLogin,
   onLogin,
   onRfidLogin,
   initialMessage = "",
@@ -55,6 +56,8 @@ export function LoginPage({
     useState(false);
   const [error, setError] = useState(initialMessage);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const latestRfidLoginInFlightRef = useRef(false);
+  const latestRfidLoginUnavailableRef = useRef(false);
 
   const guestInviterOptionsQuery = useQuery({
     queryKey: ["guest-inviter-options"],
@@ -71,6 +74,7 @@ export function LoginPage({
         allMembers: (allMembersResult.members ?? []) as ClubMember[],
       };
     },
+    enabled: false,
   });
 
   const rangeMembers = useMemo(
@@ -104,8 +108,40 @@ export function LoginPage({
       setIsSubmitting(false);
     }
   };
-  const attemptRfidLoginEvent = useEffectEvent(async (rfidTag) => {
-    await attemptRfidLogin(rfidTag);
+  const attemptLatestRfidLoginEvent = useEffectEvent(async () => {
+    if (
+      isSubmitting ||
+      latestRfidLoginInFlightRef.current ||
+      latestRfidLoginUnavailableRef.current
+    ) {
+      return;
+    }
+
+    latestRfidLoginInFlightRef.current = true;
+
+    try {
+      const loginResult = await onLatestRfidLogin();
+
+      if (loginResult?.unavailable) {
+        latestRfidLoginUnavailableRef.current = true;
+        return;
+      }
+
+      if (loginResult?.pending) {
+        return;
+      }
+
+      if (!loginResult?.success) {
+        setError(loginResult?.message ?? "Unable to log in with RFID.");
+        return;
+      }
+
+      setError("");
+    } catch {
+      setError("RFID service is unavailable. Make sure the local auth server is running.");
+    } finally {
+      latestRfidLoginInFlightRef.current = false;
+    }
   });
 
   useEffect(() => {
@@ -113,26 +149,25 @@ export function LoginPage({
   }, [initialMessage]);
 
   useEffect(() => {
-    let isActive = true;
-
-    return subscribeToRfidScans(async (scan) => {
-      if (!isActive || isSubmitting || !scan?.rfidTag) {
-        return;
-      }
-
-      if (scan.scanType === "payment-card") {
+    const intervalId = window.setInterval(() => {
+      if (latestRfidLoginUnavailableRef.current) {
+        window.clearInterval(intervalId);
         return;
       }
 
       try {
-        await attemptRfidLoginEvent(scan.rfidTag);
+        void attemptLatestRfidLoginEvent();
       } catch {
-        if (isActive) {
-          setIsSubmitting(false);
-        }
+        setIsSubmitting(false);
       }
-    });
-  }, [isSubmitting]);
+    }, RFID_LOGIN_POLL_INTERVAL_MS);
+
+    void attemptLatestRfidLoginEvent();
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const filteredAllMembers = useMemo(() => {
     const normalizedSearch = memberSearchSurname.trim().toLowerCase();
@@ -376,7 +411,7 @@ export function LoginPage({
                   disabled={isSubmitting}
                 >
                   <option value="">
-                    Select a member currently at the range
+                    Enter inviting member username below
                   </option>
                   {rangeMembers.map((member) => (
                     <option
@@ -397,6 +432,21 @@ export function LoginPage({
                     Inviting member is not on this list
                   </option>
                 </select>
+              </label>
+
+              <label>
+                Inviting member username
+                <input
+                  type="text"
+                  value={selectedInvitingMemberUsername}
+                  onChange={(event) => {
+                    setSelectedInvitingMemberUsername(event.target.value);
+                    setError("");
+                  }}
+                  autoComplete="off"
+                  name="guest-inviting-member-username"
+                  disabled={isSubmitting}
+                />
               </label>
 
               {selectedInvitingMember ? (

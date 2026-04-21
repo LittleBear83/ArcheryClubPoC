@@ -19,6 +19,8 @@ type ProfileTargetInput = ActorUsernameInput & {
   signal?: AbortSignal;
 };
 
+// Use cases are intentionally thin: they validate page-level intent before
+// delegating persistence and transport details to the repository layer.
 export class GetMemberProfilePageDataUseCase {
   private readonly memberProfileRepository: MemberProfileRepository;
 

@@ -11,6 +11,8 @@ export function Modal({
 }) {
   if (!open) return null;
 
+  // Clicks on the overlay close the modal; clicks inside the panel are stopped
+  // so forms and buttons can be used without dismissing their parent dialog.
   const modalContentClassName = ["modal-content", contentClassName]
     .filter(Boolean)
     .join(" ");

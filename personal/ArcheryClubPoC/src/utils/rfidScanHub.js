@@ -9,6 +9,8 @@ let lastSequence = 0;
 let hasVisibilityListener = false;
 
 async function pollLatestScan() {
+  // A single polling loop fans scan updates out to all subscribers, preventing
+  // each component from creating its own RFID API interval.
   if (
     isPolling ||
     subscribers.size === 0 ||

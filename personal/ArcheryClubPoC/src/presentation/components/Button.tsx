@@ -34,6 +34,8 @@ export function Button({
   variant = "primary",
   ...props
 }: ButtonProps) {
+  // One button component owns the shared class contract, while pages can still
+  // pass specialised class names for layout-specific tweaks.
   const classes = [
     "app-button",
     variantClassMap[variant],

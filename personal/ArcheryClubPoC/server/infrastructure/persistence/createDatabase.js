@@ -6,6 +6,8 @@ export function createDatabase({
   databasePath,
   exportsDirectory,
 }) {
+  // Ensure operational directories exist before SQLite opens the database file
+  // or export endpoints try to write generated reports.
   mkdirSync(dataDirectory, { recursive: true });
   mkdirSync(exportsDirectory, { recursive: true });
 

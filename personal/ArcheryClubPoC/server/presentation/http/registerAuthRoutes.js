@@ -2,14 +2,16 @@ export function registerAuthRoutes({
   app,
   buildGuestUserProfile,
   buildMemberUserProfile,
+  clearCsrfCookie,
   clearSessionCookie,
+  createCsrfCookie,
   createSessionCookie,
-  databasePath,
   findDisciplinesByUsername,
   findUserByCredentials,
   findUserByRfid,
   findUserByUsername,
   getDeactivatedRfidTag,
+  getCsrfToken,
   getSessionUsername,
   getUtcTimestampParts,
   hashPassword,
@@ -21,6 +23,19 @@ export function registerAuthRoutes({
   updateUserPassword,
   verifyPassword,
 }) {
+  // Auth routes own session-cookie creation and login-event recording; callers
+  // receive normalized profile payloads for the frontend session snapshot.
+  const setSessionCookies = (req, res, username) => {
+    const csrfToken = getCsrfToken(req);
+
+    res.setHeader("Set-Cookie", [
+      createSessionCookie(username),
+      createCsrfCookie(csrfToken),
+    ]);
+
+    return csrfToken;
+  };
+
   app.post("/api/auth/login", (req, res) => {
     const { username, password } = req.body ?? {};
 
@@ -59,10 +74,11 @@ export function registerAuthRoutes({
     }
 
     insertLoginEvent.run(user.username, "password", ...getUtcTimestampParts());
-    res.setHeader("Set-Cookie", createSessionCookie(user.username));
+    const csrfToken = setSessionCookies(req, res, user.username);
 
     res.json({
       success: true,
+      csrfToken,
       userProfile: buildMemberUserProfile(
         user,
         findDisciplinesByUsername
@@ -105,10 +121,64 @@ export function registerAuthRoutes({
     }
 
     insertLoginEvent.run(user.username, "rfid", ...getUtcTimestampParts());
-    res.setHeader("Set-Cookie", createSessionCookie(user.username));
+    const csrfToken = setSessionCookies(req, res, user.username);
 
     res.json({
       success: true,
+      csrfToken,
+      userProfile: buildMemberUserProfile(
+        user,
+        findDisciplinesByUsername
+          .all(user.username)
+          .map((discipline) => discipline.discipline),
+      ),
+    });
+  });
+
+  app.post("/api/auth/rfid/latest-login", (_req, res) => {
+    const hasUndeliveredScan =
+      latestRfidScan.sequence > latestRfidScan.deliveredSequence;
+
+    if (
+      !hasUndeliveredScan ||
+      !latestRfidScan.rfidTag ||
+      latestRfidScan.scanType === "payment-card"
+    ) {
+      res.json({ success: true, userProfile: null });
+      return;
+    }
+
+    latestRfidScan.deliveredSequence = latestRfidScan.sequence;
+
+    const user =
+      syncMemberStatusWithFees(findUserByRfid.get(latestRfidScan.rfidTag)) ??
+      syncMemberStatusWithFees(
+        findUserByRfid.get(getDeactivatedRfidTag(latestRfidScan.rfidTag)),
+      );
+
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        message: "RFID tag not recognised.",
+      });
+      return;
+    }
+
+    if (!user.active_member) {
+      res.status(403).json({
+        success: false,
+        message:
+          "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
+      });
+      return;
+    }
+
+    insertLoginEvent.run(user.username, "rfid", ...getUtcTimestampParts());
+    const csrfToken = setSessionCookies(_req, res, user.username);
+
+    res.json({
+      success: true,
+      csrfToken,
       userProfile: buildMemberUserProfile(
         user,
         findDisciplinesByUsername
@@ -119,8 +189,15 @@ export function registerAuthRoutes({
   });
 
   app.post("/api/auth/logout", (_req, res) => {
-    res.setHeader("Set-Cookie", clearSessionCookie());
+    res.setHeader("Set-Cookie", [clearSessionCookie(), clearCsrfCookie()]);
     res.json({ success: true });
+  });
+
+  app.get("/api/auth/csrf", (req, res) => {
+    const csrfToken = getCsrfToken(req);
+
+    res.setHeader("Set-Cookie", createCsrfCookie(csrfToken));
+    res.json({ success: true, csrfToken });
   });
 
   app.get("/api/auth/session", (req, res) => {
@@ -164,7 +241,15 @@ export function registerAuthRoutes({
     });
   });
 
-  app.get("/api/auth/rfid/latest-scan", (_req, res) => {
+  app.get("/api/auth/rfid/latest-scan", (req, res) => {
+    if (!getSessionUsername(req)) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
     const hasUndeliveredScan =
       latestRfidScan.sequence > latestRfidScan.deliveredSequence;
 
@@ -247,7 +332,15 @@ export function registerAuthRoutes({
     });
   });
 
-  app.get("/api/guest-inviter-members", (_req, res) => {
+  app.get("/api/guest-inviter-members", (req, res) => {
+    if (!getSessionUsername(req)) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
     res.json({
       success: true,
       members: listAllUsers.all().map((user) => ({
@@ -263,7 +356,6 @@ export function registerAuthRoutes({
   app.get("/api/health", (_req, res) => {
     res.json({
       success: true,
-      databasePath,
     });
   });
 }

@@ -37,6 +37,8 @@ export function registerEquipmentRoutes({
   validateCaseAssignment,
   closeEquipmentLoan,
 }) {
+  // Equipment routes combine storage, assignment, and loan state so a case and
+  // its contents move together through the club inventory workflow.
   const getStorageLocationOptions = () => {
     const labels = listEquipmentStorageLocations.all().map((row) => row.label);
 

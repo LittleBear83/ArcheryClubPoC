@@ -21,6 +21,25 @@ export function registerMemberActivityRoutes({
   startOfUtcDay,
   toUtcDateString,
 }) {
+  const RANGE_USAGE_MAX_DAYS = 93;
+  const REPORTING_MAX_DAYS = 366;
+
+  const getInclusiveDayCount = (startDate, endDate) => {
+    return Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
+  };
+
+  const rejectDateRangeIfTooLong = (res, startDate, endDate, maxDays) => {
+    if (getInclusiveDayCount(startDate, endDate) <= maxDays) {
+      return false;
+    }
+
+    res.status(400).json({
+      success: false,
+      message: `Date range cannot be longer than ${maxDays} days.`,
+    });
+    return true;
+  };
+
   app.get("/api/my-coaching-bookings", (req, res) => {
     const actor = getActorUser(req);
 
@@ -155,7 +174,17 @@ export function registerMemberActivityRoutes({
     });
   });
 
-  app.get("/api/range-members", (_req, res) => {
+  app.get("/api/range-members", (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
     const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
     const disciplinesByUsername = buildDisciplinesByUsernameMap();
     const members = findRecentRangeMembers.all(cutoff).map((member) =>
@@ -199,6 +228,15 @@ export function registerMemberActivityRoutes({
 
   app.get("/api/range-usage-dashboard", (req, res) => {
     const actor = getActorUser(req);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
     const now = new Date();
     const currentMonthStart = new Date(
       Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
@@ -237,6 +275,17 @@ export function registerMemberActivityRoutes({
         success: false,
         message: "Start date cannot be after end date.",
       });
+      return;
+    }
+
+    if (
+      rejectDateRangeIfTooLong(
+        res,
+        filteredStart,
+        filteredEndDay,
+        RANGE_USAGE_MAX_DAYS,
+      )
+    ) {
       return;
     }
 
@@ -341,6 +390,17 @@ export function registerMemberActivityRoutes({
         success: false,
         message: "Start date cannot be after end date.",
       });
+      return;
+    }
+
+    if (
+      rejectDateRangeIfTooLong(
+        res,
+        filteredStart,
+        filteredEndDay,
+        REPORTING_MAX_DAYS,
+      )
+    ) {
       return;
     }
 

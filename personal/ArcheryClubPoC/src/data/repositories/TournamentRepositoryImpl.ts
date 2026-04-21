@@ -18,6 +18,8 @@ type TournamentDataSource = {
   ): Promise<unknown>;
 };
 
+// Tournament repository keeps the domain-facing method names stable while the
+// API module owns endpoint paths and request formatting.
 export class TournamentRepositoryImpl extends TournamentRepository {
   private readonly dataSource: TournamentDataSource;
 

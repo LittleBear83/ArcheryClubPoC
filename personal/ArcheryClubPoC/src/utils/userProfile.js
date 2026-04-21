@@ -52,6 +52,8 @@ const ROLE_DISPLAY_SUFFIXES = {
   "have-a-go": " - (HAGS)",
 };
 
+// User profile helpers accept both old server row shapes and newer normalized
+// shapes so pages can gradually move to the same frontend-facing model.
 export function isBeginnerRole(role) {
   return role === "beginner";
 }

@@ -28,6 +28,15 @@ export async function loginWithRfid(rfidTag: string) {
   });
 }
 
+export async function loginWithLatestRfidScan() {
+  return fetchApi<{ success: true; userProfile: UserProfile | null }>(
+    "/api/auth/rfid/latest-login",
+    {
+      method: "POST",
+    },
+  );
+}
+
 export async function loginAsGuest(guestDetails: {
   firstName: string;
   surname: string;

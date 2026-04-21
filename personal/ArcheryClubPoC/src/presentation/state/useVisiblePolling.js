@@ -4,6 +4,8 @@ export function useVisiblePolling(
   callback,
   { enabled = true, intervalMs = 60000 } = {},
 ) {
+  // Runs polling only while the tab is visible, then refreshes immediately when
+  // the user returns so stale dashboards catch up without background churn.
   const runPolledCallback = useEffectEvent(() => {
     callback();
   });

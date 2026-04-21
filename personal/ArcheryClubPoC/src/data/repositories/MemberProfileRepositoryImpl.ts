@@ -47,6 +47,8 @@ type MemberProfileDataSource = {
   getUserProfile(actorUsername: string, username: string, signal?: AbortSignal): Promise<unknown>;
 };
 
+// Repository implementations adapt domain contracts to the current data source.
+// They are pass-through today, but keep pages insulated from transport changes.
 export class MemberProfileRepositoryImpl extends MemberProfileRepository {
   private readonly dataSource: MemberProfileDataSource;
 

@@ -50,6 +50,8 @@ test("MemberProfileApi combines profile and equipment loan data", async () => {
     editableProfile: { username: "member-one" },
     userProfile: { auth: { username: "member-one" } },
     equipmentLoans: [{ id: 7 }],
+    disciplines: [],
+    userTypes: [],
   });
   assert.deepEqual(
     requests.map((request) => request.url).sort(),

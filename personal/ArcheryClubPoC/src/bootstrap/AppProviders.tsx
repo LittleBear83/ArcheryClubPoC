@@ -8,6 +8,8 @@ import { queryClient } from "../lib/queryClient";
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <StrictMode>
+      {/* Shared app providers live here so the rest of the tree can focus on
+         feature wiring instead of global React infrastructure. */}
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>{children}</ThemeProvider>
       </QueryClientProvider>

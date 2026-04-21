@@ -1,5 +1,7 @@
 import type { EquipmentRepository } from "../../domain/repositories/EquipmentRepository";
 
+// Equipment use cases centralise permission-neutral validation before the API
+// layer performs the server-side permission checks and database updates.
 export class GetEquipmentDashboardUseCase {
   private readonly equipmentRepository: EquipmentRepository;
 

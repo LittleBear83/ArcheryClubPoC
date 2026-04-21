@@ -43,6 +43,8 @@ import {
 } from "../application/usecases/EquipmentUseCases";
 
 export function createAppDependencies() {
+  // Wire the frontend in layers: HTTP APIs -> repositories -> application use
+  // cases. Components receive use cases instead of constructing transport code.
   const memberProfileApi = new MemberProfileApi();
   const roleApi = new RoleApi();
   const tournamentCrudApi = new TournamentCrudApi();

@@ -14,6 +14,10 @@ const databasePath =
   path.join(dataDirectory, isLive ? "auth.live.sqlite" : "auth.sqlite");
 const distDirectory = path.join(serverRootDirectory, "..", "dist");
 const port = Number(process.env.PORT ?? 3001);
+const trustProxyValue = process.env.TRUST_PROXY ?? process.env.ARCHERY_TRUST_PROXY ?? "";
+const headersTimeoutMs = Number(process.env.HEADERS_TIMEOUT_MS ?? 65000);
+const keepAliveTimeoutMs = Number(process.env.KEEP_ALIVE_TIMEOUT_MS ?? 5000);
+const requestTimeoutMs = Number(process.env.REQUEST_TIMEOUT_MS ?? 30000);
 const rfidReaderNames = [
   process.env.RFID_READER_NAME,
   "ACS ACR122U PICC Interface 0",
@@ -21,6 +25,28 @@ const rfidReaderNames = [
   "ACR122 Smart Card Reader",
 ].filter(Boolean);
 
+function parseTrustProxy(value) {
+  const normalizedValue = String(value ?? "").trim().toLowerCase();
+
+  if (!normalizedValue || normalizedValue === "false" || normalizedValue === "0") {
+    return false;
+  }
+
+  if (normalizedValue === "true") {
+    return true;
+  }
+
+  const numericValue = Number.parseInt(normalizedValue, 10);
+
+  if (String(numericValue) === normalizedValue) {
+    return numericValue;
+  }
+
+  return value;
+}
+
+// Collect runtime settings in one export so server startup, database setup, and
+// hardware integrations read the same environment-derived configuration.
 export const serverRuntime = {
   dataDirectory,
   databasePath,
@@ -29,5 +55,9 @@ export const serverRuntime = {
   appMode,
   isLive,
   port,
+  headersTimeoutMs,
+  keepAliveTimeoutMs,
+  requestTimeoutMs,
   rfidReaderNames,
+  trustProxy: parseTrustProxy(trustProxyValue),
 };

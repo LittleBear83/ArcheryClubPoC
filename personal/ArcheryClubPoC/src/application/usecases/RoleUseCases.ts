@@ -1,5 +1,7 @@
 import type { RoleRepository } from "../../domain/repositories/RoleRepository";
 
+// Role use cases keep role-management screens from calling repositories with
+// missing actor or role identifiers.
 export class GetRolesSnapshotUseCase {
   private readonly roleRepository: RoleRepository;
 

@@ -1,5 +1,7 @@
 import type { TournamentRepository } from "../../domain/repositories/TournamentRepository";
 
+// Tournament use cases define the frontend contract for setup, registration,
+// withdrawal, and score submission flows.
 export class ListTournamentsUseCase {
   private readonly tournamentRepository: TournamentRepository;
 

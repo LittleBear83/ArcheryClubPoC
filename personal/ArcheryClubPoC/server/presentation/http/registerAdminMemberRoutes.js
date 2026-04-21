@@ -349,6 +349,10 @@ export function registerAdminMemberRoutes({
     return typeof value === "string" ? value.trim() : fallback;
   }
 
+  const MAX_COMMITTEE_PHOTO_DATA_URL_LENGTH = 1_000_000;
+  const COMMITTEE_PHOTO_DATA_URL_PATTERN =
+    /^data:image\/(?:png|jpeg|jpg|webp);base64,[a-z0-9+/=]+$/i;
+
   function normalizeCommitteeRolePhotoDataUrl(value) {
     if (typeof value !== "string") {
       return null;
@@ -360,7 +364,14 @@ export function registerAdminMemberRoutes({
       return null;
     }
 
-    return trimmedValue.startsWith("data:image/") ? trimmedValue : null;
+    if (
+      trimmedValue.length > MAX_COMMITTEE_PHOTO_DATA_URL_LENGTH ||
+      !COMMITTEE_PHOTO_DATA_URL_PATTERN.test(trimmedValue)
+    ) {
+      return null;
+    }
+
+    return trimmedValue;
   }
 
   function buildUniqueCommitteeRoleKey(title) {

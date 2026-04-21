@@ -14,6 +14,8 @@ type RoleDataSource = {
   deleteRole(actorUsername: string, roleKey: string): Promise<void>;
 };
 
+// Role repository responses are normalized so screens can work with arrays even
+// if the underlying endpoint omits an optional collection.
 export class RoleRepositoryImpl extends RoleRepository {
   private readonly dataSource: RoleDataSource;
 

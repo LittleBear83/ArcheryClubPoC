@@ -13,6 +13,7 @@ import {
   getCurrentSession,
   loginAsGuest,
   loginWithCredentials,
+  loginWithLatestRfidScan,
   loginWithRfid,
   logoutSession,
 } from "./api/authApi";
@@ -89,6 +90,8 @@ function PaymentCardModal({
 }
 
 function App({ dependencies }: { dependencies: AppDependencies }) {
+  // The app keeps a local session snapshot for fast reloads, then verifies it
+  // against the server and refreshes the canonical member profile after login.
   const inactivityTimeoutRef = useRef<number | null>(null);
   const lastActivityAtRef = useRef(Date.now());
   const queryClient = useQueryClient();
@@ -108,6 +111,8 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   });
 
   const handlePaymentCardModalClose = () => {
+    // Demo payment cards intentionally use a two-step message: the first close
+    // reveals the warning, the second close dismisses the modal.
     setPaymentCardModal((current) => {
       if (current.message === PAYMENT_CARD_WARNING_MESSAGE) {
         return {
@@ -125,6 +130,8 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   };
 
   const persistAuthenticatedUser = (userProfile: unknown) => {
+    // Normalize before persisting so old API shapes and current API shapes are
+    // read consistently by the rest of the frontend.
     const storedUserProfile = normalizeUserProfile(userProfile);
 
     lastActivityAtRef.current = Date.now();
@@ -200,6 +207,44 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       return {
         success: true,
         username: result.userProfile.auth.username,
+      };
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "RFID service is unavailable. Make sure the local auth server is running.";
+
+      if (
+        message.includes("/api/auth/rfid/latest-login") ||
+        message.includes("Cannot POST /api/auth/rfid/latest-login")
+      ) {
+        return {
+          success: false,
+          pending: true,
+          unavailable: true,
+        };
+      }
+
+      return {
+        success: false,
+        message,
+      };
+    }
+  };
+
+  const handleLatestRfidLogin = async () => {
+    try {
+      const result = await loginWithLatestRfidScan();
+
+      if (!result.userProfile) {
+        return { success: false, pending: true };
+      }
+
+      const storedUserProfile = normalizeUserProfile(result.userProfile);
+      persistAuthenticatedUser(storedUserProfile);
+
+      return {
+        success: true,
+        username: storedUserProfile.auth.username,
       };
     } catch (error) {
       return {
@@ -292,6 +337,10 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      return undefined;
+    }
+
     let isActive = true;
 
     const unsubscribe = subscribeToRfidScans((scan) => {
@@ -310,7 +359,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       isActive = false;
       unsubscribe();
     };
-  }, []);
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -359,6 +408,8 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       return undefined;
     }
 
+    // Any authenticated interaction resets the idle timer; expiry signs the
+    // local user out and asks the server to clear the cookie-backed session.
     const resetInactivityTimeout = () => {
       lastActivityAtRef.current = Date.now();
 
@@ -403,6 +454,8 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       return undefined;
     }
 
+    // RFID scans can hand the kiosk over to another member only after a short
+    // idle window, which avoids replacing an actively used session mid-action.
     let isActive = true;
     let isHandingOff = false;
 
@@ -444,6 +497,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       <>
         <LoginPage
           onGuestLogin={handleGuestLogin}
+          onLatestRfidLogin={handleLatestRfidLogin}
           onLogin={handleLogin}
           onRfidLogin={handleRfidLogin}
           initialMessage={loginMessage}

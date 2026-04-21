@@ -1,4 +1,5 @@
 import express from "express";
+import helmet from "helmet";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 import process from "node:process";
@@ -7,6 +8,8 @@ import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { startServer } from "./bootstrap/startServer.js";
 import { serverRuntime } from "./config/runtime.js";
+import { createCsrfProtection } from "./security/csrf.js";
+import { createRateLimiter } from "./security/rateLimit.js";
 import {
   ALLOWED_DISCIPLINES,
   COMMITTEE_ROLE_SEED,
@@ -33,6 +36,10 @@ import {
 } from "./domain/constants.js";
 import { createDatabase } from "./infrastructure/persistence/createDatabase.js";
 import { createMemberDistanceSignOffRepository } from "./infrastructure/persistence/memberDistanceSignOffRepository.js";
+import {
+  createSecurityEventLogger,
+  logServerError,
+} from "./observability/securityEventLogger.js";
 import { registerTournamentRoutes } from "./presentation/http/registerTournamentRoutes.js";
 import { registerMemberActivityRoutes } from "./presentation/http/registerMemberActivityRoutes.js";
 import { registerScheduleRoutes } from "./presentation/http/registerScheduleRoutes.js";
@@ -60,12 +67,22 @@ const PASSWORD_SCRYPT_PARAMS = {
 };
 const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_RATE_LIMIT_MAX_ATTEMPTS = 20;
+const GLOBAL_API_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const GLOBAL_API_RATE_LIMIT_MAX_REQUESTS = 300;
+const GENERAL_JSON_BODY_LIMIT = "256kb";
+const COMMITTEE_PHOTO_JSON_BODY_LIMIT = "1mb";
 const AUTH_RATE_LIMIT_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/rfid",
   "/api/auth/guest-login",
 ]);
 const MUTATING_API_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const CSRF_EXCLUDED_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/rfid",
+  "/api/auth/rfid/latest-login",
+  "/api/auth/guest-login",
+]);
 const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/rfid",
@@ -73,12 +90,50 @@ const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/guest-login",
   "/api/auth/rfid/latest-scan",
 ]);
-const authRateLimitBuckets = new Map();
 
 if (!SESSION_SECRET) {
   throw new Error("SESSION_SECRET must be set when running in live mode.");
 }
 
+const csrfProtection = createCsrfProtection({
+  excludedPaths: CSRF_EXCLUDED_PATHS,
+  isLive: serverRuntime.isLive,
+  maxAgeSeconds: SESSION_MAX_AGE_SECONDS,
+  mutatingApiMethods: MUTATING_API_METHODS,
+  secret: SESSION_SECRET,
+});
+const globalApiRateLimiter = createRateLimiter({
+  getKey: getClientIp,
+  isLimitedPath: (req) => req.path.startsWith("/api/"),
+  maxAttempts: GLOBAL_API_RATE_LIMIT_MAX_REQUESTS,
+  message: "Too many requests. Please wait a moment and try again.",
+  windowMs: GLOBAL_API_RATE_LIMIT_WINDOW_MS,
+});
+const authRateLimiter = createRateLimiter({
+  getKey: (req) => {
+    const attemptedUsername =
+      typeof req.body?.username === "string"
+        ? req.body.username.trim().toLowerCase()
+        : "";
+    const attemptedRfidTag =
+      typeof req.body?.rfidTag === "string"
+        ? req.body.rfidTag.trim().toLowerCase()
+        : "";
+
+    return [
+      req.path,
+      getClientIp(req),
+      attemptedUsername || attemptedRfidTag || "anonymous",
+    ].join(":");
+  },
+  isLimitedPath: (req) => AUTH_RATE_LIMIT_PATHS.has(req.path),
+  maxAttempts: AUTH_RATE_LIMIT_MAX_ATTEMPTS,
+  message: "Too many sign-in attempts. Please wait a few minutes and try again.",
+  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+});
+
+// Password helpers support both new scrypt hashes and older plain-text seed
+// values, upgrading legacy passwords after a successful login.
 function hashPassword(password) {
   const salt = crypto.randomBytes(16);
   const hash = crypto.scryptSync(password, salt, PASSWORD_SCRYPT_PARAMS.keyLength, {
@@ -144,6 +199,8 @@ function signSessionPayload(encodedPayload) {
 }
 
 function createSessionToken(username) {
+  // Session tokens are signed JSON payloads stored in HttpOnly cookies, so the
+  // browser cannot edit usernames without failing signature verification.
   const payload = encodeSessionPayload({
     username,
     exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
@@ -210,66 +267,7 @@ function getSessionUsername(req) {
 }
 
 function getClientIp(req) {
-  const forwardedFor = req.get("x-forwarded-for");
-
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0].trim();
-  }
-
   return req.ip ?? req.socket?.remoteAddress ?? "unknown";
-}
-
-function pruneAuthRateLimitBuckets(now = Date.now()) {
-  for (const [key, bucket] of authRateLimitBuckets) {
-    if (bucket.resetAt <= now) {
-      authRateLimitBuckets.delete(key);
-    }
-  }
-}
-
-function authRateLimiter(req, res, next) {
-  if (!AUTH_RATE_LIMIT_PATHS.has(req.path)) {
-    next();
-    return;
-  }
-
-  const now = Date.now();
-  pruneAuthRateLimitBuckets(now);
-
-  const attemptedUsername =
-    typeof req.body?.username === "string"
-      ? req.body.username.trim().toLowerCase()
-      : "";
-  const attemptedRfidTag =
-    typeof req.body?.rfidTag === "string"
-      ? req.body.rfidTag.trim().toLowerCase()
-      : "";
-  const key = [
-    req.path,
-    getClientIp(req),
-    attemptedUsername || attemptedRfidTag || "anonymous",
-  ].join(":");
-  const bucket =
-    authRateLimitBuckets.get(key) ?? {
-      count: 0,
-      resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS,
-    };
-
-  bucket.count += 1;
-  authRateLimitBuckets.set(key, bucket);
-
-  if (bucket.count > AUTH_RATE_LIMIT_MAX_ATTEMPTS) {
-    const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
-    res.setHeader("Retry-After", String(retryAfterSeconds));
-    res.status(429).json({
-      success: false,
-      message:
-        "Too many sign-in attempts. Please wait a few minutes and try again.",
-    });
-    return;
-  }
-
-  next();
 }
 
 function sanitizeAuditMetadata(value) {
@@ -290,6 +288,8 @@ function sanitizeAuditMetadata(value) {
 }
 
 function createAuditMiddleware(insertAuditEvent) {
+  // Mutating API calls are recorded after the response completes so the audit
+  // event includes the final status code and request duration.
   return (req, res, next) => {
     if (
       !MUTATING_API_METHODS.has(req.method) ||
@@ -341,10 +341,12 @@ function apiErrorHandler(error, req, res, next) {
       ? statusCode
       : 500;
 
-  console.error("Unhandled API error", {
-    method: req.method,
-    path: req.originalUrl,
+  logServerError({
     error,
+    getActorUsername: getSessionUsername,
+    getClientIp,
+    req,
+    statusCode: safeStatusCode,
   });
 
   res.status(safeStatusCode).json({
@@ -360,6 +362,9 @@ const COURSE_PARTICIPANT_USER_TYPES = {
   beginners: "beginner",
   "have-a-go": "have-a-go",
 };
+
+// Schema bootstrap is intentionally idempotent; local development and preview
+// can start against an existing SQLite file without a separate migration step.
 const LOGIN_EVENTS_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS login_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -3886,12 +3891,43 @@ const listReportingGuestLogins = db.prepare(`
 `);
 
 const app = express();
+app.set("trust proxy", serverRuntime.trustProxy);
 
-app.use(express.json({ limit: "10mb" }));
-app.use(authRateLimiter);
+// Global middleware is registered before feature routes so all mutating API
+// requests share JSON parsing, login throttling, and audit behavior.
+app.use(
+  createSecurityEventLogger({
+    getActorUsername: getSessionUsername,
+    getClientIp,
+  }),
+);
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        frameAncestors: ["'none'"],
+        imgSrc: ["'self'", "data:"],
+        objectSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false,
+  }),
+);
+app.use(globalApiRateLimiter.middleware);
+app.use("/api/committee-roles", express.json({ limit: COMMITTEE_PHOTO_JSON_BODY_LIMIT }));
+app.use(express.json({ limit: GENERAL_JSON_BODY_LIMIT }));
+app.use(csrfProtection.middleware);
+app.use(authRateLimiter.middleware);
 app.use(createAuditMiddleware(insertAuditEvent));
 
 function buildMemberUserProfile(user, disciplines = [], meta = {}) {
+  // Server-facing rows are converted to the normalized profile contract used by
+  // session storage, permissions checks, and presentation helpers.
   const permissions = getPermissionsForRole(user.user_type);
 
   return {
@@ -6494,11 +6530,12 @@ function buildPersonalUsageWindow(username, label, startDate, endDateExclusive) 
   };
 }
 
+// Route modules receive prepared statements and shared helpers from this file so
+// each module can stay focused on HTTP behavior for its own feature area.
 registerAuthRoutes({
   app,
   buildGuestUserProfile,
   buildMemberUserProfile,
-  databasePath,
   findDisciplinesByUsername,
   findUserByCredentials,
   findUserByRfid,
@@ -6512,8 +6549,11 @@ registerAuthRoutes({
   latestRfidScan,
   listAllUsers,
   syncMemberStatusWithFees,
+  clearCsrfCookie: csrfProtection.clearCookie,
   clearSessionCookie,
+  createCsrfCookie: csrfProtection.createCookie,
   createSessionCookie,
+  getCsrfToken: csrfProtection.getToken,
   updateUserPassword,
   verifyPassword,
 });
@@ -7707,6 +7747,9 @@ startServer({
   app,
   databasePath,
   distDirectory,
+  headersTimeoutMs: serverRuntime.headersTimeoutMs,
+  keepAliveTimeoutMs: serverRuntime.keepAliveTimeoutMs,
   onBeforeListen: startRfidReaderMonitor,
   port,
+  requestTimeoutMs: serverRuntime.requestTimeoutMs,
 });

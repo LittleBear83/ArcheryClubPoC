@@ -185,6 +185,8 @@ const pageIdToPath = Object.fromEntries(
   Object.entries(pathToPageId).map(([path, id]) => [id, path]),
 );
 
+// The main shell maps URLs to drawer page identifiers so navigation stays
+// bookmarkable while the side drawer can work with simple page IDs.
 function getMembershipReminderMessage(currentUserProfile) {
   const membershipFeesDue = currentUserProfile?.meta?.membershipFeesDue;
 
@@ -250,6 +252,8 @@ async function fetchHomeActivity(username: string): Promise<{
   beginnerDashboard: BeginnerHomeDashboard;
   beginnerCoachAssignments: BeginnerCoachAssignment[];
 }> {
+  // The home screen is made from several small dashboard APIs; fetching them in
+  // parallel keeps the landing page responsive after sign-in.
   const [coachingResult, eventResult, reminderResult, beginnerResult, coachAssignmentsResult] =
     await Promise.all([
     listMyCoachingBookings<HomeEvent>(username),
@@ -357,6 +361,8 @@ export function HomePage({
     [beginnerDashboard, currentUserProfile],
   );
 
+  // Include the current signed-in member immediately, even if the range member
+  // polling endpoint has not caught up to the fresh session yet.
   const membersAtRange = useMemo(() => {
     if (!currentUserProfile) {
       return rangeMembers;
@@ -373,6 +379,8 @@ export function HomePage({
   }, [currentUserProfile, rangeMembers]);
 
   useEffect(() => {
+    // Event-driven invalidation keeps summary panels current after child pages
+    // mutate bookings, sessions, tournaments, or beginner-course data.
     const refreshAll = () => {
       void queryClient.invalidateQueries({
         queryKey: homeQueryKeys.rangeMembers(),

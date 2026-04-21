@@ -58,3 +58,11 @@ await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")
 await import(
   pathToFileURL(path.join(outDir, "src/data/repositories/RoleRepositoryImpl.test.js"))
 );
+await import(pathToFileURL(path.join(root, "server/security/csrf.test.js")));
+await import(pathToFileURL(path.join(root, "server/security/rateLimit.test.js")));
+await import(
+  pathToFileURL(path.join(root, "server/observability/securityEventLogger.test.js"))
+);
+await import(
+  pathToFileURL(path.join(root, "server/presentation/http/securedRoutes.test.js"))
+);

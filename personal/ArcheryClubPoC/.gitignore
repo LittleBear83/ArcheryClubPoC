@@ -10,7 +10,15 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+.test-dist
 *.local
+
+# Local and live data files
+server/data/*.sqlite
+server/data/*.sqlite-*
+server/data/*.sqlite.*
+server/data/*.backup*
+server/data/exports/
 
 # Editor directories and files
 .vscode/*

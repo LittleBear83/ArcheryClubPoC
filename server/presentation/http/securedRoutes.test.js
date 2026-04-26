@@ -263,7 +263,7 @@ function createCsrfHeaders(csrf, { includeSession = true } = {}) {
   };
 }
 
-test("auth routes reject unauthenticated access to secured RFID scan and guest inviter APIs", async () => {
+test("auth routes reject unauthenticated access to secured RFID scan APIs", async () => {
   const app = express();
   registerAuthTestRoutes(app, () => null);
   const { baseUrl, server } = await startTestServer(app);
@@ -273,12 +273,27 @@ test("auth routes reject unauthenticated access to secured RFID scan and guest i
       baseUrl,
       "/api/auth/rfid/latest-scan",
     );
-    const invitersResponse = await requestJson(baseUrl, "/api/guest-inviter-members");
 
     assert.equal(latestScanResponse.status, 401);
     assert.equal(latestScanResponse.body.success, false);
-    assert.equal(invitersResponse.status, 401);
-    assert.equal(invitersResponse.body.success, false);
+  } finally {
+    server.close();
+  }
+});
+
+test("guest inviter members are available before login", async () => {
+  const app = express();
+  registerAuthTestRoutes(app, () => null);
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const invitersResponse = await requestJson(baseUrl, "/api/guest-inviter-members");
+
+    assert.equal(invitersResponse.status, 200);
+    assert.deepEqual(invitersResponse.body, {
+      success: true,
+      members: [],
+    });
   } finally {
     server.close();
   }

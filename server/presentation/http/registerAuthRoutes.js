@@ -342,14 +342,6 @@ export function registerAuthRoutes({
   });
 
   app.get("/api/guest-inviter-members", (req, res) => {
-    if (!getSessionUsername(req)) {
-      res.status(401).json({
-        success: false,
-        message: "An authenticated member is required.",
-      });
-      return;
-    }
-
     res.json({
       success: true,
       members: listAllUsers.all().map((user) => ({

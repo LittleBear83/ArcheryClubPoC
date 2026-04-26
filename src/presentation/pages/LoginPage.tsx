@@ -215,9 +215,18 @@ export function LoginPage({
     );
   }, [rangeMembers, selectedInvitingMemberUsername]);
 
-  const openInvitingMemberModal = () => {
+  const openInvitingMemberModal = async () => {
     setMemberSearchSurname("");
     setIsInvitingMemberModalOpen(true);
+    setError("");
+
+    if (!guestInviterOptionsQuery.data && !guestInviterOptionsQuery.isFetching) {
+      try {
+        await guestInviterOptionsQuery.refetch();
+      } catch {
+        setError("Unable to load the club member list right now.");
+      }
+    }
   };
 
   const handleSelectInvitingMember = (member: ClubMember) => {
@@ -418,7 +427,7 @@ export function LoginPage({
                   onChange={(event) => {
                     if (event.target.value === INVITING_MEMBER_NOT_LISTED) {
                       setSelectedInvitingMemberUsername("");
-                      openInvitingMemberModal();
+                      void openInvitingMemberModal();
                       return;
                     }
 
@@ -529,7 +538,15 @@ export function LoginPage({
           </label>
 
           <div className="guest-member-modal-results" role="list">
-            {filteredAllMembers.length > 0 ? (
+            {guestInviterOptionsQuery.isFetching ? (
+              <p className="guest-member-modal-empty">
+                Loading club members...
+              </p>
+            ) : guestInviterOptionsQuery.isError ? (
+              <p className="guest-member-modal-empty">
+                Unable to load the club member list right now.
+              </p>
+            ) : filteredAllMembers.length > 0 ? (
               filteredAllMembers.map((member) => (
                 <Button
                   key={member.username}

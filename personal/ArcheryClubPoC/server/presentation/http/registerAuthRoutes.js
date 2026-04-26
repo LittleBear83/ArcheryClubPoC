@@ -18,6 +18,7 @@ export function registerAuthRoutes({
   insertGuestLoginEvent,
   insertLoginEvent,
   latestRfidScan,
+  rfidReaderStatus,
   listAllUsers,
   syncMemberStatusWithFees,
   updateUserPassword,
@@ -185,6 +186,14 @@ export function registerAuthRoutes({
           .all(user.username)
           .map((discipline) => discipline.discipline),
       ),
+    });
+  });
+
+  app.get("/api/auth/rfid/status", (_req, res) => {
+    res.json({
+      success: true,
+      checked: Boolean(rfidReaderStatus?.checked),
+      detected: Boolean(rfidReaderStatus?.detected),
     });
   });
 

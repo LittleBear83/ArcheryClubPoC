@@ -8,6 +8,12 @@ export type RfidScan = {
   cardBrand?: string;
 };
 
+export type RfidReaderStatus = {
+  success: true;
+  checked: boolean;
+  detected: boolean;
+};
+
 export async function loginWithCredentials(username: string, password: string) {
   return fetchApi<{ success: true; userProfile: UserProfile }>("/api/auth/login", {
     method: "POST",
@@ -35,6 +41,12 @@ export async function loginWithLatestRfidScan() {
       method: "POST",
     },
   );
+}
+
+export async function getRfidReaderStatus() {
+  return fetchApi<RfidReaderStatus>("/api/auth/rfid/status", {
+    cache: "no-store",
+  });
 }
 
 export async function loginAsGuest(guestDetails: {

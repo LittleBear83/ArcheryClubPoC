@@ -4,13 +4,15 @@ import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Button } from "../components/Button";
 import { Modal } from "../components/Modal";
 import { formatMemberDisplayName } from "../../utils/userProfile";
-import { listGuestInviterMembers } from "../../api/authApi";
+import { getRfidReaderStatus, listGuestInviterMembers } from "../../api/authApi";
 import { listRangeMembers } from "../../api/memberApi";
 
 const SIMULATED_RFID_TAG = "7673CF3D";
 const RFID_LOGIN_POLL_INTERVAL_MS = 1500;
 const ENABLE_RFID_SIMULATOR =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_RFID_SIMULATOR === "true";
+const RFID_READER_MISSING_MESSAGE =
+  "Card reader not detected, please use your username and password to sign in";
 
 type RangeMember = {
   accountType: string;
@@ -58,6 +60,12 @@ export function LoginPage({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const latestRfidLoginInFlightRef = useRef(false);
   const latestRfidLoginUnavailableRef = useRef(false);
+  const rfidReaderStatusQuery = useQuery({
+    queryKey: ["rfid-reader-status"],
+    queryFn: getRfidReaderStatus,
+    retry: false,
+    refetchInterval: 10000,
+  });
 
   const guestInviterOptionsQuery = useQuery({
     queryKey: ["guest-inviter-options"],
@@ -147,6 +155,16 @@ export function LoginPage({
   useEffect(() => {
     setError(initialMessage);
   }, [initialMessage]);
+
+  const loginBannerMessage = error
+    ? error
+    : (
+        !initialMessage &&
+        rfidReaderStatusQuery.data?.checked &&
+        !rfidReaderStatusQuery.data.detected
+      )
+      ? RFID_READER_MISSING_MESSAGE
+      : "";
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -290,9 +308,9 @@ export function LoginPage({
           </h1>
           <p className="login-copy">Sign in to access the club portal.</p>
 
-          {error ? (
+          {loginBannerMessage ? (
             <p className="login-error login-error-banner" role="alert">
-              {error}
+              {loginBannerMessage}
             </p>
           ) : null}
         </div>

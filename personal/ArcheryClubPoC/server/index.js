@@ -4608,6 +4608,10 @@ const latestRfidScan = {
   cardBrand: null,
   deliveredSequence: 0,
 };
+const rfidReaderStatus = {
+  checked: false,
+  detected: false,
+};
 
 function registerRfidScan(scan, source = "reader") {
   const normalizedScan =
@@ -4691,6 +4695,7 @@ $ppseApdu = [byte[]](0x00,0xA4,0x04,0x00,0x0E,0x32,0x50,0x41,0x59,0x2E,0x53,0x59
 $readerHints = @('acr122', 'smart card', 'picc interface', 'contactless', 'omnikey', 'nfc')
 $lastFingerprint = ''
 $wasPresent = $false
+$lastReaderDetected = $null
 
 function Invoke-Apdu($card, $activeProtocol, $apdu) {
     $sendPci = New-Object SCARD_IO_REQUEST
@@ -4762,7 +4767,10 @@ function Get-AvailableReaders($context) {
 function Get-CandidateReaders($context) {
     $availableReaders = Get-AvailableReaders $context
     if (-not $availableReaders -or $availableReaders.Count -eq 0) {
-        return $readers
+        return @{
+            AvailableReaders = @()
+            Candidates = $readers
+        }
     }
 
     $ordered = New-Object System.Collections.Generic.List[string]
@@ -4790,7 +4798,10 @@ function Get-CandidateReaders($context) {
         }
     }
 
-    return $ordered.ToArray()
+    return @{
+        AvailableReaders = $availableReaders
+        Candidates = $ordered.ToArray()
+    }
 }
 
 function Try-ReadCard($context, $reader) {
@@ -4844,6 +4855,7 @@ while ($true) {
     $uid = ''
     $scanType = 'rfid'
     $cardBrand = $null
+    $readerDetected = $false
 
     try {
         $result = [WinSCardReader]::SCardEstablishContext([WinSCardReader]::SCARD_SCOPE_USER, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$context)
@@ -4851,7 +4863,10 @@ while ($true) {
             $result = [WinSCardReader]::SCardEstablishContext([WinSCardReader]::SCARD_SCOPE_SYSTEM, [IntPtr]::Zero, [IntPtr]::Zero, [ref]$context)
         }
         if ($result -eq 0) {
-            foreach ($reader in (Get-CandidateReaders $context)) {
+            $readerCandidates = Get-CandidateReaders $context
+            $readerDetected = $readerCandidates.AvailableReaders.Count -gt 0
+
+            foreach ($reader in $readerCandidates.Candidates) {
                 $scan = Try-ReadCard $context $reader
                 if ($scan) {
                     $uid = $scan.uid
@@ -4864,6 +4879,15 @@ while ($true) {
     } catch {
     } finally {
         if ($context -ne [IntPtr]::Zero) { [void][WinSCardReader]::SCardReleaseContext($context) }
+    }
+
+    if ($lastReaderDetected -ne $readerDetected) {
+        [pscustomobject]@{
+            event = 'reader-status'
+            detected = $readerDetected
+        } | ConvertTo-Json -Compress | Write-Output
+        [Console]::Out.Flush()
+        $lastReaderDetected = $readerDetected
     }
 
     if ($uid) {
@@ -4901,6 +4925,8 @@ while ($true) {
       },
     );
   } catch (error) {
+    rfidReaderStatus.checked = true;
+    rfidReaderStatus.detected = false;
     console.error("Unable to start RFID reader monitor.", error);
     return;
   }
@@ -4915,7 +4941,15 @@ while ($true) {
       }
 
       try {
-        registerRfidScan(JSON.parse(trimmedLine), "reader");
+        const parsedLine = JSON.parse(trimmedLine);
+
+        if (parsedLine?.event === "reader-status") {
+          rfidReaderStatus.checked = true;
+          rfidReaderStatus.detected = Boolean(parsedLine.detected);
+          continue;
+        }
+
+        registerRfidScan(parsedLine, "reader");
       } catch {
         registerRfidScan(trimmedLine, "reader");
       }
@@ -4925,6 +4959,8 @@ while ($true) {
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", () => {});
   child.on("error", (error) => {
+    rfidReaderStatus.checked = true;
+    rfidReaderStatus.detected = false;
     console.error("RFID reader monitor failed.", error);
   });
 }
@@ -6547,6 +6583,7 @@ registerAuthRoutes({
   insertGuestLoginEvent,
   insertLoginEvent,
   latestRfidScan,
+  rfidReaderStatus,
   listAllUsers,
   syncMemberStatusWithFees,
   clearCsrfCookie: csrfProtection.clearCookie,

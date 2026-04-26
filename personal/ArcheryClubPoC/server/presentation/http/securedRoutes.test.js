@@ -96,6 +96,10 @@ function registerAuthTestRoutes(app, getSessionUsername) {
       sequence: 0,
       source: null,
     },
+    rfidReaderStatus: {
+      checked: true,
+      detected: false,
+    },
     listAllUsers: noopStatement(),
     syncMemberStatusWithFees: (user) => user,
     updateUserPassword: noopStatement(),
@@ -277,6 +281,34 @@ test("auth routes reject unauthenticated access to secured RFID scan and guest i
     assert.equal(invitersResponse.body.success, false);
   } finally {
     server.close();
+  }
+});
+
+test("auth routes expose RFID reader detection status for the login page", async () => {
+  const csrf = createCsrfProtection({
+    secret: "auth-route-csrf-secret",
+  });
+  const app = express();
+
+  app.use(express.json());
+  app.use(csrf.middleware);
+  registerAuthTestRoutes(app, () => null);
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/rfid/status");
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, {
+      success: true,
+      checked: true,
+      detected: false,
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve(undefined)));
+    });
   }
 });
 

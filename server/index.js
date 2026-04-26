@@ -5866,11 +5866,11 @@ function sanitizeEquipmentCreatePayload(payload) {
   }
 
   const duplicateItem = itemNumber
-    ? findActiveEquipmentByIdentity.get(
+    ? findActiveEquipmentByIdentity.get([
         equipmentType,
         sizeCategory,
         itemNumber,
-      )
+      ])
     : null;
 
   if (duplicateItem) {

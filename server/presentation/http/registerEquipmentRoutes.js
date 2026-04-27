@@ -11,10 +11,9 @@ export function registerEquipmentRoutes({
   EQUIPMENT_TYPE_LABELS,
   EQUIPMENT_TYPE_OPTIONS,
   equipmentGateway,
-  findUserByUsername,
   getActorUser,
   getUtcTimestampParts,
-  listAllUsers,
+  memberDirectoryGateway,
   PERMISSIONS,
   sanitizeCupboardLabel,
   sanitizeEquipmentCreatePayload,
@@ -89,7 +88,7 @@ export function registerEquipmentRoutes({
     res.json({
       success: true,
       permissions,
-      members: listAllUsers.all().map((user) => ({
+      members: (await memberDirectoryGateway.listAllUsers()).map((user) => ({
         username: user.username,
         fullName: `${user.first_name} ${user.surname}`,
         userType: user.user_type,
@@ -323,7 +322,7 @@ export function registerEquipmentRoutes({
     } else if (targetType === "member") {
       const memberUsername =
         typeof req.body?.memberUsername === "string" ? req.body.memberUsername.trim() : "";
-      const member = findUserByUsername.get(memberUsername);
+      const member = await memberDirectoryGateway.findUserByUsername(memberUsername);
 
       if (!member) {
         res.status(404).json({
@@ -778,7 +777,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const requestedUser = findUserByUsername.get(requestedUsername);
+    const requestedUser = await memberDirectoryGateway.findUserByUsername(requestedUsername);
 
     if (!requestedUser) {
       res.status(404).json({

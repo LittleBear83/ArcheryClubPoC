@@ -41,6 +41,7 @@ function createSqliteMemberAuthGateway({
   insertGuestLoginEvent,
   insertLoginEvent,
   listAllUsers,
+  updateUserMembershipStatus,
   updateUserPassword,
 }) {
   return {
@@ -78,6 +79,9 @@ function createSqliteMemberAuthGateway({
     },
     async recordLoginEvent({ method, timestampParts, username }) {
       insertLoginEvent.run(username, method, ...timestampParts);
+    },
+    async updateUserMembershipStatus(username, activeMember, rfidTag) {
+      updateUserMembershipStatus.run(activeMember, rfidTag, username);
     },
     async updateUserPassword(username, passwordHash) {
       updateUserPassword.run(passwordHash, username);
@@ -238,6 +242,18 @@ function createPostgresMemberAuthGateway({ pool }) {
           VALUES ($1, (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1), $2, $3, $4)
         `,
         [username, method, ...timestampParts],
+      );
+    },
+    async updateUserMembershipStatus(username, activeMember, rfidTag) {
+      await pool.query(
+        `
+          UPDATE users
+          SET
+            active_member = $1,
+            rfid_tag = $2
+          WHERE LOWER(username) = LOWER($3)
+        `,
+        [activeMember, rfidTag, username],
       );
     },
     async updateUserPassword(username, passwordHash) {

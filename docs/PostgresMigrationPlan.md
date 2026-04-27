@@ -94,6 +94,10 @@ through SQLite-specific statements embedded in `server/index.js`.
 - Member distance sign-offs now run through a dual-engine repository, so the
   distance sign-off read/write path no longer depends on SQLite-only
   `db.prepare(...)` internals.
+- Beginner-course write flows now have a dual-engine gateway for course
+  creation/review/cancellation, participant creation/editing/conversion, lesson
+  coach assignment, and participant password resets, which removes another
+  large cluster of direct SQLite writes from `server/index.js`.
 - `server/index.js` no longer prepares SQLite statements directly with
   `db.prepare(...)`; its remaining PostgreSQL blockers are now higher-level
   helpers and startup flows rather than inline statement definitions.
@@ -104,8 +108,8 @@ through SQLite-specific statements embedded in `server/index.js`.
 
 1. Finish splitting startup/bootstrap so PostgreSQL can skip all SQLite-only
    initialization paths cleanly.
-2. Replace remaining synchronous SQLite helper access in `server/index.js`
-   with async repository or gateway calls.
+2. Replace remaining synchronous SQLite helper access and mixed transaction
+   logic in `server/index.js` with async repository or gateway calls.
 3. Replace SQLite-specific SQL, including:
    - `PRAGMA table_info(...)`
    - `sqlite_master`

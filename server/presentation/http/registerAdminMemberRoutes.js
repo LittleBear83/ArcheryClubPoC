@@ -8,17 +8,15 @@ export function registerAdminMemberRoutes({
   buildUniqueRoleKeyFromTitle,
   CURRENT_PERMISSION_KEY_SET,
   DISTANCE_SIGN_OFF_YARDS,
-  findDisciplinesByUsername,
-  findLoanBowByUsername,
-  findUserByUsername,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,
-  listAllUsers,
   listAssignableRoleKeys,
   listProfilePageMembers,
+  memberDirectoryGateway,
   roleCommitteeGateway,
   PERMISSIONS,
+  refreshRoleAccessSnapshot,
   sanitizeLoanBow,
   sanitizeLoanBowReturn,
   saveLoanBowRecord,
@@ -59,7 +57,21 @@ export function registerAdminMemberRoutes({
     };
   }
 
-  app.get("/api/profile-options", (req, res) => {
+  async function findMemberByUsername(username) {
+    return memberDirectoryGateway.findUserByUsername(username);
+  }
+
+  async function listMemberDisciplines(username) {
+    return (await memberDirectoryGateway.findDisciplinesByUsername(username)).map(
+      (discipline) => discipline.discipline,
+    );
+  }
+
+  async function findMemberLoanBow(username) {
+    return memberDirectoryGateway.findLoanBowByUsername(username);
+  }
+
+  app.get("/api/profile-options", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -83,7 +95,7 @@ export function registerAdminMemberRoutes({
 
     res.json({
       success: true,
-      members: listProfilePageMembers().map((user) => ({
+      members: (await listProfilePageMembers()).map((user) => ({
         username: user.username,
         fullName: `${user.first_name} ${user.surname}`,
         userType: user.user_type,
@@ -184,6 +196,7 @@ export function registerAdminMemberRoutes({
       roleKey,
       title,
     });
+    await refreshRoleAccessSnapshot();
 
     res.status(201).json({
       success: true,
@@ -249,6 +262,7 @@ export function registerAdminMemberRoutes({
       roleKey,
       title,
     });
+    await refreshRoleAccessSnapshot();
 
     res.json({
       success: true,
@@ -306,6 +320,7 @@ export function registerAdminMemberRoutes({
     }
 
     await roleCommitteeGateway.deleteRole(roleKey);
+    await refreshRoleAccessSnapshot();
 
     res.json({
       success: true,
@@ -444,7 +459,7 @@ export function registerAdminMemberRoutes({
       success: true,
       roles: committeeRoles.map(buildCommitteeRole),
       members: actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)
-        ? listAllUsers.all().map((user) => ({
+        ? (await memberDirectoryGateway.listAllUsers()).map((user) => ({
             username: user.username,
             fullName: `${user.first_name} ${user.surname}`,
             userType: user.user_type,
@@ -479,7 +494,7 @@ export function registerAdminMemberRoutes({
 
     if (
       payload.assignedUsername &&
-      !findUserByUsername.get(payload.assignedUsername)
+      !(await findMemberByUsername(payload.assignedUsername))
     ) {
       res.status(404).json({
         success: false,
@@ -551,7 +566,7 @@ export function registerAdminMemberRoutes({
 
     if (
       payload.assignedUsername &&
-      !findUserByUsername.get(payload.assignedUsername)
+      !(await findMemberByUsername(payload.assignedUsername))
     ) {
       res.status(404).json({
         success: false,
@@ -654,7 +669,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const user = findUserByUsername.get(requestedUsername);
+    const user = await findMemberByUsername(requestedUsername);
 
     if (!user) {
       res.status(404).json({
@@ -664,10 +679,8 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const disciplines = findDisciplinesByUsername
-      .all(user.username)
-      .map((discipline) => discipline.discipline);
-    const loanBow = findLoanBowByUsername.get(user.username);
+    const disciplines = await listMemberDisciplines(user.username);
+    const loanBow = await findMemberLoanBow(user.username);
 
     res.json({
       success: true,
@@ -708,7 +721,7 @@ export function registerAdminMemberRoutes({
       loanBow,
     } = req.body ?? {};
 
-    if (findUserByUsername.get(username ?? "")) {
+    if (await findMemberByUsername(username ?? "")) {
       res.status(409).json({
         success: false,
         message: "A member with that username already exists.",
@@ -754,7 +767,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const existingUser = findUserByUsername.get(requestedUsername);
+    const existingUser = await findMemberByUsername(requestedUsername);
 
     if (!existingUser) {
       res.status(404).json({
@@ -814,12 +827,10 @@ export function registerAdminMemberRoutes({
       userType: canManageMembers ? userType : existingUser.user_type,
       disciplines: canManageMemberDisciplines
         ? disciplines
-        : findDisciplinesByUsername
-            .all(existingUser.username)
-            .map((entry) => entry.discipline),
+        : await listMemberDisciplines(existingUser.username),
       loanBow: canManageMembers
         ? loanBow
-        : buildLoanBowRecord(findLoanBowByUsername.get(existingUser.username)),
+        : buildLoanBowRecord(await findMemberLoanBow(existingUser.username)),
       existingUser,
     });
 
@@ -832,9 +843,9 @@ export function registerAdminMemberRoutes({
       success: true,
       ...result,
       editableProfile: await buildEditableProfileWithDistanceSignOffs(
-        findUserByUsername.get(existingUser.username),
+        await findMemberByUsername(existingUser.username),
         result.editableProfile?.disciplines ?? [],
-        findLoanBowByUsername.get(existingUser.username),
+        await findMemberLoanBow(existingUser.username),
         canManageMembers,
       ),
     });
@@ -852,7 +863,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const member = findUserByUsername.get(requestedUsername);
+    const member = await findMemberByUsername(requestedUsername);
 
     if (!member) {
       res.status(404).json({
@@ -869,9 +880,7 @@ export function registerAdminMemberRoutes({
       typeof req.body?.memberUsernameConfirmation === "string"
         ? req.body.memberUsernameConfirmation.trim()
         : "";
-    const disciplines = findDisciplinesByUsername
-      .all(member.username)
-      .map((entry) => entry.discipline);
+    const disciplines = await listMemberDisciplines(member.username);
 
     if (!disciplines.includes(discipline)) {
       res.status(400).json({
@@ -912,7 +921,7 @@ export function registerAdminMemberRoutes({
       signedOffAtTime,
     });
 
-    const loanBow = findLoanBowByUsername.get(member.username);
+    const loanBow = await findMemberLoanBow(member.username);
 
     res.status(201).json({
       success: true,
@@ -946,7 +955,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const existingUser = findUserByUsername.get(requestedUsername);
+    const existingUser = await findMemberByUsername(requestedUsername);
     const rfidTag =
       typeof req.body?.rfidTag === "string" ? req.body.rfidTag.trim() : "";
 
@@ -966,10 +975,8 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const disciplines = findDisciplinesByUsername
-      .all(existingUser.username)
-      .map((discipline) => discipline.discipline);
-    const loanBow = buildLoanBowRecord(findLoanBowByUsername.get(existingUser.username));
+    const disciplines = await listMemberDisciplines(existingUser.username);
+    const loanBow = buildLoanBowRecord(await findMemberLoanBow(existingUser.username));
     const result = await saveMemberProfile({
       username: existingUser.username,
       firstName: existingUser.first_name,
@@ -995,7 +1002,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.get("/api/loan-bow-options", (req, res) => {
+  app.get("/api/loan-bow-options", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -1016,8 +1023,8 @@ export function registerAdminMemberRoutes({
 
     res.json({
       success: true,
-      members: listAllUsers
-        .all()
+      members: (await memberDirectoryGateway
+        .listAllUsers())
         .filter(
           (user) =>
             !getPermissionsForRole(user.user_type).includes(
@@ -1032,7 +1039,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.get("/api/loan-bow-profiles/:username", (req, res) => {
+  app.get("/api/loan-bow-profiles/:username", async (req, res) => {
     const actor = getActorUser(req);
     const requestedUsername = req.params.username;
 
@@ -1052,7 +1059,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const user = findUserByUsername.get(requestedUsername);
+    const user = await findMemberByUsername(requestedUsername);
 
     if (!user) {
       res.status(404).json({
@@ -1069,7 +1076,7 @@ export function registerAdminMemberRoutes({
         fullName: `${user.first_name} ${user.surname}`,
         userType: user.user_type,
       },
-      loanBow: buildLoanBowRecord(findLoanBowByUsername.get(user.username)),
+      loanBow: buildLoanBowRecord(await findMemberLoanBow(user.username)),
     });
   });
 
@@ -1093,7 +1100,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const user = findUserByUsername.get(requestedUsername);
+    const user = await findMemberByUsername(requestedUsername);
 
     if (!user) {
       res.status(404).json({
@@ -1114,7 +1121,7 @@ export function registerAdminMemberRoutes({
         fullName: `${user.first_name} ${user.surname}`,
         userType: user.user_type,
       },
-      loanBow: buildLoanBowRecord(findLoanBowByUsername.get(user.username)),
+      loanBow: buildLoanBowRecord(await findMemberLoanBow(user.username)),
     });
   });
 
@@ -1138,7 +1145,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const user = findUserByUsername.get(requestedUsername);
+    const user = await findMemberByUsername(requestedUsername);
 
     if (!user) {
       res.status(404).json({
@@ -1149,7 +1156,7 @@ export function registerAdminMemberRoutes({
     }
 
     const existingLoanBow = buildLoanBowRecord(
-      findLoanBowByUsername.get(user.username),
+      await findMemberLoanBow(user.username),
     );
     const returnResult = sanitizeLoanBowReturn(
       existingLoanBow,
@@ -1170,7 +1177,7 @@ export function registerAdminMemberRoutes({
         fullName: `${user.first_name} ${user.surname}`,
         userType: user.user_type,
       },
-      loanBow: buildLoanBowRecord(findLoanBowByUsername.get(user.username)),
+      loanBow: buildLoanBowRecord(await findMemberLoanBow(user.username)),
     });
   });
 }

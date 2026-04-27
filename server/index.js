@@ -56,6 +56,8 @@ import { bootstrapSqliteEquipmentCompatibility } from "./infrastructure/persiste
 import { bootstrapSqliteCourseScheduleCompatibility } from "./infrastructure/persistence/bootstrapSqliteCourseScheduleCompatibility.js";
 import { bootstrapSqliteUserCompatibility } from "./infrastructure/persistence/bootstrapSqliteUserCompatibility.js";
 import { createSqliteAuthAuditStatements } from "./infrastructure/persistence/createSqliteAuthAuditStatements.js";
+import { createBeginnersCourseReadGateway } from "./infrastructure/persistence/beginnersCourseReadGateway.js";
+import { createBeginnersCourseWriteGateway } from "./infrastructure/persistence/beginnersCourseWriteGateway.js";
 import { createSqliteBeginnersCourseStatements } from "./infrastructure/persistence/createSqliteBeginnersCourseStatements.js";
 import { createSqliteEquipmentStatements } from "./infrastructure/persistence/createSqliteEquipmentStatements.js";
 import { createSqliteLoanBowStatements } from "./infrastructure/persistence/createSqliteLoanBowStatements.js";
@@ -511,7 +513,7 @@ const {
   : createUnsupportedSqliteUserData();
 
 if (serverRuntime.databaseEngine === "sqlite") {
-  syncAllMemberStatusesWithFees();
+  await syncAllMemberStatusesWithFees();
 }
 
 const {
@@ -575,6 +577,28 @@ const roleCommitteeGateway = createRoleCommitteeGateway({
   updateRoleDefinition,
   upsertRole,
 });
+
+let cachedAssignableRoleKeys = [];
+let cachedKnownRoleKeys = new Set();
+let cachedRolePermissionsByKey = new Map();
+
+async function refreshRoleAccessSnapshot() {
+  const roles = await roleCommitteeGateway.listRoleDefinitions();
+  cachedAssignableRoleKeys = roles.map((role) => role.role_key);
+  cachedKnownRoleKeys = new Set(cachedAssignableRoleKeys);
+  cachedRolePermissionsByKey = new Map(
+    await Promise.all(
+      roles.map(async (role) => [
+        role.role_key,
+        (await roleCommitteeGateway.listRolePermissionKeysByRoleKey(role.role_key)).filter(
+          (permissionKey) => CURRENT_PERMISSION_KEY_SET.has(permissionKey),
+        ),
+      ]),
+    ),
+  );
+}
+
+await refreshRoleAccessSnapshot();
 
 const { findLoanBowByUsername, upsertLoanBowByUsername } =
   serverRuntime.databaseEngine === "sqlite"
@@ -921,6 +945,7 @@ const memberAuthGateway = createMemberAuthGateway({
   insertLoginEvent,
   listAllUsers,
   pool: db.pool,
+  updateUserMembershipStatus,
   updateUserPassword,
 });
 
@@ -934,6 +959,51 @@ const memberProfileGateway = createMemberProfileGateway({
   upsertLoanBowByUsername,
   upsertUser,
   upsertUserType,
+});
+
+const memberDirectoryGateway = {
+  findDisciplinesByUsername: (username) =>
+    memberAuthGateway.findDisciplinesByUsername(username),
+  findLoanBowByUsername: (username) =>
+    memberProfileGateway.findLoanBowByUsername(username),
+  findUserByUsername: (username) => memberAuthGateway.findUserByUsername(username),
+  listAllUsers: () => memberAuthGateway.listAllUsers(),
+};
+
+const beginnersCourseReadGateway = createBeginnersCourseReadGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  findBeginnersCourseById,
+  findBeginnersCourseLessonById,
+  findBeginnersCourseParticipantById,
+  findBeginnersCourseParticipantByUsername,
+  listBeginnersCourseLessons,
+  listBeginnersCourseLessonsByCourseId,
+  listBeginnersCourseParticipantLoginDates,
+  listBeginnersCourseParticipants,
+  listBeginnersCourseParticipantsByCourseId,
+  listBeginnersCourses,
+  listBeginnersLessonCoaches,
+  listBeginnersLessonCoachesByLessonId,
+  listCoachBeginnersLessonsByUserId,
+  pool: db.pool,
+});
+
+const beginnersCourseWriteGateway = createBeginnersCourseWriteGateway({
+  cancelBeginnersCourse,
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  deleteBeginnersLessonCoachesByLessonId,
+  insertBeginnersCourse,
+  insertBeginnersCourseLesson,
+  insertBeginnersCourseParticipant,
+  insertBeginnersLessonCoach,
+  markBeginnersCourseParticipantConverted,
+  pool: db.pool,
+  updateBeginnersCourseApproval,
+  updateBeginnersCourseParticipant,
+  updateBeginnersCourseParticipantCase,
+  updateUserPassword,
+  upsertUser,
 });
 
 if (serverRuntime.databaseEngine === "postgres") {
@@ -975,6 +1045,25 @@ app.use("/api/committee-roles", express.json({ limit: COMMITTEE_PHOTO_JSON_BODY_
 app.use(express.json({ limit: GENERAL_JSON_BODY_LIMIT }));
 app.use(csrfProtection.middleware);
 app.use(authRateLimiter.middleware);
+app.use(async (req, _res, next) => {
+  const actorUsername = getActorUsername(req);
+
+  if (!actorUsername) {
+    req.actorUser = null;
+    next();
+    return;
+  }
+
+  try {
+    const actor = await syncMemberStatusWithFees(
+      await memberAuthGateway.findUserByUsername(actorUsername),
+    );
+    req.actorUser = actor?.active_member ? actor : null;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 app.use(createAuditMiddleware(insertAuditEvent));
 
 function buildMemberUserProfile(user, disciplines = [], meta = {}) {
@@ -1226,7 +1315,7 @@ function buildBeginnersLessonDates(firstLessonDate, lessonCount) {
   }));
 }
 
-function sanitizeBeginnersCoursePayload(payload) {
+async function sanitizeBeginnersCoursePayload(payload) {
   const firstLessonDate =
     typeof payload?.firstLessonDate === "string" ? payload.firstLessonDate.trim() : "";
   const startTime =
@@ -1240,7 +1329,10 @@ function sanitizeBeginnersCoursePayload(payload) {
       ? payload.coordinatorUsername.trim()
       : "";
 
-  if (!coordinatorUsername || !findUserByUsername.get(coordinatorUsername)) {
+  if (
+    !coordinatorUsername ||
+    !(await memberDirectoryGateway.findUserByUsername(coordinatorUsername))
+  ) {
     return {
       success: false,
       status: 400,
@@ -1351,7 +1443,7 @@ function buildBeginnersPassword() {
   return value;
 }
 
-function buildBeginnersUsername(firstName, surname) {
+async function buildBeginnersUsername(firstName, surname) {
   const base =
     `${String(firstName ?? "").slice(0, 1)}${String(surname ?? "")}`
       .toLowerCase()
@@ -1360,7 +1452,7 @@ function buildBeginnersUsername(firstName, surname) {
   let nextUsername = base;
   let counter = 2;
 
-  while (findUserByUsername.get(nextUsername)) {
+  while (await memberDirectoryGateway.findUserByUsername(nextUsername)) {
     const suffix = String(counter);
     nextUsername = `${base.slice(0, Math.max(1, 12 - suffix.length))}${suffix}`;
     counter += 1;
@@ -1411,26 +1503,34 @@ function getCourseParticipantUserType(courseType) {
   return COURSE_PARTICIPANT_USER_TYPES[normalizeCourseType(courseType)] ?? "beginner";
 }
 
-function buildBeginnersCourseDashboard(courseType = "beginners") {
+async function buildBeginnersCourseDashboard(courseType = "beginners") {
   const normalizedCourseType = normalizeCourseType(courseType);
-  const courses = listBeginnersCourses
-    .all()
-    .filter((course) => normalizeCourseType(course.course_type) === normalizedCourseType);
+  const [allCourses, allLessons, allParticipants, allLoginDates, allLessonCoaches] =
+    await Promise.all([
+      beginnersCourseReadGateway.listCourses(),
+      beginnersCourseReadGateway.listLessons(),
+      beginnersCourseReadGateway.listParticipants(),
+      beginnersCourseReadGateway.listParticipantLoginDates(),
+      beginnersCourseReadGateway.listLessonCoaches(),
+    ]);
+  const courses = allCourses.filter(
+    (course) => normalizeCourseType(course.course_type) === normalizedCourseType,
+  );
   const lessonsByCourseId = groupRowsBy(
-    listBeginnersCourseLessons.all(),
+    allLessons,
     (lesson) => lesson.course_id,
   );
   const participantsByCourseId = groupRowsBy(
-    listBeginnersCourseParticipants.all(),
+    allParticipants,
     (participant) => participant.course_id,
   );
   const loginDatesByCourseParticipant = groupRowsBy(
-    listBeginnersCourseParticipantLoginDates.all(),
+    allLoginDates,
     (row) => `${row.course_id}:${row.username}`,
     (row) => row.logged_in_date,
   );
   const coachesByLessonId = groupRowsBy(
-    listBeginnersLessonCoaches.all(),
+    allLessonCoaches,
     (row) => row.lesson_id,
     (row) => ({
       username: row.coach_username,
@@ -1504,12 +1604,12 @@ function buildBeginnersCourseDashboard(courseType = "beginners") {
   });
 }
 
-function hasBeginnersCourseCompleted(course) {
+async function hasBeginnersCourseCompleted(course) {
   if (!course) {
     return false;
   }
 
-  const lessons = listBeginnersCourseLessonsByCourseId.all(course.id);
+  const lessons = await beginnersCourseReadGateway.listLessonsByCourseId(course.id);
 
   if (!lessons.length) {
     return false;
@@ -1534,27 +1634,32 @@ function hasBeginnersCourseCompleted(course) {
   return hasScheduleEntryEnded(lastLesson.lesson_date, lastLesson.end_time);
 }
 
-function buildBeginnersCourseCalendarLessons(courseType = null) {
+async function buildBeginnersCourseCalendarLessons(courseType = null) {
   const requestedCourseType =
     typeof courseType === "string" ? normalizeCourseType(courseType) : null;
-  const approvedCourses = listBeginnersCourses
-    .all()
-    .filter(
-      (course) =>
-        (!requestedCourseType ||
-          normalizeCourseType(course.course_type) === requestedCourseType) &&
-        (course.approval_status ?? "pending") === "approved",
-    );
+  const [allCourses, allLessons, allParticipants, allLessonCoaches] =
+    await Promise.all([
+      beginnersCourseReadGateway.listCourses(),
+      beginnersCourseReadGateway.listLessons(),
+      beginnersCourseReadGateway.listParticipants(),
+      beginnersCourseReadGateway.listLessonCoaches(),
+    ]);
+  const approvedCourses = allCourses.filter(
+    (course) =>
+      (!requestedCourseType ||
+        normalizeCourseType(course.course_type) === requestedCourseType) &&
+      (course.approval_status ?? "pending") === "approved",
+  );
   const lessonsByCourseId = groupRowsBy(
-    listBeginnersCourseLessons.all(),
+    allLessons,
     (lesson) => lesson.course_id,
   );
   const participantsByCourseId = groupRowsBy(
-    listBeginnersCourseParticipants.all(),
+    allParticipants,
     (participant) => participant.course_id,
   );
   const coachesByLessonId = groupRowsBy(
-    listBeginnersLessonCoaches.all(),
+    allLessonCoaches,
     (row) => row.lesson_id,
     (row) => `${row.first_name} ${row.surname}`.trim(),
   );
@@ -2030,7 +2135,7 @@ function isMembershipFeesOverdue(user, today = toUtcDateString(new Date())) {
   return Boolean(membershipFeesDue && membershipFeesDue < today);
 }
 
-function syncMemberStatusWithFees(user) {
+function normalizeMemberStatusWithFees(user) {
   if (!user || !isMembershipFeesOverdue(user)) {
     return user;
   }
@@ -2039,20 +2144,37 @@ function syncMemberStatusWithFees(user) {
   const requiresUpdate =
     Boolean(user.active_member) || (user.rfid_tag ?? null) !== nextRfidTag;
 
-  if (requiresUpdate) {
-    updateUserMembershipStatus.run(0, nextRfidTag, user.username);
-  }
-
   return {
     ...user,
     active_member: 0,
     rfid_tag: nextRfidTag,
+    requiresMembershipStatusSync: requiresUpdate,
   };
 }
 
-function syncAllMemberStatusesWithFees() {
-  for (const user of listAllUsers.all()) {
-    syncMemberStatusWithFees(user);
+async function syncMemberStatusWithFees(user) {
+  const normalizedUser = normalizeMemberStatusWithFees(user);
+
+  if (normalizedUser?.requiresMembershipStatusSync) {
+    await memberAuthGateway.updateUserMembershipStatus(
+      normalizedUser.username,
+      normalizedUser.active_member,
+      normalizedUser.rfid_tag,
+    );
+  }
+
+  if (!normalizedUser) {
+    return normalizedUser;
+  }
+
+  const { requiresMembershipStatusSync: _requiresMembershipStatusSync, ...syncedUser } =
+    normalizedUser;
+  return syncedUser;
+}
+
+async function syncAllMemberStatusesWithFees() {
+  for (const user of await memberAuthGateway.listAllUsers()) {
+    await syncMemberStatusWithFees(user);
   }
 }
 
@@ -2498,25 +2620,11 @@ function getActorUsername(req) {
 }
 
 function getActorUser(req) {
-  const actorUsername = getActorUsername(req);
-
-  if (!actorUsername) {
-    return null;
-  }
-
-  syncAllMemberStatusesWithFees();
-
-  const actor = syncMemberStatusWithFees(findUserByUsername.get(actorUsername));
-
-  if (!actor?.active_member) {
-    return null;
-  }
-
-  return actor;
+  return req.actorUser ?? null;
 }
 
 function listAssignableRoleKeys() {
-  return listRoleDefinitions.all().map((role) => role.role_key);
+  return [...cachedAssignableRoleKeys];
 }
 
 function getPermissionsForRole(roleKey) {
@@ -2524,10 +2632,7 @@ function getPermissionsForRole(roleKey) {
     return [];
   }
 
-  return listRolePermissionKeysByRoleKey
-    .all(roleKey)
-    .map((permission) => permission.permission_key)
-    .filter((permissionKey) => CURRENT_PERMISSION_KEY_SET.has(permissionKey));
+  return [...(cachedRolePermissionsByKey.get(roleKey) ?? [])];
 }
 
 function actorHasPermission(actor, permissionKey) {
@@ -2556,7 +2661,7 @@ function buildUniqueRoleKeyFromTitle(title) {
   let nextKey = baseKey;
   let counter = 2;
 
-  while (findRoleDefinitionByKey.get(nextKey)) {
+  while (cachedKnownRoleKeys.has(nextKey)) {
     const suffix = `-${counter}`;
     const trimmedBase = baseKey.slice(0, Math.max(1, 40 - suffix.length));
     nextKey = `${trimmedBase}${suffix}`;
@@ -3241,23 +3346,21 @@ function isBeginnerVisibleInProfileOptions(user, participant, now = new Date()) 
   return createdAt.getTime() > addUtcDays(now, -30).getTime();
 }
 
-function listProfilePageMembers(now = new Date()) {
+async function listProfilePageMembers(now = new Date()) {
   const participantsByUsername = new Map(
-    listBeginnersCourseParticipants.all().map((participant) => [
+    (await beginnersCourseReadGateway.listParticipants()).map((participant) => [
       participant.username,
       participant,
     ]),
   );
 
-  return listAllUsers
-    .all()
-    .filter((user) =>
-      isBeginnerVisibleInProfileOptions(
-        user,
-        participantsByUsername.get(user.username),
-        now,
-      ),
-    );
+  return (await memberDirectoryGateway.listAllUsers()).filter((user) =>
+    isBeginnerVisibleInProfileOptions(
+      user,
+      participantsByUsername.get(user.username),
+      now,
+    ),
+  );
 }
 
 async function buildUsageTotals(startIso, endIsoExclusive) {
@@ -3614,17 +3717,15 @@ registerAdminMemberRoutes({
   buildUniqueRoleKeyFromTitle,
   CURRENT_PERMISSION_KEY_SET,
   DISTANCE_SIGN_OFF_YARDS,
-  findDisciplinesByUsername,
-  findLoanBowByUsername,
-  findUserByUsername,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,
-  listAllUsers,
   listAssignableRoleKeys,
   listProfilePageMembers,
+  memberDirectoryGateway,
   memberDistanceSignOffRepository,
   PERMISSIONS,
+  refreshRoleAccessSnapshot,
   roleCommitteeGateway,
   sanitizeLoanBow,
   sanitizeLoanBowReturn,
@@ -3646,10 +3747,9 @@ registerEquipmentRoutes({
   EQUIPMENT_TYPE_LABELS,
   EQUIPMENT_TYPE_OPTIONS,
   equipmentGateway,
-  findUserByUsername,
   getActorUser,
   getUtcTimestampParts,
-  listAllUsers,
+  memberDirectoryGateway,
   PERMISSIONS,
   sanitizeCupboardLabel,
   sanitizeEquipmentCreatePayload,
@@ -3680,8 +3780,8 @@ app.get("/api/beginners-courses/dashboard", async (req, res) => {
   const cases = maps.items
     .filter((item) => item.equipment_type === EQUIPMENT_TYPES.CASE)
     .map((item) => buildEquipmentCaseResponse(item, maps));
-  const users = listAllUsers
-    .all()
+  const users = (await memberDirectoryGateway
+    .listAllUsers())
     .filter((user) => !["beginner", "have-a-go"].includes(user.user_type))
     .map((user) => ({
       username: user.username,
@@ -3702,7 +3802,7 @@ app.get("/api/beginners-courses/dashboard", async (req, res) => {
         coursePermissions.approve,
       ),
     },
-    courses: buildBeginnersCourseDashboard(courseType),
+    courses: await buildBeginnersCourseDashboard(courseType),
     coordinators: users,
     coaches: users.filter((user) =>
       isBeginnersCourseCoachEligible({
@@ -3719,14 +3819,14 @@ app.get("/api/beginners-courses/dashboard", async (req, res) => {
   });
 });
 
-app.get("/api/beginners-courses/calendar", (req, res) => {
+app.get("/api/beginners-courses/calendar", async (req, res) => {
   res.json({
     success: true,
-    lessons: buildBeginnersCourseCalendarLessons(req.query?.courseType),
+    lessons: await buildBeginnersCourseCalendarLessons(req.query?.courseType),
   });
 });
 
-app.post("/api/beginners-courses", (req, res) => {
+app.post("/api/beginners-courses", async (req, res) => {
   const actor = getActorUser(req);
   const courseType = normalizeCourseType(req.body?.courseType);
   const coursePermissions = getCourseTypePermissions(courseType);
@@ -3742,7 +3842,7 @@ app.post("/api/beginners-courses", (req, res) => {
     return;
   }
 
-  const sanitized = sanitizeBeginnersCoursePayload(req.body);
+  const sanitized = await sanitizeBeginnersCoursePayload(req.body);
 
   if (!sanitized.success) {
     res.status(sanitized.status).json(sanitized);
@@ -3750,53 +3850,36 @@ app.post("/api/beginners-courses", (req, res) => {
   }
 
   const [date, time] = getUtcTimestampParts();
-  const createCourseTransaction = db.transaction(() => {
-    const result = insertBeginnersCourse.run(
-      courseType,
-      sanitized.value.coordinatorUsername,
-      actor.username,
-      sanitized.value.firstLessonDate,
-      sanitized.value.startTime,
-      sanitized.value.endTime,
-      sanitized.value.lessonCount,
-      sanitized.value.beginnerCapacity,
-      "pending",
-      null,
-      null,
-      null,
-      null,
-      date,
-      time,
-    );
-
-    for (const lesson of buildBeginnersLessonDates(
+  const courseId = await beginnersCourseWriteGateway.createCourseWithLessons({
+    actorUsername: actor.username,
+    beginnerCapacity: sanitized.value.beginnerCapacity,
+    coordinatorUsername: sanitized.value.coordinatorUsername,
+    courseType,
+    createdAtDate: date,
+    createdAtTime: time,
+    endTime: sanitized.value.endTime,
+    firstLessonDate: sanitized.value.firstLessonDate,
+    lessonCount: sanitized.value.lessonCount,
+    lessonDates: buildBeginnersLessonDates(
       sanitized.value.firstLessonDate,
       sanitized.value.lessonCount,
-    )) {
-      insertBeginnersCourseLesson.run(
-        result.lastInsertRowid,
-        lesson.lessonNumber,
-        lesson.lessonDate,
-        sanitized.value.startTime,
-        sanitized.value.endTime,
-      );
-    }
-
-    return result.lastInsertRowid;
+    ),
+    startTime: sanitized.value.startTime,
   });
-
-  const courseId = createCourseTransaction();
 
   res.status(201).json({
     success: true,
-    course: buildBeginnersCourseDashboard(courseType).find((course) => course.id === courseId) ?? null,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (course) => course.id === courseId,
+      ) ?? null,
   });
 });
 
-app.post("/api/beginners-courses/:id/approve", (req, res) => {
+app.post("/api/beginners-courses/:id/approve", async (req, res) => {
   const actor = getActorUser(req);
 
-  const course = findBeginnersCourseById.get(req.params.id);
+  const course = await beginnersCourseReadGateway.findCourseById(req.params.id);
 
   if (!course) {
     res.status(404).json({
@@ -3837,18 +3920,28 @@ app.post("/api/beginners-courses/:id/approve", (req, res) => {
   }
 
   const [date, time] = getUtcTimestampParts();
-  updateBeginnersCourseApproval.run("approved", null, actor.username, date, time, course.id);
+  await beginnersCourseWriteGateway.reviewCourse({
+    approvalStatus: "approved",
+    approvedAtDate: date,
+    approvedAtTime: time,
+    approvedByUsername: actor.username,
+    courseId: course.id,
+    rejectionReason: null,
+  });
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === course.id) ?? null,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === course.id,
+      ) ?? null,
   });
 });
 
-app.post("/api/beginners-courses/:id/reject", (req, res) => {
+app.post("/api/beginners-courses/:id/reject", async (req, res) => {
   const actor = getActorUser(req);
 
-  const course = findBeginnersCourseById.get(req.params.id);
+  const course = await beginnersCourseReadGateway.findCourseById(req.params.id);
 
   if (!course) {
     res.status(404).json({
@@ -3900,24 +3993,27 @@ app.post("/api/beginners-courses/:id/reject", (req, res) => {
   }
 
   const [date, time] = getUtcTimestampParts();
-  updateBeginnersCourseApproval.run(
-    "rejected",
+  await beginnersCourseWriteGateway.reviewCourse({
+    approvalStatus: "rejected",
+    approvedAtDate: date,
+    approvedAtTime: time,
+    approvedByUsername: actor.username,
+    courseId: course.id,
     rejectionReason,
-    actor.username,
-    date,
-    time,
-    course.id,
-  );
+  });
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === course.id) ?? null,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === course.id,
+      ) ?? null,
   });
 });
 
-app.delete("/api/beginners-courses/:id", (req, res) => {
+app.delete("/api/beginners-courses/:id", async (req, res) => {
   const actor = getActorUser(req);
-  const course = findBeginnersCourseById.get(req.params.id);
+  const course = await beginnersCourseReadGateway.findCourseById(req.params.id);
 
   if (!actor) {
     res.status(401).json({
@@ -3977,13 +4073,13 @@ app.delete("/api/beginners-courses/:id", (req, res) => {
   }
 
   const [date, time] = getUtcTimestampParts();
-  cancelBeginnersCourse.run(
-    cancellationReason,
-    actor.username,
-    date,
-    time,
-    course.id,
-  );
+  await beginnersCourseWriteGateway.cancelCourse({
+    actorUsername: actor.username,
+    cancelledAtDate: date,
+    cancelledAtTime: time,
+    courseId: course.id,
+    reason: cancellationReason,
+  });
 
   res.json({
     success: true,
@@ -3993,7 +4089,7 @@ app.delete("/api/beginners-courses/:id", (req, res) => {
 app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
   const actor = getActorUser(req);
 
-  const course = findBeginnersCourseById.get(req.params.id);
+  const course = await beginnersCourseReadGateway.findCourseById(req.params.id);
 
   if (!course) {
     res.status(404).json({
@@ -4033,7 +4129,10 @@ app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
     return;
   }
 
-  if (listBeginnersCourseParticipantsByCourseId.all(course.id).length >= course.beginner_capacity) {
+  if (
+    (await beginnersCourseReadGateway.listParticipantsByCourseId(course.id)).length >=
+    course.beginner_capacity
+  ) {
     res.status(400).json({
       success: false,
       message: "This beginners course is already full.",
@@ -4049,7 +4148,7 @@ app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
   }
 
   const password = buildBeginnersPassword();
-  const username = buildBeginnersUsername(
+  const username = await buildBeginnersUsername(
     sanitized.value.firstName,
     sanitized.value.surname,
   );
@@ -4073,38 +4172,29 @@ app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
     return;
   }
 
-  insertBeginnersCourseParticipant.run(
-    course.id,
+  await beginnersCourseWriteGateway.createParticipant({
+    actorUsername: actor.username,
+    courseId: course.id,
+    createdAtDate: date,
+    createdAtTime: time,
+    participant: sanitized.value,
     username,
-    sanitized.value.firstName,
-    sanitized.value.surname,
-    sanitized.value.sizeCategory,
-    sanitized.value.heightText,
-    sanitized.value.handedness,
-    sanitized.value.eyeDominance,
-    sanitized.value.initialEmailSent ? 1 : 0,
-    sanitized.value.thirtyDayReminderSent ? 1 : 0,
-    sanitized.value.courseFeePaid ? 1 : 0,
-    null,
-    null,
-    null,
-    null,
-    actor.username,
-    date,
-    time,
-  );
+  });
 
   res.status(201).json({
     success: true,
     username,
     temporaryPassword: password,
-    course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === course.id) ?? null,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === course.id,
+      ) ?? null,
   });
 });
 
-app.post("/api/beginners-course-participants/:id/reset-password", (req, res) => {
+app.post("/api/beginners-course-participants/:id/reset-password", async (req, res) => {
   const actor = getActorUser(req);
-  const participant = findBeginnersCourseParticipantById.get(req.params.id);
+  const participant = await beginnersCourseReadGateway.findParticipantById(req.params.id);
 
   if (!participant) {
     res.status(404).json({
@@ -4114,7 +4204,7 @@ app.post("/api/beginners-course-participants/:id/reset-password", (req, res) => 
     return;
   }
 
-  const course = findBeginnersCourseById.get(participant.course_id);
+  const course = await beginnersCourseReadGateway.findCourseById(participant.course_id);
 
   if (!course) {
     res.status(404).json({
@@ -4139,20 +4229,26 @@ app.post("/api/beginners-course-participants/:id/reset-password", (req, res) => 
   }
 
   const password = buildBeginnersPassword();
-  updateUserPassword.run(hashPassword(password), participant.username);
+  await beginnersCourseWriteGateway.resetParticipantPassword({
+    passwordHash: hashPassword(password),
+    username: participant.username,
+  });
 
   res.json({
     success: true,
     username: participant.username,
     temporaryPassword: password,
-    course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === course.id) ?? null,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === course.id,
+      ) ?? null,
   });
 });
 
-app.put("/api/beginners-course-participants/:id", (req, res) => {
+app.put("/api/beginners-course-participants/:id", async (req, res) => {
   const actor = getActorUser(req);
 
-  const participant = findBeginnersCourseParticipantById.get(req.params.id);
+  const participant = await beginnersCourseReadGateway.findParticipantById(req.params.id);
 
   if (!participant) {
     res.status(404).json({
@@ -4162,7 +4258,7 @@ app.put("/api/beginners-course-participants/:id", (req, res) => {
     return;
   }
 
-  const course = findBeginnersCourseById.get(participant.course_id);
+  const course = await beginnersCourseReadGateway.findCourseById(participant.course_id);
   const courseType = normalizeCourseType(course?.course_type);
   const coursePermissions = getCourseTypePermissions(courseType);
 
@@ -4184,38 +4280,22 @@ app.put("/api/beginners-course-participants/:id", (req, res) => {
     return;
   }
 
-  updateBeginnersCourseParticipant.run({
-    id: participant.id,
-    firstName: sanitized.value.firstName,
-    surname: sanitized.value.surname,
-    sizeCategory: sanitized.value.sizeCategory,
-    heightText: sanitized.value.heightText,
-    handedness: sanitized.value.handedness,
-    eyeDominance: sanitized.value.eyeDominance,
-    initialEmailSent: sanitized.value.initialEmailSent ? 1 : 0,
-    thirtyDayReminderSent: sanitized.value.thirtyDayReminderSent ? 1 : 0,
-    courseFeePaid: sanitized.value.courseFeePaid ? 1 : 0,
+  const existingUser = await memberDirectoryGateway.findUserByUsername(
+    participant.username,
+  );
+
+  await beginnersCourseWriteGateway.updateParticipant({
+    existingUser,
+    participant: sanitized.value,
+    participantId: participant.id,
   });
-
-  const existingUser = findUserByUsername.get(participant.username);
-
-  if (existingUser) {
-    upsertUser.run({
-      username: existingUser.username,
-      firstName: sanitized.value.firstName,
-      surname: sanitized.value.surname,
-      password: existingUser.password,
-      rfidTag: existingUser.rfid_tag,
-      activeMember: existingUser.active_member,
-      membershipFeesDue: existingUser.membership_fees_due,
-    });
-  }
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard(courseType).find(
-      (entry) => entry.id === participant.course_id,
-    ) ?? null,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === participant.course_id,
+      ) ?? null,
   });
 });
 
@@ -4230,7 +4310,7 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     return;
   }
 
-  const participant = findBeginnersCourseParticipantById.get(req.params.id);
+  const participant = await beginnersCourseReadGateway.findParticipantById(req.params.id);
 
   if (!participant) {
     res.status(404).json({
@@ -4240,7 +4320,7 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     return;
   }
 
-  const course = findBeginnersCourseById.get(participant.course_id);
+  const course = await beginnersCourseReadGateway.findCourseById(participant.course_id);
 
   if (!course) {
     res.status(404).json({
@@ -4250,7 +4330,7 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     return;
   }
 
-  if (!hasBeginnersCourseCompleted(course)) {
+  if (!(await hasBeginnersCourseCompleted(course))) {
     res.status(400).json({
       success: false,
       message: "Beginners can only be converted after the course has completed.",
@@ -4258,7 +4338,9 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     return;
   }
 
-  const existingUser = findUserByUsername.get(participant.username);
+  const existingUser = await memberDirectoryGateway.findUserByUsername(
+    participant.username,
+  );
 
   if (!existingUser) {
     res.status(404).json({
@@ -4279,10 +4361,16 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
       membershipFeesDue: existingUser.membership_fees_due ?? "",
       coachingVolunteer: Boolean(existingUser.coaching_volunteer),
       userType: "general",
-      disciplines: findDisciplinesByUsername
-        .all(existingUser.username)
-        .map((entry) => entry.discipline),
-      loanBow: buildLoanBowRecord(findLoanBowByUsername.get(existingUser.username)),
+      disciplines: (
+        await memberDirectoryGateway.findDisciplinesByUsername(
+          existingUser.username,
+        )
+      ).map((entry) => entry.discipline),
+      loanBow: buildLoanBowRecord(
+        await memberDirectoryGateway.findLoanBowByUsername(
+          existingUser.username,
+        ),
+      ),
       existingUser,
     });
 
@@ -4292,21 +4380,22 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     }
   }
 
-  markBeginnersCourseParticipantConverted.run(participant.id);
+  await beginnersCourseWriteGateway.markParticipantConverted(participant.id);
   const courseType = normalizeCourseType(course.course_type);
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard(courseType).find(
-      (entry) => entry.id === participant.course_id,
-    ) ?? null,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === participant.course_id,
+      ) ?? null,
   });
 });
 
-app.post("/api/beginners-course-participants/:id/assign-case", (req, res) => {
+app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) => {
   const actor = getActorUser(req);
 
-  const participant = findBeginnersCourseParticipantById.get(req.params.id);
+  const participant = await beginnersCourseReadGateway.findParticipantById(req.params.id);
 
   if (!participant) {
     res.status(404).json({
@@ -4316,7 +4405,7 @@ app.post("/api/beginners-course-participants/:id/assign-case", (req, res) => {
     return;
   }
 
-  const course = findBeginnersCourseById.get(participant.course_id);
+  const course = await beginnersCourseReadGateway.findCourseById(participant.course_id);
   const courseType = normalizeCourseType(course?.course_type);
   const coursePermissions = getCourseTypePermissions(courseType);
 
@@ -4450,13 +4539,13 @@ app.post("/api/beginners-course-participants/:id/assign-case", (req, res) => {
       });
     }
 
-    updateBeginnersCourseParticipantCase.run(
-      nextCase?.id ?? null,
-      nextCase ? actor.username : null,
-      nextCase ? date : null,
-      nextCase ? time : null,
-      participant.id,
-    );
+    beginnersCourseWriteGateway.updateParticipantCase({
+      actorUsername: actor.username,
+      assignedAtDate: date,
+      assignedAtTime: time,
+      assignedCaseId: nextCase?.id ?? null,
+      participantId: participant.id,
+    });
   });
 
   try {
@@ -4471,16 +4560,17 @@ app.post("/api/beginners-course-participants/:id/assign-case", (req, res) => {
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard(courseType).find(
-      (entry) => entry.id === participant.course_id,
-    ) ?? null,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === participant.course_id,
+      ) ?? null,
   });
 });
 
-app.post("/api/beginners-course-lessons/:id/coaches", (req, res) => {
+app.post("/api/beginners-course-lessons/:id/coaches", async (req, res) => {
   const actor = getActorUser(req);
 
-  const lesson = findBeginnersCourseLessonById.get(req.params.id);
+  const lesson = await beginnersCourseReadGateway.findLessonById(req.params.id);
 
   if (!lesson) {
     res.status(404).json({
@@ -4490,7 +4580,7 @@ app.post("/api/beginners-course-lessons/:id/coaches", (req, res) => {
     return;
   }
 
-  const course = findBeginnersCourseById.get(lesson.course_id);
+  const course = await beginnersCourseReadGateway.findCourseById(lesson.course_id);
   const courseType = normalizeCourseType(course?.course_type);
   const coursePermissions = getCourseTypePermissions(courseType);
 
@@ -4508,8 +4598,11 @@ app.post("/api/beginners-course-lessons/:id/coaches", (req, res) => {
   const coachUsernames = Array.isArray(req.body?.coachUsernames)
     ? [...new Set(req.body.coachUsernames.filter((value) => typeof value === "string"))]
     : [];
-  const invalidCoach = coachUsernames.find((username) => {
-    const coach = findUserByUsername.get(username);
+  const coaches = await Promise.all(
+    coachUsernames.map((username) => memberDirectoryGateway.findUserByUsername(username)),
+  );
+  const invalidCoach = coachUsernames.find((username, index) => {
+    const coach = coaches[index];
     return !coach || !isBeginnersCourseCoachEligible(coach);
   });
 
@@ -4522,29 +4615,24 @@ app.post("/api/beginners-course-lessons/:id/coaches", (req, res) => {
   }
 
   const [date, time] = getUtcTimestampParts();
-  const coachTransaction = db.transaction(() => {
-    deleteBeginnersLessonCoachesByLessonId.run(lesson.id);
-
-    for (const coachUsername of coachUsernames) {
-      insertBeginnersLessonCoach.run(
-        lesson.id,
-        coachUsername,
-        actor.username,
-        date,
-        time,
-      );
-    }
+  await beginnersCourseWriteGateway.replaceLessonCoaches({
+    actorUsername: actor.username,
+    assignedAtDate: date,
+    assignedAtTime: time,
+    coachUsernames,
+    lessonId: lesson.id,
   });
-
-  coachTransaction();
 
   res.json({
     success: true,
-    course: buildBeginnersCourseDashboard(courseType).find((entry) => entry.id === lesson.course_id) ?? null,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === lesson.course_id,
+      ) ?? null,
   });
 });
 
-app.get("/api/my-beginner-dashboard", (req, res) => {
+app.get("/api/my-beginner-dashboard", async (req, res) => {
   const actor = getActorUser(req);
 
   if (!actor) {
@@ -4555,7 +4643,9 @@ app.get("/api/my-beginner-dashboard", (req, res) => {
     return;
   }
 
-  const participant = findBeginnersCourseParticipantByUsername.get(actor.username);
+  const participant = await beginnersCourseReadGateway.findParticipantByUsername(
+    actor.username,
+  );
 
   if (!participant) {
     res.json({
@@ -4565,7 +4655,7 @@ app.get("/api/my-beginner-dashboard", (req, res) => {
     return;
   }
 
-  const course = findBeginnersCourseById.get(participant.course_id);
+  const course = await beginnersCourseReadGateway.findCourseById(participant.course_id);
   if (
     !course ||
     course.is_cancelled ||
@@ -4578,16 +4668,16 @@ app.get("/api/my-beginner-dashboard", (req, res) => {
     return;
   }
   const today = toUtcDateString(new Date());
-  const lessons = listBeginnersCourseLessonsByCourseId.all(course.id);
+  const lessons = await beginnersCourseReadGateway.listLessonsByCourseId(course.id);
   const todayLesson = lessons.find((lesson) => lesson.lesson_date === today) ?? null;
   const coaches = todayLesson
-    ? listBeginnersLessonCoachesByLessonId.all(todayLesson.id).map((row) => ({
+    ? (await beginnersCourseReadGateway.listLessonCoachesByLessonId(todayLesson.id)).map((row) => ({
         username: row.coach_username,
         fullName: `${row.first_name} ${row.surname}`.trim(),
       }))
     : [];
-  const equipment = listOpenEquipmentLoansByMemberUserId
-    .all(actor.id)
+  const equipment = (await equipmentGateway
+    .listOpenEquipmentLoansByMemberUserId(actor.username))
     .map((loan) => ({
       id: loan.id,
       equipmentType: loan.equipment_type,
@@ -4634,7 +4724,7 @@ app.get("/api/my-beginner-dashboard", (req, res) => {
   });
 });
 
-app.get("/api/my-beginner-coaching-assignments", (req, res) => {
+app.get("/api/my-beginner-coaching-assignments", async (req, res) => {
   const actor = getActorUser(req);
 
   if (!actor) {
@@ -4645,7 +4735,7 @@ app.get("/api/my-beginner-coaching-assignments", (req, res) => {
     return;
   }
 
-  const lessons = listCoachBeginnersLessonsByUserId.all(actor.id).map((lesson) => ({
+  const lessons = (await beginnersCourseReadGateway.listCoachLessonsByUserId(actor.id)).map((lesson) => ({
     id: lesson.id,
     courseId: lesson.course_id,
     lessonNumber: lesson.lesson_number,
@@ -4653,8 +4743,14 @@ app.get("/api/my-beginner-coaching-assignments", (req, res) => {
     startTime: lesson.start_time,
     endTime: lesson.end_time,
     coordinatorName: `${lesson.coordinator_first_name} ${lesson.coordinator_surname}`.trim(),
-    beginnerCount: listBeginnersCourseParticipantsByCourseId.all(lesson.course_id).length,
+    beginnerCount: 0,
   }));
+
+  for (const lesson of lessons) {
+    lesson.beginnerCount = (
+      await beginnersCourseReadGateway.listParticipantsByCourseId(lesson.courseId)
+    ).length;
+  }
 
   res.json({
     success: true,

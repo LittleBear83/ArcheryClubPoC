@@ -194,9 +194,6 @@ function createAdminRoleTestApp() {
         .replace(/^_+|_+$/g, ""),
     CURRENT_PERMISSION_KEY_SET: new Set([PERMISSIONS.MANAGE_ROLES_PERMISSIONS]),
     DISTANCE_SIGN_OFF_YARDS: [],
-    findDisciplinesByUsername: noopStatement(),
-    findLoanBowByUsername: noopStatement(),
-    findUserByUsername: noopStatement(),
     getActorUser: (req) => {
       if (!String(req.headers.cookie ?? "").includes("archeryclubpoc_session=valid")) {
         return null;
@@ -209,13 +206,21 @@ function createAdminRoleTestApp() {
     },
     getPermissionsForRole: () => [],
     getUtcTimestampParts: () => ["2026-04-21", "10:00:00"],
-    listAllUsers: noopStatement(),
     listAssignableRoleKeys: () => [],
     listProfilePageMembers: () => [],
+    memberDirectoryGateway: {
+      findDisciplinesByUsername: async () => [],
+      findLoanBowByUsername: async () => null,
+      findUserByUsername: async () => null,
+      listAllUsers: async () => [],
+    },
     memberDistanceSignOffRepository: {
-      listByDiscipline: () => [],
+      listByDiscipline: async () => [],
+      listByUsername: async () => [],
+      upsert: async () => {},
     },
     PERMISSIONS,
+    refreshRoleAccessSnapshot: async () => {},
     roleCommitteeGateway: {
       countUsersByRoleKey: async () => ({ count: 0 }),
       createRole: async ({ permissions, roleKey, title }) => {

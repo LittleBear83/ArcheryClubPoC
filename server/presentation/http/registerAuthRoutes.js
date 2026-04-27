@@ -6,22 +6,15 @@ export function registerAuthRoutes({
   clearSessionCookie,
   createCsrfCookie,
   createSessionCookie,
-  findDisciplinesByUsername,
-  findUserByCredentials,
-  findUserByRfid,
-  findUserByUsername,
   getDeactivatedRfidTag,
   getCsrfToken,
   getSessionUsername,
   getUtcTimestampParts,
   hashPassword,
-  insertGuestLoginEvent,
-  insertLoginEvent,
   latestRfidScan,
+  memberAuthGateway,
   rfidReaderStatus,
-  listAllUsers,
   syncMemberStatusWithFees,
-  updateUserPassword,
   verifyPassword,
 }) {
   // Auth routes own session-cookie creation and login-event recording; callers
@@ -37,7 +30,7 @@ export function registerAuthRoutes({
     return csrfToken;
   };
 
-  app.post("/api/auth/login", (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     const { username, password } = req.body ?? {};
 
     if (!username || !password) {
@@ -48,7 +41,7 @@ export function registerAuthRoutes({
       return;
     }
 
-    const loginUser = findUserByCredentials.get(username);
+    const loginUser = await memberAuthGateway.findUserByCredentials(username);
     const isValidPassword = verifyPassword(password, loginUser?.password);
     const user = syncMemberStatusWithFees(isValidPassword ? loginUser : null);
 
@@ -71,25 +64,33 @@ export function registerAuthRoutes({
     }
 
     if (loginUser.password === password) {
-      updateUserPassword.run(hashPassword(password), user.username);
+      await memberAuthGateway.updateUserPassword(
+        user.username,
+        hashPassword(password),
+      );
     }
 
-    insertLoginEvent.run(user.username, "password", ...getUtcTimestampParts());
+    await memberAuthGateway.recordLoginEvent({
+      method: "password",
+      timestampParts: getUtcTimestampParts(),
+      username: user.username,
+    });
     const csrfToken = setSessionCookies(req, res, user.username);
+    const disciplines = await memberAuthGateway.findDisciplinesByUsername(
+      user.username,
+    );
 
     res.json({
       success: true,
       csrfToken,
       userProfile: buildMemberUserProfile(
         user,
-        findDisciplinesByUsername
-          .all(user.username)
-          .map((discipline) => discipline.discipline),
+        disciplines.map((discipline) => discipline.discipline),
       ),
     });
   });
 
-  app.post("/api/auth/rfid", (req, res) => {
+  app.post("/api/auth/rfid", async (req, res) => {
     const { rfidTag } = req.body ?? {};
 
     if (!rfidTag) {
@@ -101,60 +102,9 @@ export function registerAuthRoutes({
     }
 
     const user =
-      syncMemberStatusWithFees(findUserByRfid.get(rfidTag)) ??
-      syncMemberStatusWithFees(findUserByRfid.get(getDeactivatedRfidTag(rfidTag)));
-
-    if (!user) {
-      res.status(401).json({
-        success: false,
-        message: "RFID tag not recognised.",
-      });
-      return;
-    }
-
-    if (!user.active_member) {
-      res.status(403).json({
-        success: false,
-        message:
-          "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
-      });
-      return;
-    }
-
-    insertLoginEvent.run(user.username, "rfid", ...getUtcTimestampParts());
-    const csrfToken = setSessionCookies(req, res, user.username);
-
-    res.json({
-      success: true,
-      csrfToken,
-      userProfile: buildMemberUserProfile(
-        user,
-        findDisciplinesByUsername
-          .all(user.username)
-          .map((discipline) => discipline.discipline),
-      ),
-    });
-  });
-
-  app.post("/api/auth/rfid/latest-login", (_req, res) => {
-    const hasUndeliveredScan =
-      latestRfidScan.sequence > latestRfidScan.deliveredSequence;
-
-    if (
-      !hasUndeliveredScan ||
-      !latestRfidScan.rfidTag ||
-      latestRfidScan.scanType === "payment-card"
-    ) {
-      res.json({ success: true, userProfile: null });
-      return;
-    }
-
-    latestRfidScan.deliveredSequence = latestRfidScan.sequence;
-
-    const user =
-      syncMemberStatusWithFees(findUserByRfid.get(latestRfidScan.rfidTag)) ??
+      syncMemberStatusWithFees(await memberAuthGateway.findUserByRfid(rfidTag)) ??
       syncMemberStatusWithFees(
-        findUserByRfid.get(getDeactivatedRfidTag(latestRfidScan.rfidTag)),
+        await memberAuthGateway.findUserByRfid(getDeactivatedRfidTag(rfidTag)),
       );
 
     if (!user) {
@@ -174,17 +124,84 @@ export function registerAuthRoutes({
       return;
     }
 
-    insertLoginEvent.run(user.username, "rfid", ...getUtcTimestampParts());
-    const csrfToken = setSessionCookies(_req, res, user.username);
+    await memberAuthGateway.recordLoginEvent({
+      method: "rfid",
+      timestampParts: getUtcTimestampParts(),
+      username: user.username,
+    });
+    const csrfToken = setSessionCookies(req, res, user.username);
+    const disciplines = await memberAuthGateway.findDisciplinesByUsername(
+      user.username,
+    );
 
     res.json({
       success: true,
       csrfToken,
       userProfile: buildMemberUserProfile(
         user,
-        findDisciplinesByUsername
-          .all(user.username)
-          .map((discipline) => discipline.discipline),
+        disciplines.map((discipline) => discipline.discipline),
+      ),
+    });
+  });
+
+  app.post("/api/auth/rfid/latest-login", async (_req, res) => {
+    const hasUndeliveredScan =
+      latestRfidScan.sequence > latestRfidScan.deliveredSequence;
+
+    if (
+      !hasUndeliveredScan ||
+      !latestRfidScan.rfidTag ||
+      latestRfidScan.scanType === "payment-card"
+    ) {
+      res.json({ success: true, userProfile: null });
+      return;
+    }
+
+    latestRfidScan.deliveredSequence = latestRfidScan.sequence;
+
+    const user =
+      syncMemberStatusWithFees(
+        await memberAuthGateway.findUserByRfid(latestRfidScan.rfidTag),
+      ) ??
+      syncMemberStatusWithFees(
+        await memberAuthGateway.findUserByRfid(
+          getDeactivatedRfidTag(latestRfidScan.rfidTag),
+        ),
+      );
+
+    if (!user) {
+      res.status(401).json({
+        success: false,
+        message: "RFID tag not recognised.",
+      });
+      return;
+    }
+
+    if (!user.active_member) {
+      res.status(403).json({
+        success: false,
+        message:
+          "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
+      });
+      return;
+    }
+
+    await memberAuthGateway.recordLoginEvent({
+      method: "rfid",
+      timestampParts: getUtcTimestampParts(),
+      username: user.username,
+    });
+    const csrfToken = setSessionCookies(_req, res, user.username);
+    const disciplines = await memberAuthGateway.findDisciplinesByUsername(
+      user.username,
+    );
+
+    res.json({
+      success: true,
+      csrfToken,
+      userProfile: buildMemberUserProfile(
+        user,
+        disciplines.map((discipline) => discipline.discipline),
       ),
     });
   });
@@ -209,7 +226,7 @@ export function registerAuthRoutes({
     res.json({ success: true, csrfToken });
   });
 
-  app.get("/api/auth/session", (req, res) => {
+  app.get("/api/auth/session", async (req, res) => {
     const sessionUsername = getSessionUsername(req);
 
     if (!sessionUsername) {
@@ -220,7 +237,9 @@ export function registerAuthRoutes({
       return;
     }
 
-    const user = syncMemberStatusWithFees(findUserByUsername.get(sessionUsername));
+    const user = syncMemberStatusWithFees(
+      await memberAuthGateway.findUserByUsername(sessionUsername),
+    );
 
     if (!user) {
       res.status(401).json({
@@ -239,13 +258,15 @@ export function registerAuthRoutes({
       return;
     }
 
+    const disciplines = await memberAuthGateway.findDisciplinesByUsername(
+      user.username,
+    );
+
     res.json({
       success: true,
       userProfile: buildMemberUserProfile(
         user,
-        findDisciplinesByUsername
-          .all(user.username)
-          .map((discipline) => discipline.discipline),
+        disciplines.map((discipline) => discipline.discipline),
       ),
     });
   });
@@ -281,7 +302,7 @@ export function registerAuthRoutes({
     });
   });
 
-  app.post("/api/auth/guest-login", (req, res) => {
+  app.post("/api/auth/guest-login", async (req, res) => {
     const { firstName, surname, archeryGbMembershipNumber, invitedByUsername } =
       req.body ?? {};
     const trimmedMembershipNumber = archeryGbMembershipNumber?.trim() ?? "";
@@ -310,7 +331,9 @@ export function registerAuthRoutes({
       return;
     }
 
-    const invitingMember = findUserByUsername.get(trimmedInvitedByUsername);
+    const invitingMember = await memberAuthGateway.findUserByUsername(
+      trimmedInvitedByUsername,
+    );
 
     if (!invitingMember) {
       res.status(400).json({
@@ -320,14 +343,14 @@ export function registerAuthRoutes({
       return;
     }
 
-    insertGuestLoginEvent.run(
-      firstName.trim(),
-      surname.trim(),
-      trimmedMembershipNumber,
-      invitingMember.username,
-      `${invitingMember.first_name} ${invitingMember.surname}`,
-      ...getUtcTimestampParts(),
-    );
+    await memberAuthGateway.recordGuestLoginEvent({
+      archeryGbMembershipNumber: trimmedMembershipNumber,
+      firstName: firstName.trim(),
+      invitedByName: `${invitingMember.first_name} ${invitingMember.surname}`,
+      invitedByUsername: invitingMember.username,
+      surname: surname.trim(),
+      timestampParts: getUtcTimestampParts(),
+    });
 
     res.json({
       success: true,
@@ -341,10 +364,12 @@ export function registerAuthRoutes({
     });
   });
 
-  app.get("/api/guest-inviter-members", (req, res) => {
+  app.get("/api/guest-inviter-members", async (_req, res) => {
+    const users = await memberAuthGateway.listAllUsers();
+
     res.json({
       success: true,
-      members: listAllUsers.all().map((user) => ({
+      members: users.map((user) => ({
         username: user.username,
         firstName: user.first_name,
         surname: user.surname,

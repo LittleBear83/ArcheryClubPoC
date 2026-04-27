@@ -8,7 +8,11 @@ below as the minimum security baseline before handling real member data.
 - Run production with `ARCHERY_APP_MODE=live`.
 - Set a long random `SESSION_SECRET`. This signs session cookies and CSRF
   tokens; changing it invalidates existing sessions and CSRF tokens.
-- Set `DATABASE_PATH` to a location outside the repository.
+- Set `DATABASE_PATH` to a location outside the repository when using SQLite.
+- For PostgreSQL deployments, set `DATABASE_ENGINE=postgres` and configure
+  either `DATABASE_URL` or the explicit connection variables (`DB_HOST`,
+  `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`). On Cloud Run, prefer
+  `INSTANCE_CONNECTION_NAME` for Cloud SQL socket connections.
 - Set `TRUST_PROXY` or `ARCHERY_TRUST_PROXY` when the app runs behind a known
   reverse proxy. Leave it unset when exposing Node directly.
 - Serve the app only over HTTPS in live mode. Live cookies are marked `Secure`,
@@ -105,6 +109,7 @@ deployment internals.
 - Do not commit SQLite databases, exports, backups, or logs containing member
   data.
 - Store live SQLite files outside the repository.
+- Store PostgreSQL credentials in Secret Manager or an equivalent secret store.
 - Back up the live database before running migrations or deploying schema
   changes.
 - Rotate any known seed/demo passwords before real use.

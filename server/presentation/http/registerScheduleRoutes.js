@@ -1,45 +1,24 @@
 export function registerScheduleRoutes({
   actorHasPermission,
   app,
-  approveClubEventById,
-  approveCoachingSessionById,
   buildClubEvent,
   buildEventBookingsMap,
   buildCoachingBookingsMap,
   buildCoachingSession,
   canActorViewApprovalEntry,
-  db,
-  deleteBookingsByCoachingSessionId,
-  deleteBookingsByEventId,
-  deleteClubEventById,
-  deleteCoachingSessionById,
-  deleteCoachingSessionBooking,
-  deleteEventBooking,
-  findClubEventById,
   findScheduleConflict,
-  findCoachingSessionById,
   getActorUser,
   getUtcTimestampParts,
   hasScheduleEntryEnded,
-  insertClubEvent,
-  insertCoachingSession,
-  insertCoachingSessionBooking,
-  insertEventBooking,
-  listBookingsByCoachingSessionId,
-  listClubEvents,
-  listCoachingSessions,
-  listEventBookingsByEventId,
   normalizeBookingRow,
   normalizeVenue,
   PERMISSIONS,
-  rejectClubEventById,
-  rejectCoachingSessionById,
+  scheduleGateway,
 }) {
-  app.get("/api/events", (req, res) => {
+  app.get("/api/events", async (req, res) => {
     const actor = getActorUser(req);
-    const bookingsByEventId = buildEventBookingsMap();
-    const persistedEvents = listClubEvents
-      .all()
+    const bookingsByEventId = await buildEventBookingsMap();
+    const persistedEvents = (await scheduleGateway.listClubEvents())
       .filter((event) =>
         canActorViewApprovalEntry(
           event,
@@ -92,7 +71,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.post("/api/events", (req, res) => {
+  app.post("/api/events", async (req, res) => {
     const actor = getActorUser(req);
     const { date, startTime, endTime, title, details, type, venue } = req.body ?? {};
     const trimmedTitle = title?.trim();
@@ -133,7 +112,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const conflict = findScheduleConflict({
+    const conflict = await findScheduleConflict({
       date,
       startTime,
       endTime,
@@ -148,26 +127,27 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const insertResult = insertClubEvent.run(
-      date,
-      startTime,
-      endTime,
-      trimmedTitle,
-      trimmedDetails,
-      type,
-      normalizedVenue,
-      actor.username,
-      actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS) ? "approved" : "pending",
-      null,
-      actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS) ? actor.username : null,
-      ...(actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
+    const event = await scheduleGateway.createClubEvent({
+      approvalStatus: actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
+        ? "approved"
+        : "pending",
+      approvedAtParts: actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
         ? getUtcTimestampParts()
-        : ["", ""]),
-      ...getUtcTimestampParts(),
-    );
-    const event = listClubEvents
-      .all()
-      .find((entry) => entry.id === insertResult.lastInsertRowid);
+        : ["", ""],
+      approvedByUsername: actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
+        ? actor.username
+        : null,
+      createdAtParts: getUtcTimestampParts(),
+      date,
+      details: trimmedDetails,
+      endTime,
+      rejectionReason: null,
+      startTime,
+      submittedByUsername: actor.username,
+      title: trimmedTitle,
+      type,
+      venue: normalizedVenue,
+    });
 
     res.status(201).json({
       success: true,
@@ -178,7 +158,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.post("/api/events/:id/approve", (req, res) => {
+  app.post("/api/events/:id/approve", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)) {
@@ -189,7 +169,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const event = findClubEventById.get(req.params.id);
+    const event = await scheduleGateway.findClubEventById(req.params.id);
 
     if (!event) {
       res.status(404).json({
@@ -207,9 +187,13 @@ export function registerScheduleRoutes({
       return;
     }
 
-    approveClubEventById.run(actor.username, ...getUtcTimestampParts(), event.id);
-    const approvedEvent = findClubEventById.get(event.id);
-    const bookings = listEventBookingsByEventId.all(event.id).map(normalizeBookingRow);
+    await scheduleGateway.approveClubEvent({
+      actorUsername: actor.username,
+      eventId: event.id,
+      timestampParts: getUtcTimestampParts(),
+    });
+    const approvedEvent = await scheduleGateway.findClubEventById(event.id);
+    const bookings = (await scheduleGateway.listEventBookingsByEventId(event.id)).map(normalizeBookingRow);
 
     res.json({
       success: true,
@@ -218,7 +202,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.post("/api/events/:id/reject", (req, res) => {
+  app.post("/api/events/:id/reject", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)) {
@@ -229,7 +213,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const event = findClubEventById.get(req.params.id);
+    const event = await scheduleGateway.findClubEventById(req.params.id);
 
     if (!event) {
       res.status(404).json({
@@ -252,14 +236,14 @@ export function registerScheduleRoutes({
         ? req.body.rejectionReason.trim().slice(0, 280)
         : "";
 
-    rejectClubEventById.run(
-      rejectionReason || null,
-      actor.username,
-      ...getUtcTimestampParts(),
-      event.id,
-    );
-    const rejectedEvent = findClubEventById.get(event.id);
-    const bookings = listEventBookingsByEventId.all(event.id).map(normalizeBookingRow);
+    await scheduleGateway.rejectClubEvent({
+      actorUsername: actor.username,
+      eventId: event.id,
+      rejectionReason,
+      timestampParts: getUtcTimestampParts(),
+    });
+    const rejectedEvent = await scheduleGateway.findClubEventById(event.id);
+    const bookings = (await scheduleGateway.listEventBookingsByEventId(event.id)).map(normalizeBookingRow);
 
     res.json({
       success: true,
@@ -268,7 +252,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.post("/api/events/:id/book", (req, res) => {
+  app.post("/api/events/:id/book", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -279,7 +263,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const event = findClubEventById.get(req.params.id);
+    const event = await scheduleGateway.findClubEventById(req.params.id);
 
     if (!event) {
       res.status(404).json({
@@ -314,7 +298,11 @@ export function registerScheduleRoutes({
     }
 
     try {
-      insertEventBooking.run(event.id, actor.username, ...getUtcTimestampParts());
+      await scheduleGateway.createEventBooking({
+        eventId: event.id,
+        timestampParts: getUtcTimestampParts(),
+        username: actor.username,
+      });
     } catch (error) {
       if (
         error?.message?.includes(
@@ -335,7 +323,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const bookings = listEventBookingsByEventId.all(event.id).map((booking) => ({
+    const bookings = (await scheduleGateway.listEventBookingsByEventId(event.id)).map((booking) => ({
       username: booking.member_username,
       fullName: `${booking.first_name} ${booking.surname}`,
       bookedAt: booking.booked_at,
@@ -347,7 +335,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.delete("/api/events/:id/booking", (req, res) => {
+  app.delete("/api/events/:id/booking", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -358,7 +346,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const event = findClubEventById.get(req.params.id);
+    const event = await scheduleGateway.findClubEventById(req.params.id);
 
     if (!event) {
       res.status(404).json({
@@ -368,7 +356,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const deleteResult = deleteEventBooking.run(event.id, actor.id);
+    const deleteResult = await scheduleGateway.deleteEventBooking(event.id, actor.id);
 
     if (deleteResult.changes === 0) {
       res.status(404).json({
@@ -378,7 +366,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const bookings = listEventBookingsByEventId.all(event.id).map((booking) => ({
+    const bookings = (await scheduleGateway.listEventBookingsByEventId(event.id)).map((booking) => ({
       username: booking.member_username,
       fullName: `${booking.first_name} ${booking.surname}`,
       bookedAt: booking.booked_at,
@@ -390,7 +378,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.delete("/api/events/:id", (req, res) => {
+  app.delete("/api/events/:id", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.CANCEL_EVENTS)) {
@@ -401,7 +389,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const event = findClubEventById.get(req.params.id);
+    const event = await scheduleGateway.findClubEventById(req.params.id);
 
     if (!event) {
       res.status(404).json({
@@ -411,12 +399,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const deleteEventTransaction = db.transaction(() => {
-      deleteBookingsByEventId.run(event.id);
-      deleteClubEventById.run(event.id);
-    });
-
-    deleteEventTransaction();
+    await scheduleGateway.deleteClubEventCascade(event.id);
 
     res.json({
       success: true,
@@ -424,11 +407,10 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.get("/api/coaching-sessions", (req, res) => {
+  app.get("/api/coaching-sessions", async (req, res) => {
     const actor = getActorUser(req);
-    const coachingBookingsBySessionId = buildCoachingBookingsMap();
-    const sessions = listCoachingSessions
-      .all()
+    const coachingBookingsBySessionId = await buildCoachingBookingsMap();
+    const sessions = (await scheduleGateway.listCoachingSessions())
       .filter((session) =>
         canActorViewApprovalEntry(
           session,
@@ -451,7 +433,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.post("/api/coaching-sessions", (req, res) => {
+  app.post("/api/coaching-sessions", async (req, res) => {
     const actor = getActorUser(req);
 
     if (
@@ -507,7 +489,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const conflict = findScheduleConflict({
+    const conflict = await findScheduleConflict({
       date,
       startTime,
       endTime,
@@ -522,28 +504,27 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const insertResult = insertCoachingSession.run(
-      actor.username,
-      date,
-      startTime,
-      endTime,
-      normalizedAvailableSlots,
-      trimmedTopic,
-      trimmedSummary,
-      normalizedVenue,
-      actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
+    const session = await scheduleGateway.createCoachingSession({
+      approvalStatus: actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
         ? "approved"
         : "pending",
-      null,
-      actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
+      approvedAtParts: actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
+        ? getUtcTimestampParts()
+        : ["", ""],
+      approvedByUsername: actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
         ? actor.username
         : null,
-      ...(actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
-        ? getUtcTimestampParts()
-        : ["", ""]),
-      ...getUtcTimestampParts(),
-    );
-    const session = findCoachingSessionById.get(insertResult.lastInsertRowid);
+      availableSlots: normalizedAvailableSlots,
+      coachUsername: actor.username,
+      createdAtParts: getUtcTimestampParts(),
+      date,
+      endTime,
+      rejectionReason: null,
+      startTime,
+      summary: trimmedSummary,
+      topic: trimmedTopic,
+      venue: normalizedVenue,
+    });
 
     res.status(201).json({
       success: true,
@@ -554,7 +535,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.post("/api/coaching-sessions/:id/approve", (req, res) => {
+  app.post("/api/coaching-sessions/:id/approve", async (req, res) => {
     const actor = getActorUser(req);
 
     if (
@@ -568,7 +549,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const session = findCoachingSessionById.get(req.params.id);
+    const session = await scheduleGateway.findCoachingSessionById(req.params.id);
 
     if (!session) {
       res.status(404).json({
@@ -586,10 +567,13 @@ export function registerScheduleRoutes({
       return;
     }
 
-    approveCoachingSessionById.run(actor.username, ...getUtcTimestampParts(), session.id);
-    const approvedSession = findCoachingSessionById.get(session.id);
-    const bookings = listBookingsByCoachingSessionId
-      .all(session.id)
+    await scheduleGateway.approveCoachingSession({
+      actorUsername: actor.username,
+      sessionId: session.id,
+      timestampParts: getUtcTimestampParts(),
+    });
+    const approvedSession = await scheduleGateway.findCoachingSessionById(session.id);
+    const bookings = (await scheduleGateway.listBookingsByCoachingSessionId(session.id))
       .map(normalizeBookingRow);
 
     res.json({
@@ -599,7 +583,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.post("/api/coaching-sessions/:id/reject", (req, res) => {
+  app.post("/api/coaching-sessions/:id/reject", async (req, res) => {
     const actor = getActorUser(req);
 
     if (
@@ -613,7 +597,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const session = findCoachingSessionById.get(req.params.id);
+    const session = await scheduleGateway.findCoachingSessionById(req.params.id);
 
     if (!session) {
       res.status(404).json({
@@ -636,15 +620,14 @@ export function registerScheduleRoutes({
         ? req.body.rejectionReason.trim().slice(0, 280)
         : "";
 
-    rejectCoachingSessionById.run(
-      rejectionReason || null,
-      actor.username,
-      ...getUtcTimestampParts(),
-      session.id,
-    );
-    const rejectedSession = findCoachingSessionById.get(session.id);
-    const bookings = listBookingsByCoachingSessionId
-      .all(session.id)
+    await scheduleGateway.rejectCoachingSession({
+      actorUsername: actor.username,
+      rejectionReason,
+      sessionId: session.id,
+      timestampParts: getUtcTimestampParts(),
+    });
+    const rejectedSession = await scheduleGateway.findCoachingSessionById(session.id);
+    const bookings = (await scheduleGateway.listBookingsByCoachingSessionId(session.id))
       .map(normalizeBookingRow);
 
     res.json({
@@ -654,7 +637,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.post("/api/coaching-sessions/:id/book", (req, res) => {
+  app.post("/api/coaching-sessions/:id/book", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -665,7 +648,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const session = findCoachingSessionById.get(req.params.id);
+    const session = await scheduleGateway.findCoachingSessionById(req.params.id);
 
     if (!session) {
       res.status(404).json({
@@ -692,7 +675,7 @@ export function registerScheduleRoutes({
     }
 
     try {
-      const existingBookings = listBookingsByCoachingSessionId.all(session.id);
+      const existingBookings = await scheduleGateway.listBookingsByCoachingSessionId(session.id);
 
       if (existingBookings.length >= session.available_slots) {
         res.status(409).json({
@@ -702,11 +685,11 @@ export function registerScheduleRoutes({
         return;
       }
 
-      insertCoachingSessionBooking.run(
-        session.id,
-        actor.username,
-        ...getUtcTimestampParts(),
-      );
+      await scheduleGateway.createCoachingSessionBooking({
+        sessionId: session.id,
+        timestampParts: getUtcTimestampParts(),
+        username: actor.username,
+      });
     } catch (error) {
       if (
         error?.message?.includes(
@@ -727,8 +710,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const bookings = listBookingsByCoachingSessionId
-      .all(session.id)
+    const bookings = (await scheduleGateway.listBookingsByCoachingSessionId(session.id))
       .map((booking) => ({
         username: booking.member_username,
         fullName: `${booking.first_name} ${booking.surname}`,
@@ -741,7 +723,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.delete("/api/coaching-sessions/:id/booking", (req, res) => {
+  app.delete("/api/coaching-sessions/:id/booking", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -752,7 +734,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const session = findCoachingSessionById.get(req.params.id);
+    const session = await scheduleGateway.findCoachingSessionById(req.params.id);
 
     if (!session) {
       res.status(404).json({
@@ -762,10 +744,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const deleteResult = deleteCoachingSessionBooking.run(
-      session.id,
-      actor.id,
-    );
+    const deleteResult = await scheduleGateway.deleteCoachingSessionBooking(session.id, actor.id);
 
     if (deleteResult.changes === 0) {
       res.status(404).json({
@@ -775,8 +754,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const bookings = listBookingsByCoachingSessionId
-      .all(session.id)
+    const bookings = (await scheduleGateway.listBookingsByCoachingSessionId(session.id))
       .map((booking) => ({
         username: booking.member_username,
         fullName: `${booking.first_name} ${booking.surname}`,
@@ -789,7 +767,7 @@ export function registerScheduleRoutes({
     });
   });
 
-  app.delete("/api/coaching-sessions/:id", (req, res) => {
+  app.delete("/api/coaching-sessions/:id", async (req, res) => {
     const actor = getActorUser(req);
 
     if (
@@ -803,7 +781,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const session = findCoachingSessionById.get(req.params.id);
+    const session = await scheduleGateway.findCoachingSessionById(req.params.id);
 
     if (!session) {
       res.status(404).json({
@@ -821,8 +799,7 @@ export function registerScheduleRoutes({
       return;
     }
 
-    deleteBookingsByCoachingSessionId.run(session.id);
-    deleteCoachingSessionById.run(session.id);
+    await scheduleGateway.deleteCoachingSessionCascade(session.id);
 
     res.json({
       success: true,

@@ -3,34 +3,22 @@ export function registerTournamentRoutes({
   app,
   buildTournament,
   buildTournamentDataMaps,
-  db,
-  deleteTournamentById,
-  deleteTournamentRegistrationsByTournamentId,
-  deleteTournamentScoresByTournamentId,
-  deleteTournamentRegistration,
   exportsDirectory,
-  findTournamentById,
   getActorUser,
   getUtcTimestampParts,
-  insertTournament,
-  insertTournamentRegistration,
-  listTournamentRegistrationsByTournamentId,
-  listTournamentScoresByTournamentId,
-  listTournaments,
   path,
   PERMISSIONS,
   sanitizeFileNameSegment,
   toUtcDateString,
+  tournamentGateway,
   TOURNAMENT_TYPE_OPTIONS,
-  updateTournamentById,
-  upsertTournamentScore,
   writeFileSync,
 }) {
-  app.get("/api/tournaments", (req, res) => {
+  app.get("/api/tournaments", async (req, res) => {
     const actor = getActorUser(req);
     const { registrationsByTournamentId, scoresByTournamentId } =
-      buildTournamentDataMaps();
-    const tournaments = listTournaments.all().map((tournament) =>
+      await buildTournamentDataMaps();
+    const tournaments = (await tournamentGateway.listTournaments()).map((tournament) =>
       buildTournament(
         tournament,
         registrationsByTournamentId.get(tournament.id) ?? [],
@@ -46,7 +34,7 @@ export function registerTournamentRoutes({
     });
   });
 
-  app.post("/api/tournaments", (req, res) => {
+  app.post("/api/tournaments", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
@@ -106,17 +94,16 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const insertResult = insertTournament.run(
-      trimmedName,
-      tournamentType,
-      registrationStartDate,
+    const tournament = await tournamentGateway.createTournament({
+      createdByUsername: actor.username,
+      name: trimmedName,
       registrationEndDate,
-      scoreSubmissionStartDate,
+      registrationStartDate,
       scoreSubmissionEndDate,
-      actor.username,
-      ...getUtcTimestampParts(),
-    );
-    const tournament = findTournamentById.get(insertResult.lastInsertRowid);
+      scoreSubmissionStartDate,
+      timestampParts: getUtcTimestampParts(),
+      tournamentType,
+    });
 
     res.status(201).json({
       success: true,
@@ -124,7 +111,7 @@ export function registerTournamentRoutes({
     });
   });
 
-  app.put("/api/tournaments/:id", (req, res) => {
+  app.put("/api/tournaments/:id", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
@@ -135,7 +122,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const tournament = findTournamentById.get(req.params.id);
+    const tournament = await tournamentGateway.findTournamentById(req.params.id);
 
     if (!tournament) {
       res.status(404).json({
@@ -194,36 +181,32 @@ export function registerTournamentRoutes({
       return;
     }
 
-    updateTournamentById.run(
-      trimmedName,
-      tournamentType,
-      registrationStartDate,
+    const updatedTournament = await tournamentGateway.updateTournament({
+      id: tournament.id,
+      name: trimmedName,
       registrationEndDate,
-      scoreSubmissionStartDate,
+      registrationStartDate,
       scoreSubmissionEndDate,
-      tournament.id,
-    );
-
-    const updatedTournament = findTournamentById.get(tournament.id);
+      scoreSubmissionStartDate,
+      tournamentType,
+    });
+    const [registrations, scores] = await Promise.all([
+      tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
+      tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
+    ]);
 
     res.json({
       success: true,
       tournament: buildTournament(
         updatedTournament,
-        listTournamentRegistrationsByTournamentId.all(tournament.id),
-        listTournamentScoresByTournamentId.all(tournament.id),
+        registrations,
+        scores,
         actor.username,
       ),
     });
   });
 
-  const deleteTournamentCascade = db.transaction((tournamentId) => {
-    deleteTournamentScoresByTournamentId.run(tournamentId);
-    deleteTournamentRegistrationsByTournamentId.run(tournamentId);
-    deleteTournamentById.run(tournamentId);
-  });
-
-  app.delete("/api/tournaments/:id", (req, res) => {
+  app.delete("/api/tournaments/:id", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
@@ -234,7 +217,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const tournament = findTournamentById.get(req.params.id);
+    const tournament = await tournamentGateway.findTournamentById(req.params.id);
 
     if (!tournament) {
       res.status(404).json({
@@ -244,7 +227,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    deleteTournamentCascade(tournament.id);
+    await tournamentGateway.deleteTournamentCascade(tournament.id);
 
     res.json({
       success: true,
@@ -253,7 +236,7 @@ export function registerTournamentRoutes({
     });
   });
 
-  app.post("/api/tournaments/:id/register", (req, res) => {
+  app.post("/api/tournaments/:id/register", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -264,7 +247,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const tournament = findTournamentById.get(req.params.id);
+    const tournament = await tournamentGateway.findTournamentById(req.params.id);
 
     if (!tournament) {
       res.status(404).json({
@@ -288,11 +271,11 @@ export function registerTournamentRoutes({
     }
 
     try {
-      insertTournamentRegistration.run(
-        tournament.id,
-        actor.username,
-        ...getUtcTimestampParts(),
-      );
+      await tournamentGateway.registerForTournament({
+        timestampParts: getUtcTimestampParts(),
+        tournamentId: tournament.id,
+        username: actor.username,
+      });
     } catch (error) {
       if (
         error?.message?.includes(
@@ -313,18 +296,23 @@ export function registerTournamentRoutes({
       return;
     }
 
+    const [registrations, scores] = await Promise.all([
+      tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
+      tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
+    ]);
+
     res.json({
       success: true,
       tournament: buildTournament(
         tournament,
-        listTournamentRegistrationsByTournamentId.all(tournament.id),
-        listTournamentScoresByTournamentId.all(tournament.id),
+        registrations,
+        scores,
         actor.username,
       ),
     });
   });
 
-  app.delete("/api/tournaments/:id/register", (req, res) => {
+  app.delete("/api/tournaments/:id/register", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -335,7 +323,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const tournament = findTournamentById.get(req.params.id);
+    const tournament = await tournamentGateway.findTournamentById(req.params.id);
 
     if (!tournament) {
       res.status(404).json({
@@ -358,7 +346,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const deleteResult = deleteTournamentRegistration.run(
+    const deleteResult = await tournamentGateway.deleteTournamentRegistration(
       tournament.id,
       actor.id,
     );
@@ -371,18 +359,23 @@ export function registerTournamentRoutes({
       return;
     }
 
+    const [registrations, scores] = await Promise.all([
+      tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
+      tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
+    ]);
+
     res.json({
       success: true,
       tournament: buildTournament(
         tournament,
-        listTournamentRegistrationsByTournamentId.all(tournament.id),
-        listTournamentScoresByTournamentId.all(tournament.id),
+        registrations,
+        scores,
         actor.username,
       ),
     });
   });
 
-  app.post("/api/tournaments/:id/score", (req, res) => {
+  app.post("/api/tournaments/:id/score", async (req, res) => {
     const actor = getActorUser(req);
     const normalizedScore = Number.parseInt(req.body?.score, 10);
 
@@ -402,7 +395,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const tournament = findTournamentById.get(req.params.id);
+    const tournament = await tournamentGateway.findTournamentById(req.params.id);
 
     if (!tournament) {
       res.status(404).json({
@@ -425,10 +418,15 @@ export function registerTournamentRoutes({
       return;
     }
 
+    const [registrations, scores] = await Promise.all([
+      tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
+      tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
+    ]);
+
     const builtTournament = buildTournament(
       tournament,
-      listTournamentRegistrationsByTournamentId.all(tournament.id),
-      listTournamentScoresByTournamentId.all(tournament.id),
+      registrations,
+      scores,
       actor.username,
     );
 
@@ -440,26 +438,29 @@ export function registerTournamentRoutes({
       return;
     }
 
-    upsertTournamentScore.run(
+    await tournamentGateway.submitTournamentScore({
+      roundNumber: builtTournament.currentRoundNumber,
+      score: normalizedScore,
+      timestampParts: getUtcTimestampParts(),
+      tournamentId: tournament.id,
+      username: actor.username,
+    });
+    const updatedScores = await tournamentGateway.listTournamentScoresByTournamentId(
       tournament.id,
-      builtTournament.currentRoundNumber,
-      actor.username,
-      normalizedScore,
-      ...getUtcTimestampParts(),
     );
 
     res.json({
       success: true,
       tournament: buildTournament(
         tournament,
-        listTournamentRegistrationsByTournamentId.all(tournament.id),
-        listTournamentScoresByTournamentId.all(tournament.id),
+        registrations,
+        updatedScores,
         actor.username,
       ),
     });
   });
 
-  app.post("/api/tournaments/:id/competitors-export", (req, res) => {
+  app.post("/api/tournaments/:id/competitors-export", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
@@ -470,7 +471,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const tournament = findTournamentById.get(req.params.id);
+    const tournament = await tournamentGateway.findTournamentById(req.params.id);
 
     if (!tournament) {
       res.status(404).json({
@@ -480,13 +481,13 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const registrations = listTournamentRegistrationsByTournamentId.all(
+    const registrations = await tournamentGateway.listTournamentRegistrationsByTournamentId(
       tournament.id,
     );
     const builtTournament = buildTournament(
       tournament,
       registrations,
-      listTournamentScoresByTournamentId.all(tournament.id),
+      await tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
       actor.username,
     );
 

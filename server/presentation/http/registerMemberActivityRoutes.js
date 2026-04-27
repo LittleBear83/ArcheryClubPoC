@@ -1,21 +1,15 @@
 export function registerMemberActivityRoutes({
+  activityReportingGateway,
   addUtcDays,
   app,
   actorHasPermission,
-  buildDisciplinesByUsernameMap,
   buildGuestUserProfile,
   buildMemberUserProfile,
   buildPersonalUsageWindow,
   buildTournament,
   buildTournamentDataMaps,
   buildUsageWindow,
-  findMemberCoachingBookingsByUserId,
-  findMemberEventBookingsByUserId,
-  findRecentGuestLogins,
-  findRecentRangeMembers,
   getActorUser,
-  listReportingGuestLogins,
-  listReportingMemberLogins,
   listTournaments,
   PERMISSIONS,
   startOfUtcDay,
@@ -40,7 +34,7 @@ export function registerMemberActivityRoutes({
     return true;
   };
 
-  app.get("/api/my-coaching-bookings", (req, res) => {
+  app.get("/api/my-coaching-bookings", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -51,9 +45,13 @@ export function registerMemberActivityRoutes({
       return;
     }
 
+    const bookings = await activityReportingGateway.findMemberCoachingBookingsByUserId(
+      actor.id,
+    );
+
     res.json({
       success: true,
-      bookings: findMemberCoachingBookingsByUserId.all(actor.id).map((booking) => ({
+      bookings: bookings.map((booking) => ({
         id: booking.id,
         date: booking.session_date,
         title: `${booking.topic} with ${booking.coach_first_name} ${booking.coach_surname}`,
@@ -65,7 +63,7 @@ export function registerMemberActivityRoutes({
     });
   });
 
-  app.get("/api/my-event-bookings", (req, res) => {
+  app.get("/api/my-event-bookings", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -76,9 +74,13 @@ export function registerMemberActivityRoutes({
       return;
     }
 
+    const bookings = await activityReportingGateway.findMemberEventBookingsByUserId(
+      actor.id,
+    );
+
     res.json({
       success: true,
-      bookings: findMemberEventBookingsByUserId.all(actor.id).map((booking) => ({
+      bookings: bookings.map((booking) => ({
         id: `event-${booking.id}`,
         date: booking.event_date,
         title: booking.title,
@@ -91,7 +93,7 @@ export function registerMemberActivityRoutes({
     });
   });
 
-  app.get("/api/my-tournament-reminders", (req, res) => {
+  app.get("/api/my-tournament-reminders", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -104,9 +106,8 @@ export function registerMemberActivityRoutes({
 
     const today = toUtcDateString(new Date());
     const { registrationsByTournamentId, scoresByTournamentId } =
-      buildTournamentDataMaps();
-    const reminders = listTournaments
-      .all()
+      await buildTournamentDataMaps();
+    const reminders = (await listTournaments())
       .map((tournament) =>
         buildTournament(
           tournament,
@@ -174,7 +175,7 @@ export function registerMemberActivityRoutes({
     });
   });
 
-  app.get("/api/range-members", (req, res) => {
+  app.get("/api/range-members", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -186,8 +187,16 @@ export function registerMemberActivityRoutes({
     }
 
     const cutoff = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
-    const disciplinesByUsername = buildDisciplinesByUsernameMap();
-    const members = findRecentRangeMembers.all(cutoff).map((member) =>
+    const disciplineRows = await activityReportingGateway.listAllUserDisciplines();
+    const disciplinesByUsername = new Map();
+
+    for (const row of disciplineRows) {
+      const current = disciplinesByUsername.get(row.username) ?? [];
+      current.push(row.discipline);
+      disciplinesByUsername.set(row.username, current);
+    }
+
+    const members = (await activityReportingGateway.findRecentRangeMembers(cutoff)).map((member) =>
       buildMemberUserProfile(
         member,
         disciplinesByUsername.get(member.username) ?? [],
@@ -196,7 +205,7 @@ export function registerMemberActivityRoutes({
         },
       ),
     );
-    const guests = findRecentGuestLogins.all(cutoff).map((guest) =>
+    const guests = (await activityReportingGateway.findRecentGuestLogins(cutoff)).map((guest) =>
       buildGuestUserProfile(guest, {
         lastLoggedInAt: guest.last_logged_in_at,
       }),
@@ -226,7 +235,7 @@ export function registerMemberActivityRoutes({
     });
   });
 
-  app.get("/api/range-usage-dashboard", (req, res) => {
+  app.get("/api/range-usage-dashboard", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -291,27 +300,27 @@ export function registerMemberActivityRoutes({
 
     const filteredEndExclusive = addUtcDays(filteredEndDay, 1);
 
-    const currentMonth = buildUsageWindow(
+    const currentMonth = await buildUsageWindow(
       `${toUtcDateString(currentMonthStart)} to ${toUtcDateString(
         addUtcDays(nextMonthStart, -1),
       )}`,
       currentMonthStart,
       nextMonthStart,
     );
-    const currentWeek = buildUsageWindow(
+    const currentWeek = await buildUsageWindow(
       `${toUtcDateString(currentWeekStart)} to ${toUtcDateString(
         addUtcDays(nextWeekStart, -1),
       )}`,
       currentWeekStart,
       nextWeekStart,
     );
-    const filteredRange = buildUsageWindow(
+    const filteredRange = await buildUsageWindow(
       `${toUtcDateString(filteredStart)} to ${toUtcDateString(filteredEndDay)}`,
       filteredStart,
       filteredEndExclusive,
     );
     const myCurrentMonth = actor
-      ? buildPersonalUsageWindow(
+      ? await buildPersonalUsageWindow(
           actor.username,
           `${toUtcDateString(currentMonthStart)} to ${toUtcDateString(
             addUtcDays(nextMonthStart, -1),
@@ -321,7 +330,7 @@ export function registerMemberActivityRoutes({
         )
       : null;
     const myCurrentWeek = actor
-      ? buildPersonalUsageWindow(
+      ? await buildPersonalUsageWindow(
           actor.username,
           `${toUtcDateString(currentWeekStart)} to ${toUtcDateString(
             addUtcDays(nextWeekStart, -1),
@@ -331,7 +340,7 @@ export function registerMemberActivityRoutes({
         )
       : null;
     const myFilteredRange = actor
-      ? buildPersonalUsageWindow(
+      ? await buildPersonalUsageWindow(
           actor.username,
           `${toUtcDateString(filteredStart)} to ${toUtcDateString(
             filteredEndDay,
@@ -352,7 +361,7 @@ export function registerMemberActivityRoutes({
     });
   });
 
-  app.get("/api/reporting/attendance", (req, res) => {
+  app.get("/api/reporting/attendance", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actorHasPermission(actor, PERMISSIONS.VIEW_REPORTS)) {
@@ -419,7 +428,7 @@ export function registerMemberActivityRoutes({
 
     if (includeMembers) {
       rows.push(
-        ...listReportingMemberLogins.all(startIso, endIso).map((member) => ({
+        ...(await activityReportingGateway.listReportingMemberLogins(startIso, endIso)).map((member) => ({
           id: `member-${member.id}`,
           type: "Member",
           date: member.logged_in_date,
@@ -436,7 +445,7 @@ export function registerMemberActivityRoutes({
 
     if (includeGuests) {
       rows.push(
-        ...listReportingGuestLogins.all(startIso, endIso).map((guest) => ({
+        ...(await activityReportingGateway.listReportingGuestLogins(startIso, endIso)).map((guest) => ({
           id: `guest-${guest.id}`,
           type: "Guest",
           date: guest.logged_in_date,

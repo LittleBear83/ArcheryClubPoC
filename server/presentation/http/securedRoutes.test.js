@@ -68,6 +68,17 @@ function noopStatement(value = null) {
 }
 
 function registerAuthTestRoutes(app, getSessionUsername) {
+  const noopGateway = {
+    findDisciplinesByUsername: async () => [],
+    findUserByCredentials: async () => null,
+    findUserByRfid: async () => null,
+    findUserByUsername: async () => null,
+    listAllUsers: async () => [],
+    recordGuestLoginEvent: async () => {},
+    recordLoginEvent: async () => {},
+    updateUserPassword: async () => {},
+  };
+
   registerAuthRoutes({
     app,
     buildGuestUserProfile: () => ({}),
@@ -76,17 +87,11 @@ function registerAuthTestRoutes(app, getSessionUsername) {
     clearSessionCookie: () => "archeryclubpoc_session=; Max-Age=0",
     createCsrfCookie: () => "archeryclubpoc_csrf=test",
     createSessionCookie: () => "archeryclubpoc_session=test",
-    findDisciplinesByUsername: noopStatement(),
-    findUserByCredentials: noopStatement(),
-    findUserByRfid: noopStatement(),
-    findUserByUsername: noopStatement(),
     getCsrfToken: () => "csrf-token",
     getDeactivatedRfidTag: (rfidTag) => `deactivated-${rfidTag}`,
     getSessionUsername,
     getUtcTimestampParts: () => ["2026-04-21", "10:00:00"],
     hashPassword: (password) => `hashed-${password}`,
-    insertGuestLoginEvent: noopStatement(),
-    insertLoginEvent: noopStatement(),
     latestRfidScan: {
       cardBrand: null,
       deliveredSequence: 0,
@@ -96,13 +101,12 @@ function registerAuthTestRoutes(app, getSessionUsername) {
       sequence: 0,
       source: null,
     },
+    memberAuthGateway: noopGateway,
     rfidReaderStatus: {
       checked: true,
       detected: false,
     },
-    listAllUsers: noopStatement(),
     syncMemberStatusWithFees: (user) => user,
-    updateUserPassword: noopStatement(),
     verifyPassword: () => false,
   });
 }
@@ -116,10 +120,30 @@ function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission)
   const toUtcDateString = (date) => date.toISOString().slice(0, 10);
 
   registerMemberActivityRoutes({
+    activityReportingGateway: {
+      countGuestLoginsInRange: async () => ({ count: 0 }),
+      countMemberLoginsForUserInRange: async () => ({ count: 0 }),
+      countMemberLoginsInRange: async () => ({ count: 0 }),
+      findMemberCoachingBookingsByUserId: async () => [],
+      findMemberEventBookingsByUserId: async () => [],
+      findRecentGuestLogins: async () => [],
+      findRecentRangeMembers: async () => [],
+      guestLoginsByDateInRange: async () => [],
+      guestLoginsByHourInRange: async () => [],
+      guestLoginsByWeekdayInRange: async () => [],
+      listAllUserDisciplines: async () => [],
+      listReportingGuestLogins: async () => [],
+      listReportingMemberLogins: async () => [],
+      memberLoginsByDateForUserInRange: async () => [],
+      memberLoginsByDateInRange: async () => [],
+      memberLoginsByHourForUserInRange: async () => [],
+      memberLoginsByHourInRange: async () => [],
+      memberLoginsByWeekdayForUserInRange: async () => [],
+      memberLoginsByWeekdayInRange: async () => [],
+    },
     addUtcDays,
     app,
     actorHasPermission,
-    buildDisciplinesByUsernameMap: () => new Map(),
     buildGuestUserProfile: () => ({}),
     buildMemberUserProfile: () => ({}),
     buildPersonalUsageWindow: () => ({}),
@@ -129,14 +153,8 @@ function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission)
       scoresByTournamentId: new Map(),
     }),
     buildUsageWindow: () => ({}),
-    findMemberCoachingBookingsByUserId: noopStatement(),
-    findMemberEventBookingsByUserId: noopStatement(),
-    findRecentGuestLogins: noopStatement(),
-    findRecentRangeMembers: noopStatement(),
     getActorUser,
-    listReportingGuestLogins: noopStatement(),
-    listReportingMemberLogins: noopStatement(),
-    listTournaments: noopStatement(),
+    listTournaments: async () => [],
     PERMISSIONS: {
       VIEW_REPORTS: "view_reports",
     },
@@ -153,9 +171,11 @@ function createAdminRoleTestApp() {
   const app = express();
   const roleStore = new Map();
   const permissionStore = new Map();
+  const committeeRoleStore = new Map();
   const PERMISSIONS = {
     MANAGE_ROLES_PERMISSIONS: "manage_roles_permissions",
   };
+  let committeeRoleId = 1;
 
   app.use(express.json());
   app.use(csrf.middleware);
@@ -167,35 +187,15 @@ function createAdminRoleTestApp() {
     buildEditableMemberProfile: () => ({}),
     buildLoanBowRecord: () => ({}),
     buildMemberUserProfile: () => ({}),
-    buildRoleDefinitionResponse: (role) => ({
-      key: role.role_key,
-      title: role.title,
-      permissions: permissionStore.get(role.role_key) ?? [],
-    }),
     buildUniqueRoleKeyFromTitle: (title) =>
       title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "_")
         .replace(/^_+|_+$/g, ""),
-    countUsersByRoleKey: noopStatement({ count: 0 }),
     CURRENT_PERMISSION_KEY_SET: new Set([PERMISSIONS.MANAGE_ROLES_PERMISSIONS]),
-    db: {
-      transaction: (callback) => callback,
-    },
-    deleteCommitteeRoleById: noopStatement(),
-    deleteRoleDefinition: noopStatement(),
-    deleteRolePermissionsByRoleKey: {
-      run: (roleKey) => permissionStore.set(roleKey, []),
-    },
     DISTANCE_SIGN_OFF_YARDS: [],
-    findCommitteeRoleById: noopStatement(),
-    findCommitteeRoleByKey: noopStatement(),
     findDisciplinesByUsername: noopStatement(),
     findLoanBowByUsername: noopStatement(),
-    findMaxCommitteeRoleDisplayOrder: noopStatement({ display_order: 0 }),
-    findRoleDefinitionByKey: {
-      get: (roleKey) => roleStore.get(roleKey) ?? null,
-    },
     findUserByUsername: noopStatement(),
     getActorUser: (req) => {
       if (!String(req.headers.cookie ?? "").includes("archeryclubpoc_session=valid")) {
@@ -209,41 +209,92 @@ function createAdminRoleTestApp() {
     },
     getPermissionsForRole: () => [],
     getUtcTimestampParts: () => ["2026-04-21", "10:00:00"],
-    insertCommitteeRole: noopStatement(),
-    insertRolePermission: {
-      run: (roleKey, permissionKey) => {
-        permissionStore.set(roleKey, [
-          ...(permissionStore.get(roleKey) ?? []),
-          permissionKey,
-        ]);
-      },
-    },
     listAllUsers: noopStatement(),
     listAssignableRoleKeys: () => [],
-    listCommitteeRoles: noopStatement(),
-    listPermissionDefinitions: noopStatement(),
     listProfilePageMembers: () => [],
-    listRoleDefinitions: noopStatement(),
     memberDistanceSignOffRepository: {
       listByDiscipline: () => [],
     },
     PERMISSIONS,
+    roleCommitteeGateway: {
+      countUsersByRoleKey: async () => ({ count: 0 }),
+      createRole: async ({ permissions, roleKey, title }) => {
+        roleStore.set(roleKey, {
+          is_system: 0,
+          role_key: roleKey,
+          title,
+        });
+        permissionStore.set(roleKey, [...permissions]);
+        return roleStore.get(roleKey);
+      },
+      deleteCommitteeRoleById: async (id) => {
+        committeeRoleStore.delete(Number(id));
+      },
+      deleteRole: async (roleKey) => {
+        roleStore.delete(roleKey);
+        permissionStore.delete(roleKey);
+      },
+      findCommitteeRoleById: async (id) => committeeRoleStore.get(Number(id)) ?? null,
+      findCommitteeRoleByKey: async (roleKey) =>
+        [...committeeRoleStore.values()].find((role) => role.role_key === roleKey) ?? null,
+      findMaxCommitteeRoleDisplayOrder: async () => ({ maxDisplayOrder: 0 }),
+      findRoleDefinitionByKey: async (roleKey) => roleStore.get(roleKey) ?? null,
+      insertCommitteeRole: async (payload) => {
+        committeeRoleStore.set(committeeRoleId, {
+          id: committeeRoleId,
+          role_key: payload.roleKey,
+          title: payload.title,
+          summary: payload.summary,
+          responsibilities: payload.responsibilities,
+          personal_blurb: payload.personalBlurb,
+          photo_data_url: payload.photoDataUrl,
+          display_order: payload.displayOrder,
+          assigned_username: payload.assignedUsername,
+        });
+        committeeRoleId += 1;
+      },
+      listCommitteeRoles: async () => [...committeeRoleStore.values()],
+      listPermissionDefinitions: async () => [],
+      listRoleDefinitions: async () => [...roleStore.values()],
+      listRolePermissionKeysByRoleKey: async (roleKey) =>
+        permissionStore.get(roleKey) ?? [],
+      updateCommitteeRoleDetails: async (payload) => {
+        const existing = committeeRoleStore.get(Number(payload.id));
+        if (!existing) {
+          return;
+        }
+
+        committeeRoleStore.set(Number(payload.id), {
+          ...existing,
+          assigned_username: payload.assignedUsername,
+          personal_blurb: payload.personalBlurb,
+          photo_data_url: payload.photoDataUrl,
+          responsibilities: payload.responsibilities,
+          summary: payload.summary,
+          title: payload.title,
+        });
+      },
+      updateRole: async ({ permissions, roleKey, title }) => {
+        const existing = roleStore.get(roleKey);
+
+        if (!existing) {
+          return null;
+        }
+
+        const updated = {
+          ...existing,
+          title,
+        };
+        roleStore.set(roleKey, updated);
+        permissionStore.set(roleKey, [...permissions]);
+        return updated;
+      },
+    },
     sanitizeLoanBow: (value) => value,
     sanitizeLoanBowReturn: (value) => value,
     saveLoanBowRecord: noopStatement(),
     saveMemberProfile: noopStatement(),
     TOURNAMENT_TYPE_OPTIONS: [],
-    updateCommitteeRoleDetails: noopStatement(),
-    updateRoleDefinition: noopStatement(),
-    upsertRole: {
-      run: ({ isSystem, roleKey, title }) => {
-        roleStore.set(roleKey, {
-          is_system: isSystem,
-          role_key: roleKey,
-          title,
-        });
-      },
-    },
   });
 
   return { app, csrf };
@@ -360,8 +411,10 @@ test("mutating admin routes require both a session cookie and a valid CSRF token
     assert.equal(missingSessionResponse.body.success, false);
     assert.equal(successResponse.status, 201);
     assert.deepEqual(successResponse.body.role, {
-      key: "range_admin",
+      assignedUserCount: 0,
+      isSystem: false,
       permissions: ["manage_roles_permissions"],
+      roleKey: "range_admin",
       title: "Range Admin",
     });
   } finally {

@@ -101,6 +101,21 @@ Live mode uses `server/data/auth.live.sqlite` by default and seeds only the
 developer user `Cfleetham` when that database is empty. You can override the
 database path with `DATABASE_PATH`.
 
+The runtime now understands two database engines:
+
+- `sqlite`
+  Default for local development. Uses `DATABASE_PATH` or the built-in
+  `server/data/*.sqlite` paths.
+- `postgres`
+  Intended for the next production migration step. Set either `DATABASE_URL`
+  or `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. When
+  running on Cloud Run with Cloud SQL, `INSTANCE_CONNECTION_NAME` can be used
+  to connect through the `/cloudsql/...` Unix socket path.
+
+Important: the server is still functionally backed by SQLite queries today.
+PostgreSQL runtime configuration is now wired in, but the query and migration
+layer still needs to be ported before `DATABASE_ENGINE=postgres` can be used.
+
 RFID simulation is hidden in production builds by default. To deliberately
 enable it for a non-live test build, set `VITE_ENABLE_RFID_SIMULATOR=true`
 before building the client.

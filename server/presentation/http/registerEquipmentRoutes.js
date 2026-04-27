@@ -4,43 +4,26 @@ export function registerEquipmentRoutes({
   buildEquipmentCaseResponse,
   buildEquipmentItemResponse,
   buildEquipmentMaps,
-  countEquipmentItemsByStorageLocation,
-  deleteEquipmentStorageLocation,
-  db,
   DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
   EQUIPMENT_LOCATION_TYPES,
   EQUIPMENT_SIZE_CATEGORIES,
   EQUIPMENT_TYPES,
   EQUIPMENT_TYPE_LABELS,
   EQUIPMENT_TYPE_OPTIONS,
-  findEquipmentItemById,
-  findEquipmentItemByIdWithRelations,
-  findEquipmentStorageLocationByLabel,
-  findOpenEquipmentLoanByItemId,
+  equipmentGateway,
   findUserByUsername,
   getActorUser,
   getUtcTimestampParts,
-  insertEquipmentItem,
-  insertEquipmentLoan,
-  insertEquipmentStorageLocation,
   listAllUsers,
-  listEquipmentItemsByCaseId,
-  listEquipmentStorageLocations,
-  listOpenEquipmentLoansByCaseId,
-  listOpenEquipmentLoansByMemberUserId,
   PERMISSIONS,
   sanitizeCupboardLabel,
   sanitizeEquipmentCreatePayload,
-  updateEquipmentAssignmentMetadata,
-  updateEquipmentItemForDecommission,
-  updateEquipmentItemStorage,
   validateCaseAssignment,
-  closeEquipmentLoan,
 }) {
   // Equipment routes combine storage, assignment, and loan state so a case and
   // its contents move together through the club inventory workflow.
-  const getStorageLocationOptions = () => {
-    const labels = listEquipmentStorageLocations.all().map((row) => row.label);
+  const getStorageLocationOptions = async () => {
+    const labels = (await equipmentGateway.listEquipmentStorageLocations()).map((row) => row.label);
 
     if (labels.includes(DEFAULT_EQUIPMENT_CUPBOARD_LABEL)) {
       return labels;
@@ -49,8 +32,8 @@ export function registerEquipmentRoutes({
     return [DEFAULT_EQUIPMENT_CUPBOARD_LABEL, ...labels];
   };
 
-  const assertStorageLocationExists = (label, res) => {
-    if (!findEquipmentStorageLocationByLabel.get(label)) {
+  const assertStorageLocationExists = async (label, res) => {
+    if (!(await equipmentGateway.findEquipmentStorageLocationByLabel(label))) {
       res.status(400).json({
         success: false,
         message: "Choose a valid equipment storage location.",
@@ -61,7 +44,7 @@ export function registerEquipmentRoutes({
     return true;
   };
 
-  app.get("/api/equipment/dashboard", (req, res) => {
+  app.get("/api/equipment/dashboard", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -97,7 +80,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const maps = buildEquipmentMaps();
+    const maps = await buildEquipmentMaps();
     const cases = maps.items
       .filter((item) => item.equipment_type === EQUIPMENT_TYPES.CASE)
       .map((item) => buildEquipmentCaseResponse(item, maps));
@@ -119,13 +102,13 @@ export function registerEquipmentRoutes({
         value,
         label: value === "junior" ? "Junior" : "Standard",
       })),
-      cupboardOptions: getStorageLocationOptions(),
+      cupboardOptions: await getStorageLocationOptions(),
       items,
       cases,
     });
   });
 
-  app.post("/api/equipment/items", (req, res) => {
+  app.post("/api/equipment/items", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT)) {
@@ -147,7 +130,7 @@ export function registerEquipmentRoutes({
     const payload = sanitized.value;
 
     try {
-      const result = insertEquipmentItem.run({
+      const result = await equipmentGateway.createEquipmentItem({
         equipmentType: payload.equipmentType,
         itemNumber: payload.itemNumber,
         sizeCategory: payload.sizeCategory,
@@ -164,8 +147,10 @@ export function registerEquipmentRoutes({
         storageAtDate: date,
         storageAtTime: time,
       });
-      const maps = buildEquipmentMaps();
-      const createdItem = findEquipmentItemByIdWithRelations.get(result.lastInsertRowid);
+      const maps = await buildEquipmentMaps();
+      const createdItem = await equipmentGateway.findEquipmentItemByIdWithRelations(
+        result.lastInsertRowid,
+      );
 
       res.status(201).json({
         success: true,
@@ -187,7 +172,7 @@ export function registerEquipmentRoutes({
     }
   });
 
-  app.post("/api/equipment/items/:id/decommission", (req, res) => {
+  app.post("/api/equipment/items/:id/decommission", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT)) {
@@ -198,7 +183,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const item = findEquipmentItemById.get(req.params.id);
+    const item = await equipmentGateway.findEquipmentItemById(req.params.id);
 
     if (!item) {
       res.status(404).json({
@@ -216,7 +201,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    if (findOpenEquipmentLoanByItemId.get(item.id)) {
+    if (await equipmentGateway.findOpenEquipmentLoanByItemId(item.id)) {
       res.status(400).json({
         success: false,
         message: "Equipment cannot be decommissioned while it is on loan.",
@@ -225,7 +210,7 @@ export function registerEquipmentRoutes({
     }
 
     if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
-      const activeContents = listEquipmentItemsByCaseId.all(item.id);
+      const activeContents = await equipmentGateway.listEquipmentItemsByCaseId(item.id);
 
       if (activeContents.length > 0) {
         res.status(400).json({
@@ -248,7 +233,7 @@ export function registerEquipmentRoutes({
     }
 
     const [date, time] = getUtcTimestampParts();
-    updateEquipmentItemForDecommission.run({
+    await equipmentGateway.updateEquipmentItemForDecommission({
       id: item.id,
       locationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
       decommissionedByUsername: actor.username,
@@ -257,14 +242,17 @@ export function registerEquipmentRoutes({
       decommissionReason: reason,
     });
 
-    const maps = buildEquipmentMaps();
+    const maps = await buildEquipmentMaps();
     res.json({
       success: true,
-      item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
+      item: buildEquipmentItemResponse(
+        await equipmentGateway.findEquipmentItemByIdWithRelations(item.id),
+        maps,
+      ),
     });
   });
 
-  app.post("/api/equipment/assignments", (req, res) => {
+  app.post("/api/equipment/assignments", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.ASSIGN_EQUIPMENT)) {
@@ -275,7 +263,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const item = findEquipmentItemById.get(req.body?.itemId);
+    const item = await equipmentGateway.findEquipmentItemById(req.body?.itemId);
 
     if (!item) {
       res.status(404).json({
@@ -297,8 +285,8 @@ export function registerEquipmentRoutes({
     const [date, time] = getUtcTimestampParts();
 
     if (targetType === "case") {
-      const caseItem = findEquipmentItemById.get(req.body?.caseId);
-      const validationMessage = validateCaseAssignment(caseItem, item);
+      const caseItem = await equipmentGateway.findEquipmentItemById(req.body?.caseId);
+      const validationMessage = await validateCaseAssignment(caseItem, item);
 
       if (validationMessage) {
         res.status(400).json({
@@ -308,7 +296,7 @@ export function registerEquipmentRoutes({
         return;
       }
 
-      if (findOpenEquipmentLoanByItemId.get(item.id)) {
+      if (await equipmentGateway.findOpenEquipmentLoanByItemId(item.id)) {
         res.status(400).json({
           success: false,
           message: "Return the equipment before assigning it into a case.",
@@ -316,7 +304,7 @@ export function registerEquipmentRoutes({
         return;
       }
 
-      updateEquipmentItemStorage.run({
+      await equipmentGateway.updateEquipmentItemStorage({
         id: item.id,
         locationType: EQUIPMENT_LOCATION_TYPES.CASE,
         locationLabel: null,
@@ -326,7 +314,7 @@ export function registerEquipmentRoutes({
         storageAtDate: date,
         storageAtTime: time,
       });
-      updateEquipmentAssignmentMetadata.run({
+      await equipmentGateway.updateEquipmentAssignmentMetadata({
         id: item.id,
         assignedByUsername: actor.username,
         assignedAtDate: date,
@@ -353,7 +341,7 @@ export function registerEquipmentRoutes({
         return;
       }
 
-      if (findOpenEquipmentLoanByItemId.get(item.id)) {
+      if (await equipmentGateway.findOpenEquipmentLoanByItemId(item.id)) {
         res.status(400).json({
           success: false,
           message: "That equipment is already on loan.",
@@ -361,12 +349,19 @@ export function registerEquipmentRoutes({
         return;
       }
 
-      const assignTransaction = db.transaction(() => {
+      try {
         if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
-          const contents = listEquipmentItemsByCaseId.all(item.id);
+          const contents = await equipmentGateway.listEquipmentItemsByCaseId(item.id);
 
-          insertEquipmentLoan.run(item.id, member.username, actor.username, date, time, null);
-          updateEquipmentItemStorage.run({
+          await equipmentGateway.createEquipmentLoan(
+            item.id,
+            member.username,
+            actor.username,
+            date,
+            time,
+            null,
+          );
+          await equipmentGateway.updateEquipmentItemStorage({
             id: item.id,
             locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
             locationLabel: null,
@@ -376,7 +371,7 @@ export function registerEquipmentRoutes({
             storageAtDate: date,
             storageAtTime: time,
           });
-          updateEquipmentAssignmentMetadata.run({
+          await equipmentGateway.updateEquipmentAssignmentMetadata({
             id: item.id,
             assignedByUsername: actor.username,
             assignedAtDate: date,
@@ -384,11 +379,11 @@ export function registerEquipmentRoutes({
           });
 
           for (const content of contents) {
-            if (findOpenEquipmentLoanByItemId.get(content.id)) {
+            if (await equipmentGateway.findOpenEquipmentLoanByItemId(content.id)) {
               throw new Error("Case contents must all be returned before the case can be loaned out.");
             }
 
-            insertEquipmentLoan.run(
+            await equipmentGateway.createEquipmentLoan(
               content.id,
               member.username,
               actor.username,
@@ -396,7 +391,7 @@ export function registerEquipmentRoutes({
               time,
               item.id,
             );
-            updateEquipmentAssignmentMetadata.run({
+            await equipmentGateway.updateEquipmentAssignmentMetadata({
               id: content.id,
               assignedByUsername: actor.username,
               assignedAtDate: date,
@@ -404,8 +399,15 @@ export function registerEquipmentRoutes({
             });
           }
         } else {
-          insertEquipmentLoan.run(item.id, member.username, actor.username, date, time, null);
-          updateEquipmentItemStorage.run({
+          await equipmentGateway.createEquipmentLoan(
+            item.id,
+            member.username,
+            actor.username,
+            date,
+            time,
+            null,
+          );
+          await equipmentGateway.updateEquipmentItemStorage({
             id: item.id,
             locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
             locationLabel: null,
@@ -415,17 +417,13 @@ export function registerEquipmentRoutes({
             storageAtDate: date,
             storageAtTime: time,
           });
-          updateEquipmentAssignmentMetadata.run({
+          await equipmentGateway.updateEquipmentAssignmentMetadata({
             id: item.id,
             assignedByUsername: actor.username,
             assignedAtDate: date,
             assignedAtTime: time,
           });
         }
-      });
-
-      try {
-        assignTransaction();
       } catch (error) {
         res.status(400).json({
           success: false,
@@ -441,14 +439,17 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const maps = buildEquipmentMaps();
+    const maps = await buildEquipmentMaps();
     res.json({
       success: true,
-      item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
+      item: buildEquipmentItemResponse(
+        await equipmentGateway.findEquipmentItemByIdWithRelations(item.id),
+        maps,
+      ),
     });
   });
 
-  app.post("/api/equipment/returns", (req, res) => {
+  app.post("/api/equipment/returns", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.RETURN_EQUIPMENT)) {
@@ -459,7 +460,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const item = findEquipmentItemById.get(req.body?.itemId);
+    const item = await equipmentGateway.findEquipmentItemById(req.body?.itemId);
 
     if (!item) {
       res.status(404).json({
@@ -469,7 +470,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const openLoan = findOpenEquipmentLoanByItemId.get(item.id);
+    const openLoan = await equipmentGateway.findOpenEquipmentLoanByItemId(item.id);
 
     if (!openLoan) {
       res.status(400).json({
@@ -491,17 +492,19 @@ export function registerEquipmentRoutes({
       req.body?.returnToCaseId === "" || req.body?.returnToCaseId == null
         ? null
         : Number.parseInt(req.body.returnToCaseId, 10);
-    const returnCase = returnToCaseId ? findEquipmentItemById.get(returnToCaseId) : null;
+    const returnCase = returnToCaseId
+      ? await equipmentGateway.findEquipmentItemById(returnToCaseId)
+      : null;
     const returnToCupboard = sanitizeCupboardLabel(req.body?.cupboardLabel);
 
-    if (!assertStorageLocationExists(returnToCupboard, res)) {
+    if (!(await assertStorageLocationExists(returnToCupboard, res))) {
       return;
     }
 
     const [date, time] = getUtcTimestampParts();
 
     if (returnCase) {
-      const validationMessage = validateCaseAssignment(returnCase, item);
+      const validationMessage = await validateCaseAssignment(returnCase, item);
 
       if (validationMessage) {
         res.status(400).json({
@@ -512,73 +515,76 @@ export function registerEquipmentRoutes({
       }
     }
 
-    const returnTransaction = db.transaction(() => {
-      if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
-        const relatedOpenLoans = listOpenEquipmentLoansByCaseId.all(item.id);
-        closeEquipmentLoan.run(
-          actor.username,
-          date,
-          time,
-          EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-          returnToCupboard,
-          null,
-          openLoan.id,
-        );
-        updateEquipmentItemStorage.run({
-          id: item.id,
-          locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-          locationLabel: returnToCupboard,
-          locationCaseId: null,
-          locationMemberUsername: null,
-          storageByUsername: actor.username,
-          storageAtDate: date,
-          storageAtTime: time,
-        });
+    if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
+      const relatedOpenLoans = await equipmentGateway.listOpenEquipmentLoansByCaseId(item.id);
+      await equipmentGateway.closeEquipmentLoan({
+        id: openLoan.id,
+        returnCaseId: null,
+        returnLocationLabel: returnToCupboard,
+        returnLocationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        returnedAtDate: date,
+        returnedAtTime: time,
+        returnedByUsername: actor.username,
+      });
+      await equipmentGateway.updateEquipmentItemStorage({
+        id: item.id,
+        locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        locationLabel: returnToCupboard,
+        locationCaseId: null,
+        locationMemberUsername: null,
+        storageByUsername: actor.username,
+        storageAtDate: date,
+        storageAtTime: time,
+      });
 
-        for (const loan of relatedOpenLoans) {
-          closeEquipmentLoan.run(
-            actor.username,
-            date,
-            time,
-            EQUIPMENT_LOCATION_TYPES.CASE,
-            null,
-            item.id,
-            loan.id,
-          );
-        }
-      } else {
-        closeEquipmentLoan.run(
-          actor.username,
-          date,
-          time,
-          returnCase ? EQUIPMENT_LOCATION_TYPES.CASE : EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-          returnCase ? null : returnToCupboard,
-          returnCase?.id ?? null,
-          openLoan.id,
-        );
-        updateEquipmentItemStorage.run({
-          id: item.id,
-          locationType: returnCase ? EQUIPMENT_LOCATION_TYPES.CASE : EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-          locationLabel: returnCase ? null : returnToCupboard,
-          locationCaseId: returnCase?.id ?? null,
-          locationMemberUsername: null,
-          storageByUsername: actor.username,
-          storageAtDate: date,
-          storageAtTime: time,
+      for (const loan of relatedOpenLoans) {
+        await equipmentGateway.closeEquipmentLoan({
+          id: loan.id,
+          returnCaseId: item.id,
+          returnLocationLabel: null,
+          returnLocationType: EQUIPMENT_LOCATION_TYPES.CASE,
+          returnedAtDate: date,
+          returnedAtTime: time,
+          returnedByUsername: actor.username,
         });
       }
-    });
+    } else {
+      await equipmentGateway.closeEquipmentLoan({
+        id: openLoan.id,
+        returnCaseId: returnCase?.id ?? null,
+        returnLocationLabel: returnCase ? null : returnToCupboard,
+        returnLocationType: returnCase
+          ? EQUIPMENT_LOCATION_TYPES.CASE
+          : EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        returnedAtDate: date,
+        returnedAtTime: time,
+        returnedByUsername: actor.username,
+      });
+      await equipmentGateway.updateEquipmentItemStorage({
+        id: item.id,
+        locationType: returnCase
+          ? EQUIPMENT_LOCATION_TYPES.CASE
+          : EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        locationLabel: returnCase ? null : returnToCupboard,
+        locationCaseId: returnCase?.id ?? null,
+        locationMemberUsername: null,
+        storageByUsername: actor.username,
+        storageAtDate: date,
+        storageAtTime: time,
+      });
+    }
 
-    returnTransaction();
-
-    const maps = buildEquipmentMaps();
+    const maps = await buildEquipmentMaps();
     res.json({
       success: true,
-      item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
+      item: buildEquipmentItemResponse(
+        await equipmentGateway.findEquipmentItemByIdWithRelations(item.id),
+        maps,
+      ),
     });
   });
 
-  app.post("/api/equipment/storage", (req, res) => {
+  app.post("/api/equipment/storage", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.UPDATE_EQUIPMENT_STORAGE)) {
@@ -589,7 +595,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const item = findEquipmentItemById.get(req.body?.itemId);
+    const item = await equipmentGateway.findEquipmentItemById(req.body?.itemId);
 
     if (!item) {
       res.status(404).json({
@@ -599,7 +605,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const openLoan = findOpenEquipmentLoanByItemId.get(item.id);
+    const openLoan = await equipmentGateway.findOpenEquipmentLoanByItemId(item.id);
     const isLoanedCaseContent =
       openLoan &&
       item.location_type === EQUIPMENT_LOCATION_TYPES.CASE &&
@@ -616,47 +622,46 @@ export function registerEquipmentRoutes({
 
     const targetCupboard = sanitizeCupboardLabel(req.body?.cupboardLabel);
 
-    if (!assertStorageLocationExists(targetCupboard, res)) {
+    if (!(await assertStorageLocationExists(targetCupboard, res))) {
       return;
     }
 
     const [date, time] = getUtcTimestampParts();
 
-    const updateStorageTransaction = db.transaction(() => {
-      if (isLoanedCaseContent) {
-        closeEquipmentLoan.run(
-          actor.username,
-          date,
-          time,
-          EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-          targetCupboard,
-          null,
-          openLoan.id,
-        );
-      }
-
-      updateEquipmentItemStorage.run({
-        id: item.id,
-        locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-        locationLabel: targetCupboard,
-        locationCaseId: null,
-        locationMemberUsername: null,
-        storageByUsername: actor.username,
-        storageAtDate: date,
-        storageAtTime: time,
+    if (isLoanedCaseContent) {
+      await equipmentGateway.closeEquipmentLoan({
+        id: openLoan.id,
+        returnCaseId: null,
+        returnLocationLabel: targetCupboard,
+        returnLocationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        returnedAtDate: date,
+        returnedAtTime: time,
+        returnedByUsername: actor.username,
       });
+    }
+
+    await equipmentGateway.updateEquipmentItemStorage({
+      id: item.id,
+      locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+      locationLabel: targetCupboard,
+      locationCaseId: null,
+      locationMemberUsername: null,
+      storageByUsername: actor.username,
+      storageAtDate: date,
+      storageAtTime: time,
     });
 
-    updateStorageTransaction();
-
-    const maps = buildEquipmentMaps();
+    const maps = await buildEquipmentMaps();
     res.json({
       success: true,
-      item: buildEquipmentItemResponse(findEquipmentItemByIdWithRelations.get(item.id), maps),
+      item: buildEquipmentItemResponse(
+        await equipmentGateway.findEquipmentItemByIdWithRelations(item.id),
+        maps,
+      ),
     });
   });
 
-  app.post("/api/equipment/storage-locations", (req, res) => {
+  app.post("/api/equipment/storage-locations", async (req, res) => {
     const actor = getActorUser(req);
 
     if (
@@ -686,7 +691,7 @@ export function registerEquipmentRoutes({
     const [date, time] = getUtcTimestampParts();
 
     try {
-      insertEquipmentStorageLocation.run(label, date, time);
+      await equipmentGateway.createEquipmentStorageLocation(label, date, time);
     } catch (error) {
       if (error?.message?.includes("UNIQUE constraint failed")) {
         res.status(409).json({
@@ -705,11 +710,11 @@ export function registerEquipmentRoutes({
 
     res.status(201).json({
       success: true,
-      cupboardOptions: getStorageLocationOptions(),
+      cupboardOptions: await getStorageLocationOptions(),
     });
   });
 
-  app.delete("/api/equipment/storage-locations/:label", (req, res) => {
+  app.delete("/api/equipment/storage-locations/:label", async (req, res) => {
     const actor = getActorUser(req);
 
     if (
@@ -733,7 +738,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    if (!findEquipmentStorageLocationByLabel.get(label)) {
+    if (!(await equipmentGateway.findEquipmentStorageLocationByLabel(label))) {
       res.status(404).json({
         success: false,
         message: "Storage location not found.",
@@ -741,7 +746,8 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const assignedItemCount = countEquipmentItemsByStorageLocation.get(label)?.count ?? 0;
+    const assignedItemCount =
+      (await equipmentGateway.countEquipmentItemsByStorageLocation(label))?.count ?? 0;
 
     if (assignedItemCount > 0) {
       res.status(409).json({
@@ -752,15 +758,15 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    deleteEquipmentStorageLocation.run(label);
+    await equipmentGateway.deleteEquipmentStorageLocation(label);
 
     res.json({
       success: true,
-      cupboardOptions: getStorageLocationOptions(),
+      cupboardOptions: await getStorageLocationOptions(),
     });
   });
 
-  app.get("/api/member-equipment-loans/:username", (req, res) => {
+  app.get("/api/member-equipment-loans/:username", async (req, res) => {
     const actor = getActorUser(req);
     const requestedUsername = req.params.username;
 
@@ -793,8 +799,9 @@ export function registerEquipmentRoutes({
       return;
     }
 
-    const loans = listOpenEquipmentLoansByMemberUserId
-      .all(requestedUser.username)
+    const loans = (await equipmentGateway.listOpenEquipmentLoansByMemberUserId(
+      requestedUser.username,
+    ))
       .map((loan) => ({
         id: loan.id,
         type: loan.equipment_type,

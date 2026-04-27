@@ -5,46 +5,29 @@ export function registerAdminMemberRoutes({
   buildCommitteeRole,
   buildEditableMemberProfile,
   buildLoanBowRecord,
-  buildRoleDefinitionResponse,
   buildUniqueRoleKeyFromTitle,
-  countUsersByRoleKey,
   CURRENT_PERMISSION_KEY_SET,
-  db,
-  deleteCommitteeRoleById,
-  deleteRoleDefinition,
-  deleteRolePermissionsByRoleKey,
   DISTANCE_SIGN_OFF_YARDS,
-  findCommitteeRoleById,
-  findCommitteeRoleByKey,
   findDisciplinesByUsername,
   findLoanBowByUsername,
-  findRoleDefinitionByKey,
   findUserByUsername,
-  findMaxCommitteeRoleDisplayOrder,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,
-  insertCommitteeRole,
   listAllUsers,
   listAssignableRoleKeys,
-  listCommitteeRoles,
-  listPermissionDefinitions,
   listProfilePageMembers,
-  listRoleDefinitions,
+  roleCommitteeGateway,
   PERMISSIONS,
   sanitizeLoanBow,
   sanitizeLoanBowReturn,
   saveLoanBowRecord,
   saveMemberProfile,
   TOURNAMENT_TYPE_OPTIONS,
-  updateCommitteeRoleDetails,
-  updateRoleDefinition,
-  upsertRole,
-  insertRolePermission,
   buildMemberUserProfile,
   memberDistanceSignOffRepository,
 }) {
-  function buildEditableProfileWithDistanceSignOffs(
+  async function buildEditableProfileWithDistanceSignOffs(
     user,
     disciplines,
     loanBow,
@@ -52,9 +35,26 @@ export function registerAdminMemberRoutes({
   ) {
     return {
       ...buildEditableProfileResponse(user, disciplines, loanBow, canViewRfidTag),
-      distanceSignOffs: memberDistanceSignOffRepository.listByDiscipline(
+      distanceSignOffs: await memberDistanceSignOffRepository.listByDiscipline(
         user.username,
         disciplines,
+      ),
+    };
+  }
+
+  async function buildRoleDefinitionPayload(role) {
+    const [assignedUserCount, permissions] = await Promise.all([
+      roleCommitteeGateway.countUsersByRoleKey(role.role_key),
+      roleCommitteeGateway.listRolePermissionKeysByRoleKey(role.role_key),
+    ]);
+
+    return {
+      roleKey: role.role_key,
+      title: role.title,
+      isSystem: Boolean(role.is_system),
+      assignedUserCount: assignedUserCount.count ?? 0,
+      permissions: permissions.filter((permissionKey) =>
+        CURRENT_PERMISSION_KEY_SET.has(permissionKey),
       ),
     };
   }
@@ -93,7 +93,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.get("/api/roles", (req, res) => {
+  app.get("/api/roles", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -112,10 +112,15 @@ export function registerAdminMemberRoutes({
       return;
     }
 
+    const [roles, permissions] = await Promise.all([
+      roleCommitteeGateway.listRoleDefinitions(),
+      roleCommitteeGateway.listPermissionDefinitions(),
+    ]);
+
     res.json({
       success: true,
-      roles: listRoleDefinitions.all().map(buildRoleDefinitionResponse),
-      permissions: listPermissionDefinitions.all().map((permission) => ({
+      roles: await Promise.all(roles.map(buildRoleDefinitionPayload)),
+      permissions: permissions.map((permission) => ({
         key: permission.permission_key,
         label: permission.label,
         description: permission.description,
@@ -123,7 +128,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.post("/api/roles", (req, res) => {
+  app.post("/api/roles", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -174,30 +179,19 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const createRoleTransaction = db.transaction(() => {
-      upsertRole.run({
-        roleKey,
-        title,
-        isSystem: 0,
-      });
-      deleteRolePermissionsByRoleKey.run(roleKey);
-
-      for (const permissionKey of normalizedPermissions) {
-        insertRolePermission.run(roleKey, permissionKey);
-      }
+    const createdRole = await roleCommitteeGateway.createRole({
+      permissions: normalizedPermissions,
+      roleKey,
+      title,
     });
-
-    createRoleTransaction();
-
-    const createdRole = findRoleDefinitionByKey.get(roleKey);
 
     res.status(201).json({
       success: true,
-      role: buildRoleDefinitionResponse(createdRole),
+      role: await buildRoleDefinitionPayload(createdRole),
     });
   });
 
-  app.put("/api/roles/:roleKey", (req, res) => {
+  app.put("/api/roles/:roleKey", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -217,7 +211,7 @@ export function registerAdminMemberRoutes({
     }
 
     const roleKey = req.params.roleKey;
-    const existingRole = findRoleDefinitionByKey.get(roleKey);
+    const existingRole = await roleCommitteeGateway.findRoleDefinitionByKey(roleKey);
 
     if (!existingRole) {
       res.status(404).json({
@@ -250,24 +244,19 @@ export function registerAdminMemberRoutes({
       ),
     ];
 
-    const updateRoleTransaction = db.transaction(() => {
-      updateRoleDefinition.run(title, roleKey);
-      deleteRolePermissionsByRoleKey.run(roleKey);
-
-      for (const permissionKey of normalizedPermissions) {
-        insertRolePermission.run(roleKey, permissionKey);
-      }
+    const updatedRole = await roleCommitteeGateway.updateRole({
+      permissions: normalizedPermissions,
+      roleKey,
+      title,
     });
-
-    updateRoleTransaction();
 
     res.json({
       success: true,
-      role: buildRoleDefinitionResponse(findRoleDefinitionByKey.get(roleKey)),
+      role: await buildRoleDefinitionPayload(updatedRole),
     });
   });
 
-  app.delete("/api/roles/:roleKey", (req, res) => {
+  app.delete("/api/roles/:roleKey", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -287,7 +276,7 @@ export function registerAdminMemberRoutes({
     }
 
     const roleKey = req.params.roleKey;
-    const existingRole = findRoleDefinitionByKey.get(roleKey);
+    const existingRole = await roleCommitteeGateway.findRoleDefinitionByKey(roleKey);
 
     if (!existingRole) {
       res.status(404).json({
@@ -305,7 +294,8 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const assignedUserCount = countUsersByRoleKey.get(roleKey)?.count ?? 0;
+    const assignedUserCount =
+      (await roleCommitteeGateway.countUsersByRoleKey(roleKey))?.count ?? 0;
 
     if (assignedUserCount > 0) {
       res.status(409).json({
@@ -315,12 +305,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const deleteRoleTransaction = db.transaction(() => {
-      deleteRolePermissionsByRoleKey.run(roleKey);
-      deleteRoleDefinition.run(roleKey);
-    });
-
-    deleteRoleTransaction();
+    await roleCommitteeGateway.deleteRole(roleKey);
 
     res.json({
       success: true,
@@ -374,7 +359,7 @@ export function registerAdminMemberRoutes({
     return trimmedValue;
   }
 
-  function buildUniqueCommitteeRoleKey(title) {
+  async function buildUniqueCommitteeRoleKey(title) {
     const baseTitle = normalizeCommitteeRoleText(title);
 
     if (!baseTitle) {
@@ -389,7 +374,10 @@ export function registerAdminMemberRoutes({
 
     let counter = 2;
 
-    while (findCommitteeRoleByKey.get(nextKey) || findRoleDefinitionByKey.get(nextKey)) {
+    while (
+      (await roleCommitteeGateway.findCommitteeRoleByKey(nextKey)) ||
+      (await roleCommitteeGateway.findRoleDefinitionByKey(nextKey))
+    ) {
       nextKey = buildUniqueRoleKeyFromTitle(`${baseTitle} ${counter}`);
       counter += 1;
     }
@@ -439,7 +427,7 @@ export function registerAdminMemberRoutes({
     };
   }
 
-  app.get("/api/committee-roles", (req, res) => {
+  app.get("/api/committee-roles", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {
@@ -450,9 +438,11 @@ export function registerAdminMemberRoutes({
       return;
     }
 
+    const committeeRoles = await roleCommitteeGateway.listCommitteeRoles();
+
     res.json({
       success: true,
-      roles: listCommitteeRoles.all().map(buildCommitteeRole),
+      roles: committeeRoles.map(buildCommitteeRole),
       members: actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)
         ? listAllUsers.all().map((user) => ({
             username: user.username,
@@ -463,7 +453,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.post("/api/committee-roles", (req, res) => {
+  app.post("/api/committee-roles", async (req, res) => {
     const actor = getActorUser(req);
 
     if (
@@ -498,7 +488,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const roleKey = buildUniqueCommitteeRoleKey(payload.title);
+    const roleKey = await buildUniqueCommitteeRoleKey(payload.title);
 
     if (!roleKey) {
       res.status(400).json({
@@ -508,9 +498,11 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const displayOrder = findMaxCommitteeRoleDisplayOrder.get().maxDisplayOrder + 1;
+    const displayOrder =
+      (await roleCommitteeGateway.findMaxCommitteeRoleDisplayOrder())
+        .maxDisplayOrder + 1;
 
-    insertCommitteeRole.run({
+    await roleCommitteeGateway.insertCommitteeRole({
       roleKey,
       title: payload.title,
       summary: payload.summary,
@@ -521,8 +513,7 @@ export function registerAdminMemberRoutes({
       assignedUsername: payload.assignedUsername,
     });
 
-    const createdRole = listCommitteeRoles
-      .all()
+    const createdRole = (await roleCommitteeGateway.listCommitteeRoles())
       .map(buildCommitteeRole)
       .find((entry) => entry.roleKey === roleKey);
 
@@ -532,7 +523,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.put("/api/committee-roles/:id", (req, res) => {
+  app.put("/api/committee-roles/:id", async (req, res) => {
     const actor = getActorUser(req);
 
     if (
@@ -546,7 +537,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const role = findCommitteeRoleById.get(req.params.id);
+    const role = await roleCommitteeGateway.findCommitteeRoleById(req.params.id);
 
     if (!role) {
       res.status(404).json({
@@ -577,7 +568,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    updateCommitteeRoleDetails.run({
+    await roleCommitteeGateway.updateCommitteeRoleDetails({
       id: role.id,
       title: payload.title,
       summary: payload.summary,
@@ -587,8 +578,7 @@ export function registerAdminMemberRoutes({
       assignedUsername: payload.assignedUsername,
     });
 
-    const updatedRole = listCommitteeRoles
-      .all()
+    const updatedRole = (await roleCommitteeGateway.listCommitteeRoles())
       .map(buildCommitteeRole)
       .find((entry) => entry.id === role.id);
 
@@ -598,7 +588,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.delete("/api/committee-roles/:id", (req, res) => {
+  app.delete("/api/committee-roles/:id", async (req, res) => {
     const actor = getActorUser(req);
 
     if (
@@ -612,7 +602,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const role = findCommitteeRoleById.get(req.params.id);
+    const role = await roleCommitteeGateway.findCommitteeRoleById(req.params.id);
 
     if (!role) {
       res.status(404).json({
@@ -622,7 +612,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    deleteCommitteeRoleById.run(role.id);
+    await roleCommitteeGateway.deleteCommitteeRoleById(role.id);
 
     res.json({
       success: true,
@@ -630,7 +620,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.get("/api/user-profiles/:username", (req, res) => {
+  app.get("/api/user-profiles/:username", async (req, res) => {
     const actor = getActorUser(req);
     const requestedUsername = req.params.username;
 
@@ -681,7 +671,7 @@ export function registerAdminMemberRoutes({
 
     res.json({
       success: true,
-      editableProfile: buildEditableProfileWithDistanceSignOffs(
+      editableProfile: await buildEditableProfileWithDistanceSignOffs(
         user,
         disciplines,
         loanBow,
@@ -693,7 +683,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.post("/api/user-profiles", (req, res) => {
+  app.post("/api/user-profiles", async (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
@@ -726,7 +716,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const result = saveMemberProfile({
+    const result = await saveMemberProfile({
       username,
       firstName,
       surname,
@@ -752,7 +742,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.put("/api/user-profiles/:username", (req, res) => {
+  app.put("/api/user-profiles/:username", async (req, res) => {
     const actor = getActorUser(req);
     const requestedUsername = req.params.username;
 
@@ -808,7 +798,7 @@ export function registerAdminMemberRoutes({
       loanBow,
     } = req.body ?? {};
 
-    const result = saveMemberProfile({
+    const result = await saveMemberProfile({
       username: existingUser.username,
       firstName,
       surname,
@@ -841,7 +831,7 @@ export function registerAdminMemberRoutes({
     res.json({
       success: true,
       ...result,
-      editableProfile: buildEditableProfileWithDistanceSignOffs(
+      editableProfile: await buildEditableProfileWithDistanceSignOffs(
         findUserByUsername.get(existingUser.username),
         result.editableProfile?.disciplines ?? [],
         findLoanBowByUsername.get(existingUser.username),
@@ -850,7 +840,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.post("/api/user-profiles/:username/distance-sign-offs", (req, res) => {
+  app.post("/api/user-profiles/:username/distance-sign-offs", async (req, res) => {
     const actor = getActorUser(req);
     const requestedUsername = req.params.username;
 
@@ -913,7 +903,7 @@ export function registerAdminMemberRoutes({
 
     const [signedOffAtDate, signedOffAtTime] = getUtcTimestampParts();
 
-    memberDistanceSignOffRepository.upsert({
+    await memberDistanceSignOffRepository.upsert({
       username: member.username,
       discipline,
       distanceYards,
@@ -928,14 +918,14 @@ export function registerAdminMemberRoutes({
       success: true,
       message: `${discipline} ${distanceYards} yds signed off for ${member.first_name} ${member.surname}.`,
       signOff:
-        memberDistanceSignOffRepository
-          .listByUsername(member.username)
+        (await memberDistanceSignOffRepository
+          .listByUsername(member.username))
           .find(
             (entry) =>
               entry.discipline === discipline &&
               entry.distanceYards === distanceYards,
           ) ?? null,
-      editableProfile: buildEditableProfileWithDistanceSignOffs(
+      editableProfile: await buildEditableProfileWithDistanceSignOffs(
         member,
         disciplines,
         loanBow,
@@ -944,7 +934,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.post("/api/user-profiles/:username/assign-rfid", (req, res) => {
+  app.post("/api/user-profiles/:username/assign-rfid", async (req, res) => {
     const actor = getActorUser(req);
     const requestedUsername = req.params.username;
 
@@ -980,7 +970,7 @@ export function registerAdminMemberRoutes({
       .all(existingUser.username)
       .map((discipline) => discipline.discipline);
     const loanBow = buildLoanBowRecord(findLoanBowByUsername.get(existingUser.username));
-    const result = saveMemberProfile({
+    const result = await saveMemberProfile({
       username: existingUser.username,
       firstName: existingUser.first_name,
       surname: existingUser.surname,
@@ -1083,7 +1073,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.put("/api/loan-bow-profiles/:username", (req, res) => {
+  app.put("/api/loan-bow-profiles/:username", async (req, res) => {
     const actor = getActorUser(req);
     const requestedUsername = req.params.username;
 
@@ -1115,7 +1105,7 @@ export function registerAdminMemberRoutes({
 
     const loanBow = sanitizeLoanBow(req.body?.loanBow);
 
-    saveLoanBowRecord(user.username, loanBow);
+    await saveLoanBowRecord(user.username, loanBow);
 
     res.json({
       success: true,
@@ -1128,7 +1118,7 @@ export function registerAdminMemberRoutes({
     });
   });
 
-  app.post("/api/loan-bow-profiles/:username/return", (req, res) => {
+  app.post("/api/loan-bow-profiles/:username/return", async (req, res) => {
     const actor = getActorUser(req);
     const requestedUsername = req.params.username;
 
@@ -1171,7 +1161,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    saveLoanBowRecord(user.username, returnResult.loanBow);
+    await saveLoanBowRecord(user.username, returnResult.loanBow);
 
     res.json({
       success: true,

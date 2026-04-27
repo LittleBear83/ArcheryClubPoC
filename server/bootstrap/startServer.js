@@ -4,7 +4,9 @@ import path from "node:path";
 
 export function startServer({
   app,
+  databaseEngine,
   databasePath,
+  databaseUrl,
   distDirectory,
   headersTimeoutMs,
   keepAliveTimeoutMs,
@@ -26,7 +28,13 @@ export function startServer({
 
   const server = app.listen(port, () => {
     console.log(`App and auth server listening on http://localhost:${port}`);
-    console.log(`SQLite database: ${databasePath}`);
+    if (databaseEngine === "postgres") {
+      console.log(
+        `PostgreSQL database: ${databaseUrl ? "DATABASE_URL" : "configured connection settings"}`,
+      );
+    } else {
+      console.log(`SQLite database: ${databasePath}`);
+    }
     if (existsSync(distDirectory)) {
       console.log(`Serving frontend from: ${distDirectory}`);
     }

@@ -35,6 +35,41 @@ import {
   TOURNAMENT_TYPE_OPTIONS,
 } from "./domain/constants.js";
 import { createDatabase } from "./infrastructure/persistence/createDatabase.js";
+import { createActivityReportingGateway } from "./infrastructure/persistence/activityReportingGateway.js";
+import {
+  bootstrapSqliteBaseSchema,
+  CLUB_EVENTS_TABLE_SQL,
+  COACHING_SESSIONS_TABLE_SQL,
+  COACHING_SESSION_BOOKINGS_TABLE_SQL,
+  EVENT_BOOKINGS_TABLE_SQL,
+  GUEST_LOGIN_EVENTS_TABLE_SQL,
+  LOGIN_EVENTS_TABLE_SQL,
+  TOURNAMENTS_TABLE_SQL,
+  TOURNAMENT_REGISTRATIONS_TABLE_SQL,
+  TOURNAMENT_SCORES_TABLE_SQL,
+} from "./infrastructure/persistence/bootstrapSqliteBaseSchema.js";
+import {
+  bootstrapSqliteLegacyDateSupport,
+  bootstrapSqliteRolesAndPermissions,
+} from "./infrastructure/persistence/bootstrapSqliteLegacySupport.js";
+import { bootstrapSqliteEquipmentCompatibility } from "./infrastructure/persistence/bootstrapSqliteEquipmentCompatibility.js";
+import { bootstrapSqliteCourseScheduleCompatibility } from "./infrastructure/persistence/bootstrapSqliteCourseScheduleCompatibility.js";
+import { bootstrapSqliteUserCompatibility } from "./infrastructure/persistence/bootstrapSqliteUserCompatibility.js";
+import { createSqliteAuthAuditStatements } from "./infrastructure/persistence/createSqliteAuthAuditStatements.js";
+import { createSqliteBeginnersCourseStatements } from "./infrastructure/persistence/createSqliteBeginnersCourseStatements.js";
+import { createSqliteEquipmentStatements } from "./infrastructure/persistence/createSqliteEquipmentStatements.js";
+import { createSqliteLoanBowStatements } from "./infrastructure/persistence/createSqliteLoanBowStatements.js";
+import { createSqliteReportingStatements } from "./infrastructure/persistence/createSqliteReportingStatements.js";
+import { createSqliteRoleCommitteeStatements } from "./infrastructure/persistence/createSqliteRoleCommitteeStatements.js";
+import { createSqliteScheduleTournamentStatements } from "./infrastructure/persistence/createSqliteScheduleTournamentStatements.js";
+import { bootstrapSqliteUserData } from "./infrastructure/persistence/bootstrapSqliteUserData.js";
+import { runPostgresMigrations } from "./infrastructure/persistence/runPostgresMigrations.js";
+import { createEquipmentGateway } from "./infrastructure/persistence/equipmentGateway.js";
+import { createMemberAuthGateway } from "./infrastructure/persistence/memberAuthGateway.js";
+import { createMemberProfileGateway } from "./infrastructure/persistence/memberProfileGateway.js";
+import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
+import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
+import { createTournamentGateway } from "./infrastructure/persistence/tournamentGateway.js";
 import { createMemberDistanceSignOffRepository } from "./infrastructure/persistence/memberDistanceSignOffRepository.js";
 import {
   createSecurityEventLogger,
@@ -49,6 +84,17 @@ import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRo
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
+
+if (serverRuntime.databaseEngine === "postgres") {
+  await runPostgresMigrations({
+    committeeRoleSeed: COMMITTEE_ROLE_SEED,
+    defaultEquipmentCupboardLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+    permissionDefinitions: PERMISSION_DEFINITIONS,
+    pool: db.pool,
+    systemRoleDefinitions: SYSTEM_ROLE_DEFINITIONS,
+  });
+}
+
 const memberDistanceSignOffRepository = createMemberDistanceSignOffRepository(db, {
   allowedDisciplines: ALLOWED_DISCIPLINES,
   distanceYards: DISTANCE_SIGN_OFF_YARDS,
@@ -363,3532 +409,538 @@ const COURSE_PARTICIPANT_USER_TYPES = {
   "have-a-go": "have-a-go",
 };
 
+function createUnsupportedPreparedStatement(name) {
+  const unsupported = () => {
+    throw new Error(
+      `${name} is not available when DATABASE_ENGINE=postgres. Continue migrating synchronous SQLite helpers before enabling PostgreSQL for the full server runtime.`,
+    );
+  };
+
+  return {
+    all: unsupported,
+    get: unsupported,
+    run: unsupported,
+  };
+}
+
+function createUnsupportedPreparedStatementGroup(names) {
+  return Object.fromEntries(
+    names.map((name) => [name, createUnsupportedPreparedStatement(name)]),
+  );
+}
+
+function createUnsupportedSqliteUserData() {
+  return {
+    ...createUnsupportedPreparedStatementGroup([
+      "deleteUserDisciplines",
+      "findUserByCredentials",
+      "findUserByRfid",
+      "findUserByUsername",
+      "insertUserDiscipline",
+      "listAllUsers",
+      "updateUserMembershipStatus",
+      "updateUserPassword",
+      "upsertUser",
+      "upsertUserType",
+    ]),
+  };
+}
+
 // Schema bootstrap is intentionally idempotent; local development and preview
 // can start against an existing SQLite file without a separate migration step.
-const LOGIN_EVENTS_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS login_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL,
-    login_method TEXT NOT NULL CHECK (login_method IN ('password', 'rfid')),
-    logged_in_date TEXT NOT NULL,
-    logged_in_time TEXT NOT NULL,
-    FOREIGN KEY (username) REFERENCES users(username)
-  )
-`;
-const GUEST_LOGIN_EVENTS_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS guest_login_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    first_name TEXT NOT NULL,
-    surname TEXT NOT NULL,
-    archery_gb_membership_number TEXT NOT NULL,
-    invited_by_username TEXT,
-    invited_by_name TEXT,
-    logged_in_date TEXT NOT NULL,
-    logged_in_time TEXT NOT NULL,
-    FOREIGN KEY (invited_by_username) REFERENCES users(username)
-  )
-`;
-const COACHING_SESSIONS_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS coaching_sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    coach_username TEXT NOT NULL,
-    session_date TEXT NOT NULL,
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-    available_slots INTEGER NOT NULL DEFAULT 1,
-    topic TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    venue TEXT NOT NULL CHECK (venue IN ('indoor', 'outdoor', 'both')),
-    approval_status TEXT NOT NULL DEFAULT 'approved',
-    rejection_reason TEXT,
-    approved_by_username TEXT,
-    approved_at_date TEXT,
-    approved_at_time TEXT,
-    created_at_date TEXT NOT NULL,
-    created_at_time TEXT NOT NULL,
-    FOREIGN KEY (coach_username) REFERENCES users(username),
-    FOREIGN KEY (approved_by_username) REFERENCES users(username)
-  )
-`;
-const COACHING_SESSION_BOOKINGS_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS coaching_session_bookings (
-    coaching_session_id INTEGER NOT NULL,
-    member_username TEXT NOT NULL,
-    booked_at_date TEXT NOT NULL,
-    booked_at_time TEXT NOT NULL,
-    PRIMARY KEY (coaching_session_id, member_username),
-    FOREIGN KEY (coaching_session_id) REFERENCES coaching_sessions(id),
-    FOREIGN KEY (member_username) REFERENCES users(username)
-  )
-`;
-const CLUB_EVENTS_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS club_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_date TEXT NOT NULL,
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-    title TEXT NOT NULL,
-    details TEXT,
-    type TEXT NOT NULL CHECK (type IN ('competition', 'social', 'range-closed')),
-    venue TEXT NOT NULL DEFAULT 'both' CHECK (venue IN ('indoor', 'outdoor', 'both')),
-    submitted_by_username TEXT,
-    approval_status TEXT NOT NULL DEFAULT 'approved',
-    rejection_reason TEXT,
-    approved_by_username TEXT,
-    approved_at_date TEXT,
-    approved_at_time TEXT,
-    created_at_date TEXT NOT NULL,
-    created_at_time TEXT NOT NULL,
-    FOREIGN KEY (submitted_by_username) REFERENCES users(username),
-    FOREIGN KEY (approved_by_username) REFERENCES users(username)
-  )
-`;
-const EVENT_BOOKINGS_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS event_bookings (
-    club_event_id INTEGER NOT NULL,
-    member_username TEXT NOT NULL,
-    booked_at_date TEXT NOT NULL,
-    booked_at_time TEXT NOT NULL,
-    PRIMARY KEY (club_event_id, member_username),
-    FOREIGN KEY (club_event_id) REFERENCES club_events(id),
-    FOREIGN KEY (member_username) REFERENCES users(username)
-  )
-`;
-const TOURNAMENTS_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS tournaments (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    tournament_type TEXT NOT NULL,
-    registration_start_date TEXT NOT NULL,
-    registration_end_date TEXT NOT NULL,
-    score_submission_start_date TEXT NOT NULL,
-    score_submission_end_date TEXT NOT NULL,
-    created_by TEXT NOT NULL,
-    created_at_date TEXT NOT NULL,
-    created_at_time TEXT NOT NULL,
-    FOREIGN KEY (created_by) REFERENCES users(username)
-  )
-`;
-const TOURNAMENT_REGISTRATIONS_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS tournament_registrations (
-    tournament_id INTEGER NOT NULL,
-    member_username TEXT NOT NULL,
-    registered_at_date TEXT NOT NULL,
-    registered_at_time TEXT NOT NULL,
-    PRIMARY KEY (tournament_id, member_username),
-    FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
-    FOREIGN KEY (member_username) REFERENCES users(username)
-  )
-`;
-const TOURNAMENT_SCORES_TABLE_SQL = `
-  CREATE TABLE IF NOT EXISTS tournament_scores (
-    tournament_id INTEGER NOT NULL,
-    round_number INTEGER NOT NULL,
-    member_username TEXT NOT NULL,
-    score INTEGER NOT NULL,
-    submitted_at_date TEXT NOT NULL,
-    submitted_at_time TEXT NOT NULL,
-    PRIMARY KEY (tournament_id, round_number, member_username),
-    FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
-    FOREIGN KEY (member_username) REFERENCES users(username)
-  )
-`;
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE,
-    first_name TEXT NOT NULL,
-    surname TEXT NOT NULL,
-    password TEXT,
-    rfid_tag TEXT UNIQUE,
-    active_member INTEGER NOT NULL DEFAULT 1,
-    membership_fees_due TEXT,
-    coaching_volunteer INTEGER NOT NULL DEFAULT 0
-  )
-`);
-
-db.exec(LOGIN_EVENTS_TABLE_SQL);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS audit_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    actor_username TEXT,
-    action TEXT NOT NULL,
-    target TEXT NOT NULL,
-    status_code INTEGER NOT NULL,
-    ip_address TEXT,
-    user_agent TEXT,
-    metadata_json TEXT,
-    created_at_date TEXT NOT NULL,
-    created_at_time TEXT NOT NULL,
-    FOREIGN KEY (actor_username) REFERENCES users(username)
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS roles (
-    role_key TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    is_system INTEGER NOT NULL DEFAULT 0
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS permissions (
-    permission_key TEXT PRIMARY KEY,
-    label TEXT NOT NULL,
-    description TEXT NOT NULL
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS role_permissions (
-    role_key TEXT NOT NULL,
-    permission_key TEXT NOT NULL,
-    PRIMARY KEY (role_key, permission_key),
-    FOREIGN KEY (role_key) REFERENCES roles(role_key),
-    FOREIGN KEY (permission_key) REFERENCES permissions(permission_key)
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS user_types (
-    username TEXT PRIMARY KEY,
-    user_type TEXT NOT NULL,
-    FOREIGN KEY (username) REFERENCES users(username),
-    FOREIGN KEY (user_type) REFERENCES roles(role_key)
-  )
-`);
-
-db.exec(GUEST_LOGIN_EVENTS_TABLE_SQL);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS user_disciplines (
-    username TEXT NOT NULL,
-    discipline TEXT NOT NULL CHECK (
-      discipline IN (
-        'Long Bow',
-        'Flat Bow',
-        'Bare Bow',
-        'Recurve Bow',
-        'Compound Bow'
-      )
-    ),
-    PRIMARY KEY (username, discipline),
-    FOREIGN KEY (username) REFERENCES users(username)
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS member_distance_sign_offs (
-    username TEXT NOT NULL,
-    discipline TEXT NOT NULL CHECK (
-      discipline IN (
-        'Long Bow',
-        'Flat Bow',
-        'Bare Bow',
-        'Recurve Bow',
-        'Compound Bow'
-      )
-    ),
-    distance_yards INTEGER NOT NULL CHECK (
-      distance_yards IN (20, 30, 40, 50, 60, 80, 100)
-    ),
-    signed_off_by_username TEXT NOT NULL,
-    signed_off_at_date TEXT NOT NULL,
-    signed_off_at_time TEXT NOT NULL,
-    PRIMARY KEY (username, discipline, distance_yards),
-    FOREIGN KEY (username) REFERENCES users(username),
-    FOREIGN KEY (signed_off_by_username) REFERENCES users(username)
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS member_loan_bows (
-    username TEXT PRIMARY KEY,
-    has_loan_bow INTEGER NOT NULL DEFAULT 0,
-    date_loaned TEXT,
-    returned_date TEXT,
-    riser_number TEXT,
-    limbs_number TEXT,
-    arrow_count INTEGER NOT NULL DEFAULT 6,
-    returned_riser INTEGER NOT NULL DEFAULT 0,
-    returned_limbs INTEGER NOT NULL DEFAULT 0,
-    returned_arrows INTEGER NOT NULL DEFAULT 0,
-    quiver INTEGER NOT NULL DEFAULT 0,
-    returned_quiver INTEGER NOT NULL DEFAULT 0,
-    finger_tab INTEGER NOT NULL DEFAULT 0,
-    returned_finger_tab INTEGER NOT NULL DEFAULT 0,
-    string_item INTEGER NOT NULL DEFAULT 0,
-    returned_string_item INTEGER NOT NULL DEFAULT 0,
-    arm_guard INTEGER NOT NULL DEFAULT 0,
-    returned_arm_guard INTEGER NOT NULL DEFAULT 0,
-    chest_guard INTEGER NOT NULL DEFAULT 0,
-    returned_chest_guard INTEGER NOT NULL DEFAULT 0,
-    sight INTEGER NOT NULL DEFAULT 0,
-    returned_sight INTEGER NOT NULL DEFAULT 0,
-    long_rod INTEGER NOT NULL DEFAULT 0,
-    returned_long_rod INTEGER NOT NULL DEFAULT 0,
-    pressure_button INTEGER NOT NULL DEFAULT 0,
-    returned_pressure_button INTEGER NOT NULL DEFAULT 0,
-    FOREIGN KEY (username) REFERENCES users(username)
-  )
-`);
-
-db.exec(COACHING_SESSIONS_TABLE_SQL);
-
-db.exec(COACHING_SESSION_BOOKINGS_TABLE_SQL);
-
-db.exec(CLUB_EVENTS_TABLE_SQL);
-
-db.exec(EVENT_BOOKINGS_TABLE_SQL);
-
-db.exec(TOURNAMENTS_TABLE_SQL);
-
-db.exec(TOURNAMENT_REGISTRATIONS_TABLE_SQL);
-
-db.exec(TOURNAMENT_SCORES_TABLE_SQL);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS committee_roles (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    role_key TEXT NOT NULL UNIQUE,
-    title TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    display_order INTEGER NOT NULL,
-    assigned_username TEXT,
-    FOREIGN KEY (assigned_username) REFERENCES users(username)
-  )
-`);
-
-const committeeRoleColumns = db.prepare(`PRAGMA table_info(committee_roles)`).all();
-
-if (!committeeRoleColumns.some((column) => column.name === "responsibilities")) {
-  db.exec(`ALTER TABLE committee_roles ADD COLUMN responsibilities TEXT`);
-}
-
-if (!committeeRoleColumns.some((column) => column.name === "personal_blurb")) {
-  db.exec(`ALTER TABLE committee_roles ADD COLUMN personal_blurb TEXT`);
-}
-
-if (!committeeRoleColumns.some((column) => column.name === "photo_data_url")) {
-  db.exec(`ALTER TABLE committee_roles ADD COLUMN photo_data_url TEXT`);
-}
-
-db.exec(`
-  UPDATE committee_roles
-  SET responsibilities = summary
-  WHERE responsibilities IS NULL OR trim(responsibilities) = ''
-`);
-
-db.exec(`
-  UPDATE committee_roles
-  SET personal_blurb = ''
-  WHERE personal_blurb IS NULL
-`);
-
-db.exec(`
-  UPDATE committee_roles
-  SET photo_data_url = NULL
-  WHERE photo_data_url IS NOT NULL AND trim(photo_data_url) = ''
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS equipment_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    equipment_type TEXT NOT NULL CHECK (
-      equipment_type IN (
-        'case',
-        'riser',
-        'limb',
-        'quiver',
-        'sight',
-        'long_rod',
-        'arm_guard',
-        'chest_guard',
-        'finger_tab',
-        'arrows'
-      )
-    ),
-    item_number TEXT,
-    size_category TEXT NOT NULL DEFAULT 'standard' CHECK (
-      size_category IN ('standard', 'junior')
-    ),
-    arrow_length INTEGER,
-    arrow_quantity INTEGER NOT NULL DEFAULT 1,
-    status TEXT NOT NULL DEFAULT 'active' CHECK (
-      status IN ('active', 'decommissioned')
-    ),
-    location_type TEXT NOT NULL DEFAULT 'cupboard' CHECK (
-      location_type IN ('cupboard', 'case', 'member')
-    ),
-    location_label TEXT,
-    location_case_id INTEGER,
-    location_member_username TEXT,
-    added_by_username TEXT NOT NULL,
-    added_at_date TEXT NOT NULL,
-    added_at_time TEXT NOT NULL,
-    decommissioned_by_username TEXT,
-    decommissioned_at_date TEXT,
-    decommissioned_at_time TEXT,
-    decommission_reason TEXT,
-    last_assignment_by_username TEXT,
-    last_assignment_at_date TEXT,
-    last_assignment_at_time TEXT,
-    last_storage_updated_by_username TEXT,
-    last_storage_updated_at_date TEXT,
-    last_storage_updated_at_time TEXT,
-    FOREIGN KEY (location_case_id) REFERENCES equipment_items(id),
-    FOREIGN KEY (location_member_username) REFERENCES users(username),
-    FOREIGN KEY (added_by_username) REFERENCES users(username),
-    FOREIGN KEY (decommissioned_by_username) REFERENCES users(username),
-    FOREIGN KEY (last_assignment_by_username) REFERENCES users(username),
-    FOREIGN KEY (last_storage_updated_by_username) REFERENCES users(username)
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS equipment_loans (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    equipment_item_id INTEGER NOT NULL,
-    member_username TEXT NOT NULL,
-    loaned_by_username TEXT NOT NULL,
-    loaned_at_date TEXT NOT NULL,
-    loaned_at_time TEXT NOT NULL,
-    loan_context_case_id INTEGER,
-    returned_by_username TEXT,
-    returned_at_date TEXT,
-    returned_at_time TEXT,
-    return_location_type TEXT CHECK (
-      return_location_type IN ('cupboard', 'case')
-    ),
-    return_location_label TEXT,
-    return_case_id INTEGER,
-    FOREIGN KEY (equipment_item_id) REFERENCES equipment_items(id),
-    FOREIGN KEY (member_username) REFERENCES users(username),
-    FOREIGN KEY (loaned_by_username) REFERENCES users(username),
-    FOREIGN KEY (loan_context_case_id) REFERENCES equipment_items(id),
-    FOREIGN KEY (returned_by_username) REFERENCES users(username),
-    FOREIGN KEY (return_case_id) REFERENCES equipment_items(id)
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS equipment_storage_locations (
-    label TEXT PRIMARY KEY,
-    created_at_date TEXT NOT NULL,
-    created_at_time TEXT NOT NULL
-  )
-`);
-
-db.prepare(`
-  INSERT OR IGNORE INTO equipment_storage_locations (
-    label,
-    created_at_date,
-    created_at_time
-  )
-  VALUES (?, ?, ?)
-`).run(DEFAULT_EQUIPMENT_CUPBOARD_LABEL, "1970-01-01", "00:00:00.000Z");
-
-db.prepare(`
-  INSERT OR IGNORE INTO equipment_storage_locations (
-    label,
-    created_at_date,
-    created_at_time
-  )
-  SELECT DISTINCT
-    trim(location_label),
-    '1970-01-01',
-    '00:00:00.000Z'
-  FROM equipment_items
-  WHERE location_type = 'cupboard'
-    AND location_label IS NOT NULL
-    AND trim(location_label) <> ''
-`).run();
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS beginners_courses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    course_type TEXT NOT NULL DEFAULT 'beginners' CHECK (
-      course_type IN ('beginners', 'have-a-go')
-    ),
-    coordinator_username TEXT NOT NULL,
-    submitted_by_username TEXT NOT NULL,
-    first_lesson_date TEXT NOT NULL,
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-    lesson_count INTEGER NOT NULL,
-    beginner_capacity INTEGER NOT NULL,
-    approval_status TEXT NOT NULL DEFAULT 'pending' CHECK (
-      approval_status IN ('pending', 'approved', 'rejected')
-    ),
-    is_cancelled INTEGER NOT NULL DEFAULT 0,
-    cancellation_reason TEXT,
-    cancelled_by_username TEXT,
-    cancelled_at_date TEXT,
-    cancelled_at_time TEXT,
-    rejection_reason TEXT,
-    approved_by_username TEXT,
-    approved_at_date TEXT,
-    approved_at_time TEXT,
-    created_at_date TEXT NOT NULL,
-    created_at_time TEXT NOT NULL,
-    FOREIGN KEY (coordinator_username) REFERENCES users(username),
-    FOREIGN KEY (submitted_by_username) REFERENCES users(username),
-    FOREIGN KEY (approved_by_username) REFERENCES users(username)
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS beginners_course_lessons (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    course_id INTEGER NOT NULL,
-    lesson_number INTEGER NOT NULL,
-    lesson_date TEXT NOT NULL,
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-    UNIQUE (course_id, lesson_number),
-    FOREIGN KEY (course_id) REFERENCES beginners_courses(id)
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS beginners_course_participants (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    course_id INTEGER NOT NULL,
-    username TEXT NOT NULL UNIQUE,
-    first_name TEXT NOT NULL,
-    surname TEXT NOT NULL,
-    beginner_size_category TEXT NOT NULL CHECK (
-      beginner_size_category IN ('senior', 'junior')
-    ),
-    height_text TEXT,
-    handedness TEXT CHECK (handedness IN ('left', 'right')),
-    eye_dominance TEXT CHECK (eye_dominance IN ('left', 'right')),
-    initial_email_sent INTEGER NOT NULL DEFAULT 0,
-    thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
-    course_fee_paid INTEGER NOT NULL DEFAULT 0,
-    converted_to_member INTEGER NOT NULL DEFAULT 0,
-    assigned_case_id INTEGER,
-    assigned_case_by_username TEXT,
-    assigned_case_at_date TEXT,
-    assigned_case_at_time TEXT,
-    created_by_username TEXT NOT NULL,
-    created_at_date TEXT NOT NULL,
-    created_at_time TEXT NOT NULL,
-    FOREIGN KEY (course_id) REFERENCES beginners_courses(id),
-    FOREIGN KEY (username) REFERENCES users(username),
-    FOREIGN KEY (assigned_case_id) REFERENCES equipment_items(id),
-    FOREIGN KEY (assigned_case_by_username) REFERENCES users(username),
-    FOREIGN KEY (created_by_username) REFERENCES users(username)
-  )
-`);
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS beginners_course_lesson_coaches (
-    lesson_id INTEGER NOT NULL,
-    coach_username TEXT NOT NULL,
-    assigned_by_username TEXT NOT NULL,
-    assigned_at_date TEXT NOT NULL,
-    assigned_at_time TEXT NOT NULL,
-    PRIMARY KEY (lesson_id, coach_username),
-    FOREIGN KEY (lesson_id) REFERENCES beginners_course_lessons(id),
-    FOREIGN KEY (coach_username) REFERENCES users(username),
-    FOREIGN KEY (assigned_by_username) REFERENCES users(username)
-  )
-`);
-
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS equipment_items_unique_number
-  ON equipment_items (equipment_type, size_category, item_number)
-  WHERE item_number IS NOT NULL AND status = 'active'
-`);
-
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS equipment_loans_one_open_loan
-  ON equipment_loans (equipment_item_id)
-  WHERE returned_at_date IS NULL
-`);
-
-const userTypesTableSchema = db
-  .prepare(
-    `
-    SELECT sql
-    FROM sqlite_master
-    WHERE type = 'table' AND name = 'user_types'
-  `,
-  )
-  .get();
-
-const userTypesRequiresMigration =
-  userTypesTableSchema?.sql &&
-  (userTypesTableSchema.sql.includes("CHECK (user_type IN") ||
-    !userTypesTableSchema.sql.includes("REFERENCES roles(role_key)"));
-
-if (userTypesRequiresMigration) {
-  db.exec(`
-    PRAGMA foreign_keys = OFF;
-
-    BEGIN TRANSACTION;
-
-    ALTER TABLE user_types RENAME TO user_types_old;
-
-    CREATE TABLE user_types (
-      username TEXT PRIMARY KEY,
-      user_type TEXT NOT NULL,
-      FOREIGN KEY (username) REFERENCES users(username),
-      FOREIGN KEY (user_type) REFERENCES roles(role_key)
-    );
-
-    INSERT INTO user_types (username, user_type)
-    SELECT username, user_type
-    FROM user_types_old;
-
-    DROP TABLE user_types_old;
-
-    COMMIT;
-
-    PRAGMA foreign_keys = ON;
-  `);
-}
-
-const upsertRole = db.prepare(`
-  INSERT INTO roles (role_key, title, is_system)
-  VALUES (@roleKey, @title, @isSystem)
-  ON CONFLICT(role_key) DO UPDATE SET
-    title = excluded.title,
-    is_system = MAX(roles.is_system, excluded.is_system)
-`);
-
-const upsertPermissionDefinition = db.prepare(`
-  INSERT INTO permissions (permission_key, label, description)
-  VALUES (@key, @label, @description)
-  ON CONFLICT(permission_key) DO UPDATE SET
-    label = excluded.label,
-    description = excluded.description
-`);
-
-const insertRolePermission = db.prepare(`
-  INSERT OR IGNORE INTO role_permissions (role_key, permission_key)
-  VALUES (?, ?)
-`);
-
-const deleteUnknownRolePermissions = db.prepare(`
-  DELETE FROM role_permissions
-  WHERE permission_key NOT IN (${CURRENT_PERMISSION_SQL_PLACEHOLDERS})
-`);
-
-const deleteUnknownPermissionDefinitions = db.prepare(`
-  DELETE FROM permissions
-  WHERE permission_key NOT IN (${CURRENT_PERMISSION_SQL_PLACEHOLDERS})
-`);
-
-const listDistinctUserTypes = db.prepare(`
-  SELECT DISTINCT user_type
-  FROM user_types
-`);
-
-for (const permission of PERMISSION_DEFINITIONS) {
-  upsertPermissionDefinition.run(permission);
-}
-
-deleteUnknownRolePermissions.run(...CURRENT_PERMISSION_KEYS);
-deleteUnknownPermissionDefinitions.run(...CURRENT_PERMISSION_KEYS);
-
-for (const role of SYSTEM_ROLE_DEFINITIONS) {
-  upsertRole.run({
-    roleKey: role.roleKey,
-    title: role.title,
-    isSystem: 1,
+if (serverRuntime.databaseEngine === "sqlite") {
+  bootstrapSqliteBaseSchema({
+    db,
+    defaultEquipmentCupboardLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
   });
 
-  for (const permissionKey of role.permissions) {
-    insertRolePermission.run(role.roleKey, permissionKey);
-  }
-}
+  bootstrapSqliteRolesAndPermissions({
+    currentPermissionKeys: CURRENT_PERMISSION_KEYS,
+    currentPermissionSqlPlaceholders: CURRENT_PERMISSION_SQL_PLACEHOLDERS,
+    db,
+    permissionDefinitions: PERMISSION_DEFINITIONS,
+    systemRoleDefinitions: SYSTEM_ROLE_DEFINITIONS,
+  });
 
-for (const row of listDistinctUserTypes.all()) {
-  if (!row.user_type || row.user_type === "guest") {
-    continue;
-  }
+  bootstrapSqliteLegacyDateSupport({
+    clubEventsTableSql: CLUB_EVENTS_TABLE_SQL,
+    coachingSessionBookingsTableSql: COACHING_SESSION_BOOKINGS_TABLE_SQL,
+    coachingSessionsTableSql: COACHING_SESSIONS_TABLE_SQL,
+    db,
+    eventBookingsTableSql: EVENT_BOOKINGS_TABLE_SQL,
+    guestLoginEventsTableSql: GUEST_LOGIN_EVENTS_TABLE_SQL,
+    loginEventsTableSql: LOGIN_EVENTS_TABLE_SQL,
+    tournamentsTableSql: TOURNAMENTS_TABLE_SQL,
+    tournamentRegistrationsTableSql: TOURNAMENT_REGISTRATIONS_TABLE_SQL,
+    tournamentScoresTableSql: TOURNAMENT_SCORES_TABLE_SQL,
+  });
 
-  upsertRole.run({
-    roleKey: row.user_type,
-    title: row.user_type,
-    isSystem: 0,
+  bootstrapSqliteUserCompatibility({ db });
+  bootstrapSqliteEquipmentCompatibility({ db });
+  bootstrapSqliteCourseScheduleCompatibility({
+    clubEventsTableSql: CLUB_EVENTS_TABLE_SQL,
+    coachingSessionBookingsTableSql: COACHING_SESSION_BOOKINGS_TABLE_SQL,
+    coachingSessionsTableSql: COACHING_SESSIONS_TABLE_SQL,
+    db,
+    eventBookingsTableSql: EVENT_BOOKINGS_TABLE_SQL,
+    tournamentsTableSql: TOURNAMENTS_TABLE_SQL,
+    tournamentRegistrationsTableSql: TOURNAMENT_REGISTRATIONS_TABLE_SQL,
+    tournamentScoresTableSql: TOURNAMENT_SCORES_TABLE_SQL,
   });
 }
 
-function migrateCombinedDateTimeColumn({
-  tableName,
-  legacyColumnName,
-  createTableSql,
-  insertColumns,
-  selectColumns,
-}) {
-  const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+const {
+  deleteUserDisciplines,
+  findUserByCredentials,
+  findUserByRfid,
+  findUserByUsername,
+  insertUserDiscipline,
+  listAllUsers,
+  updateUserMembershipStatus,
+  updateUserPassword,
+  upsertUser,
+  upsertUserType,
+} = serverRuntime.databaseEngine === "sqlite"
+  ? bootstrapSqliteUserData({
+      committeeRoleSeed: COMMITTEE_ROLE_SEED,
+      db,
+      hashPassword,
+      isLive: serverRuntime.isLive,
+      isPasswordHash,
+    })
+  : createUnsupportedSqliteUserData();
 
-  if (!columns.some((column) => column.name === legacyColumnName)) {
-    return false;
-  }
-
-  const temporaryTableName = `${tableName}_old`;
-
-  db.exec(`
-    PRAGMA foreign_keys = OFF;
-
-    BEGIN TRANSACTION;
-
-    ALTER TABLE ${tableName} RENAME TO ${temporaryTableName};
-
-    ${createTableSql};
-
-    INSERT INTO ${tableName} (${insertColumns.join(", ")})
-    SELECT
-      ${selectColumns.join(",\n      ")}
-    FROM ${temporaryTableName};
-
-    DROP TABLE ${temporaryTableName};
-
-    COMMIT;
-
-    PRAGMA foreign_keys = ON;
-  `);
-
-  return true;
+if (serverRuntime.databaseEngine === "sqlite") {
+  syncAllMemberStatusesWithFees();
 }
 
-migrateCombinedDateTimeColumn({
-  tableName: "login_events",
-  legacyColumnName: "logged_in_at",
-  createTableSql: LOGIN_EVENTS_TABLE_SQL.trim(),
-  insertColumns: [
-    "id",
-    "username",
-    "login_method",
-    "logged_in_date",
-    "logged_in_time",
-  ],
-  selectColumns: [
-    "id",
-    "username",
-    "login_method",
-    "substr(logged_in_at, 1, 10)",
-    "substr(logged_in_at, 12)",
-  ],
+const {
+  countUsersByRoleKey,
+  deleteCommitteeRoleById,
+  deleteRoleDefinition,
+  deleteRolePermissionsByRoleKey,
+  findCommitteeRoleById,
+  findCommitteeRoleByKey,
+  findMaxCommitteeRoleDisplayOrder,
+  findRoleDefinitionByKey,
+  insertCommitteeRole,
+  insertRolePermission,
+  listCommitteeRoles,
+  listPermissionDefinitions,
+  listRoleDefinitions,
+  listRolePermissionKeysByRoleKey,
+  updateCommitteeRoleDetails,
+  updateRoleDefinition,
+  upsertRole,
+} = serverRuntime.databaseEngine === "sqlite"
+  ? createSqliteRoleCommitteeStatements(db)
+  : createUnsupportedPreparedStatementGroup([
+      "countUsersByRoleKey",
+      "deleteCommitteeRoleById",
+      "deleteRoleDefinition",
+      "deleteRolePermissionsByRoleKey",
+      "findCommitteeRoleById",
+      "findCommitteeRoleByKey",
+      "findMaxCommitteeRoleDisplayOrder",
+      "findRoleDefinitionByKey",
+      "insertCommitteeRole",
+      "insertRolePermission",
+      "listCommitteeRoles",
+      "listPermissionDefinitions",
+      "listRoleDefinitions",
+      "listRolePermissionKeysByRoleKey",
+      "updateCommitteeRoleDetails",
+      "updateRoleDefinition",
+      "upsertRole",
+    ]);
+
+const roleCommitteeGateway = createRoleCommitteeGateway({
+  countUsersByRoleKey,
+  databaseEngine: serverRuntime.databaseEngine,
+  deleteCommitteeRoleById,
+  deleteRoleDefinition,
+  deleteRolePermissionsByRoleKey,
+  findCommitteeRoleById,
+  findCommitteeRoleByKey,
+  findMaxCommitteeRoleDisplayOrder,
+  findRoleDefinitionByKey,
+  insertCommitteeRole,
+  insertRolePermission,
+  listCommitteeRoles,
+  listPermissionDefinitions,
+  listRoleDefinitions,
+  listRolePermissionKeysByRoleKey,
+  pool: db.pool,
+  updateCommitteeRoleDetails,
+  updateRoleDefinition,
+  upsertRole,
 });
 
-migrateCombinedDateTimeColumn({
-  tableName: "guest_login_events",
-  legacyColumnName: "logged_in_at",
-  createTableSql: GUEST_LOGIN_EVENTS_TABLE_SQL.trim(),
-  insertColumns: [
-    "id",
-    "first_name",
-    "surname",
-    "archery_gb_membership_number",
-    "invited_by_username",
-    "invited_by_name",
-    "logged_in_date",
-    "logged_in_time",
-  ],
-  selectColumns: [
-    "id",
-    "first_name",
-    "surname",
-    "archery_gb_membership_number",
-    "NULL",
-    "NULL",
-    "substr(logged_in_at, 1, 10)",
-    "substr(logged_in_at, 12)",
-  ],
+const { findLoanBowByUsername, upsertLoanBowByUsername } =
+  serverRuntime.databaseEngine === "sqlite"
+    ? createSqliteLoanBowStatements(db)
+    : createUnsupportedPreparedStatementGroup([
+        "findLoanBowByUsername",
+        "upsertLoanBowByUsername",
+      ]);
+
+const {
+  closeEquipmentLoan,
+  countEquipmentItemsByStorageLocation,
+  deleteEquipmentStorageLocation,
+  findActiveEquipmentByIdentity,
+  findEquipmentItemById,
+  findEquipmentItemByIdWithRelations,
+  findEquipmentStorageLocationByLabel,
+  findOpenEquipmentLoanByItemId,
+  insertEquipmentItem,
+  insertEquipmentLoan,
+  insertEquipmentStorageLocation,
+  listEquipmentItems,
+  listEquipmentItemsByCaseId,
+  listEquipmentLoans,
+  listEquipmentStorageLocations,
+  listOpenEquipmentLoansByCaseId,
+  listOpenEquipmentLoansByMemberUserId,
+  updateEquipmentAssignmentMetadata,
+  updateEquipmentItemForDecommission,
+  updateEquipmentItemStorage,
+} = serverRuntime.databaseEngine === "sqlite"
+  ? createSqliteEquipmentStatements(db)
+  : createUnsupportedPreparedStatementGroup([
+      "closeEquipmentLoan",
+      "countEquipmentItemsByStorageLocation",
+      "deleteEquipmentStorageLocation",
+      "findActiveEquipmentByIdentity",
+      "findEquipmentItemById",
+      "findEquipmentItemByIdWithRelations",
+      "findEquipmentStorageLocationByLabel",
+      "findOpenEquipmentLoanByItemId",
+      "insertEquipmentItem",
+      "insertEquipmentLoan",
+      "insertEquipmentStorageLocation",
+      "listEquipmentItems",
+      "listEquipmentItemsByCaseId",
+      "listEquipmentLoans",
+      "listEquipmentStorageLocations",
+      "listOpenEquipmentLoansByCaseId",
+      "listOpenEquipmentLoansByMemberUserId",
+      "updateEquipmentAssignmentMetadata",
+      "updateEquipmentItemForDecommission",
+      "updateEquipmentItemStorage",
+    ]);
+
+const equipmentGateway = createEquipmentGateway({
+  closeEquipmentLoan,
+  countEquipmentItemsByStorageLocation,
+  databaseEngine: serverRuntime.databaseEngine,
+  deleteCoachingSessionBooking,
+  deleteEquipmentStorageLocation,
+  deleteEventBooking,
+  findEquipmentItemById,
+  findEquipmentItemByIdWithRelations,
+  findEquipmentStorageLocationByLabel,
+  findOpenEquipmentLoanByItemId,
+  insertEquipmentItem,
+  insertEquipmentLoan,
+  insertEquipmentStorageLocation,
+  listEquipmentItems,
+  listEquipmentItemsByCaseId,
+  listEquipmentLoans,
+  listEquipmentStorageLocations,
+  listOpenEquipmentLoansByCaseId,
+  listOpenEquipmentLoansByMemberUserId,
+  pool: db.pool,
+  updateEquipmentAssignmentMetadata,
+  updateEquipmentItemForDecommission,
+  updateEquipmentItemStorage,
 });
 
-const guestLoginEventColumns = db
-  .prepare(`PRAGMA table_info(guest_login_events)`)
-  .all();
-
-if (
-  !guestLoginEventColumns.some(
-    (column) => column.name === "invited_by_username",
-  )
-) {
-  db.exec(`ALTER TABLE guest_login_events ADD COLUMN invited_by_username TEXT`);
-}
-
-if (
-  !guestLoginEventColumns.some((column) => column.name === "invited_by_name")
-) {
-  db.exec(`ALTER TABLE guest_login_events ADD COLUMN invited_by_name TEXT`);
-}
-
-const coachingSessionsColumns = db
-  .prepare(`PRAGMA table_info(coaching_sessions)`)
-  .all();
-const coachingSessionBookingsColumns = db
-  .prepare(`PRAGMA table_info(coaching_session_bookings)`)
-  .all();
-const coachingSessionsAvailableSlotsSelect = coachingSessionsColumns.some(
-  (column) => column.name === "available_slots",
-)
-  ? "available_slots"
-  : "1";
-const coachingSessionsVenueSelect = coachingSessionsColumns.some(
-  (column) => column.name === "venue",
-)
-  ? "CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'both' THEN 'both' ELSE 'indoor' END"
-  : "CASE WHEN lower(COALESCE(location, '')) = 'outdoor' THEN 'outdoor' ELSE 'indoor' END";
-const clubEventsColumns = db.prepare(`PRAGMA table_info(club_events)`).all();
-const clubEventsVenueSelect = clubEventsColumns.some(
-  (column) => column.name === "venue",
-)
-  ? "CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END"
-  : "'both'";
-
-const usersTableSchema = db
-  .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'`)
-  .get();
-
-if (!usersTableSchema?.sql?.includes("id INTEGER PRIMARY KEY AUTOINCREMENT")) {
-  const applicationTables = db
-    .prepare(
-      `
-      SELECT name
-      FROM sqlite_master
-      WHERE type = 'table'
-        AND name <> 'users'
-        AND name NOT LIKE 'sqlite_%'
-    `,
-    )
-    .all()
-    .map((row) => row.name);
-  db.exec(`PRAGMA foreign_keys = OFF`);
-
-  try {
-    db.exec(`BEGIN`);
-    db.exec(`ALTER TABLE users RENAME TO users_old`);
-    db.exec(`
-      CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT NOT NULL UNIQUE,
-        first_name TEXT NOT NULL,
-        surname TEXT NOT NULL,
-        password TEXT,
-        rfid_tag TEXT UNIQUE,
-        active_member INTEGER NOT NULL DEFAULT 1,
-        membership_fees_due TEXT,
-        coaching_volunteer INTEGER NOT NULL DEFAULT 0
-      )
-    `);
-    db.exec(`
-      INSERT INTO users (
-        username,
-        first_name,
-        surname,
-        password,
-        rfid_tag,
-        active_member,
-        membership_fees_due,
-        coaching_volunteer
-      )
-      SELECT
-        username,
-        first_name,
-        surname,
-        password,
-        rfid_tag,
-        COALESCE(active_member, 1),
-        membership_fees_due,
-        COALESCE(coaching_volunteer, 0)
-      FROM users_old
-    `);
-
-    for (const tableName of applicationTables) {
-      const tableSchema = db
-        .prepare(
-          `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`,
-        )
-        .get(tableName);
-
-      if (!tableSchema?.sql) {
-        continue;
-      }
-
-      const temporaryTableName = `${tableName}_users_pk_old`;
-      const rebuiltTableSql = tableSchema.sql
-        .replace(
-          /REFERENCES\s+["`]?users_old["`]?\s*\(\s*username\s*\)/g,
-          "REFERENCES users(username)",
-        )
-        .replace(
-          /REFERENCES\s+["`]?([A-Za-z0-9_]+)_users_pk_old["`]?\s*\(/g,
-          "REFERENCES $1(",
-        );
-
-      db.exec(`ALTER TABLE ${tableName} RENAME TO ${temporaryTableName}`);
-      db.exec(rebuiltTableSql);
-      db.exec(`INSERT INTO ${tableName} SELECT * FROM ${temporaryTableName}`);
-      db.exec(`DROP TABLE ${temporaryTableName}`);
-    }
-
-    db.exec(`DROP TABLE users_old`);
-    db.exec(`COMMIT`);
-  } catch (error) {
-    db.exec(`ROLLBACK`);
-    throw error;
-  } finally {
-    db.exec(`PRAGMA foreign_keys = ON`);
-  }
-}
-
-let userColumns = db.prepare(`PRAGMA table_info(users)`).all();
-const USER_RELATION_COLUMNS = [
-  { table: "login_events", usernameColumn: "username", userIdColumn: "user_id" },
-  {
-    table: "guest_login_events",
-    usernameColumn: "invited_by_username",
-    userIdColumn: "invited_by_user_id",
-  },
-  { table: "coaching_sessions", usernameColumn: "coach_username", userIdColumn: "coach_user_id" },
-  {
-    table: "coaching_sessions",
-    usernameColumn: "approved_by_username",
-    userIdColumn: "approved_by_user_id",
-  },
-  {
-    table: "coaching_session_bookings",
-    usernameColumn: "member_username",
-    userIdColumn: "member_user_id",
-  },
-  { table: "club_events", usernameColumn: "submitted_by_username", userIdColumn: "submitted_by_user_id" },
-  { table: "club_events", usernameColumn: "approved_by_username", userIdColumn: "approved_by_user_id" },
-  { table: "event_bookings", usernameColumn: "member_username", userIdColumn: "member_user_id" },
-  { table: "tournaments", usernameColumn: "created_by", userIdColumn: "created_by_user_id" },
-  { table: "tournament_registrations", usernameColumn: "member_username", userIdColumn: "member_user_id" },
-  { table: "tournament_scores", usernameColumn: "member_username", userIdColumn: "member_user_id" },
-  { table: "user_types", usernameColumn: "username", userIdColumn: "user_id" },
-  { table: "user_disciplines", usernameColumn: "username", userIdColumn: "user_id" },
-  { table: "member_loan_bows", usernameColumn: "username", userIdColumn: "user_id" },
-  { table: "committee_roles", usernameColumn: "assigned_username", userIdColumn: "assigned_user_id" },
-  { table: "equipment_items", usernameColumn: "location_member_username", userIdColumn: "location_member_user_id" },
-  { table: "equipment_items", usernameColumn: "added_by_username", userIdColumn: "added_by_user_id" },
-  { table: "equipment_items", usernameColumn: "decommissioned_by_username", userIdColumn: "decommissioned_by_user_id" },
-  { table: "equipment_items", usernameColumn: "last_assignment_by_username", userIdColumn: "last_assignment_by_user_id" },
-  { table: "equipment_items", usernameColumn: "last_storage_updated_by_username", userIdColumn: "last_storage_updated_by_user_id" },
-  { table: "equipment_loans", usernameColumn: "member_username", userIdColumn: "member_user_id" },
-  { table: "equipment_loans", usernameColumn: "loaned_by_username", userIdColumn: "loaned_by_user_id" },
-  { table: "equipment_loans", usernameColumn: "returned_by_username", userIdColumn: "returned_by_user_id" },
-  { table: "beginners_courses", usernameColumn: "coordinator_username", userIdColumn: "coordinator_user_id" },
-  { table: "beginners_courses", usernameColumn: "submitted_by_username", userIdColumn: "submitted_by_user_id" },
-  { table: "beginners_courses", usernameColumn: "cancelled_by_username", userIdColumn: "cancelled_by_user_id" },
-  { table: "beginners_courses", usernameColumn: "approved_by_username", userIdColumn: "approved_by_user_id" },
-  { table: "beginners_course_participants", usernameColumn: "username", userIdColumn: "user_id" },
-  { table: "beginners_course_participants", usernameColumn: "assigned_case_by_username", userIdColumn: "assigned_case_by_user_id" },
-  { table: "beginners_course_participants", usernameColumn: "created_by_username", userIdColumn: "created_by_user_id" },
-  { table: "beginners_course_lesson_coaches", usernameColumn: "coach_username", userIdColumn: "coach_user_id" },
-  { table: "beginners_course_lesson_coaches", usernameColumn: "assigned_by_username", userIdColumn: "assigned_by_user_id" },
-];
-const memberLoanBowColumns = db
-  .prepare(`PRAGMA table_info(member_loan_bows)`)
-  .all();
-
-const memberLoanBowColumnDefinitions = [
-  ["returned_date", "TEXT"],
-  ["returned_riser", "INTEGER NOT NULL DEFAULT 0"],
-  ["returned_limbs", "INTEGER NOT NULL DEFAULT 0"],
-  ["returned_arrows", "INTEGER NOT NULL DEFAULT 0"],
-  ["quiver", "INTEGER NOT NULL DEFAULT 0"],
-  ["returned_quiver", "INTEGER NOT NULL DEFAULT 0"],
-  ["returned_finger_tab", "INTEGER NOT NULL DEFAULT 0"],
-  ["returned_string_item", "INTEGER NOT NULL DEFAULT 0"],
-  ["returned_arm_guard", "INTEGER NOT NULL DEFAULT 0"],
-  ["returned_chest_guard", "INTEGER NOT NULL DEFAULT 0"],
-  ["returned_sight", "INTEGER NOT NULL DEFAULT 0"],
-  ["returned_long_rod", "INTEGER NOT NULL DEFAULT 0"],
-  ["returned_pressure_button", "INTEGER NOT NULL DEFAULT 0"],
-];
-
-for (const { table, usernameColumn, userIdColumn } of USER_RELATION_COLUMNS) {
-  const relationColumns = db.prepare(`PRAGMA table_info(${table})`).all();
-
-  if (!relationColumns.some((column) => column.name === userIdColumn)) {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${userIdColumn} INTEGER`);
-  }
-
-  db.exec(`
-    UPDATE ${table}
-    SET ${userIdColumn} = (
-      SELECT id
-      FROM users
-      WHERE users.username = ${table}.${usernameColumn}
-    )
-    WHERE ${usernameColumn} IS NOT NULL
-      AND (
-        ${userIdColumn} IS NULL
-        OR ${userIdColumn} <> (
-          SELECT id
-          FROM users
-          WHERE users.username = ${table}.${usernameColumn}
-        )
-      )
-  `);
-
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS ${table}_${userIdColumn}_idx
-    ON ${table} (${userIdColumn})
-  `);
-
-  db.exec(`DROP TRIGGER IF EXISTS ${table}_${userIdColumn}_on_insert`);
-  db.exec(`
-    CREATE TRIGGER ${table}_${userIdColumn}_on_insert
-    AFTER INSERT ON ${table}
-    FOR EACH ROW
-    WHEN NEW.${usernameColumn} IS NOT NULL
-    BEGIN
-      UPDATE ${table}
-      SET ${userIdColumn} = (
-        SELECT id
-        FROM users
-        WHERE users.username = NEW.${usernameColumn}
-      )
-      WHERE rowid = NEW.rowid;
-    END
-  `);
-
-  db.exec(`DROP TRIGGER IF EXISTS ${table}_${userIdColumn}_on_update`);
-  db.exec(`
-    CREATE TRIGGER ${table}_${userIdColumn}_on_update
-    AFTER UPDATE OF ${usernameColumn} ON ${table}
-    FOR EACH ROW
-    WHEN NEW.${usernameColumn} IS NOT NULL
-    BEGIN
-      UPDATE ${table}
-      SET ${userIdColumn} = (
-        SELECT id
-        FROM users
-        WHERE users.username = NEW.${usernameColumn}
-      )
-      WHERE rowid = NEW.rowid;
-    END
-  `);
-}
-
-for (const [columnName, columnDefinition] of memberLoanBowColumnDefinitions) {
-  if (!memberLoanBowColumns.some((column) => column.name === columnName)) {
-    db.exec(
-      `ALTER TABLE member_loan_bows ADD COLUMN ${columnName} ${columnDefinition}`,
-    );
-  }
-}
-
-const equipmentItemsTable = db
-  .prepare(
-    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'equipment_items'`,
-  )
-  .get();
-
-if (!equipmentItemsTable?.sql?.includes("'quiver'")) {
-  db.exec(`
-    PRAGMA foreign_keys = OFF;
-    ALTER TABLE equipment_items RENAME TO equipment_items_old;
-    CREATE TABLE equipment_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      equipment_type TEXT NOT NULL CHECK (
-        equipment_type IN (
-          'case',
-          'riser',
-          'limb',
-          'quiver',
-          'sight',
-          'long_rod',
-          'arm_guard',
-          'chest_guard',
-          'finger_tab',
-          'arrows'
-        )
-      ),
-      item_number TEXT,
-      size_category TEXT NOT NULL DEFAULT 'standard' CHECK (
-        size_category IN ('standard', 'junior')
-      ),
-      arrow_length INTEGER,
-      arrow_quantity INTEGER NOT NULL DEFAULT 1,
-      status TEXT NOT NULL DEFAULT 'active' CHECK (
-        status IN ('active', 'decommissioned')
-      ),
-      location_type TEXT NOT NULL DEFAULT 'cupboard' CHECK (
-        location_type IN ('cupboard', 'case', 'member')
-      ),
-      location_label TEXT,
-      location_case_id INTEGER,
-      location_member_username TEXT,
-      added_by_username TEXT NOT NULL,
-      added_at_date TEXT NOT NULL,
-      added_at_time TEXT NOT NULL,
-      decommissioned_by_username TEXT,
-      decommissioned_at_date TEXT,
-      decommissioned_at_time TEXT,
-      decommission_reason TEXT,
-      last_assignment_by_username TEXT,
-      last_assignment_at_date TEXT,
-      last_assignment_at_time TEXT,
-      last_storage_updated_by_username TEXT,
-      last_storage_updated_at_date TEXT,
-      last_storage_updated_at_time TEXT,
-      FOREIGN KEY (location_case_id) REFERENCES equipment_items(id),
-      FOREIGN KEY (location_member_username) REFERENCES users(username),
-      FOREIGN KEY (added_by_username) REFERENCES users(username),
-      FOREIGN KEY (decommissioned_by_username) REFERENCES users(username),
-      FOREIGN KEY (last_assignment_by_username) REFERENCES users(username),
-      FOREIGN KEY (last_storage_updated_by_username) REFERENCES users(username)
-    );
-    INSERT INTO equipment_items (
-      id,
-      equipment_type,
-      item_number,
-      size_category,
-      arrow_length,
-      arrow_quantity,
-      status,
-      location_type,
-      location_label,
-      location_case_id,
-      location_member_username,
-      added_by_username,
-      added_at_date,
-      added_at_time,
-      decommissioned_by_username,
-      decommissioned_at_date,
-      decommissioned_at_time,
-      decommission_reason,
-      last_assignment_by_username,
-      last_assignment_at_date,
-      last_assignment_at_time,
-      last_storage_updated_by_username,
-      last_storage_updated_at_date,
-      last_storage_updated_at_time
-    )
-    SELECT
-      id,
-      equipment_type,
-      item_number,
-      size_category,
-      arrow_length,
-      arrow_quantity,
-      status,
-      location_type,
-      location_label,
-      location_case_id,
-      location_member_username,
-      added_by_username,
-      added_at_date,
-      added_at_time,
-      decommissioned_by_username,
-      decommissioned_at_date,
-      decommissioned_at_time,
-      decommission_reason,
-      last_assignment_by_username,
-      last_assignment_at_date,
-      last_assignment_at_time,
-      last_storage_updated_by_username,
-      last_storage_updated_at_date,
-      last_storage_updated_at_time
-    FROM equipment_items_old;
-    DROP TABLE equipment_items_old;
-    PRAGMA foreign_keys = ON;
-  `);
-}
-
-const equipmentLoansTable = db
-  .prepare(
-    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'equipment_loans'`,
-  )
-  .get();
-
-if (equipmentLoansTable?.sql?.includes("equipment_items_old")) {
-  db.exec(`
-    PRAGMA foreign_keys = OFF;
-    ALTER TABLE equipment_loans RENAME TO equipment_loans_old;
-    CREATE TABLE equipment_loans (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      equipment_item_id INTEGER NOT NULL,
-      member_username TEXT NOT NULL,
-      loaned_by_username TEXT NOT NULL,
-      loaned_at_date TEXT NOT NULL,
-      loaned_at_time TEXT NOT NULL,
-      loan_context_case_id INTEGER,
-      returned_by_username TEXT,
-      returned_at_date TEXT,
-      returned_at_time TEXT,
-      return_location_type TEXT CHECK (
-        return_location_type IN ('cupboard', 'case')
-      ),
-      return_location_label TEXT,
-      return_case_id INTEGER,
-      FOREIGN KEY (equipment_item_id) REFERENCES equipment_items(id),
-      FOREIGN KEY (member_username) REFERENCES users(username),
-      FOREIGN KEY (loaned_by_username) REFERENCES users(username),
-      FOREIGN KEY (loan_context_case_id) REFERENCES equipment_items(id),
-      FOREIGN KEY (returned_by_username) REFERENCES users(username),
-      FOREIGN KEY (return_case_id) REFERENCES equipment_items(id)
-    );
-    INSERT INTO equipment_loans (
-      id,
-      equipment_item_id,
-      member_username,
-      loaned_by_username,
-      loaned_at_date,
-      loaned_at_time,
-      loan_context_case_id,
-      returned_by_username,
-      returned_at_date,
-      returned_at_time,
-      return_location_type,
-      return_location_label,
-      return_case_id
-    )
-    SELECT
-      id,
-      equipment_item_id,
-      member_username,
-      loaned_by_username,
-      loaned_at_date,
-      loaned_at_time,
-      loan_context_case_id,
-      returned_by_username,
-      returned_at_date,
-      returned_at_time,
-      return_location_type,
-      return_location_label,
-      return_case_id
-    FROM equipment_loans_old;
-    DROP TABLE equipment_loans_old;
-    PRAGMA foreign_keys = ON;
-  `);
-}
-
-const beginnersCourseParticipantsTable = db
-  .prepare(
-    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'beginners_course_participants'`,
-  )
-  .get();
-
-if (beginnersCourseParticipantsTable?.sql?.includes("equipment_items_old")) {
-  db.exec(`
-    PRAGMA foreign_keys = OFF;
-    ALTER TABLE beginners_course_participants RENAME TO beginners_course_participants_old;
-    CREATE TABLE beginners_course_participants (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      course_id INTEGER NOT NULL,
-      username TEXT NOT NULL UNIQUE,
-      first_name TEXT NOT NULL,
-      surname TEXT NOT NULL,
-      beginner_size_category TEXT NOT NULL CHECK (
-        beginner_size_category IN ('senior', 'junior')
-      ),
-      height_text TEXT,
-      handedness TEXT CHECK (handedness IN ('left', 'right')),
-      eye_dominance TEXT CHECK (eye_dominance IN ('left', 'right')),
-      initial_email_sent INTEGER NOT NULL DEFAULT 0,
-      thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
-      course_fee_paid INTEGER NOT NULL DEFAULT 0,
-      converted_to_member INTEGER NOT NULL DEFAULT 0,
-      assigned_case_id INTEGER,
-      assigned_case_by_username TEXT,
-      assigned_case_at_date TEXT,
-      assigned_case_at_time TEXT,
-      created_by_username TEXT NOT NULL,
-      created_at_date TEXT NOT NULL,
-      created_at_time TEXT NOT NULL,
-      FOREIGN KEY (course_id) REFERENCES beginners_courses(id),
-      FOREIGN KEY (username) REFERENCES users(username),
-      FOREIGN KEY (assigned_case_id) REFERENCES equipment_items(id),
-      FOREIGN KEY (assigned_case_by_username) REFERENCES users(username),
-      FOREIGN KEY (created_by_username) REFERENCES users(username)
-    );
-    INSERT INTO beginners_course_participants (
-      id,
-      course_id,
-      username,
-      first_name,
-      surname,
-      beginner_size_category,
-      height_text,
-      handedness,
-      eye_dominance,
-      initial_email_sent,
-      thirty_day_reminder_sent,
-      course_fee_paid,
-      converted_to_member,
-      assigned_case_id,
-      assigned_case_by_username,
-      assigned_case_at_date,
-      assigned_case_at_time,
-      created_by_username,
-      created_at_date,
-      created_at_time
-    )
-    SELECT
-      id,
-      course_id,
-      username,
-      first_name,
-      surname,
-      beginner_size_category,
-      height_text,
-      handedness,
-      eye_dominance,
-      initial_email_sent,
-      thirty_day_reminder_sent,
-      course_fee_paid,
-      0,
-      assigned_case_id,
-      assigned_case_by_username,
-      assigned_case_at_date,
-      assigned_case_at_time,
-      created_by_username,
-      created_at_date,
-      created_at_time
-    FROM beginners_course_participants_old;
-    DROP TABLE beginners_course_participants_old;
-    PRAGMA foreign_keys = ON;
-  `);
-}
-
-db.exec(`
-  CREATE UNIQUE INDEX IF NOT EXISTS equipment_loans_one_open_loan
-  ON equipment_loans (equipment_item_id)
-  WHERE returned_at_date IS NULL
-`);
-
-if (!userColumns.some((column) => column.name === "active_member")) {
-  db.exec(
-    `ALTER TABLE users ADD COLUMN active_member INTEGER NOT NULL DEFAULT 1`,
-  );
-}
-
-if (!userColumns.some((column) => column.name === "membership_fees_due")) {
-  db.exec(`ALTER TABLE users ADD COLUMN membership_fees_due TEXT`);
-}
-
-if (!userColumns.some((column) => column.name === "coaching_volunteer")) {
-  db.exec(
-    `ALTER TABLE users ADD COLUMN coaching_volunteer INTEGER NOT NULL DEFAULT 0`,
-  );
-}
-
-userColumns = db.prepare(`PRAGMA table_info(users)`).all();
-
-const beginnersCourseParticipantColumns = db
-  .prepare(`PRAGMA table_info(beginners_course_participants)`)
-  .all();
-
-if (
-  !beginnersCourseParticipantColumns.some(
-    (column) => column.name === "converted_to_member",
-  )
-) {
-  db.exec(
-    `ALTER TABLE beginners_course_participants ADD COLUMN converted_to_member INTEGER NOT NULL DEFAULT 0`,
-  );
-}
-
-const coachingSessionApprovalColumns = [
-  ["approval_status", "TEXT NOT NULL DEFAULT 'approved'"],
-  ["rejection_reason", "TEXT"],
-  ["approved_by_username", "TEXT"],
-  ["approved_at_date", "TEXT"],
-  ["approved_at_time", "TEXT"],
-];
-
-const beginnersCoursesColumns = db
-  .prepare(`PRAGMA table_info(beginners_courses)`)
-  .all();
-
-if (!beginnersCoursesColumns.some((column) => column.name === "course_type")) {
-  db.exec(
-    `ALTER TABLE beginners_courses ADD COLUMN course_type TEXT NOT NULL DEFAULT 'beginners'`,
-  );
-}
-
-const beginnersCourseCancellationColumns = [
-  ["is_cancelled", "INTEGER NOT NULL DEFAULT 0"],
-  ["cancellation_reason", "TEXT"],
-  ["cancelled_by_username", "TEXT"],
-  ["cancelled_at_date", "TEXT"],
-  ["cancelled_at_time", "TEXT"],
-];
-
-for (const [columnName, columnDefinition] of beginnersCourseCancellationColumns) {
-  if (!beginnersCoursesColumns.some((column) => column.name === columnName)) {
-    db.exec(
-      `ALTER TABLE beginners_courses ADD COLUMN ${columnName} ${columnDefinition}`,
-    );
-  }
-}
-
-for (const [columnName, columnDefinition] of coachingSessionApprovalColumns) {
-  if (!coachingSessionsColumns.some((column) => column.name === columnName)) {
-    db.exec(
-      `ALTER TABLE coaching_sessions ADD COLUMN ${columnName} ${columnDefinition}`,
-    );
-  }
-}
-
-const clubEventApprovalColumns = [
-  ["details", "TEXT"],
-  ["venue", "TEXT NOT NULL DEFAULT 'both'"],
-  ["submitted_by_username", "TEXT"],
-  ["approval_status", "TEXT NOT NULL DEFAULT 'approved'"],
-  ["rejection_reason", "TEXT"],
-  ["approved_by_username", "TEXT"],
-  ["approved_at_date", "TEXT"],
-  ["approved_at_time", "TEXT"],
-];
-
-for (const [columnName, columnDefinition] of clubEventApprovalColumns) {
-  if (!clubEventsColumns.some((column) => column.name === columnName)) {
-    db.exec(`ALTER TABLE club_events ADD COLUMN ${columnName} ${columnDefinition}`);
-  }
-}
-
-if (
-  coachingSessionsColumns.length > 0 &&
-  (coachingSessionsColumns.some((column) => column.name === "created_at") ||
-    !coachingSessionsColumns.some(
-      (column) => column.name === "available_slots",
-    ) ||
-    !coachingSessionsColumns.some((column) => column.name === "created_at_date") ||
-    !coachingSessionsColumns.some((column) => column.name === "created_at_time"))
-) {
-  db.exec(`
-    PRAGMA foreign_keys = OFF;
-
-    BEGIN TRANSACTION;
-
-    ALTER TABLE coaching_sessions RENAME TO coaching_sessions_old;
-
-    ${COACHING_SESSIONS_TABLE_SQL.trim()};
-
-    INSERT INTO coaching_sessions (
-      id,
-      coach_username,
-      session_date,
-      start_time,
-      end_time,
-      available_slots,
-      topic,
-      summary,
-      venue,
-      approval_status,
-      approved_by_username,
-      approved_at_date,
-      approved_at_time,
-      created_at_date,
-      created_at_time
-    )
-    SELECT
-      id,
-      coach_username,
-      session_date,
-      start_time,
-      end_time,
-      ${coachingSessionsAvailableSlotsSelect},
-      topic,
-      summary,
-      ${coachingSessionsVenueSelect},
-      COALESCE(approval_status, 'approved'),
-      approved_by_username,
-      approved_at_date,
-      approved_at_time,
-      substr(created_at, 1, 10),
-      substr(created_at, 12)
-    FROM coaching_sessions_old;
-
-    DROP TABLE coaching_sessions_old;
-
-    COMMIT;
-
-    PRAGMA foreign_keys = ON;
-  `);
-}
-
-const coachingBookingForeignKeys = db
-  .prepare(`PRAGMA foreign_key_list(coaching_session_bookings)`)
-  .all();
-
-if (
-  coachingSessionBookingsColumns.some(
-    (column) => column.name === "booked_at",
-  ) ||
-  coachingBookingForeignKeys.some(
-    (foreignKey) => foreignKey.table === "coaching_sessions_old",
-  )
-) {
-  db.exec(`
-    PRAGMA foreign_keys = OFF;
-
-    BEGIN TRANSACTION;
-
-    ALTER TABLE coaching_session_bookings RENAME TO coaching_session_bookings_old;
-
-    ${COACHING_SESSION_BOOKINGS_TABLE_SQL.trim()};
-
-    INSERT INTO coaching_session_bookings (
-      coaching_session_id,
-      member_username,
-      booked_at_date,
-      booked_at_time
-    )
-    SELECT
-      coaching_session_id,
-      member_username,
-      substr(booked_at, 1, 10),
-      substr(booked_at, 12)
-    FROM coaching_session_bookings_old;
-
-    DROP TABLE coaching_session_bookings_old;
-
-    COMMIT;
-
-    PRAGMA foreign_keys = ON;
-  `);
-}
-
-const eventBookingsColumns = db
-  .prepare(`PRAGMA table_info(event_bookings)`)
-  .all();
-const eventBookingForeignKeys = db
-  .prepare(`PRAGMA foreign_key_list(event_bookings)`)
-  .all();
-
-if (
-  migrateCombinedDateTimeColumn({
-    tableName: "club_events",
-    legacyColumnName: "created_at",
-    createTableSql: CLUB_EVENTS_TABLE_SQL.trim(),
-    insertColumns: [
-      "id",
-      "event_date",
-      "start_time",
-      "end_time",
-      "title",
-      "type",
-      "venue",
-      "submitted_by_username",
-      "approval_status",
-      "approved_by_username",
-      "approved_at_date",
-      "approved_at_time",
-      "created_at_date",
-      "created_at_time",
-    ],
-    selectColumns: [
-      "id",
-      "event_date",
-      "start_time",
-      "end_time",
-      "title",
-      "type",
-      clubEventsVenueSelect,
-      "submitted_by_username",
-      "COALESCE(approval_status, 'approved')",
-      "approved_by_username",
-      "approved_at_date",
-      "approved_at_time",
-      "substr(created_at, 1, 10)",
-      "substr(created_at, 12)",
-    ],
-  }) ||
-  !db
-    .prepare(
-      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'club_events'`,
-    )
-    .get()
-    ?.sql?.includes("venue TEXT NOT NULL DEFAULT 'both'") ||
-  eventBookingForeignKeys.some(
-    (foreignKey) => foreignKey.table === "club_events_old",
-  ) ||
-  eventBookingsColumns.some((column) => column.name === "booked_at")
-) {
-  db.exec(`
-    PRAGMA foreign_keys = OFF;
-
-    BEGIN TRANSACTION;
-
-    ALTER TABLE event_bookings RENAME TO event_bookings_old;
-
-    ${EVENT_BOOKINGS_TABLE_SQL.trim()};
-
-    INSERT INTO event_bookings (
-      club_event_id,
-      member_username,
-      booked_at_date,
-      booked_at_time
-    )
-    SELECT
-      club_event_id,
-      member_username,
-      substr(booked_at, 1, 10),
-      substr(booked_at, 12)
-    FROM event_bookings_old;
-
-    DROP TABLE event_bookings_old;
-
-    COMMIT;
-
-    PRAGMA foreign_keys = ON;
-  `);
-}
-
-const tournamentRegistrationsColumns = db
-  .prepare(`PRAGMA table_info(tournament_registrations)`)
-  .all();
-const tournamentRegistrationsForeignKeys = db
-  .prepare(`PRAGMA foreign_key_list(tournament_registrations)`)
-  .all();
-const tournamentScoresColumns = db
-  .prepare(`PRAGMA table_info(tournament_scores)`)
-  .all();
-const tournamentScoresForeignKeys = db
-  .prepare(`PRAGMA foreign_key_list(tournament_scores)`)
-  .all();
-
-if (
-  migrateCombinedDateTimeColumn({
-    tableName: "tournaments",
-    legacyColumnName: "created_at",
-    createTableSql: TOURNAMENTS_TABLE_SQL.trim(),
-    insertColumns: [
-      "id",
-      "name",
-      "tournament_type",
-      "registration_start_date",
-      "registration_end_date",
-      "score_submission_start_date",
-      "score_submission_end_date",
-      "created_by",
-      "created_at_date",
-      "created_at_time",
-    ],
-    selectColumns: [
-      "id",
-      "name",
-      "tournament_type",
-      "registration_start_date",
-      "registration_end_date",
-      "score_submission_start_date",
-      "score_submission_end_date",
-      "created_by",
-      "substr(created_at, 1, 10)",
-      "substr(created_at, 12)",
-    ],
-  }) ||
-  tournamentRegistrationsForeignKeys.some(
-    (foreignKey) => foreignKey.table === "tournaments_old",
-  ) ||
-  tournamentRegistrationsColumns.some(
-    (column) => column.name === "registered_at",
-  ) ||
-  tournamentScoresForeignKeys.some(
-    (foreignKey) => foreignKey.table === "tournaments_old",
-  ) ||
-  tournamentScoresColumns.some((column) => column.name === "submitted_at")
-) {
-  db.exec(`
-    PRAGMA foreign_keys = OFF;
-
-    BEGIN TRANSACTION;
-
-    ALTER TABLE tournament_registrations RENAME TO tournament_registrations_old;
-
-    ${TOURNAMENT_REGISTRATIONS_TABLE_SQL.trim()};
-
-    INSERT INTO tournament_registrations (
-      tournament_id,
-      member_username,
-      registered_at_date,
-      registered_at_time
-    )
-    SELECT
-      tournament_id,
-      member_username,
-      substr(registered_at, 1, 10),
-      substr(registered_at, 12)
-    FROM tournament_registrations_old;
-
-    DROP TABLE tournament_registrations_old;
-
-    ALTER TABLE tournament_scores RENAME TO tournament_scores_old;
-
-    ${TOURNAMENT_SCORES_TABLE_SQL.trim()};
-
-    INSERT INTO tournament_scores (
-      tournament_id,
-      round_number,
-      member_username,
-      score,
-      submitted_at_date,
-      submitted_at_time
-    )
-    SELECT
-      tournament_id,
-      round_number,
-      member_username,
-      score,
-      substr(submitted_at, 1, 10),
-      substr(submitted_at, 12)
-    FROM tournament_scores_old;
-
-    DROP TABLE tournament_scores_old;
-
-    COMMIT;
-
-    PRAGMA foreign_keys = ON;
-  `);
-}
-
-const seedUsers = [
-  {
-    username: "CLikley",
-    firstName: "Chris",
-    surname: "Likley",
-    password: "qwe",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    coachingVolunteer: true,
-    userType: "coach",
-    disciplines: ["Recurve Bow"],
-  },
-  {
-    username: "Cfleetham",
-    firstName: "Craig",
-    surname: "Fleetham",
-    password: "abc",
-    rfidTag: "7673CF3D",
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    coachingVolunteer: true,
-    userType: "developer",
-    disciplines: ["Recurve Bow"],
-  },
-  {
-    username: "DStevens",
-    firstName: "Kamala",
-    surname: "Khan",
-    password: "marvel",
-    rfidTag: "D9DBCF3D-deactivated",
-    activeMember: false,
-    membershipFeesDue: "2026-01-01",
-    coachingVolunteer: false,
-    userType: "general",
-    disciplines: ["Recurve Bow"],
-  },
-  {
-    username: "LTaylor",
-    firstName: "Les",
-    surname: "Taylor",
-    password: "123",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    coachingVolunteer: true,
-    userType: "admin",
-    disciplines: [
-      "Bare Bow",
-      "Compound Bow",
-      "Flat Bow",
-      "Long Bow",
-      "Recurve Bow",
-    ],
-  },
-  {
-    username: "MJones",
-    firstName: "Jessica",
-    surname: "Jones",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: false,
-    membershipFeesDue: "2026-04-03",
-    coachingVolunteer: false,
-    userType: "general",
-    disciplines: ["Flat Bow"],
-  },
-  {
-    username: "MMurdock",
-    firstName: "Matt",
-    surname: "Murdock",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    coachingVolunteer: false,
-    userType: "general",
-    disciplines: ["Bare Bow"],
-  },
-  {
-    username: "NOdinson",
-    firstName: "Thor",
-    surname: "Odinson",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    coachingVolunteer: false,
-    userType: "general",
-    disciplines: ["Long Bow"],
-  },
-  {
-    username: "PParker",
-    firstName: "Peter",
-    surname: "Parker",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-05-08",
-    coachingVolunteer: false,
-    userType: "general",
-    disciplines: ["Bare Bow", "Recurve Bow"],
-  },
-  {
-    username: "RWilliams",
-    firstName: "Riri",
-    surname: "Williams",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    coachingVolunteer: false,
-    userType: "general",
-    disciplines: ["Recurve Bow", "Compound Bow"],
-  },
-  {
-    username: "SMaximoff",
-    firstName: "Wanda",
-    surname: "Maximoff",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    userType: "general",
-    disciplines: ["Recurve Bow"],
-  },
-  {
-    username: "TBarnes",
-    firstName: "Bucky",
-    surname: "Barnes",
-    password: "marvel",
-    rfidTag: null,
-    activeMember: true,
-    membershipFeesDue: "2026-12-31",
-    userType: "general",
-    disciplines: ["Compound Bow"],
-  },
-  {
-    username: "TProfile",
-    firstName: "Temp",
-    surname: "ProfileUpdated",
-    password: "tmp",
-    rfidTag: "RFID-TPROFILE-001",
-    activeMember: true,
-    membershipFeesDue: "2026-04-17",
-    userType: "coach",
-    disciplines: ["Bare Bow", "Recurve Bow"],
-  },
-];
-const liveSeedUsers = seedUsers.filter((user) => user.username === "Cfleetham");
-
-const upsertUser = db.prepare(`
-  INSERT INTO users (
-    username,
-    first_name,
-    surname,
-    password,
-    rfid_tag,
-    active_member,
-    membership_fees_due,
-    coaching_volunteer
-  )
-  VALUES (
-    @username,
-    @firstName,
-    @surname,
-    @password,
-    @rfidTag,
-    @activeMember,
-    @membershipFeesDue,
-    @coachingVolunteer
-  )
-  ON CONFLICT(username) DO UPDATE SET
-    first_name = excluded.first_name,
-    surname = excluded.surname,
-    password = excluded.password,
-    rfid_tag = excluded.rfid_tag,
-    active_member = excluded.active_member,
-    membership_fees_due = excluded.membership_fees_due,
-    coaching_volunteer = excluded.coaching_volunteer
-`);
-
-const updateUserMembershipStatus = db.prepare(`
-  UPDATE users
-  SET
-    active_member = ?,
-    rfid_tag = ?
-  WHERE username = ?
-`);
-
-const upsertUserType = db.prepare(`
-  INSERT INTO user_types (username, user_type)
-  VALUES (@username, @userType)
-  ON CONFLICT(username) DO UPDATE SET
-    user_type = excluded.user_type
-`);
-
-const deleteUserDisciplines = db.prepare(`
-  DELETE FROM user_disciplines
-  WHERE username = ?
-`);
-
-const insertUserDiscipline = db.prepare(`
-  INSERT OR IGNORE INTO user_disciplines (username, discipline)
-  VALUES (?, ?)
-`);
-
-const upsertCommitteeRole = db.prepare(`
-  INSERT OR IGNORE INTO committee_roles (
-    role_key,
-    title,
-    summary,
-    responsibilities,
-    personal_blurb,
-    photo_data_url,
-    display_order,
-    assigned_username
-  )
-  VALUES (
-    @roleKey,
-    @title,
-    @summary,
-    @responsibilities,
-    @personalBlurb,
-    @photoDataUrl,
-    @displayOrder,
-    NULL
-  )
-`);
-
-const existingCommitteeRoleCount = db
-  .prepare(`SELECT COUNT(*) AS count FROM committee_roles`)
-  .get().count;
-
-const existingUserCount = db
-  .prepare(`SELECT COUNT(*) AS count FROM users`)
-  .get().count;
-
-if (existingUserCount === 0) {
-  for (const user of serverRuntime.isLive ? liveSeedUsers : seedUsers) {
-    upsertUser.run({
-      ...user,
-      password: hashPassword(user.password),
-      activeMember: user.activeMember ? 1 : 0,
-      coachingVolunteer: user.coachingVolunteer ? 1 : 0,
-    });
-    upsertUserType.run(user);
-    deleteUserDisciplines.run(user.username);
-
-    for (const discipline of user.disciplines) {
-      insertUserDiscipline.run(user.username, discipline);
-    }
-  }
-}
-
-if (existingCommitteeRoleCount === 0) {
-  for (const role of COMMITTEE_ROLE_SEED) {
-    upsertCommitteeRole.run({
-      ...role,
-      responsibilities: role.responsibilities ?? role.summary,
-      personalBlurb: role.personalBlurb ?? "",
-      photoDataUrl: role.photoDataUrl ?? null,
-    });
-  }
-}
-
-const findUserByCredentials = db.prepare(`
-  SELECT
-    users.id,
-    users.username,
-    users.first_name,
-    users.surname,
-    users.password,
-    users.rfid_tag,
-    users.active_member,
-    users.membership_fees_due,
-    users.coaching_volunteer,
-    user_types.user_type
-  FROM users
-  INNER JOIN user_types ON user_types.user_id = users.id
-  WHERE users.username = ? COLLATE NOCASE
-`);
-
-const updateUserPassword = db.prepare(`
-  UPDATE users
-  SET password = ?
-  WHERE username = ?
-`);
-
-const migrateLegacyPlaintextPasswords = db.transaction(() => {
-  const usersWithPasswords = db
-    .prepare(`
-      SELECT username, password
-      FROM users
-      WHERE password IS NOT NULL AND password <> ''
-    `)
-    .all();
-
-  for (const user of usersWithPasswords) {
-    if (!isPasswordHash(user.password)) {
-      updateUserPassword.run(hashPassword(user.password), user.username);
-    }
-  }
+const {
+  cancelBeginnersCourse,
+  deleteBeginnersLessonCoachesByLessonId,
+  findBeginnersCourseById,
+  findBeginnersCourseLessonById,
+  findBeginnersCourseParticipantById,
+  findBeginnersCourseParticipantByUsername,
+  insertBeginnersCourse,
+  insertBeginnersCourseLesson,
+  insertBeginnersCourseParticipant,
+  insertBeginnersLessonCoach,
+  listBeginnersCourseLessons,
+  listBeginnersCourseLessonsByCourseId,
+  listBeginnersCourseParticipantLoginDates,
+  listBeginnersCourseParticipants,
+  listBeginnersCourseParticipantsByCourseId,
+  listBeginnersCourses,
+  listBeginnersLessonCoaches,
+  listBeginnersLessonCoachesByLessonId,
+  listCoachBeginnersLessonsByUserId,
+  markBeginnersCourseParticipantConverted,
+  updateBeginnersCourseApproval,
+  updateBeginnersCourseParticipant,
+  updateBeginnersCourseParticipantCase,
+} = serverRuntime.databaseEngine === "sqlite"
+  ? createSqliteBeginnersCourseStatements(db)
+  : createUnsupportedPreparedStatementGroup([
+      "cancelBeginnersCourse",
+      "deleteBeginnersLessonCoachesByLessonId",
+      "findBeginnersCourseById",
+      "findBeginnersCourseLessonById",
+      "findBeginnersCourseParticipantById",
+      "findBeginnersCourseParticipantByUsername",
+      "insertBeginnersCourse",
+      "insertBeginnersCourseLesson",
+      "insertBeginnersCourseParticipant",
+      "insertBeginnersLessonCoach",
+      "listBeginnersCourseLessons",
+      "listBeginnersCourseLessonsByCourseId",
+      "listBeginnersCourseParticipantLoginDates",
+      "listBeginnersCourseParticipants",
+      "listBeginnersCourseParticipantsByCourseId",
+      "listBeginnersCourses",
+      "listBeginnersLessonCoaches",
+      "listBeginnersLessonCoachesByLessonId",
+      "listCoachBeginnersLessonsByUserId",
+      "markBeginnersCourseParticipantConverted",
+      "updateBeginnersCourseApproval",
+      "updateBeginnersCourseParticipant",
+      "updateBeginnersCourseParticipantCase",
+    ]);
+
+const {
+  approveClubEventById,
+  approveCoachingSessionById,
+  deleteBookingsByCoachingSessionId,
+  deleteBookingsByEventId,
+  deleteClubEventById,
+  deleteCoachingSessionById,
+  deleteCoachingSessionBooking,
+  deleteEventBooking,
+  deleteTournamentById,
+  deleteTournamentRegistration,
+  deleteTournamentRegistrationsByTournamentId,
+  deleteTournamentScoresByTournamentId,
+  findClubEventById,
+  findCoachingSessionById,
+  findMemberCoachingBookingsByUserId,
+  findMemberEventBookingsByUserId,
+  findTournamentById,
+  insertClubEvent,
+  insertCoachingSession,
+  insertCoachingSessionBooking,
+  insertEventBooking,
+  insertTournament,
+  insertTournamentRegistration,
+  listAllCoachingSessionBookings,
+  listAllEventBookings,
+  listAllTournamentRegistrations,
+  listAllTournamentScores,
+  listBookingsByCoachingSessionId,
+  listClubEvents,
+  listCoachingSessions,
+  listEventBookingsByEventId,
+  listTournamentRegistrationsByTournamentId,
+  listTournamentScoresByTournamentId,
+  listTournaments,
+  rejectClubEventById,
+  rejectCoachingSessionById,
+  updateTournamentById,
+  upsertTournamentScore,
+} = serverRuntime.databaseEngine === "sqlite"
+  ? createSqliteScheduleTournamentStatements(db)
+  : createUnsupportedPreparedStatementGroup([
+      "approveClubEventById",
+      "approveCoachingSessionById",
+      "deleteBookingsByCoachingSessionId",
+      "deleteBookingsByEventId",
+      "deleteClubEventById",
+      "deleteCoachingSessionById",
+      "deleteCoachingSessionBooking",
+      "deleteEventBooking",
+      "deleteTournamentById",
+      "deleteTournamentRegistration",
+      "deleteTournamentRegistrationsByTournamentId",
+      "deleteTournamentScoresByTournamentId",
+      "findClubEventById",
+      "findCoachingSessionById",
+      "findMemberCoachingBookingsByUserId",
+      "findMemberEventBookingsByUserId",
+      "findTournamentById",
+      "insertClubEvent",
+      "insertCoachingSession",
+      "insertCoachingSessionBooking",
+      "insertEventBooking",
+      "insertTournament",
+      "insertTournamentRegistration",
+      "listAllCoachingSessionBookings",
+      "listAllEventBookings",
+      "listAllTournamentRegistrations",
+      "listAllTournamentScores",
+      "listBookingsByCoachingSessionId",
+      "listClubEvents",
+      "listCoachingSessions",
+      "listEventBookingsByEventId",
+      "listTournamentRegistrationsByTournamentId",
+      "listTournamentScoresByTournamentId",
+      "listTournaments",
+      "rejectClubEventById",
+      "rejectCoachingSessionById",
+      "updateTournamentById",
+      "upsertTournamentScore",
+    ]);
+
+const tournamentGateway = createTournamentGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  deleteTournamentById,
+  deleteTournamentRegistration,
+  deleteTournamentRegistrationsByTournamentId,
+  deleteTournamentScoresByTournamentId,
+  findTournamentById,
+  insertTournament,
+  insertTournamentRegistration,
+  listAllTournamentRegistrations,
+  listAllTournamentScores,
+  listTournamentRegistrationsByTournamentId,
+  listTournamentScoresByTournamentId,
+  listTournaments,
+  pool: db.pool,
+  updateTournamentById,
+  upsertTournamentScore,
 });
 
-migrateLegacyPlaintextPasswords();
-
-const findUserByRfid = db.prepare(`
-  SELECT
-    users.id,
-    users.username,
-    users.first_name,
-    users.surname,
-    users.rfid_tag,
-    users.active_member,
-    users.membership_fees_due,
-    users.coaching_volunteer,
-    user_types.user_type
-  FROM users
-  INNER JOIN user_types ON user_types.user_id = users.id
-  WHERE users.rfid_tag = ?
-`);
-
-const findUserByUsername = db.prepare(`
-  SELECT
-    users.id,
-    users.username,
-    users.first_name,
-    users.surname,
-    users.password,
-    users.rfid_tag,
-    users.active_member,
-    users.membership_fees_due,
-    users.coaching_volunteer,
-    user_types.user_type
-  FROM users
-  INNER JOIN user_types ON user_types.user_id = users.id
-  WHERE users.username = ? COLLATE NOCASE
-`);
-
-const listAllUsers = db.prepare(`
-  SELECT
-    users.id,
-    users.username,
-    users.first_name,
-    users.surname,
-    users.rfid_tag,
-    users.active_member,
-    users.membership_fees_due,
-    users.coaching_volunteer,
-    user_types.user_type
-  FROM users
-  INNER JOIN user_types ON user_types.user_id = users.id
-  ORDER BY users.surname ASC, users.first_name ASC
-`);
-
-syncAllMemberStatusesWithFees();
-
-const listRoleDefinitions = db.prepare(`
-  SELECT
-    role_key,
-    title,
-    is_system
-  FROM roles
-  ORDER BY is_system DESC, title ASC, role_key ASC
-`);
-
-const findRoleDefinitionByKey = db.prepare(`
-  SELECT
-    role_key,
-    title,
-    is_system
-  FROM roles
-  WHERE role_key = ?
-`);
-
-const listPermissionDefinitions = db.prepare(`
-  SELECT
-    permission_key,
-    label,
-    description
-  FROM permissions
-  ORDER BY label ASC, permission_key ASC
-`);
-
-const listRolePermissionKeysByRoleKey = db.prepare(`
-  SELECT
-    permission_key
-  FROM role_permissions
-  WHERE role_key = ?
-  ORDER BY permission_key ASC
-`);
-
-const deleteRolePermissionsByRoleKey = db.prepare(`
-  DELETE FROM role_permissions
-  WHERE role_key = ?
-`);
-
-const updateRoleDefinition = db.prepare(`
-  UPDATE roles
-  SET title = ?
-  WHERE role_key = ?
-`);
-
-const deleteRoleDefinition = db.prepare(`
-  DELETE FROM roles
-  WHERE role_key = ?
-`);
-
-const countUsersByRoleKey = db.prepare(`
-  SELECT COUNT(*) AS count
-  FROM user_types
-  WHERE user_type = ?
-`);
-
-const listCommitteeRoles = db.prepare(`
-  SELECT
-    committee_roles.id,
-    committee_roles.role_key,
-    committee_roles.title,
-    committee_roles.summary,
-    committee_roles.responsibilities,
-    committee_roles.personal_blurb,
-    committee_roles.photo_data_url,
-    committee_roles.display_order,
-    committee_roles.assigned_username,
-    users.first_name AS assigned_first_name,
-    users.surname AS assigned_surname,
-    user_types.user_type AS assigned_user_type
-  FROM committee_roles
-  LEFT JOIN users ON users.username = committee_roles.assigned_username
-  LEFT JOIN user_types ON user_types.user_id = users.id
-  ORDER BY committee_roles.display_order ASC, committee_roles.title ASC
-`);
-
-const findCommitteeRoleById = db.prepare(`
-  SELECT
-    id,
-    role_key,
-    title,
-    summary,
-    responsibilities,
-    personal_blurb,
-    photo_data_url,
-    display_order,
-    assigned_username
-  FROM committee_roles
-  WHERE id = ?
-`);
-
-const findCommitteeRoleByKey = db.prepare(`
-  SELECT
-    id,
-    role_key,
-    title
-  FROM committee_roles
-  WHERE role_key = ?
-`);
-
-const updateCommitteeRoleDetails = db.prepare(`
-  UPDATE committee_roles
-  SET
-    title = @title,
-    summary = @summary,
-    responsibilities = @responsibilities,
-    personal_blurb = @personalBlurb,
-    photo_data_url = @photoDataUrl,
-    assigned_username = @assignedUsername
-  WHERE id = @id
-`);
-
-const insertCommitteeRole = db.prepare(`
-  INSERT INTO committee_roles (
-    role_key,
-    title,
-    summary,
-    responsibilities,
-    personal_blurb,
-    photo_data_url,
-    display_order,
-    assigned_username
-  )
-  VALUES (
-    @roleKey,
-    @title,
-    @summary,
-    @responsibilities,
-    @personalBlurb,
-    @photoDataUrl,
-    @displayOrder,
-    @assignedUsername
-  )
-`);
-
-const deleteCommitteeRoleById = db.prepare(`
-  DELETE FROM committee_roles
-  WHERE id = ?
-`);
-
-const findMaxCommitteeRoleDisplayOrder = db.prepare(`
-  SELECT COALESCE(MAX(display_order), 0) AS maxDisplayOrder
-  FROM committee_roles
-`);
-
-const findLoanBowByUsername = db.prepare(`
-  SELECT
-    username,
-    has_loan_bow,
-    date_loaned,
-    returned_date,
-    riser_number,
-    limbs_number,
-    arrow_count,
-    returned_riser,
-    returned_limbs,
-    returned_arrows,
-    quiver,
-    returned_quiver,
-    finger_tab,
-    returned_finger_tab,
-    string_item,
-    returned_string_item,
-    arm_guard,
-    returned_arm_guard,
-    chest_guard,
-    returned_chest_guard,
-    sight,
-    returned_sight,
-    long_rod,
-    returned_long_rod,
-    pressure_button,
-    returned_pressure_button
-  FROM member_loan_bows
-  WHERE username = ?
-`);
-
-const upsertLoanBowByUsername = db.prepare(`
-  INSERT INTO member_loan_bows (
-    username,
-    has_loan_bow,
-    date_loaned,
-    returned_date,
-    riser_number,
-    limbs_number,
-    arrow_count,
-    returned_riser,
-    returned_limbs,
-    returned_arrows,
-    quiver,
-    returned_quiver,
-    finger_tab,
-    returned_finger_tab,
-    string_item,
-    returned_string_item,
-    arm_guard,
-    returned_arm_guard,
-    chest_guard,
-    returned_chest_guard,
-    sight,
-    returned_sight,
-    long_rod,
-    returned_long_rod,
-    pressure_button,
-    returned_pressure_button
-  )
-  VALUES (
-    @username,
-    @hasLoanBow,
-    @dateLoaned,
-    @returnedDate,
-    @riserNumber,
-    @limbsNumber,
-    @arrowCount,
-    @returnedRiser,
-    @returnedLimbs,
-    @returnedArrows,
-    @quiver,
-    @returnedQuiver,
-    @fingerTab,
-    @returnedFingerTab,
-    @stringItem,
-    @returnedStringItem,
-    @armGuard,
-    @returnedArmGuard,
-    @chestGuard,
-    @returnedChestGuard,
-    @sight,
-    @returnedSight,
-    @longRod,
-    @returnedLongRod,
-    @pressureButton,
-    @returnedPressureButton
-  )
-  ON CONFLICT(username) DO UPDATE SET
-    has_loan_bow = excluded.has_loan_bow,
-    date_loaned = excluded.date_loaned,
-    returned_date = excluded.returned_date,
-    riser_number = excluded.riser_number,
-    limbs_number = excluded.limbs_number,
-    arrow_count = excluded.arrow_count,
-    returned_riser = excluded.returned_riser,
-    returned_limbs = excluded.returned_limbs,
-    returned_arrows = excluded.returned_arrows,
-    quiver = excluded.quiver,
-    returned_quiver = excluded.returned_quiver,
-    finger_tab = excluded.finger_tab,
-    returned_finger_tab = excluded.returned_finger_tab,
-    string_item = excluded.string_item,
-    returned_string_item = excluded.returned_string_item,
-    arm_guard = excluded.arm_guard,
-    returned_arm_guard = excluded.returned_arm_guard,
-    chest_guard = excluded.chest_guard,
-    returned_chest_guard = excluded.returned_chest_guard,
-    sight = excluded.sight,
-    returned_sight = excluded.returned_sight,
-    long_rod = excluded.long_rod,
-    returned_long_rod = excluded.returned_long_rod,
-    pressure_button = excluded.pressure_button,
-    returned_pressure_button = excluded.returned_pressure_button
-`);
-
-const listEquipmentItems = db.prepare(`
-  SELECT
-    equipment_items.*,
-    added_by.first_name AS added_by_first_name,
-    added_by.surname AS added_by_surname,
-    decommissioned_by.first_name AS decommissioned_by_first_name,
-    decommissioned_by.surname AS decommissioned_by_surname,
-    assigned_by.first_name AS assigned_by_first_name,
-    assigned_by.surname AS assigned_by_surname,
-    storage_by.first_name AS storage_by_first_name,
-    storage_by.surname AS storage_by_surname,
-    location_member.first_name AS location_member_first_name,
-    location_member.surname AS location_member_surname,
-    location_case.item_number AS location_case_number,
-    location_case.equipment_type AS location_case_type
-  FROM equipment_items
-  LEFT JOIN users AS added_by
-    ON added_by.id = equipment_items.added_by_user_id
-  LEFT JOIN users AS decommissioned_by
-    ON decommissioned_by.id = equipment_items.decommissioned_by_user_id
-  LEFT JOIN users AS assigned_by
-    ON assigned_by.id = equipment_items.last_assignment_by_user_id
-  LEFT JOIN users AS storage_by
-    ON storage_by.id = equipment_items.last_storage_updated_by_user_id
-  LEFT JOIN users AS location_member
-    ON location_member.id = equipment_items.location_member_user_id
-  LEFT JOIN equipment_items AS location_case
-    ON location_case.id = equipment_items.location_case_id
-  ORDER BY equipment_items.equipment_type ASC, equipment_items.item_number ASC, equipment_items.id ASC
-`);
-
-const findEquipmentItemById = db.prepare(`
-  SELECT *
-  FROM equipment_items
-  WHERE id = ?
-`);
-
-const findEquipmentItemByIdWithRelations = db.prepare(`
-  SELECT
-    equipment_items.*,
-    location_case.item_number AS location_case_number
-  FROM equipment_items
-  LEFT JOIN equipment_items AS location_case
-    ON location_case.id = equipment_items.location_case_id
-  WHERE equipment_items.id = ?
-`);
-
-const listEquipmentItemsByCaseId = db.prepare(`
-  SELECT *
-  FROM equipment_items
-  WHERE location_case_id = ?
-    AND status = 'active'
-  ORDER BY equipment_type ASC, item_number ASC, id ASC
-`);
-
-const findActiveEquipmentByIdentity = db.prepare(`
-  SELECT id
-  FROM equipment_items
-  WHERE equipment_type = ?
-    AND size_category = ?
-    AND item_number = ?
-    AND status = 'active'
-`);
-
-const insertEquipmentItem = db.prepare(`
-  INSERT INTO equipment_items (
-    equipment_type,
-    item_number,
-    size_category,
-    arrow_length,
-    arrow_quantity,
-    status,
-    location_type,
-    location_label,
-    location_case_id,
-    location_member_username,
-    added_by_username,
-    added_at_date,
-    added_at_time,
-    last_storage_updated_by_username,
-    last_storage_updated_at_date,
-    last_storage_updated_at_time
-  )
-  VALUES (
-    @equipmentType,
-    @itemNumber,
-    @sizeCategory,
-    @arrowLength,
-    @arrowQuantity,
-    'active',
-    @locationType,
-    @locationLabel,
-    @locationCaseId,
-    @locationMemberUsername,
-    @addedByUsername,
-    @addedAtDate,
-    @addedAtTime,
-    @storageByUsername,
-    @storageAtDate,
-    @storageAtTime
-  )
-`);
-
-const updateEquipmentItemForDecommission = db.prepare(`
-  UPDATE equipment_items
-  SET
-    status = 'decommissioned',
-    location_type = 'cupboard',
-    location_label = @locationLabel,
-    location_case_id = NULL,
-    location_member_username = NULL,
-    decommissioned_by_username = @decommissionedByUsername,
-    decommissioned_at_date = @decommissionedAtDate,
-    decommissioned_at_time = @decommissionedAtTime,
-    decommission_reason = @decommissionReason
-  WHERE id = @id
-`);
-
-const updateEquipmentItemStorage = db.prepare(`
-  UPDATE equipment_items
-  SET
-    location_type = @locationType,
-    location_label = @locationLabel,
-    location_case_id = @locationCaseId,
-    location_member_username = @locationMemberUsername,
-    last_storage_updated_by_username = @storageByUsername,
-    last_storage_updated_at_date = @storageAtDate,
-    last_storage_updated_at_time = @storageAtTime
-  WHERE id = @id
-`);
-
-const updateEquipmentAssignmentMetadata = db.prepare(`
-  UPDATE equipment_items
-  SET
-    last_assignment_by_username = @assignedByUsername,
-    last_assignment_at_date = @assignedAtDate,
-    last_assignment_at_time = @assignedAtTime
-  WHERE id = @id
-`);
-
-const listEquipmentStorageLocations = db.prepare(`
-  SELECT label
-  FROM equipment_storage_locations
-  ORDER BY lower(label) ASC
-`);
-
-const findEquipmentStorageLocationByLabel = db.prepare(`
-  SELECT label
-  FROM equipment_storage_locations
-  WHERE label = ?
-`);
-
-const countEquipmentItemsByStorageLocation = db.prepare(`
-  SELECT COUNT(*) AS count
-  FROM equipment_items
-  WHERE location_type = 'cupboard'
-    AND location_label = ?
-    AND status = 'active'
-`);
-
-const insertEquipmentStorageLocation = db.prepare(`
-  INSERT INTO equipment_storage_locations (
-    label,
-    created_at_date,
-    created_at_time
-  )
-  VALUES (?, ?, ?)
-`);
-
-const deleteEquipmentStorageLocation = db.prepare(`
-  DELETE FROM equipment_storage_locations
-  WHERE label = ?
-`);
-
-const listEquipmentLoans = db.prepare(`
-  SELECT
-    equipment_loans.*,
-    member.first_name AS member_first_name,
-    member.surname AS member_surname,
-    loaned_by.first_name AS loaned_by_first_name,
-    loaned_by.surname AS loaned_by_surname,
-    returned_by.first_name AS returned_by_first_name,
-    returned_by.surname AS returned_by_surname,
-    context_case.item_number AS context_case_number
-  FROM equipment_loans
-  LEFT JOIN users AS member
-    ON member.id = equipment_loans.member_user_id
-  LEFT JOIN users AS loaned_by
-    ON loaned_by.id = equipment_loans.loaned_by_user_id
-  LEFT JOIN users AS returned_by
-    ON returned_by.id = equipment_loans.returned_by_user_id
-  LEFT JOIN equipment_items AS context_case
-    ON context_case.id = equipment_loans.loan_context_case_id
-  ORDER BY equipment_loans.loaned_at_date DESC, equipment_loans.loaned_at_time DESC, equipment_loans.id DESC
-`);
-
-const findOpenEquipmentLoanByItemId = db.prepare(`
-  SELECT *
-  FROM equipment_loans
-  WHERE equipment_item_id = ?
-    AND returned_at_date IS NULL
-  LIMIT 1
-`);
-
-const listOpenEquipmentLoansByCaseId = db.prepare(`
-  SELECT *
-  FROM equipment_loans
-  WHERE loan_context_case_id = ?
-    AND returned_at_date IS NULL
-`);
-
-const listOpenEquipmentLoansByMemberUserId = db.prepare(`
-  SELECT
-    equipment_loans.*,
-    equipment_items.equipment_type,
-    equipment_items.item_number,
-    equipment_items.size_category,
-    equipment_items.arrow_length,
-    equipment_items.arrow_quantity
-  FROM equipment_loans
-  INNER JOIN equipment_items
-    ON equipment_items.id = equipment_loans.equipment_item_id
-  WHERE equipment_loans.member_user_id = ?
-    AND equipment_loans.returned_at_date IS NULL
-  ORDER BY equipment_loans.loaned_at_date DESC, equipment_loans.loaned_at_time DESC, equipment_loans.id DESC
-`);
-
-const insertEquipmentLoan = db.prepare(`
-  INSERT INTO equipment_loans (
-    equipment_item_id,
-    member_username,
-    loaned_by_username,
-    loaned_at_date,
-    loaned_at_time,
-    loan_context_case_id
-  )
-  VALUES (?, ?, ?, ?, ?, ?)
-`);
-
-const closeEquipmentLoan = db.prepare(`
-  UPDATE equipment_loans
-  SET
-    returned_by_username = ?,
-    returned_at_date = ?,
-    returned_at_time = ?,
-    return_location_type = ?,
-    return_location_label = ?,
-    return_case_id = ?
-  WHERE id = ?
-`);
-
-const listBeginnersCourses = db.prepare(`
-  SELECT
-    beginners_courses.*,
-    coordinator.first_name AS coordinator_first_name,
-    coordinator.surname AS coordinator_surname,
-    submitted_by.first_name AS submitted_by_first_name,
-    submitted_by.surname AS submitted_by_surname,
-    approved_by.first_name AS approved_by_first_name,
-    approved_by.surname AS approved_by_surname
-  FROM beginners_courses
-  INNER JOIN users AS coordinator
-    ON coordinator.id = beginners_courses.coordinator_user_id
-  INNER JOIN users AS submitted_by
-    ON submitted_by.id = beginners_courses.submitted_by_user_id
-  LEFT JOIN users AS approved_by
-    ON approved_by.id = beginners_courses.approved_by_user_id
-  ORDER BY beginners_courses.first_lesson_date ASC, beginners_courses.start_time ASC, beginners_courses.id ASC
-`);
-
-const findBeginnersCourseById = db.prepare(`
-  SELECT *
-  FROM beginners_courses
-  WHERE id = ?
-`);
-
-const insertBeginnersCourse = db.prepare(`
-  INSERT INTO beginners_courses (
-    course_type,
-    coordinator_username,
-    submitted_by_username,
-    first_lesson_date,
-    start_time,
-    end_time,
-    lesson_count,
-    beginner_capacity,
-    approval_status,
-    rejection_reason,
-    approved_by_username,
-    approved_at_date,
-    approved_at_time,
-    created_at_date,
-    created_at_time
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
-
-const updateBeginnersCourseApproval = db.prepare(`
-  UPDATE beginners_courses
-  SET
-    approval_status = ?,
-    rejection_reason = ?,
-    approved_by_username = ?,
-    approved_at_date = ?,
-    approved_at_time = ?
-  WHERE id = ?
-`);
-
-const cancelBeginnersCourse = db.prepare(`
-  UPDATE beginners_courses
-  SET
-    is_cancelled = 1,
-    cancellation_reason = ?,
-    cancelled_by_username = ?,
-    cancelled_at_date = ?,
-    cancelled_at_time = ?
-  WHERE id = ?
-`);
-
-const listBeginnersCourseLessons = db.prepare(`
-  SELECT
-    beginners_course_lessons.*
-  FROM beginners_course_lessons
-  ORDER BY beginners_course_lessons.lesson_date ASC, beginners_course_lessons.start_time ASC, beginners_course_lessons.lesson_number ASC
-`);
-
-const listBeginnersCourseLessonsByCourseId = db.prepare(`
-  SELECT *
-  FROM beginners_course_lessons
-  WHERE course_id = ?
-  ORDER BY lesson_number ASC
-`);
-
-const findBeginnersCourseLessonById = db.prepare(`
-  SELECT *
-  FROM beginners_course_lessons
-  WHERE id = ?
-`);
-
-const insertBeginnersCourseLesson = db.prepare(`
-  INSERT INTO beginners_course_lessons (
-    course_id,
-    lesson_number,
-    lesson_date,
-    start_time,
-    end_time
-  )
-  VALUES (?, ?, ?, ?, ?)
-`);
-
-const listBeginnersCourseParticipants = db.prepare(`
-  SELECT
-    beginners_course_participants.*,
-    users.password IS NOT NULL AND users.password <> '' AS password_set,
-    user_types.user_type AS participant_user_type,
-    case_item.item_number AS assigned_case_number
-  FROM beginners_course_participants
-  INNER JOIN users
-    ON users.id = beginners_course_participants.user_id
-  INNER JOIN user_types
-    ON user_types.user_id = users.id
-  LEFT JOIN equipment_items AS case_item
-    ON case_item.id = beginners_course_participants.assigned_case_id
-  ORDER BY beginners_course_participants.course_id ASC, beginners_course_participants.surname ASC, beginners_course_participants.first_name ASC
-`);
-
-const listBeginnersCourseParticipantsByCourseId = db.prepare(`
-  SELECT
-    beginners_course_participants.*,
-    users.password IS NOT NULL AND users.password <> '' AS password_set,
-    user_types.user_type AS participant_user_type,
-    case_item.item_number AS assigned_case_number
-  FROM beginners_course_participants
-  INNER JOIN users
-    ON users.id = beginners_course_participants.user_id
-  INNER JOIN user_types
-    ON user_types.user_id = users.id
-  LEFT JOIN equipment_items AS case_item
-    ON case_item.id = beginners_course_participants.assigned_case_id
-  WHERE beginners_course_participants.course_id = ?
-  ORDER BY beginners_course_participants.surname ASC, beginners_course_participants.first_name ASC
-`);
-
-const findBeginnersCourseParticipantById = db.prepare(`
-  SELECT *
-  FROM beginners_course_participants
-  WHERE id = ?
-`);
-
-const findBeginnersCourseParticipantByUsername = db.prepare(`
-  SELECT *
-  FROM beginners_course_participants
-  WHERE username = ?
-`);
-
-const listBeginnersCourseParticipantLoginDates = db.prepare(`
-  SELECT
-    beginners_course_participants.course_id,
-    beginners_course_participants.username,
-    login_events.logged_in_date
-  FROM beginners_course_participants
-  INNER JOIN users
-    ON users.id = beginners_course_participants.user_id
-  INNER JOIN login_events
-    ON login_events.user_id = users.id
-  ORDER BY beginners_course_participants.course_id ASC,
-    beginners_course_participants.username ASC,
-    login_events.logged_in_date ASC
-`);
-
-const insertBeginnersCourseParticipant = db.prepare(`
-  INSERT INTO beginners_course_participants (
-    course_id,
-    username,
-    first_name,
-    surname,
-    beginner_size_category,
-    height_text,
-    handedness,
-    eye_dominance,
-    initial_email_sent,
-    thirty_day_reminder_sent,
-    course_fee_paid,
-    assigned_case_id,
-    assigned_case_by_username,
-    assigned_case_at_date,
-    assigned_case_at_time,
-    created_by_username,
-    created_at_date,
-    created_at_time
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
-
-const updateBeginnersCourseParticipant = db.prepare(`
-  UPDATE beginners_course_participants
-  SET
-    first_name = @firstName,
-    surname = @surname,
-    beginner_size_category = @sizeCategory,
-    height_text = @heightText,
-    handedness = @handedness,
-    eye_dominance = @eyeDominance,
-    initial_email_sent = @initialEmailSent,
-    thirty_day_reminder_sent = @thirtyDayReminderSent,
-    course_fee_paid = @courseFeePaid
-  WHERE id = @id
-`);
-
-const updateBeginnersCourseParticipantCase = db.prepare(`
-  UPDATE beginners_course_participants
-  SET
-    assigned_case_id = ?,
-    assigned_case_by_username = ?,
-    assigned_case_at_date = ?,
-    assigned_case_at_time = ?
-  WHERE id = ?
-`);
-
-const markBeginnersCourseParticipantConverted = db.prepare(`
-  UPDATE beginners_course_participants
-  SET converted_to_member = 1
-  WHERE id = ?
-`);
-
-const listBeginnersLessonCoaches = db.prepare(`
-  SELECT
-    beginners_course_lesson_coaches.lesson_id,
-    beginners_course_lesson_coaches.coach_username,
-    users.first_name,
-    users.surname
-  FROM beginners_course_lesson_coaches
-  INNER JOIN users
-    ON users.id = beginners_course_lesson_coaches.coach_user_id
-  ORDER BY beginners_course_lesson_coaches.lesson_id ASC, users.surname ASC, users.first_name ASC
-`);
-
-const listBeginnersLessonCoachesByLessonId = db.prepare(`
-  SELECT
-    beginners_course_lesson_coaches.lesson_id,
-    beginners_course_lesson_coaches.coach_username,
-    users.first_name,
-    users.surname
-  FROM beginners_course_lesson_coaches
-  INNER JOIN users
-    ON users.id = beginners_course_lesson_coaches.coach_user_id
-  WHERE beginners_course_lesson_coaches.lesson_id = ?
-  ORDER BY users.surname ASC, users.first_name ASC
-`);
-
-const insertBeginnersLessonCoach = db.prepare(`
-  INSERT OR IGNORE INTO beginners_course_lesson_coaches (
-    lesson_id,
-    coach_username,
-    assigned_by_username,
-    assigned_at_date,
-    assigned_at_time
-  )
-  VALUES (?, ?, ?, ?, ?)
-`);
-
-const deleteBeginnersLessonCoachesByLessonId = db.prepare(`
-  DELETE FROM beginners_course_lesson_coaches
-  WHERE lesson_id = ?
-`);
-
-const listCoachBeginnersLessonsByUserId = db.prepare(`
-  SELECT
-    beginners_course_lessons.id,
-    beginners_course_lessons.course_id,
-    beginners_course_lessons.lesson_number,
-    beginners_course_lessons.lesson_date,
-    beginners_course_lessons.start_time,
-    beginners_course_lessons.end_time,
-    beginners_courses.first_lesson_date,
-    coordinator.first_name AS coordinator_first_name,
-    coordinator.surname AS coordinator_surname
-  FROM beginners_course_lesson_coaches
-  INNER JOIN beginners_course_lessons
-    ON beginners_course_lessons.id = beginners_course_lesson_coaches.lesson_id
-  INNER JOIN beginners_courses
-    ON beginners_courses.id = beginners_course_lessons.course_id
-  INNER JOIN users AS coordinator
-    ON coordinator.id = beginners_courses.coordinator_user_id
-  WHERE beginners_course_lesson_coaches.coach_user_id = ?
-    AND beginners_courses.is_cancelled = 0
-    AND beginners_courses.approval_status = 'approved'
-  ORDER BY beginners_course_lessons.lesson_date ASC, beginners_course_lessons.start_time ASC
-`);
-
-const insertCoachingSession = db.prepare(`
-  INSERT INTO coaching_sessions (
-    coach_username,
-    session_date,
-    start_time,
-    end_time,
-    available_slots,
-    topic,
-    summary,
-    venue,
-    approval_status,
-    rejection_reason,
-    approved_by_username,
-    approved_at_date,
-    approved_at_time,
-    created_at_date,
-    created_at_time
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
-
-const listCoachingSessions = db.prepare(`
-  SELECT
-    coaching_sessions.id,
-    coaching_sessions.coach_username,
-    coaching_sessions.session_date,
-    coaching_sessions.start_time,
-    coaching_sessions.end_time,
-    coaching_sessions.available_slots,
-    coaching_sessions.topic,
-    coaching_sessions.summary,
-    CASE WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'both' THEN 'both' ELSE 'indoor' END AS venue,
-    coaching_sessions.approval_status,
-    coaching_sessions.rejection_reason,
-    coaching_sessions.approved_by_username,
-    coaching_sessions.approved_at_date || 'T' || coaching_sessions.approved_at_time AS approved_at,
-    coaching_sessions.created_at_date || 'T' || coaching_sessions.created_at_time AS created_at,
-    users.first_name AS coach_first_name,
-    users.surname AS coach_surname
-  FROM coaching_sessions
-  INNER JOIN users ON users.id = coaching_sessions.coach_user_id
-  ORDER BY coaching_sessions.session_date ASC, coaching_sessions.start_time ASC
-`);
-
-const findCoachingSessionById = db.prepare(`
-  SELECT
-    coaching_sessions.id,
-    coaching_sessions.coach_username,
-    coaching_sessions.session_date,
-    coaching_sessions.start_time,
-    coaching_sessions.end_time,
-    coaching_sessions.available_slots,
-    coaching_sessions.topic,
-    coaching_sessions.summary,
-    CASE WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'both' THEN 'both' ELSE 'indoor' END AS venue,
-    coaching_sessions.approval_status,
-    coaching_sessions.rejection_reason,
-    coaching_sessions.approved_by_username,
-    coaching_sessions.approved_at_date || 'T' || coaching_sessions.approved_at_time AS approved_at,
-    coaching_sessions.created_at_date || 'T' || coaching_sessions.created_at_time AS created_at,
-    users.first_name AS coach_first_name,
-    users.surname AS coach_surname
-  FROM coaching_sessions
-  INNER JOIN users ON users.id = coaching_sessions.coach_user_id
-  WHERE coaching_sessions.id = ?
-`);
-
-const listBookingsByCoachingSessionId = db.prepare(`
-  SELECT
-    coaching_session_bookings.coaching_session_id,
-    coaching_session_bookings.member_username,
-    coaching_session_bookings.booked_at_date || 'T' || coaching_session_bookings.booked_at_time AS booked_at,
-    users.first_name,
-    users.surname
-  FROM coaching_session_bookings
-  INNER JOIN users ON users.id = coaching_session_bookings.member_user_id
-  WHERE coaching_session_bookings.coaching_session_id = ?
-  ORDER BY users.surname ASC, users.first_name ASC
-`);
-
-const listAllCoachingSessionBookings = db.prepare(`
-  SELECT
-    coaching_session_bookings.coaching_session_id,
-    coaching_session_bookings.member_username,
-    coaching_session_bookings.booked_at_date || 'T' || coaching_session_bookings.booked_at_time AS booked_at,
-    users.first_name,
-    users.surname
-  FROM coaching_session_bookings
-  INNER JOIN users ON users.id = coaching_session_bookings.member_user_id
-  ORDER BY coaching_session_bookings.coaching_session_id ASC, users.surname ASC, users.first_name ASC
-`);
-
-const insertCoachingSessionBooking = db.prepare(`
-  INSERT INTO coaching_session_bookings (
-    coaching_session_id,
-    member_username,
-    booked_at_date,
-    booked_at_time
-  )
-  VALUES (?, ?, ?, ?)
-`);
-
-const deleteCoachingSessionBooking = db.prepare(`
-  DELETE FROM coaching_session_bookings
-  WHERE coaching_session_id = ? AND member_user_id = ?
-`);
-
-const deleteBookingsByCoachingSessionId = db.prepare(`
-  DELETE FROM coaching_session_bookings
-  WHERE coaching_session_id = ?
-`);
-
-const deleteCoachingSessionById = db.prepare(`
-  DELETE FROM coaching_sessions
-  WHERE id = ?
-`);
-
-const approveCoachingSessionById = db.prepare(`
-  UPDATE coaching_sessions
-  SET
-    approval_status = 'approved',
-    rejection_reason = NULL,
-    approved_by_username = ?,
-    approved_at_date = ?,
-    approved_at_time = ?
-  WHERE id = ?
-`);
-
-const rejectCoachingSessionById = db.prepare(`
-  UPDATE coaching_sessions
-  SET
-    approval_status = 'rejected',
-    rejection_reason = ?,
-    approved_by_username = ?,
-    approved_at_date = ?,
-    approved_at_time = ?
-  WHERE id = ?
-`);
-
-const findMemberCoachingBookingsByUserId = db.prepare(`
-  SELECT
-    coaching_sessions.id,
-    coaching_sessions.session_date,
-    coaching_sessions.start_time,
-    coaching_sessions.end_time,
-    coaching_sessions.available_slots,
-    coaching_sessions.topic,
-    coaching_sessions.summary,
-    CASE WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(coaching_sessions.venue, '')) = 'both' THEN 'both' ELSE 'indoor' END AS venue,
-    coaching_sessions.coach_username,
-    users.first_name AS coach_first_name,
-    users.surname AS coach_surname
-  FROM coaching_session_bookings
-  INNER JOIN coaching_sessions
-    ON coaching_sessions.id = coaching_session_bookings.coaching_session_id
-  INNER JOIN users ON users.id = coaching_sessions.coach_user_id
-  WHERE coaching_session_bookings.member_user_id = ?
-  ORDER BY coaching_sessions.session_date ASC, coaching_sessions.start_time ASC
-`);
-
-const listClubEvents = db.prepare(`
-  SELECT
-    id,
-    event_date,
-    start_time,
-    end_time,
-    title,
-    details,
-    type,
-    CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END AS venue,
-    submitted_by_username,
-    approval_status,
-    rejection_reason,
-    approved_by_username,
-    created_at_date || 'T' || created_at_time AS created_at,
-    approved_at_date || 'T' || approved_at_time AS approved_at
-  FROM club_events
-  ORDER BY event_date ASC, start_time ASC
-`);
-
-const insertClubEvent = db.prepare(`
-  INSERT INTO club_events (
-    event_date,
-    start_time,
-    end_time,
-    title,
-    details,
-    type,
-    venue,
-    submitted_by_username,
-    approval_status,
-    rejection_reason,
-    approved_by_username,
-    approved_at_date,
-    approved_at_time,
-    created_at_date,
-    created_at_time
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
-
-const listTournaments = db.prepare(`
-  SELECT
-    tournaments.id,
-    tournaments.name,
-    tournaments.tournament_type,
-    tournaments.registration_start_date,
-    tournaments.registration_end_date,
-    tournaments.score_submission_start_date,
-    tournaments.score_submission_end_date,
-    tournaments.created_by,
-    tournaments.created_at_date || 'T' || tournaments.created_at_time AS created_at,
-    users.first_name AS created_by_first_name,
-    users.surname AS created_by_surname
-  FROM tournaments
-  INNER JOIN users ON users.id = tournaments.created_by_user_id
-  ORDER BY tournaments.registration_start_date DESC, tournaments.created_at_date DESC, tournaments.created_at_time DESC
-`);
-
-const findTournamentById = db.prepare(`
-  SELECT
-    tournaments.id,
-    tournaments.name,
-    tournaments.tournament_type,
-    tournaments.registration_start_date,
-    tournaments.registration_end_date,
-    tournaments.score_submission_start_date,
-    tournaments.score_submission_end_date,
-    tournaments.created_by,
-    tournaments.created_at_date || 'T' || tournaments.created_at_time AS created_at,
-    users.first_name AS created_by_first_name,
-    users.surname AS created_by_surname
-  FROM tournaments
-  INNER JOIN users ON users.id = tournaments.created_by_user_id
-  WHERE tournaments.id = ?
-`);
-
-const insertTournament = db.prepare(`
-  INSERT INTO tournaments (
-    name,
-    tournament_type,
-    registration_start_date,
-    registration_end_date,
-    score_submission_start_date,
-    score_submission_end_date,
-    created_by,
-    created_at_date,
-    created_at_time
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
-
-const updateTournamentById = db.prepare(`
-  UPDATE tournaments
-  SET
-    name = ?,
-    tournament_type = ?,
-    registration_start_date = ?,
-    registration_end_date = ?,
-    score_submission_start_date = ?,
-    score_submission_end_date = ?
-  WHERE id = ?
-`);
-
-const deleteTournamentScoresByTournamentId = db.prepare(`
-  DELETE FROM tournament_scores
-  WHERE tournament_id = ?
-`);
-
-const deleteTournamentRegistrationsByTournamentId = db.prepare(`
-  DELETE FROM tournament_registrations
-  WHERE tournament_id = ?
-`);
-
-const deleteTournamentById = db.prepare(`
-  DELETE FROM tournaments
-  WHERE id = ?
-`);
-
-const listTournamentRegistrationsByTournamentId = db.prepare(`
-  SELECT
-    tournament_registrations.tournament_id,
-    tournament_registrations.member_username,
-    tournament_registrations.registered_at_date || 'T' || tournament_registrations.registered_at_time AS registered_at,
-    users.first_name,
-    users.surname,
-    user_types.user_type
-  FROM tournament_registrations
-  INNER JOIN users ON users.id = tournament_registrations.member_user_id
-  INNER JOIN user_types ON user_types.user_id = users.id
-  WHERE tournament_registrations.tournament_id = ?
-  ORDER BY users.surname ASC, users.first_name ASC
-`);
-
-const listAllTournamentRegistrations = db.prepare(`
-  SELECT
-    tournament_registrations.tournament_id,
-    tournament_registrations.member_username,
-    tournament_registrations.registered_at_date || 'T' || tournament_registrations.registered_at_time AS registered_at,
-    users.first_name,
-    users.surname,
-    user_types.user_type
-  FROM tournament_registrations
-  INNER JOIN users ON users.id = tournament_registrations.member_user_id
-  INNER JOIN user_types ON user_types.user_id = users.id
-  ORDER BY tournament_registrations.tournament_id ASC, users.surname ASC, users.first_name ASC
-`);
-
-const insertTournamentRegistration = db.prepare(`
-  INSERT INTO tournament_registrations (
-    tournament_id,
-    member_username,
-    registered_at_date,
-    registered_at_time
-  )
-  VALUES (?, ?, ?, ?)
-`);
-
-const deleteTournamentRegistration = db.prepare(`
-  DELETE FROM tournament_registrations
-  WHERE tournament_id = ? AND member_user_id = ?
-`);
-
-const listTournamentScoresByTournamentId = db.prepare(`
-  SELECT
-    tournament_id,
-    round_number,
-    member_username,
-    score,
-    submitted_at_date || 'T' || submitted_at_time AS submitted_at
-  FROM tournament_scores
-  WHERE tournament_id = ?
-  ORDER BY round_number ASC, member_username ASC
-`);
-
-const listAllTournamentScores = db.prepare(`
-  SELECT
-    tournament_id,
-    round_number,
-    member_username,
-    score,
-    submitted_at_date || 'T' || submitted_at_time AS submitted_at
-  FROM tournament_scores
-  ORDER BY tournament_id ASC, round_number ASC, member_username ASC
-`);
-
-const upsertTournamentScore = db.prepare(`
-  INSERT INTO tournament_scores (
-    tournament_id,
-    round_number,
-    member_username,
-    score,
-    submitted_at_date,
-    submitted_at_time
-  )
-  VALUES (?, ?, ?, ?, ?, ?)
-  ON CONFLICT(tournament_id, round_number, member_username) DO UPDATE SET
-    score = excluded.score,
-    submitted_at_date = excluded.submitted_at_date,
-    submitted_at_time = excluded.submitted_at_time
-`);
-
-const listEventBookingsByEventId = db.prepare(`
-  SELECT
-    event_bookings.club_event_id,
-    event_bookings.member_username,
-    event_bookings.booked_at_date || 'T' || event_bookings.booked_at_time AS booked_at,
-    users.first_name,
-    users.surname
-  FROM event_bookings
-  INNER JOIN users ON users.id = event_bookings.member_user_id
-  WHERE event_bookings.club_event_id = ?
-  ORDER BY users.surname ASC, users.first_name ASC
-`);
-
-const listAllEventBookings = db.prepare(`
-  SELECT
-    event_bookings.club_event_id,
-    event_bookings.member_username,
-    event_bookings.booked_at_date || 'T' || event_bookings.booked_at_time AS booked_at,
-    users.first_name,
-    users.surname
-  FROM event_bookings
-  INNER JOIN users ON users.id = event_bookings.member_user_id
-  ORDER BY event_bookings.club_event_id ASC, users.surname ASC, users.first_name ASC
-`);
-
-const insertEventBooking = db.prepare(`
-  INSERT INTO event_bookings (
-    club_event_id,
-    member_username,
-    booked_at_date,
-    booked_at_time
-  )
-  VALUES (?, ?, ?, ?)
-`);
-
-const deleteEventBooking = db.prepare(`
-  DELETE FROM event_bookings
-  WHERE club_event_id = ? AND member_user_id = ?
-`);
-
-const deleteBookingsByEventId = db.prepare(`
-  DELETE FROM event_bookings
-  WHERE club_event_id = ?
-`);
-
-const deleteClubEventById = db.prepare(`
-  DELETE FROM club_events
-  WHERE id = ?
-`);
-
-const findMemberEventBookingsByUserId = db.prepare(`
-  SELECT
-    club_events.id,
-    club_events.event_date,
-    club_events.start_time,
-    club_events.end_time,
-    club_events.title,
-    club_events.type
-  FROM event_bookings
-  INNER JOIN club_events
-    ON club_events.id = event_bookings.club_event_id
-  WHERE event_bookings.member_user_id = ?
-  ORDER BY club_events.event_date ASC, club_events.start_time ASC
-`);
-
-const findClubEventById = db.prepare(`
-  SELECT
-    id,
-    event_date,
-    start_time,
-    end_time,
-    title,
-    type,
-    CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END AS venue,
-    submitted_by_username,
-    approval_status,
-    rejection_reason,
-    approved_by_username,
-    created_at_date || 'T' || created_at_time AS created_at,
-    approved_at_date || 'T' || approved_at_time AS approved_at
-  FROM club_events
-  WHERE id = ?
-`);
-
-const approveClubEventById = db.prepare(`
-  UPDATE club_events
-  SET
-    approval_status = 'approved',
-    rejection_reason = NULL,
-    approved_by_username = ?,
-    approved_at_date = ?,
-    approved_at_time = ?
-  WHERE id = ?
-`);
-
-const rejectClubEventById = db.prepare(`
-  UPDATE club_events
-  SET
-    approval_status = 'rejected',
-    rejection_reason = ?,
-    approved_by_username = ?,
-    approved_at_date = ?,
-    approved_at_time = ?
-  WHERE id = ?
-`);
-
-const insertLoginEvent = db.prepare(`
-  INSERT INTO login_events (
-    username,
-    login_method,
-    logged_in_date,
-    logged_in_time
-  )
-  VALUES (?, ?, ?, ?)
-`);
-
-const insertGuestLoginEvent = db.prepare(`
-  INSERT INTO guest_login_events (
-    first_name,
-    surname,
-    archery_gb_membership_number,
-    invited_by_username,
-    invited_by_name,
-    logged_in_date,
-    logged_in_time
-  )
-  VALUES (?, ?, ?, ?, ?, ?, ?)
-`);
-
-const insertAuditEvent = db.prepare(`
-  INSERT INTO audit_events (
-    actor_username,
-    action,
-    target,
-    status_code,
-    ip_address,
-    user_agent,
-    metadata_json,
-    created_at_date,
-    created_at_time
-  )
-  VALUES (
-    @actorUsername,
-    @action,
-    @target,
-    @statusCode,
-    @ipAddress,
-    @userAgent,
-    @metadataJson,
-    @createdAtDate,
-    @createdAtTime
-  )
-`);
-
-const findRecentRangeMembers = db.prepare(`
-  SELECT
-    users.username,
-    users.first_name,
-    users.surname,
-    users.rfid_tag,
-    users.active_member,
-    users.membership_fees_due,
-    user_types.user_type,
-    MAX(login_events.logged_in_date || 'T' || login_events.logged_in_time) AS last_logged_in_at
-  FROM login_events
-  INNER JOIN users ON users.id = login_events.user_id
-  INNER JOIN user_types ON user_types.user_id = users.id
-  WHERE (login_events.logged_in_date || 'T' || login_events.logged_in_time) >= ?
-  GROUP BY users.id, users.username, users.first_name, users.surname, users.rfid_tag, users.active_member, users.membership_fees_due, user_types.user_type
-  ORDER BY users.surname ASC, users.first_name ASC
-`);
-
-const findDisciplinesByUsername = db.prepare(`
-  SELECT discipline
-  FROM user_disciplines
-  WHERE username = ?
-  ORDER BY discipline ASC
-`);
-
-const listAllUserDisciplines = db.prepare(`
-  SELECT username, discipline
-  FROM user_disciplines
-  ORDER BY username ASC, discipline ASC
-`);
-
-const findRecentGuestLogins = db.prepare(`
-  SELECT
-    first_name,
-    surname,
-    archery_gb_membership_number,
-    invited_by_username,
-    invited_by_name,
-    MAX(logged_in_date || 'T' || logged_in_time) AS last_logged_in_at
-  FROM guest_login_events
-  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-  GROUP BY first_name, surname, archery_gb_membership_number, invited_by_username, invited_by_name
-  ORDER BY surname ASC, first_name ASC
-`);
-
-const countMemberLoginsInRange = db.prepare(`
-  SELECT COUNT(*) AS count
-  FROM login_events
-  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-`);
-
-const countGuestLoginsInRange = db.prepare(`
-  SELECT COUNT(*) AS count
-  FROM guest_login_events
-  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-`);
-
-const memberLoginsByHourInRange = db.prepare(`
-  SELECT CAST(substr(logged_in_time, 1, 2) AS INTEGER) AS hour, COUNT(*) AS count
-  FROM login_events
-  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-  GROUP BY hour
-`);
-
-const guestLoginsByHourInRange = db.prepare(`
-  SELECT CAST(substr(logged_in_time, 1, 2) AS INTEGER) AS hour, COUNT(*) AS count
-  FROM guest_login_events
-  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-  GROUP BY hour
-`);
-
-const memberLoginsByWeekdayInRange = db.prepare(`
-  SELECT CAST(strftime('%w', logged_in_date) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
-  FROM login_events
-  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-  GROUP BY dayOfWeek
-`);
-
-const guestLoginsByWeekdayInRange = db.prepare(`
-  SELECT CAST(strftime('%w', logged_in_date) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
-  FROM guest_login_events
-  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-  GROUP BY dayOfWeek
-`);
-
-const memberLoginsByDateInRange = db.prepare(`
-  SELECT logged_in_date AS usageDate, COUNT(*) AS count
-  FROM login_events
-  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-  GROUP BY usageDate
-`);
-
-const guestLoginsByDateInRange = db.prepare(`
-  SELECT logged_in_date AS usageDate, COUNT(*) AS count
-  FROM guest_login_events
-  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-  GROUP BY usageDate
-`);
-
-const countMemberLoginsForUserInRange = db.prepare(`
-  SELECT COUNT(*) AS count
-  FROM login_events
-  WHERE username = ?
-    AND (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-`);
-
-const memberLoginsByHourForUserInRange = db.prepare(`
-  SELECT CAST(substr(logged_in_time, 1, 2) AS INTEGER) AS hour, COUNT(*) AS count
-  FROM login_events
-  WHERE username = ?
-    AND (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-  GROUP BY hour
-`);
-
-const memberLoginsByWeekdayForUserInRange = db.prepare(`
-  SELECT CAST(strftime('%w', logged_in_date) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
-  FROM login_events
-  WHERE username = ?
-    AND (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-  GROUP BY dayOfWeek
-`);
-
-const memberLoginsByDateForUserInRange = db.prepare(`
-  SELECT logged_in_date AS usageDate, COUNT(*) AS count
-  FROM login_events
-  WHERE username = ?
-    AND (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-  GROUP BY usageDate
-`);
-
-const listReportingMemberLogins = db.prepare(`
-  SELECT
-    login_events.id,
-    COALESCE(users.username, login_events.username) AS username,
-    users.first_name,
-    users.surname,
-    login_events.login_method,
-    login_events.logged_in_date,
-    login_events.logged_in_time
-  FROM login_events
-  LEFT JOIN users ON users.id = login_events.user_id
-  WHERE (login_events.logged_in_date || 'T' || login_events.logged_in_time) >= ?
-    AND (login_events.logged_in_date || 'T' || login_events.logged_in_time) < ?
-  ORDER BY login_events.logged_in_date ASC, login_events.logged_in_time ASC, surname ASC, first_name ASC
-`);
-
-const listReportingGuestLogins = db.prepare(`
-  SELECT
-    id,
-    first_name,
-    surname,
-    archery_gb_membership_number,
-    invited_by_username,
-    invited_by_name,
-    logged_in_date,
-    logged_in_time
-  FROM guest_login_events
-  WHERE (logged_in_date || 'T' || logged_in_time) >= ?
-    AND (logged_in_date || 'T' || logged_in_time) < ?
-  ORDER BY logged_in_date ASC, logged_in_time ASC, surname ASC, first_name ASC
-`);
+const scheduleGateway = createScheduleGateway({
+  approveClubEventById,
+  approveCoachingSessionById,
+  databaseEngine: serverRuntime.databaseEngine,
+  deleteBookingsByCoachingSessionId,
+  deleteBookingsByEventId,
+  deleteClubEventById,
+  deleteCoachingSessionById,
+  deleteCoachingSessionBooking,
+  deleteEventBooking,
+  findClubEventById,
+  findCoachingSessionById,
+  insertClubEvent,
+  insertCoachingSession,
+  insertCoachingSessionBooking,
+  insertEventBooking,
+  listAllCoachingSessionBookings,
+  listAllEventBookings,
+  listBookingsByCoachingSessionId,
+  listClubEvents,
+  listCoachingSessions,
+  listEventBookingsByEventId,
+  pool: db.pool,
+  rejectClubEventById,
+  rejectCoachingSessionById,
+});
+
+const { insertAuditEvent, insertGuestLoginEvent, insertLoginEvent } =
+  serverRuntime.databaseEngine === "sqlite"
+    ? createSqliteAuthAuditStatements(db)
+    : createUnsupportedPreparedStatementGroup([
+        "insertAuditEvent",
+        "insertGuestLoginEvent",
+        "insertLoginEvent",
+      ]);
+
+const {
+  countGuestLoginsInRange,
+  countMemberLoginsForUserInRange,
+  countMemberLoginsInRange,
+  findDisciplinesByUsername,
+  findRecentGuestLogins,
+  findRecentRangeMembers,
+  guestLoginsByDateInRange,
+  guestLoginsByHourInRange,
+  guestLoginsByWeekdayInRange,
+  listAllUserDisciplines,
+  listReportingGuestLogins,
+  listReportingMemberLogins,
+  memberLoginsByDateForUserInRange,
+  memberLoginsByDateInRange,
+  memberLoginsByHourForUserInRange,
+  memberLoginsByHourInRange,
+  memberLoginsByWeekdayForUserInRange,
+  memberLoginsByWeekdayInRange,
+} = serverRuntime.databaseEngine === "sqlite"
+  ? createSqliteReportingStatements(db)
+  : createUnsupportedPreparedStatementGroup([
+      "countGuestLoginsInRange",
+      "countMemberLoginsForUserInRange",
+      "countMemberLoginsInRange",
+      "findDisciplinesByUsername",
+      "findRecentGuestLogins",
+      "findRecentRangeMembers",
+      "guestLoginsByDateInRange",
+      "guestLoginsByHourInRange",
+      "guestLoginsByWeekdayInRange",
+      "listAllUserDisciplines",
+      "listReportingGuestLogins",
+      "listReportingMemberLogins",
+      "memberLoginsByDateForUserInRange",
+      "memberLoginsByDateInRange",
+      "memberLoginsByHourForUserInRange",
+      "memberLoginsByHourInRange",
+      "memberLoginsByWeekdayForUserInRange",
+      "memberLoginsByWeekdayInRange",
+    ]);
+
+const activityReportingGateway = createActivityReportingGateway({
+  countGuestLoginsInRange,
+  countMemberLoginsForUserInRange,
+  countMemberLoginsInRange,
+  databaseEngine: serverRuntime.databaseEngine,
+  findMemberCoachingBookingsByUserId,
+  findMemberEventBookingsByUserId,
+  findRecentGuestLogins,
+  findRecentRangeMembers,
+  guestLoginsByDateInRange,
+  guestLoginsByHourInRange,
+  guestLoginsByWeekdayInRange,
+  listAllUserDisciplines,
+  listReportingGuestLogins,
+  listReportingMemberLogins,
+  memberLoginsByDateForUserInRange,
+  memberLoginsByDateInRange,
+  memberLoginsByHourForUserInRange,
+  memberLoginsByHourInRange,
+  memberLoginsByWeekdayForUserInRange,
+  memberLoginsByWeekdayInRange,
+  pool: db.pool,
+});
+
+const memberAuthGateway = createMemberAuthGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  findDisciplinesByUsername,
+  findUserByCredentials,
+  findUserByRfid,
+  findUserByUsername,
+  insertGuestLoginEvent,
+  insertLoginEvent,
+  listAllUsers,
+  pool: db.pool,
+  updateUserPassword,
+});
+
+const memberProfileGateway = createMemberProfileGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  deleteUserDisciplines,
+  findLoanBowByUsername,
+  findRoleDefinitionByKey,
+  insertUserDiscipline,
+  pool: db.pool,
+  upsertLoanBowByUsername,
+  upsertUser,
+  upsertUserType,
+});
+
+if (serverRuntime.databaseEngine === "postgres") {
+  throw new Error(
+    "PostgreSQL migrations now run at startup and the persistence wiring now skips SQLite-only bootstrap work, but the remaining server runtime still depends on synchronous SQLite helper access in server/index.js and route registration. Continue porting those helpers before enabling DATABASE_ENGINE=postgres in production.",
+  );
+}
 
 const app = express();
 app.set("trust proxy", serverRuntime.trustProxy);
@@ -4549,37 +1601,33 @@ function buildBeginnersCourseCalendarLessons(courseType = null) {
     });
 }
 
-function buildEventBookingsMap() {
+async function buildEventBookingsMap() {
   return groupRowsBy(
-    listAllEventBookings.all(),
+    await scheduleGateway.listAllEventBookings(),
     (booking) => booking.club_event_id,
     normalizeBookingRow,
   );
 }
 
-function buildCoachingBookingsMap() {
+async function buildCoachingBookingsMap() {
   return groupRowsBy(
-    listAllCoachingSessionBookings.all(),
+    await scheduleGateway.listAllCoachingSessionBookings(),
     (booking) => booking.coaching_session_id,
     normalizeBookingRow,
   );
 }
 
-function buildDisciplinesByUsernameMap() {
-  return groupRowsBy(
-    listAllUserDisciplines.all(),
-    (discipline) => discipline.username,
-    (discipline) => discipline.discipline,
-  );
-}
-
-function buildTournamentDataMaps() {
+async function buildTournamentDataMaps() {
+  const [registrations, scores] = await Promise.all([
+    tournamentGateway.listAllTournamentRegistrations(),
+    tournamentGateway.listAllTournamentScores(),
+  ]);
   const registrationsByTournamentId = groupRowsBy(
-    listAllTournamentRegistrations.all(),
+    registrations,
     (registration) => registration.tournament_id,
   );
   const scoresByTournamentId = groupRowsBy(
-    listAllTournamentScores.all(),
+    scores,
     (score) => score.tournament_id,
   );
 
@@ -5089,16 +2137,6 @@ function buildCommitteeRole(role) {
   };
 }
 
-function buildRoleDefinitionResponse(role) {
-  return {
-    roleKey: role.role_key,
-    title: role.title,
-    isSystem: Boolean(role.is_system),
-    assignedUserCount: countUsersByRoleKey.get(role.role_key)?.count ?? 0,
-    permissions: getPermissionsForRole(role.role_key),
-  };
-}
-
 function nextPowerOfTwo(value) {
   let result = 1;
 
@@ -5396,9 +2434,8 @@ function isActiveApprovalStatus(value) {
   return normalizedValue === "approved" || normalizedValue === "pending";
 }
 
-function findScheduleConflict({ date, startTime, endTime, venue = "both" }) {
-  const sessionConflict = listCoachingSessions
-    .all()
+async function findScheduleConflict({ date, startTime, endTime, venue = "both" }) {
+  const sessionConflict = (await scheduleGateway.listCoachingSessions())
     .find(
       (session) =>
         session.session_date === date &&
@@ -5416,8 +2453,7 @@ function findScheduleConflict({ date, startTime, endTime, venue = "both" }) {
     };
   }
 
-  const eventConflict = listClubEvents
-    .all()
+  const eventConflict = (await scheduleGateway.listClubEvents())
     .find(
       (event) =>
         event.event_date === date &&
@@ -5609,9 +2645,11 @@ function buildEquipmentIdentity(item) {
   };
 }
 
-function buildEquipmentMaps() {
-  const items = listEquipmentItems.all();
-  const loans = listEquipmentLoans.all();
+async function buildEquipmentMaps() {
+  const [items, loans] = await Promise.all([
+    equipmentGateway.listEquipmentItems(),
+    equipmentGateway.listEquipmentLoans(),
+  ]);
   const itemsById = new Map(items.map((item) => [item.id, item]));
   const contentsByCaseId = new Map();
   const openLoanByItemId = new Map();
@@ -5753,8 +2791,8 @@ function buildEquipmentCaseResponse(caseItem, maps) {
   };
 }
 
-function getCaseCapacityUsage(caseId) {
-  const contents = listEquipmentItemsByCaseId.all(caseId);
+async function getCaseCapacityUsage(caseId) {
+  const contents = await equipmentGateway.listEquipmentItemsByCaseId(caseId);
   const usage = {
     [EQUIPMENT_TYPES.RISER]: 0,
     [EQUIPMENT_TYPES.LIMB]: 0,
@@ -5780,7 +2818,7 @@ function getCaseCapacityUsage(caseId) {
   return usage;
 }
 
-function validateCaseAssignment(caseItem, itemToAssign) {
+async function validateCaseAssignment(caseItem, itemToAssign) {
   if (!caseItem || caseItem.equipment_type !== EQUIPMENT_TYPES.CASE) {
     return "Choose a valid case.";
   }
@@ -5805,7 +2843,7 @@ function validateCaseAssignment(caseItem, itemToAssign) {
     return "Remove the equipment from its current case before assigning it to a different case.";
   }
 
-  const usage = getCaseCapacityUsage(caseItem.id);
+  const usage = await getCaseCapacityUsage(caseItem.id);
   const nextUsage =
     isAlreadyInTargetCase
       ? usage[itemToAssign.equipment_type]
@@ -6011,38 +3049,11 @@ function sanitizeLoanBowReturn(existingLoanBow, loanBowReturn) {
   };
 }
 
-function saveLoanBowRecord(username, loanBow) {
-  upsertLoanBowByUsername.run({
-    username,
-    hasLoanBow: loanBow.hasLoanBow ? 1 : 0,
-    dateLoaned: loanBow.hasLoanBow ? loanBow.dateLoaned : null,
-    returnedDate: loanBow.hasLoanBow ? loanBow.returnedDate || null : null,
-    riserNumber: loanBow.hasLoanBow ? loanBow.riserNumber || null : null,
-    limbsNumber: loanBow.hasLoanBow ? loanBow.limbsNumber || null : null,
-    arrowCount: loanBow.arrowCount,
-    returnedRiser: loanBow.returnedRiser ? 1 : 0,
-    returnedLimbs: loanBow.returnedLimbs ? 1 : 0,
-    returnedArrows: loanBow.returnedArrows ? 1 : 0,
-    quiver: loanBow.quiver ? 1 : 0,
-    returnedQuiver: loanBow.returnedQuiver ? 1 : 0,
-    fingerTab: loanBow.fingerTab ? 1 : 0,
-    returnedFingerTab: loanBow.returnedFingerTab ? 1 : 0,
-    stringItem: loanBow.string ? 1 : 0,
-    returnedStringItem: loanBow.returnedString ? 1 : 0,
-    armGuard: loanBow.armGuard ? 1 : 0,
-    returnedArmGuard: loanBow.returnedArmGuard ? 1 : 0,
-    chestGuard: loanBow.chestGuard ? 1 : 0,
-    returnedChestGuard: loanBow.returnedChestGuard ? 1 : 0,
-    sight: loanBow.sight ? 1 : 0,
-    returnedSight: loanBow.returnedSight ? 1 : 0,
-    longRod: loanBow.longRod ? 1 : 0,
-    returnedLongRod: loanBow.returnedLongRod ? 1 : 0,
-    pressureButton: loanBow.pressureButton ? 1 : 0,
-    returnedPressureButton: loanBow.returnedPressureButton ? 1 : 0,
-  });
+async function saveLoanBowRecord(username, loanBow) {
+  await memberProfileGateway.saveLoanBowRecord(username, loanBow);
 }
 
-function saveMemberProfile({
+async function saveMemberProfile({
   username,
   firstName,
   surname,
@@ -6075,7 +3086,7 @@ function saveMemberProfile({
     };
   }
 
-  if (!findRoleDefinitionByKey.get(userType)) {
+  if (!(await memberProfileGateway.roleExists(userType))) {
     return {
       success: false,
       status: 400,
@@ -6114,21 +3125,17 @@ function saveMemberProfile({
   };
 
   try {
-    upsertUser.run(userPayload);
-    upsertUserType.run({
-      username: userPayload.username,
+    await memberProfileGateway.saveMemberProfile({
+      disciplines: normalizedDisciplines,
+      loanBow: normalizedLoanBow,
+      userPayload,
       userType,
     });
-    deleteUserDisciplines.run(userPayload.username);
 
-    for (const discipline of normalizedDisciplines) {
-      insertUserDiscipline.run(userPayload.username, discipline);
-    }
-
-    saveLoanBowRecord(userPayload.username, normalizedLoanBow);
-
-    const savedUser = findUserByUsername.get(userPayload.username);
-    const savedLoanBow = findLoanBowByUsername.get(userPayload.username);
+    const savedUser = await memberAuthGateway.findUserByUsername(userPayload.username);
+    const savedLoanBow = await memberProfileGateway.findLoanBowByUsername(
+      userPayload.username,
+    );
 
     return {
       success: true,
@@ -6140,7 +3147,10 @@ function saveMemberProfile({
       userProfile: buildMemberUserProfile(savedUser, normalizedDisciplines),
     };
   } catch (error) {
-    if (error?.message?.includes("UNIQUE constraint failed: users.rfid_tag")) {
+    if (
+      error?.message?.includes("UNIQUE constraint failed: users.rfid_tag") ||
+      error?.message?.includes("duplicate key value violates unique constraint")
+    ) {
       return {
         success: false,
         status: 409,
@@ -6250,34 +3260,38 @@ function listProfilePageMembers(now = new Date()) {
     );
 }
 
-function buildUsageTotals(startIso, endIsoExclusive) {
-  const members = countMemberLoginsInRange.get(startIso, endIsoExclusive).count;
-  const guests = countGuestLoginsInRange.get(startIso, endIsoExclusive).count;
+async function buildUsageTotals(startIso, endIsoExclusive) {
+  const [members, guests] = await Promise.all([
+    activityReportingGateway.countMemberLoginsInRange(startIso, endIsoExclusive),
+    activityReportingGateway.countGuestLoginsInRange(startIso, endIsoExclusive),
+  ]);
 
   return {
-    members,
-    guests,
-    total: members + guests,
+    members: members.count,
+    guests: guests.count,
+    total: members.count + guests.count,
   };
 }
 
-function buildPersonalUsageTotals(username, startIso, endIsoExclusive) {
-  const members = countMemberLoginsForUserInRange.get(
+async function buildPersonalUsageTotals(username, startIso, endIsoExclusive) {
+  const members = await activityReportingGateway.countMemberLoginsForUserInRange(
     username,
     startIso,
     endIsoExclusive,
-  ).count;
+  );
 
   return {
-    members,
+    members: members.count,
     guests: 0,
-    total: members,
+    total: members.count,
   };
 }
 
-function buildHourlyBreakdown(startIso, endIsoExclusive) {
-  const memberRows = memberLoginsByHourInRange.all(startIso, endIsoExclusive);
-  const guestRows = guestLoginsByHourInRange.all(startIso, endIsoExclusive);
+async function buildHourlyBreakdown(startIso, endIsoExclusive) {
+  const [memberRows, guestRows] = await Promise.all([
+    activityReportingGateway.memberLoginsByHourInRange(startIso, endIsoExclusive),
+    activityReportingGateway.guestLoginsByHourInRange(startIso, endIsoExclusive),
+  ]);
   const hours = Array.from({ length: 24 }, (_, hour) => ({
     hour,
     label: `${String(hour).padStart(2, "0")}:00`,
@@ -6299,8 +3313,8 @@ function buildHourlyBreakdown(startIso, endIsoExclusive) {
   return hours;
 }
 
-function buildPersonalHourlyBreakdown(username, startIso, endIsoExclusive) {
-  const memberRows = memberLoginsByHourForUserInRange.all(
+async function buildPersonalHourlyBreakdown(username, startIso, endIsoExclusive) {
+  const memberRows = await activityReportingGateway.memberLoginsByHourForUserInRange(
     username,
     startIso,
     endIsoExclusive,
@@ -6321,12 +3335,11 @@ function buildPersonalHourlyBreakdown(username, startIso, endIsoExclusive) {
   return hours;
 }
 
-function buildWeekdayBreakdown(startIso, endIsoExclusive) {
-  const memberRows = memberLoginsByWeekdayInRange.all(
-    startIso,
-    endIsoExclusive,
-  );
-  const guestRows = guestLoginsByWeekdayInRange.all(startIso, endIsoExclusive);
+async function buildWeekdayBreakdown(startIso, endIsoExclusive) {
+  const [memberRows, guestRows] = await Promise.all([
+    activityReportingGateway.memberLoginsByWeekdayInRange(startIso, endIsoExclusive),
+    activityReportingGateway.guestLoginsByWeekdayInRange(startIso, endIsoExclusive),
+  ]);
   const weekdays = [
     { dayOfWeek: 1, label: "Mon", members: 0, guests: 0, total: 0 },
     { dayOfWeek: 2, label: "Tue", members: 0, guests: 0, total: 0 },
@@ -6363,8 +3376,8 @@ function buildWeekdayBreakdown(startIso, endIsoExclusive) {
   return weekdays;
 }
 
-function buildPersonalWeekdayBreakdown(username, startIso, endIsoExclusive) {
-  const memberRows = memberLoginsByWeekdayForUserInRange.all(
+async function buildPersonalWeekdayBreakdown(username, startIso, endIsoExclusive) {
+  const memberRows = await activityReportingGateway.memberLoginsByWeekdayForUserInRange(
     username,
     startIso,
     endIsoExclusive,
@@ -6394,11 +3407,13 @@ function buildPersonalWeekdayBreakdown(username, startIso, endIsoExclusive) {
   return weekdays;
 }
 
-function buildDailyBreakdown(startDate, endDateExclusive) {
+async function buildDailyBreakdown(startDate, endDateExclusive) {
   const startIso = startDate.toISOString();
   const endIso = endDateExclusive.toISOString();
-  const memberRows = memberLoginsByDateInRange.all(startIso, endIso);
-  const guestRows = guestLoginsByDateInRange.all(startIso, endIso);
+  const [memberRows, guestRows] = await Promise.all([
+    activityReportingGateway.memberLoginsByDateInRange(startIso, endIso),
+    activityReportingGateway.guestLoginsByDateInRange(startIso, endIso),
+  ]);
   const rows = [];
   const rowByDate = new Map();
 
@@ -6446,10 +3461,10 @@ function buildDailyBreakdown(startDate, endDateExclusive) {
   return rows;
 }
 
-function buildPersonalDailyBreakdown(username, startDate, endDateExclusive) {
+async function buildPersonalDailyBreakdown(username, startDate, endDateExclusive) {
   const startIso = startDate.toISOString();
   const endIso = endDateExclusive.toISOString();
-  const memberRows = memberLoginsByDateForUserInRange.all(
+  const memberRows = await activityReportingGateway.memberLoginsByDateForUserInRange(
     username,
     startIso,
     endIso,
@@ -6490,7 +3505,7 @@ function buildPersonalDailyBreakdown(username, startDate, endDateExclusive) {
   return rows;
 }
 
-function buildMonthDailyBreakdown(startDate, endDateExclusive) {
+async function buildMonthDailyBreakdown(startDate, endDateExclusive) {
   const rows = Array.from({ length: 31 }, (_, index) => ({
     usageDate: `day-${index + 1}`,
     label: String(index + 1),
@@ -6503,7 +3518,7 @@ function buildMonthDailyBreakdown(startDate, endDateExclusive) {
     rows.map((row, index) => [index + 1, row]),
   );
 
-  for (const row of buildDailyBreakdown(startDate, endDateExclusive)) {
+  for (const row of await buildDailyBreakdown(startDate, endDateExclusive)) {
     const dayOfMonth = Number.parseInt(row.label, 10);
     const aggregateRow = rowByDayOfMonth.get(dayOfMonth);
 
@@ -6519,49 +3534,49 @@ function buildMonthDailyBreakdown(startDate, endDateExclusive) {
   return rows;
 }
 
-function buildUsageWindow(label, startDate, endDateExclusive) {
+async function buildUsageWindow(label, startDate, endDateExclusive) {
   return {
     label,
     startDate: toUtcDateString(startDate),
     endDate: toUtcDateString(addUtcDays(endDateExclusive, -1)),
-    ...buildUsageTotals(
+    ...(await buildUsageTotals(
+      startDate.toISOString(),
+      endDateExclusive.toISOString(),
+    )),
+    hourly: await buildHourlyBreakdown(
       startDate.toISOString(),
       endDateExclusive.toISOString(),
     ),
-    hourly: buildHourlyBreakdown(
+    weekday: await buildWeekdayBreakdown(
       startDate.toISOString(),
       endDateExclusive.toISOString(),
     ),
-    weekday: buildWeekdayBreakdown(
-      startDate.toISOString(),
-      endDateExclusive.toISOString(),
-    ),
-    daily: buildDailyBreakdown(startDate, endDateExclusive),
-    monthDaily: buildMonthDailyBreakdown(startDate, endDateExclusive),
+    daily: await buildDailyBreakdown(startDate, endDateExclusive),
+    monthDaily: await buildMonthDailyBreakdown(startDate, endDateExclusive),
   };
 }
 
-function buildPersonalUsageWindow(username, label, startDate, endDateExclusive) {
+async function buildPersonalUsageWindow(username, label, startDate, endDateExclusive) {
   return {
     label,
     startDate: toUtcDateString(startDate),
     endDate: toUtcDateString(addUtcDays(endDateExclusive, -1)),
-    ...buildPersonalUsageTotals(
+    ...(await buildPersonalUsageTotals(
+      username,
+      startDate.toISOString(),
+      endDateExclusive.toISOString(),
+    )),
+    hourly: await buildPersonalHourlyBreakdown(
       username,
       startDate.toISOString(),
       endDateExclusive.toISOString(),
     ),
-    hourly: buildPersonalHourlyBreakdown(
+    weekday: await buildPersonalWeekdayBreakdown(
       username,
       startDate.toISOString(),
       endDateExclusive.toISOString(),
     ),
-    weekday: buildPersonalWeekdayBreakdown(
-      username,
-      startDate.toISOString(),
-      endDateExclusive.toISOString(),
-    ),
-    daily: buildPersonalDailyBreakdown(username, startDate, endDateExclusive),
+    daily: await buildPersonalDailyBreakdown(username, startDate, endDateExclusive),
     monthDaily: [],
   };
 }
@@ -6572,26 +3587,19 @@ registerAuthRoutes({
   app,
   buildGuestUserProfile,
   buildMemberUserProfile,
-  findDisciplinesByUsername,
-  findUserByCredentials,
-  findUserByRfid,
-  findUserByUsername,
   getDeactivatedRfidTag,
   getSessionUsername,
   getUtcTimestampParts,
   hashPassword,
-  insertGuestLoginEvent,
-  insertLoginEvent,
   latestRfidScan,
+  memberAuthGateway,
   rfidReaderStatus,
-  listAllUsers,
   syncMemberStatusWithFees,
   clearCsrfCookie: csrfProtection.clearCookie,
   clearSessionCookie,
   createCsrfCookie: csrfProtection.createCookie,
   createSessionCookie,
   getCsrfToken: csrfProtection.getToken,
-  updateUserPassword,
   verifyPassword,
 });
 
@@ -6603,43 +3611,26 @@ registerAdminMemberRoutes({
   buildEditableMemberProfile,
   buildLoanBowRecord,
   buildMemberUserProfile,
-  buildRoleDefinitionResponse,
   buildUniqueRoleKeyFromTitle,
-  countUsersByRoleKey,
   CURRENT_PERMISSION_KEY_SET,
-  db,
-  deleteCommitteeRoleById,
-  deleteRoleDefinition,
-  deleteRolePermissionsByRoleKey,
   DISTANCE_SIGN_OFF_YARDS,
-  findCommitteeRoleById,
-  findCommitteeRoleByKey,
   findDisciplinesByUsername,
   findLoanBowByUsername,
-  findRoleDefinitionByKey,
-  findMaxCommitteeRoleDisplayOrder,
   findUserByUsername,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,
-  insertCommitteeRole,
-  insertRolePermission,
   listAllUsers,
   listAssignableRoleKeys,
-  listCommitteeRoles,
-  listPermissionDefinitions,
   listProfilePageMembers,
-  listRoleDefinitions,
   memberDistanceSignOffRepository,
   PERMISSIONS,
+  roleCommitteeGateway,
   sanitizeLoanBow,
   sanitizeLoanBowReturn,
   saveLoanBowRecord,
   saveMemberProfile,
   TOURNAMENT_TYPE_OPTIONS,
-  updateCommitteeRoleDetails,
-  updateRoleDefinition,
-  upsertRole,
 });
 
 registerEquipmentRoutes({
@@ -6648,41 +3639,24 @@ registerEquipmentRoutes({
   buildEquipmentCaseResponse,
   buildEquipmentItemResponse,
   buildEquipmentMaps,
-  closeEquipmentLoan,
-  countEquipmentItemsByStorageLocation,
-  deleteEquipmentStorageLocation,
-  db,
   DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
   EQUIPMENT_LOCATION_TYPES,
   EQUIPMENT_SIZE_CATEGORIES,
   EQUIPMENT_TYPES,
   EQUIPMENT_TYPE_LABELS,
   EQUIPMENT_TYPE_OPTIONS,
-  findEquipmentItemById,
-  findEquipmentItemByIdWithRelations,
-  findEquipmentStorageLocationByLabel,
-  findOpenEquipmentLoanByItemId,
+  equipmentGateway,
   findUserByUsername,
   getActorUser,
   getUtcTimestampParts,
-  insertEquipmentItem,
-  insertEquipmentLoan,
-  insertEquipmentStorageLocation,
   listAllUsers,
-  listEquipmentItemsByCaseId,
-  listEquipmentStorageLocations,
-  listOpenEquipmentLoansByCaseId,
-  listOpenEquipmentLoansByMemberUserId,
   PERMISSIONS,
   sanitizeCupboardLabel,
   sanitizeEquipmentCreatePayload,
-  updateEquipmentAssignmentMetadata,
-  updateEquipmentItemForDecommission,
-  updateEquipmentItemStorage,
   validateCaseAssignment,
 });
 
-app.get("/api/beginners-courses/dashboard", (req, res) => {
+app.get("/api/beginners-courses/dashboard", async (req, res) => {
   const actor = getActorUser(req);
   const courseType = normalizeCourseType(req.query?.courseType);
   const coursePermissions = getCourseTypePermissions(courseType);
@@ -6702,7 +3676,7 @@ app.get("/api/beginners-courses/dashboard", (req, res) => {
     return;
   }
 
-  const maps = buildEquipmentMaps();
+  const maps = await buildEquipmentMaps();
   const cases = maps.items
     .filter((item) => item.equipment_type === EQUIPMENT_TYPES.CASE)
     .map((item) => buildEquipmentCaseResponse(item, maps));
@@ -7016,7 +3990,7 @@ app.delete("/api/beginners-courses/:id", (req, res) => {
   });
 });
 
-app.post("/api/beginners-courses/:id/beginners", (req, res) => {
+app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
   const actor = getActorUser(req);
 
   const course = findBeginnersCourseById.get(req.params.id);
@@ -7080,7 +4054,7 @@ app.post("/api/beginners-courses/:id/beginners", (req, res) => {
     sanitized.value.surname,
   );
   const [date, time] = getUtcTimestampParts();
-  const userResult = saveMemberProfile({
+  const userResult = await saveMemberProfile({
     username,
     firstName: sanitized.value.firstName,
     surname: sanitized.value.surname,
@@ -7245,7 +4219,7 @@ app.put("/api/beginners-course-participants/:id", (req, res) => {
   });
 });
 
-app.post("/api/beginners-course-participants/:id/convert", (req, res) => {
+app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
   const actor = getActorUser(req);
 
   if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
@@ -7295,7 +4269,7 @@ app.post("/api/beginners-course-participants/:id/convert", (req, res) => {
   }
 
   if (existingUser.user_type === "beginner") {
-    const conversionResult = saveMemberProfile({
+    const conversionResult = await saveMemberProfile({
       username: existingUser.username,
       firstName: existingUser.first_name,
       surname: existingUser.surname,
@@ -7693,86 +4667,48 @@ registerTournamentRoutes({
   app,
   buildTournament,
   buildTournamentDataMaps,
-  db,
-  deleteTournamentById,
-  deleteTournamentRegistrationsByTournamentId,
-  deleteTournamentScoresByTournamentId,
-  deleteTournamentRegistration,
   exportsDirectory: serverRuntime.exportsDirectory,
-  findTournamentById,
   getActorUser,
   getUtcTimestampParts,
-  insertTournament,
-  insertTournamentRegistration,
-  listTournamentRegistrationsByTournamentId,
-  listTournamentScoresByTournamentId,
-  listTournaments,
   path,
   PERMISSIONS,
   sanitizeFileNameSegment,
   toUtcDateString,
+  tournamentGateway,
   TOURNAMENT_TYPE_OPTIONS,
-  updateTournamentById,
-  upsertTournamentScore,
   writeFileSync,
 });
 registerScheduleRoutes({
   actorHasPermission,
   app,
-  approveClubEventById,
-  approveCoachingSessionById,
   buildClubEvent,
   buildCoachingBookingsMap,
   buildCoachingSession,
   buildEventBookingsMap,
   canActorViewApprovalEntry,
-  db,
-  deleteBookingsByCoachingSessionId,
-  deleteBookingsByEventId,
-  deleteClubEventById,
-  deleteCoachingSessionById,
-  deleteCoachingSessionBooking,
-  deleteEventBooking,
-  findClubEventById,
-  findCoachingSessionById,
   findScheduleConflict,
   getActorUser,
   getUtcTimestampParts,
   hasScheduleEntryEnded,
-  insertClubEvent,
-  insertCoachingSession,
-  insertCoachingSessionBooking,
-  insertEventBooking,
-  listBookingsByCoachingSessionId,
-  listClubEvents,
-  listCoachingSessions,
-  listEventBookingsByEventId,
   normalizeBookingRow,
   normalizeVenue,
   PERMISSIONS,
-  rejectClubEventById,
-  rejectCoachingSessionById,
+  scheduleGateway,
 });
 
 registerMemberActivityRoutes({
+  activityReportingGateway,
   addUtcDays,
   app,
   actorHasPermission,
-  buildDisciplinesByUsernameMap,
   buildGuestUserProfile,
   buildMemberUserProfile,
   buildPersonalUsageWindow,
   buildTournament,
   buildTournamentDataMaps,
   buildUsageWindow,
-  findMemberCoachingBookingsByUserId,
-  findMemberEventBookingsByUserId,
-  findRecentGuestLogins,
-  findRecentRangeMembers,
   getActorUser,
-  listReportingGuestLogins,
-  listReportingMemberLogins,
-  listTournaments,
+  listTournaments: async () => listTournaments.all(),
   PERMISSIONS,
   startOfUtcDay,
   toUtcDateString,
@@ -7782,7 +4718,9 @@ app.use("/api", apiErrorHandler);
 
 startServer({
   app,
+  databaseEngine: serverRuntime.databaseEngine,
   databasePath,
+  databaseUrl: serverRuntime.databaseUrl,
   distDirectory,
   headersTimeoutMs: serverRuntime.headersTimeoutMs,
   keepAliveTimeoutMs: serverRuntime.keepAliveTimeoutMs,

@@ -156,7 +156,10 @@ export function registerEquipmentRoutes({
         item: buildEquipmentItemResponse(createdItem, maps),
       });
     } catch (error) {
-      if (error?.message?.includes("UNIQUE constraint failed")) {
+      if (
+        error?.message?.includes("UNIQUE constraint failed") ||
+        error?.message?.includes("duplicate key value violates unique constraint")
+      ) {
         res.status(409).json({
           success: false,
           message: "An active equipment item with that number already exists.",

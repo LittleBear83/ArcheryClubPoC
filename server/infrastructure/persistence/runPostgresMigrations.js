@@ -378,6 +378,7 @@ function buildRolePermissionSeedSql({
   committeeRoleSeed,
   defaultEquipmentCupboardLabel,
   permissionDefinitions,
+  seedUsers,
   systemRoleDefinitions,
 }) {
   const statements = [];
@@ -456,7 +457,294 @@ function buildRolePermissionSeedSql({
     });
   }
 
+  for (const user of seedUsers) {
+    statements.push({
+      sql: `
+        INSERT INTO users (
+          username,
+          first_name,
+          surname,
+          password,
+          rfid_tag,
+          active_member,
+          membership_fees_due,
+          coaching_volunteer
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT(username) DO UPDATE SET
+          first_name = EXCLUDED.first_name,
+          surname = EXCLUDED.surname,
+          password = EXCLUDED.password,
+          rfid_tag = EXCLUDED.rfid_tag,
+          active_member = EXCLUDED.active_member,
+          membership_fees_due = EXCLUDED.membership_fees_due,
+          coaching_volunteer = EXCLUDED.coaching_volunteer
+      `,
+      values: [
+        user.username,
+        user.firstName,
+        user.surname,
+        user.password,
+        user.rfidTag,
+        user.activeMember ? 1 : 0,
+        user.membershipFeesDue,
+        user.coachingVolunteer ? 1 : 0,
+      ],
+    });
+    statements.push({
+      sql: `
+        INSERT INTO user_types (username, user_type)
+        VALUES ($1, $2)
+        ON CONFLICT(username) DO UPDATE SET
+          user_type = EXCLUDED.user_type
+      `,
+      values: [user.username, user.userType],
+    });
+
+    for (const discipline of user.disciplines) {
+      statements.push({
+        sql: `
+          INSERT INTO user_disciplines (username, discipline)
+          VALUES ($1, $2)
+          ON CONFLICT(username, discipline) DO NOTHING
+        `,
+        values: [user.username, discipline],
+      });
+    }
+  }
+
   return statements;
+}
+
+function buildUserReferenceSyncStatements() {
+  const userReferenceMappings = [
+    {
+      tableName: "audit_events",
+      references: [{ usernameColumn: "actor_username", userIdColumn: "actor_user_id" }],
+    },
+    {
+      tableName: "user_types",
+      references: [{ usernameColumn: "username", userIdColumn: "user_id" }],
+    },
+    {
+      tableName: "user_disciplines",
+      references: [{ usernameColumn: "username", userIdColumn: "user_id" }],
+    },
+    {
+      tableName: "member_distance_sign_offs",
+      references: [
+        { usernameColumn: "username", userIdColumn: "user_id" },
+        {
+          usernameColumn: "signed_off_by_username",
+          userIdColumn: "signed_off_by_user_id",
+        },
+      ],
+    },
+    {
+      tableName: "member_loan_bows",
+      references: [{ usernameColumn: "username", userIdColumn: "user_id" }],
+    },
+    {
+      tableName: "login_events",
+      references: [{ usernameColumn: "username", userIdColumn: "user_id" }],
+    },
+    {
+      tableName: "guest_login_events",
+      references: [
+        {
+          usernameColumn: "invited_by_username",
+          userIdColumn: "invited_by_user_id",
+        },
+      ],
+    },
+    {
+      tableName: "coaching_sessions",
+      references: [
+        { usernameColumn: "coach_username", userIdColumn: "coach_user_id" },
+        {
+          usernameColumn: "approved_by_username",
+          userIdColumn: "approved_by_user_id",
+        },
+      ],
+    },
+    {
+      tableName: "coaching_session_bookings",
+      references: [{ usernameColumn: "member_username", userIdColumn: "member_user_id" }],
+    },
+    {
+      tableName: "club_events",
+      references: [
+        {
+          usernameColumn: "submitted_by_username",
+          userIdColumn: "submitted_by_user_id",
+        },
+        {
+          usernameColumn: "approved_by_username",
+          userIdColumn: "approved_by_user_id",
+        },
+      ],
+    },
+    {
+      tableName: "event_bookings",
+      references: [{ usernameColumn: "member_username", userIdColumn: "member_user_id" }],
+    },
+    {
+      tableName: "tournaments",
+      references: [{ usernameColumn: "created_by", userIdColumn: "created_by_user_id" }],
+    },
+    {
+      tableName: "tournament_registrations",
+      references: [{ usernameColumn: "member_username", userIdColumn: "member_user_id" }],
+    },
+    {
+      tableName: "tournament_scores",
+      references: [{ usernameColumn: "member_username", userIdColumn: "member_user_id" }],
+    },
+    {
+      tableName: "committee_roles",
+      references: [{ usernameColumn: "assigned_username", userIdColumn: "assigned_user_id" }],
+    },
+    {
+      tableName: "equipment_items",
+      references: [
+        {
+          usernameColumn: "location_member_username",
+          userIdColumn: "location_member_user_id",
+        },
+        { usernameColumn: "added_by_username", userIdColumn: "added_by_user_id" },
+        {
+          usernameColumn: "decommissioned_by_username",
+          userIdColumn: "decommissioned_by_user_id",
+        },
+        {
+          usernameColumn: "last_assignment_by_username",
+          userIdColumn: "last_assignment_by_user_id",
+        },
+        {
+          usernameColumn: "last_storage_updated_by_username",
+          userIdColumn: "last_storage_updated_by_user_id",
+        },
+      ],
+    },
+    {
+      tableName: "equipment_loans",
+      references: [
+        { usernameColumn: "member_username", userIdColumn: "member_user_id" },
+        { usernameColumn: "loaned_by_username", userIdColumn: "loaned_by_user_id" },
+        { usernameColumn: "returned_by_username", userIdColumn: "returned_by_user_id" },
+      ],
+    },
+    {
+      tableName: "beginners_courses",
+      references: [
+        {
+          usernameColumn: "coordinator_username",
+          userIdColumn: "coordinator_user_id",
+        },
+        {
+          usernameColumn: "submitted_by_username",
+          userIdColumn: "submitted_by_user_id",
+        },
+        {
+          usernameColumn: "cancelled_by_username",
+          userIdColumn: "cancelled_by_user_id",
+        },
+        {
+          usernameColumn: "approved_by_username",
+          userIdColumn: "approved_by_user_id",
+        },
+      ],
+    },
+    {
+      tableName: "beginners_course_participants",
+      references: [
+        { usernameColumn: "username", userIdColumn: "user_id" },
+        {
+          usernameColumn: "assigned_case_by_username",
+          userIdColumn: "assigned_case_by_user_id",
+        },
+        {
+          usernameColumn: "created_by_username",
+          userIdColumn: "created_by_user_id",
+        },
+      ],
+    },
+    {
+      tableName: "beginners_course_lesson_coaches",
+      references: [
+        { usernameColumn: "coach_username", userIdColumn: "coach_user_id" },
+        {
+          usernameColumn: "assigned_by_username",
+          userIdColumn: "assigned_by_user_id",
+        },
+      ],
+    },
+  ];
+
+  return userReferenceMappings.flatMap(({ references, tableName }) => {
+    const functionName = `sync_${tableName}_user_refs`;
+    const triggerName = `${tableName}_user_refs_trigger`;
+    const assignments = references
+      .map(
+        ({ usernameColumn, userIdColumn }) => `
+          IF NEW.${usernameColumn} IS NULL OR BTRIM(NEW.${usernameColumn}) = '' THEN
+            NEW.${userIdColumn} := NULL;
+          ELSE
+            SELECT id INTO NEW.${userIdColumn}
+            FROM users
+            WHERE LOWER(username) = LOWER(NEW.${usernameColumn})
+            LIMIT 1;
+          END IF;
+        `,
+      )
+      .join("\n");
+    const backfillAssignments = references
+      .map(
+        ({ usernameColumn, userIdColumn }) => `
+          ${userIdColumn} = CASE
+            WHEN ${usernameColumn} IS NULL OR BTRIM(${usernameColumn}) = '' THEN NULL
+            ELSE (
+              SELECT id
+              FROM users
+              WHERE LOWER(users.username) = LOWER(${tableName}.${usernameColumn})
+              LIMIT 1
+            )
+          END
+        `,
+      )
+      .join(",");
+
+    return [
+      {
+        sql: `
+          CREATE OR REPLACE FUNCTION ${functionName}()
+          RETURNS TRIGGER
+          LANGUAGE plpgsql
+          AS $$
+          BEGIN
+            ${assignments}
+            RETURN NEW;
+          END;
+          $$;
+        `,
+      },
+      {
+        sql: `
+          DROP TRIGGER IF EXISTS ${triggerName} ON ${tableName};
+          CREATE TRIGGER ${triggerName}
+          BEFORE INSERT OR UPDATE ON ${tableName}
+          FOR EACH ROW
+          EXECUTE FUNCTION ${functionName}();
+        `,
+      },
+      {
+        sql: `
+          UPDATE ${tableName}
+          SET ${backfillAssignments};
+        `,
+      },
+    ];
+  });
 }
 
 export async function runPostgresMigrations({
@@ -464,6 +752,7 @@ export async function runPostgresMigrations({
   defaultEquipmentCupboardLabel,
   permissionDefinitions,
   pool,
+  seedUsers = [],
   systemRoleDefinitions,
 }) {
   const client = await pool.connect();
@@ -487,6 +776,7 @@ export async function runPostgresMigrations({
         committeeRoleSeed,
         defaultEquipmentCupboardLabel,
         permissionDefinitions,
+        seedUsers,
         systemRoleDefinitions,
       });
 
@@ -501,6 +791,10 @@ export async function runPostgresMigrations({
         `,
         ["001_initial_schema"],
       );
+    }
+
+    for (const statement of buildUserReferenceSyncStatements()) {
+      await client.query(statement.sql, statement.values);
     }
 
     await client.query("COMMIT");

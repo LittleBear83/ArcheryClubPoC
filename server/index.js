@@ -6,8 +6,13 @@ import process from "node:process";
 import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
+import { bootstrapPersistence } from "./bootstrap/bootstrapPersistence.js";
 import { startServer } from "./bootstrap/startServer.js";
 import { serverRuntime } from "./config/runtime.js";
+import {
+  createMemberPersistenceService,
+  getDeactivatedRfidTag,
+} from "./domain/services/memberPersistenceService.js";
 import { createCsrfProtection } from "./security/csrf.js";
 import { createRateLimiter } from "./security/rateLimit.js";
 import {
@@ -36,25 +41,6 @@ import {
 } from "./domain/constants.js";
 import { createDatabase } from "./infrastructure/persistence/createDatabase.js";
 import { createActivityReportingGateway } from "./infrastructure/persistence/activityReportingGateway.js";
-import {
-  bootstrapSqliteBaseSchema,
-  CLUB_EVENTS_TABLE_SQL,
-  COACHING_SESSIONS_TABLE_SQL,
-  COACHING_SESSION_BOOKINGS_TABLE_SQL,
-  EVENT_BOOKINGS_TABLE_SQL,
-  GUEST_LOGIN_EVENTS_TABLE_SQL,
-  LOGIN_EVENTS_TABLE_SQL,
-  TOURNAMENTS_TABLE_SQL,
-  TOURNAMENT_REGISTRATIONS_TABLE_SQL,
-  TOURNAMENT_SCORES_TABLE_SQL,
-} from "./infrastructure/persistence/bootstrapSqliteBaseSchema.js";
-import {
-  bootstrapSqliteLegacyDateSupport,
-  bootstrapSqliteRolesAndPermissions,
-} from "./infrastructure/persistence/bootstrapSqliteLegacySupport.js";
-import { bootstrapSqliteEquipmentCompatibility } from "./infrastructure/persistence/bootstrapSqliteEquipmentCompatibility.js";
-import { bootstrapSqliteCourseScheduleCompatibility } from "./infrastructure/persistence/bootstrapSqliteCourseScheduleCompatibility.js";
-import { bootstrapSqliteUserCompatibility } from "./infrastructure/persistence/bootstrapSqliteUserCompatibility.js";
 import { createSqliteAuthAuditStatements } from "./infrastructure/persistence/createSqliteAuthAuditStatements.js";
 import { createBeginnersCourseReadGateway } from "./infrastructure/persistence/beginnersCourseReadGateway.js";
 import { createBeginnersCourseWriteGateway } from "./infrastructure/persistence/beginnersCourseWriteGateway.js";
@@ -64,8 +50,6 @@ import { createSqliteLoanBowStatements } from "./infrastructure/persistence/crea
 import { createSqliteReportingStatements } from "./infrastructure/persistence/createSqliteReportingStatements.js";
 import { createSqliteRoleCommitteeStatements } from "./infrastructure/persistence/createSqliteRoleCommitteeStatements.js";
 import { createSqliteScheduleTournamentStatements } from "./infrastructure/persistence/createSqliteScheduleTournamentStatements.js";
-import { bootstrapSqliteUserData } from "./infrastructure/persistence/bootstrapSqliteUserData.js";
-import { runPostgresMigrations } from "./infrastructure/persistence/runPostgresMigrations.js";
 import { createEquipmentGateway } from "./infrastructure/persistence/equipmentGateway.js";
 import { createMemberAuthGateway } from "./infrastructure/persistence/memberAuthGateway.js";
 import { createMemberProfileGateway } from "./infrastructure/persistence/memberProfileGateway.js";
@@ -86,16 +70,6 @@ import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRo
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
-
-if (serverRuntime.databaseEngine === "postgres") {
-  await runPostgresMigrations({
-    committeeRoleSeed: COMMITTEE_ROLE_SEED,
-    defaultEquipmentCupboardLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
-    permissionDefinitions: PERMISSION_DEFINITIONS,
-    pool: db.pool,
-    systemRoleDefinitions: SYSTEM_ROLE_DEFINITIONS,
-  });
-}
 
 const memberDistanceSignOffRepository = createMemberDistanceSignOffRepository(db, {
   allowedDisciplines: ALLOWED_DISCIPLINES,
@@ -203,6 +177,19 @@ function hashPassword(password) {
 function isPasswordHash(value) {
   return typeof value === "string" && value.startsWith(`${PASSWORD_HASH_ALGORITHM}$`);
 }
+
+const sqliteUserDataStatements = await bootstrapPersistence({
+  committeeRoleSeed: COMMITTEE_ROLE_SEED,
+  currentPermissionKeys: CURRENT_PERMISSION_KEYS,
+  currentPermissionSqlPlaceholders: CURRENT_PERMISSION_SQL_PLACEHOLDERS,
+  db,
+  defaultEquipmentCupboardLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+  hashPassword,
+  isPasswordHash,
+  permissionDefinitions: PERMISSION_DEFINITIONS,
+  runtime: serverRuntime,
+  systemRoleDefinitions: SYSTEM_ROLE_DEFINITIONS,
+});
 
 function verifyPassword(password, storedPassword) {
   if (!password || !storedPassword) {
@@ -335,7 +322,7 @@ function sanitizeAuditMetadata(value) {
   );
 }
 
-function createAuditMiddleware(insertAuditEvent) {
+function createAuditMiddleware(recordAuditEvent) {
   // Mutating API calls are recorded after the response completes so the audit
   // event includes the final status code and request duration.
   return (req, res, next) => {
@@ -354,7 +341,7 @@ function createAuditMiddleware(insertAuditEvent) {
       const [loggedInDate, loggedInTime] = getUtcTimestampParts();
 
       try {
-        insertAuditEvent.run({
+        void recordAuditEvent({
           actorUsername: getSessionUsername(req),
           action: `${req.method} ${req.route?.path ?? req.path}`,
           target: req.originalUrl.split("?")[0],
@@ -367,6 +354,8 @@ function createAuditMiddleware(insertAuditEvent) {
           }),
           createdAtDate: loggedInDate,
           createdAtTime: loggedInTime,
+        }).catch((auditError) => {
+          console.error("Failed to record audit event", auditError);
         });
       } catch (auditError) {
         console.error("Failed to record audit event", auditError);
@@ -411,86 +400,6 @@ const COURSE_PARTICIPANT_USER_TYPES = {
   "have-a-go": "have-a-go",
 };
 
-function createUnsupportedPreparedStatement(name) {
-  const unsupported = () => {
-    throw new Error(
-      `${name} is not available when DATABASE_ENGINE=postgres. Continue migrating synchronous SQLite helpers before enabling PostgreSQL for the full server runtime.`,
-    );
-  };
-
-  return {
-    all: unsupported,
-    get: unsupported,
-    run: unsupported,
-  };
-}
-
-function createUnsupportedPreparedStatementGroup(names) {
-  return Object.fromEntries(
-    names.map((name) => [name, createUnsupportedPreparedStatement(name)]),
-  );
-}
-
-function createUnsupportedSqliteUserData() {
-  return {
-    ...createUnsupportedPreparedStatementGroup([
-      "deleteUserDisciplines",
-      "findUserByCredentials",
-      "findUserByRfid",
-      "findUserByUsername",
-      "insertUserDiscipline",
-      "listAllUsers",
-      "updateUserMembershipStatus",
-      "updateUserPassword",
-      "upsertUser",
-      "upsertUserType",
-    ]),
-  };
-}
-
-// Schema bootstrap is intentionally idempotent; local development and preview
-// can start against an existing SQLite file without a separate migration step.
-if (serverRuntime.databaseEngine === "sqlite") {
-  bootstrapSqliteBaseSchema({
-    db,
-    defaultEquipmentCupboardLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
-  });
-
-  bootstrapSqliteRolesAndPermissions({
-    currentPermissionKeys: CURRENT_PERMISSION_KEYS,
-    currentPermissionSqlPlaceholders: CURRENT_PERMISSION_SQL_PLACEHOLDERS,
-    db,
-    permissionDefinitions: PERMISSION_DEFINITIONS,
-    systemRoleDefinitions: SYSTEM_ROLE_DEFINITIONS,
-  });
-
-  bootstrapSqliteLegacyDateSupport({
-    clubEventsTableSql: CLUB_EVENTS_TABLE_SQL,
-    coachingSessionBookingsTableSql: COACHING_SESSION_BOOKINGS_TABLE_SQL,
-    coachingSessionsTableSql: COACHING_SESSIONS_TABLE_SQL,
-    db,
-    eventBookingsTableSql: EVENT_BOOKINGS_TABLE_SQL,
-    guestLoginEventsTableSql: GUEST_LOGIN_EVENTS_TABLE_SQL,
-    loginEventsTableSql: LOGIN_EVENTS_TABLE_SQL,
-    tournamentsTableSql: TOURNAMENTS_TABLE_SQL,
-    tournamentRegistrationsTableSql: TOURNAMENT_REGISTRATIONS_TABLE_SQL,
-    tournamentScoresTableSql: TOURNAMENT_SCORES_TABLE_SQL,
-  });
-
-  bootstrapSqliteUserCompatibility({ db });
-  bootstrapSqliteEquipmentCompatibility({ db });
-  bootstrapSqliteCourseScheduleCompatibility({
-    clubEventsTableSql: CLUB_EVENTS_TABLE_SQL,
-    coachingSessionBookingsTableSql: COACHING_SESSION_BOOKINGS_TABLE_SQL,
-    coachingSessionsTableSql: COACHING_SESSIONS_TABLE_SQL,
-    db,
-    eventBookingsTableSql: EVENT_BOOKINGS_TABLE_SQL,
-    tournamentsTableSql: TOURNAMENTS_TABLE_SQL,
-    tournamentRegistrationsTableSql: TOURNAMENT_REGISTRATIONS_TABLE_SQL,
-    tournamentScoresTableSql: TOURNAMENT_SCORES_TABLE_SQL,
-  });
-}
-
 const {
   deleteUserDisciplines,
   findUserByCredentials,
@@ -502,19 +411,12 @@ const {
   updateUserPassword,
   upsertUser,
   upsertUserType,
-} = serverRuntime.databaseEngine === "sqlite"
-  ? bootstrapSqliteUserData({
-      committeeRoleSeed: COMMITTEE_ROLE_SEED,
-      db,
-      hashPassword,
-      isLive: serverRuntime.isLive,
-      isPasswordHash,
-    })
-  : createUnsupportedSqliteUserData();
+} = sqliteUserDataStatements ?? {};
 
-if (serverRuntime.databaseEngine === "sqlite") {
-  await syncAllMemberStatusesWithFees();
-}
+const sqliteRoleCommitteeStatements =
+  serverRuntime.databaseEngine === "sqlite"
+    ? createSqliteRoleCommitteeStatements(db)
+    : null;
 
 const {
   countUsersByRoleKey,
@@ -534,27 +436,7 @@ const {
   updateCommitteeRoleDetails,
   updateRoleDefinition,
   upsertRole,
-} = serverRuntime.databaseEngine === "sqlite"
-  ? createSqliteRoleCommitteeStatements(db)
-  : createUnsupportedPreparedStatementGroup([
-      "countUsersByRoleKey",
-      "deleteCommitteeRoleById",
-      "deleteRoleDefinition",
-      "deleteRolePermissionsByRoleKey",
-      "findCommitteeRoleById",
-      "findCommitteeRoleByKey",
-      "findMaxCommitteeRoleDisplayOrder",
-      "findRoleDefinitionByKey",
-      "insertCommitteeRole",
-      "insertRolePermission",
-      "listCommitteeRoles",
-      "listPermissionDefinitions",
-      "listRoleDefinitions",
-      "listRolePermissionKeysByRoleKey",
-      "updateCommitteeRoleDetails",
-      "updateRoleDefinition",
-      "upsertRole",
-    ]);
+} = sqliteRoleCommitteeStatements ?? {};
 
 const roleCommitteeGateway = createRoleCommitteeGateway({
   countUsersByRoleKey,
@@ -600,19 +482,21 @@ async function refreshRoleAccessSnapshot() {
 
 await refreshRoleAccessSnapshot();
 
-const { findLoanBowByUsername, upsertLoanBowByUsername } =
+const sqliteLoanBowStatements =
   serverRuntime.databaseEngine === "sqlite"
     ? createSqliteLoanBowStatements(db)
-    : createUnsupportedPreparedStatementGroup([
-        "findLoanBowByUsername",
-        "upsertLoanBowByUsername",
-      ]);
+    : null;
+const { findLoanBowByUsername, upsertLoanBowByUsername } =
+  sqliteLoanBowStatements ?? {};
 
+const sqliteEquipmentStatements =
+  serverRuntime.databaseEngine === "sqlite"
+    ? createSqliteEquipmentStatements(db)
+    : null;
 const {
   closeEquipmentLoan,
   countEquipmentItemsByStorageLocation,
   deleteEquipmentStorageLocation,
-  findActiveEquipmentByIdentity,
   findEquipmentItemById,
   findEquipmentItemByIdWithRelations,
   findEquipmentStorageLocationByLabel,
@@ -629,30 +513,7 @@ const {
   updateEquipmentAssignmentMetadata,
   updateEquipmentItemForDecommission,
   updateEquipmentItemStorage,
-} = serverRuntime.databaseEngine === "sqlite"
-  ? createSqliteEquipmentStatements(db)
-  : createUnsupportedPreparedStatementGroup([
-      "closeEquipmentLoan",
-      "countEquipmentItemsByStorageLocation",
-      "deleteEquipmentStorageLocation",
-      "findActiveEquipmentByIdentity",
-      "findEquipmentItemById",
-      "findEquipmentItemByIdWithRelations",
-      "findEquipmentStorageLocationByLabel",
-      "findOpenEquipmentLoanByItemId",
-      "insertEquipmentItem",
-      "insertEquipmentLoan",
-      "insertEquipmentStorageLocation",
-      "listEquipmentItems",
-      "listEquipmentItemsByCaseId",
-      "listEquipmentLoans",
-      "listEquipmentStorageLocations",
-      "listOpenEquipmentLoansByCaseId",
-      "listOpenEquipmentLoansByMemberUserId",
-      "updateEquipmentAssignmentMetadata",
-      "updateEquipmentItemForDecommission",
-      "updateEquipmentItemStorage",
-    ]);
+} = sqliteEquipmentStatements ?? {};
 
 const equipmentGateway = createEquipmentGateway({
   closeEquipmentLoan,
@@ -680,6 +541,10 @@ const equipmentGateway = createEquipmentGateway({
   updateEquipmentItemStorage,
 });
 
+const sqliteBeginnersCourseStatements =
+  serverRuntime.databaseEngine === "sqlite"
+    ? createSqliteBeginnersCourseStatements(db)
+    : null;
 const {
   cancelBeginnersCourse,
   deleteBeginnersLessonCoachesByLessonId,
@@ -704,34 +569,12 @@ const {
   updateBeginnersCourseApproval,
   updateBeginnersCourseParticipant,
   updateBeginnersCourseParticipantCase,
-} = serverRuntime.databaseEngine === "sqlite"
-  ? createSqliteBeginnersCourseStatements(db)
-  : createUnsupportedPreparedStatementGroup([
-      "cancelBeginnersCourse",
-      "deleteBeginnersLessonCoachesByLessonId",
-      "findBeginnersCourseById",
-      "findBeginnersCourseLessonById",
-      "findBeginnersCourseParticipantById",
-      "findBeginnersCourseParticipantByUsername",
-      "insertBeginnersCourse",
-      "insertBeginnersCourseLesson",
-      "insertBeginnersCourseParticipant",
-      "insertBeginnersLessonCoach",
-      "listBeginnersCourseLessons",
-      "listBeginnersCourseLessonsByCourseId",
-      "listBeginnersCourseParticipantLoginDates",
-      "listBeginnersCourseParticipants",
-      "listBeginnersCourseParticipantsByCourseId",
-      "listBeginnersCourses",
-      "listBeginnersLessonCoaches",
-      "listBeginnersLessonCoachesByLessonId",
-      "listCoachBeginnersLessonsByUserId",
-      "markBeginnersCourseParticipantConverted",
-      "updateBeginnersCourseApproval",
-      "updateBeginnersCourseParticipant",
-      "updateBeginnersCourseParticipantCase",
-    ]);
+} = sqliteBeginnersCourseStatements ?? {};
 
+const sqliteScheduleTournamentStatements =
+  serverRuntime.databaseEngine === "sqlite"
+    ? createSqliteScheduleTournamentStatements(db)
+    : null;
 const {
   approveClubEventById,
   approveCoachingSessionById,
@@ -771,48 +614,7 @@ const {
   rejectCoachingSessionById,
   updateTournamentById,
   upsertTournamentScore,
-} = serverRuntime.databaseEngine === "sqlite"
-  ? createSqliteScheduleTournamentStatements(db)
-  : createUnsupportedPreparedStatementGroup([
-      "approveClubEventById",
-      "approveCoachingSessionById",
-      "deleteBookingsByCoachingSessionId",
-      "deleteBookingsByEventId",
-      "deleteClubEventById",
-      "deleteCoachingSessionById",
-      "deleteCoachingSessionBooking",
-      "deleteEventBooking",
-      "deleteTournamentById",
-      "deleteTournamentRegistration",
-      "deleteTournamentRegistrationsByTournamentId",
-      "deleteTournamentScoresByTournamentId",
-      "findClubEventById",
-      "findCoachingSessionById",
-      "findMemberCoachingBookingsByUserId",
-      "findMemberEventBookingsByUserId",
-      "findTournamentById",
-      "insertClubEvent",
-      "insertCoachingSession",
-      "insertCoachingSessionBooking",
-      "insertEventBooking",
-      "insertTournament",
-      "insertTournamentRegistration",
-      "listAllCoachingSessionBookings",
-      "listAllEventBookings",
-      "listAllTournamentRegistrations",
-      "listAllTournamentScores",
-      "listBookingsByCoachingSessionId",
-      "listClubEvents",
-      "listCoachingSessions",
-      "listEventBookingsByEventId",
-      "listTournamentRegistrationsByTournamentId",
-      "listTournamentScoresByTournamentId",
-      "listTournaments",
-      "rejectClubEventById",
-      "rejectCoachingSessionById",
-      "updateTournamentById",
-      "upsertTournamentScore",
-    ]);
+} = sqliteScheduleTournamentStatements ?? {};
 
 const tournamentGateway = createTournamentGateway({
   databaseEngine: serverRuntime.databaseEngine,
@@ -860,15 +662,63 @@ const scheduleGateway = createScheduleGateway({
   rejectCoachingSessionById,
 });
 
-const { insertAuditEvent, insertGuestLoginEvent, insertLoginEvent } =
+const sqliteAuthAuditStatements =
   serverRuntime.databaseEngine === "sqlite"
     ? createSqliteAuthAuditStatements(db)
-    : createUnsupportedPreparedStatementGroup([
-        "insertAuditEvent",
-        "insertGuestLoginEvent",
-        "insertLoginEvent",
-      ]);
+    : null;
+const { insertAuditEvent, insertGuestLoginEvent, insertLoginEvent } =
+  sqliteAuthAuditStatements ?? {};
 
+const recordAuditEvent = serverRuntime.databaseEngine === "sqlite"
+  ? async (payload) => {
+      insertAuditEvent.run(payload);
+    }
+  : async (payload) => {
+      await db.pool.query(
+        `
+          INSERT INTO audit_events (
+            actor_username,
+            action,
+            target,
+            status_code,
+            ip_address,
+            user_agent,
+            metadata_json,
+            created_at_date,
+            created_at_time,
+            actor_user_id
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1)
+          )
+        `,
+        [
+          payload.actorUsername,
+          payload.action,
+          payload.target,
+          payload.statusCode,
+          payload.ipAddress,
+          payload.userAgent,
+          payload.metadataJson,
+          payload.createdAtDate,
+          payload.createdAtTime,
+        ],
+      );
+    };
+
+const sqliteReportingStatements =
+  serverRuntime.databaseEngine === "sqlite"
+    ? createSqliteReportingStatements(db)
+    : null;
 const {
   countGuestLoginsInRange,
   countMemberLoginsForUserInRange,
@@ -888,28 +738,7 @@ const {
   memberLoginsByHourInRange,
   memberLoginsByWeekdayForUserInRange,
   memberLoginsByWeekdayInRange,
-} = serverRuntime.databaseEngine === "sqlite"
-  ? createSqliteReportingStatements(db)
-  : createUnsupportedPreparedStatementGroup([
-      "countGuestLoginsInRange",
-      "countMemberLoginsForUserInRange",
-      "countMemberLoginsInRange",
-      "findDisciplinesByUsername",
-      "findRecentGuestLogins",
-      "findRecentRangeMembers",
-      "guestLoginsByDateInRange",
-      "guestLoginsByHourInRange",
-      "guestLoginsByWeekdayInRange",
-      "listAllUserDisciplines",
-      "listReportingGuestLogins",
-      "listReportingMemberLogins",
-      "memberLoginsByDateForUserInRange",
-      "memberLoginsByDateInRange",
-      "memberLoginsByHourForUserInRange",
-      "memberLoginsByHourInRange",
-      "memberLoginsByWeekdayForUserInRange",
-      "memberLoginsByWeekdayInRange",
-    ]);
+} = sqliteReportingStatements ?? {};
 
 const activityReportingGateway = createActivityReportingGateway({
   countGuestLoginsInRange,
@@ -1006,12 +835,6 @@ const beginnersCourseWriteGateway = createBeginnersCourseWriteGateway({
   upsertUser,
 });
 
-if (serverRuntime.databaseEngine === "postgres") {
-  throw new Error(
-    "PostgreSQL migrations now run at startup and the persistence wiring now skips SQLite-only bootstrap work, but the remaining server runtime still depends on synchronous SQLite helper access in server/index.js and route registration. Continue porting those helpers before enabling DATABASE_ENGINE=postgres in production.",
-  );
-}
-
 const app = express();
 app.set("trust proxy", serverRuntime.trustProxy);
 
@@ -1045,26 +868,6 @@ app.use("/api/committee-roles", express.json({ limit: COMMITTEE_PHOTO_JSON_BODY_
 app.use(express.json({ limit: GENERAL_JSON_BODY_LIMIT }));
 app.use(csrfProtection.middleware);
 app.use(authRateLimiter.middleware);
-app.use(async (req, _res, next) => {
-  const actorUsername = getActorUsername(req);
-
-  if (!actorUsername) {
-    req.actorUser = null;
-    next();
-    return;
-  }
-
-  try {
-    const actor = await syncMemberStatusWithFees(
-      await memberAuthGateway.findUserByUsername(actorUsername),
-    );
-    req.actorUser = actor?.active_member ? actor : null;
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
-app.use(createAuditMiddleware(insertAuditEvent));
 
 function buildMemberUserProfile(user, disciplines = [], meta = {}) {
   // Server-facing rows are converted to the normalized profile contract used by
@@ -1233,6 +1036,42 @@ function buildGuestUserProfile(guest, meta = {}) {
     },
   };
 }
+
+const memberPersistenceService = createMemberPersistenceService({
+  buildEditableMemberProfile,
+  buildMemberUserProfile,
+  deactivatedRfidSuffix: DEACTIVATED_RFID_SUFFIX,
+  hashPassword,
+  memberAuthGateway,
+  memberProfileGateway,
+  sanitizeDisciplines,
+  sanitizeLoanBow,
+});
+
+if (serverRuntime.databaseEngine === "sqlite") {
+  await memberPersistenceService.syncAllMemberStatusesWithFees();
+}
+
+app.use(async (req, _res, next) => {
+  const actorUsername = getActorUsername(req);
+
+  if (!actorUsername) {
+    req.actorUser = null;
+    next();
+    return;
+  }
+
+  try {
+    const actor = await memberPersistenceService.syncMemberStatusWithFees(
+      await memberAuthGateway.findUserByUsername(actorUsername),
+    );
+    req.actorUser = actor?.active_member ? actor : null;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+app.use(createAuditMiddleware(recordAuditEvent));
 
 function buildCoachingSession(session, bookings = [], actor = null) {
   const actorUsername = actor?.username ?? null;
@@ -2118,66 +1957,6 @@ while ($true) {
   });
 }
 
-function getDeactivatedRfidTag(rfidTag) {
-  if (!rfidTag) {
-    return null;
-  }
-
-  return rfidTag.endsWith(DEACTIVATED_RFID_SUFFIX)
-    ? rfidTag
-    : `${rfidTag}${DEACTIVATED_RFID_SUFFIX}`;
-}
-
-function isMembershipFeesOverdue(user, today = toUtcDateString(new Date())) {
-  const membershipFeesDue =
-    user?.membership_fees_due ?? user?.membershipFeesDue ?? null;
-
-  return Boolean(membershipFeesDue && membershipFeesDue < today);
-}
-
-function normalizeMemberStatusWithFees(user) {
-  if (!user || !isMembershipFeesOverdue(user)) {
-    return user;
-  }
-
-  const nextRfidTag = getDeactivatedRfidTag(user.rfid_tag);
-  const requiresUpdate =
-    Boolean(user.active_member) || (user.rfid_tag ?? null) !== nextRfidTag;
-
-  return {
-    ...user,
-    active_member: 0,
-    rfid_tag: nextRfidTag,
-    requiresMembershipStatusSync: requiresUpdate,
-  };
-}
-
-async function syncMemberStatusWithFees(user) {
-  const normalizedUser = normalizeMemberStatusWithFees(user);
-
-  if (normalizedUser?.requiresMembershipStatusSync) {
-    await memberAuthGateway.updateUserMembershipStatus(
-      normalizedUser.username,
-      normalizedUser.active_member,
-      normalizedUser.rfid_tag,
-    );
-  }
-
-  if (!normalizedUser) {
-    return normalizedUser;
-  }
-
-  const { requiresMembershipStatusSync: _requiresMembershipStatusSync, ...syncedUser } =
-    normalizedUser;
-  return syncedUser;
-}
-
-async function syncAllMemberStatusesWithFees() {
-  for (const user of await memberAuthGateway.listAllUsers()) {
-    await syncMemberStatusWithFees(user);
-  }
-}
-
 function buildClubEvent(event, bookings = [], actor = null) {
   const actorUsername = actor?.username ?? null;
   const canApprove = actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS);
@@ -3008,22 +2787,6 @@ function sanitizeEquipmentCreatePayload(payload) {
     }
   }
 
-  const duplicateItem = itemNumber
-    ? findActiveEquipmentByIdentity.get([
-        equipmentType,
-        sizeCategory,
-        itemNumber,
-      ])
-    : null;
-
-  if (duplicateItem) {
-    return {
-      success: false,
-      status: 409,
-      message: "An active equipment item with that number already exists.",
-    };
-  }
-
   return {
     success: true,
     value: {
@@ -3156,119 +2919,6 @@ function sanitizeLoanBowReturn(existingLoanBow, loanBowReturn) {
 
 async function saveLoanBowRecord(username, loanBow) {
   await memberProfileGateway.saveLoanBowRecord(username, loanBow);
-}
-
-async function saveMemberProfile({
-  username,
-  firstName,
-  surname,
-  password,
-  rfidTag,
-  activeMember,
-  membershipFeesDue,
-  coachingVolunteer,
-  userType,
-  disciplines,
-  loanBow,
-  existingUser,
-}) {
-  const trimmedUsername = username?.trim();
-  const trimmedFirstName = firstName?.trim();
-  const trimmedSurname = surname?.trim();
-  const trimmedPassword = password?.trim();
-  const trimmedRfidTag = rfidTag?.trim();
-  const normalizedActiveMember = Boolean(activeMember);
-  const normalizedMembershipFeesDue = membershipFeesDue?.trim() || null;
-  const normalizedCoachingVolunteer = Boolean(coachingVolunteer);
-  const normalizedDisciplines = sanitizeDisciplines(disciplines);
-  const normalizedLoanBow = sanitizeLoanBow(loanBow);
-
-  if (!trimmedUsername || !trimmedFirstName || !trimmedSurname) {
-    return {
-      success: false,
-      status: 400,
-      message: "Username, first name, and surname are required.",
-    };
-  }
-
-  if (!(await memberProfileGateway.roleExists(userType))) {
-    return {
-      success: false,
-      status: 400,
-      message: "Please choose a valid member role.",
-    };
-  }
-
-  if (!existingUser && !trimmedPassword) {
-    return {
-      success: false,
-      status: 400,
-      message: "A password is required when creating a new member.",
-    };
-  }
-
-  const passwordToSave = trimmedPassword
-    ? hashPassword(trimmedPassword)
-    : existingUser?.password || null;
-  const provisionalUser = syncMemberStatusWithFees({
-    username: existingUser?.username ?? trimmedUsername,
-    rfid_tag: trimmedRfidTag || null,
-    active_member: normalizedActiveMember ? 1 : 0,
-    membership_fees_due: normalizedMembershipFeesDue,
-    coaching_volunteer: normalizedCoachingVolunteer ? 1 : 0,
-  });
-
-  const userPayload = {
-    username: provisionalUser.username,
-    firstName: trimmedFirstName,
-    surname: trimmedSurname,
-    password: passwordToSave,
-    rfidTag: provisionalUser.rfid_tag,
-    activeMember: provisionalUser.active_member,
-    membershipFeesDue: provisionalUser.membership_fees_due,
-    coachingVolunteer: provisionalUser.coaching_volunteer,
-  };
-
-  try {
-    await memberProfileGateway.saveMemberProfile({
-      disciplines: normalizedDisciplines,
-      loanBow: normalizedLoanBow,
-      userPayload,
-      userType,
-    });
-
-    const savedUser = await memberAuthGateway.findUserByUsername(userPayload.username);
-    const savedLoanBow = await memberProfileGateway.findLoanBowByUsername(
-      userPayload.username,
-    );
-
-    return {
-      success: true,
-      editableProfile: buildEditableMemberProfile(
-        savedUser,
-        normalizedDisciplines,
-        savedLoanBow,
-      ),
-      userProfile: buildMemberUserProfile(savedUser, normalizedDisciplines),
-    };
-  } catch (error) {
-    if (
-      error?.message?.includes("UNIQUE constraint failed: users.rfid_tag") ||
-      error?.message?.includes("duplicate key value violates unique constraint")
-    ) {
-      return {
-        success: false,
-        status: 409,
-        message: "That RFID tag is already assigned to another member.",
-      };
-    }
-
-    return {
-      success: false,
-      status: 500,
-      message: "Unable to save the member profile.",
-    };
-  }
 }
 
 function toUtcDateString(date) {
@@ -3697,7 +3347,8 @@ registerAuthRoutes({
   latestRfidScan,
   memberAuthGateway,
   rfidReaderStatus,
-  syncMemberStatusWithFees,
+  syncMemberStatusWithFees: (...args) =>
+    memberPersistenceService.syncMemberStatusWithFees(...args),
   clearCsrfCookie: csrfProtection.clearCookie,
   clearSessionCookie,
   createCsrfCookie: csrfProtection.createCookie,
@@ -3730,7 +3381,7 @@ registerAdminMemberRoutes({
   sanitizeLoanBow,
   sanitizeLoanBowReturn,
   saveLoanBowRecord,
-  saveMemberProfile,
+  saveMemberProfile: (...args) => memberPersistenceService.saveMemberProfile(...args),
   TOURNAMENT_TYPE_OPTIONS,
 });
 
@@ -4153,7 +3804,7 @@ app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
     sanitized.value.surname,
   );
   const [date, time] = getUtcTimestampParts();
-  const userResult = await saveMemberProfile({
+  const userResult = await memberPersistenceService.saveMemberProfile({
     username,
     firstName: sanitized.value.firstName,
     surname: sanitized.value.surname,
@@ -4351,7 +4002,7 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
   }
 
   if (existingUser.user_type === "beginner") {
-    const conversionResult = await saveMemberProfile({
+    const conversionResult = await memberPersistenceService.saveMemberProfile({
       username: existingUser.username,
       firstName: existingUser.first_name,
       surname: existingUser.surname,
@@ -4432,9 +4083,11 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
     req.body?.caseId === "" || req.body?.caseId == null
       ? null
       : Number.parseInt(req.body.caseId, 10);
-  const nextCase = nextCaseId ? findEquipmentItemById.get(nextCaseId) : null;
+  const nextCase = nextCaseId
+    ? await equipmentGateway.findEquipmentItemById(nextCaseId)
+    : null;
   const currentCase = participant.assigned_case_id
-    ? findEquipmentItemById.get(participant.assigned_case_id)
+    ? await equipmentGateway.findEquipmentItemById(participant.assigned_case_id)
     : null;
   const [date, time] = getUtcTimestampParts();
 
@@ -4460,7 +4113,7 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
     }
 
     if (
-      findOpenEquipmentLoanByItemId.get(nextCase.id) &&
+      await equipmentGateway.findOpenEquipmentLoanByItemId(nextCase.id) &&
       nextCase.location_member_username !== participant.username
     ) {
       res.status(400).json({
@@ -4471,43 +4124,43 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
     }
   }
 
-  const assignTransaction = db.transaction(() => {
-    const clearLegacyCaseLoans = (caseItem) => {
-      if (!caseItem) {
-        return;
-      }
+  const clearLegacyCaseLoans = async (caseItem) => {
+    if (!caseItem) {
+      return;
+    }
 
-      const openCaseLoan = findOpenEquipmentLoanByItemId.get(caseItem.id);
-      const relatedOpenLoans = listOpenEquipmentLoansByCaseId.all(caseItem.id);
+    const openCaseLoan = await equipmentGateway.findOpenEquipmentLoanByItemId(caseItem.id);
+    const relatedOpenLoans = await equipmentGateway.listOpenEquipmentLoansByCaseId(caseItem.id);
 
-      if (openCaseLoan) {
-        closeEquipmentLoan.run(
-          actor.username,
-          date,
-          time,
-          EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-          DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
-          null,
-          openCaseLoan.id,
-        );
-      }
+    if (openCaseLoan) {
+      await equipmentGateway.closeEquipmentLoan({
+        id: openCaseLoan.id,
+        returnCaseId: null,
+        returnLocationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
+        returnLocationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
+        returnedAtDate: date,
+        returnedAtTime: time,
+        returnedByUsername: actor.username,
+      });
+    }
 
-      for (const loan of relatedOpenLoans) {
-        closeEquipmentLoan.run(
-          actor.username,
-          date,
-          time,
-          EQUIPMENT_LOCATION_TYPES.CASE,
-          null,
-          caseItem.id,
-          loan.id,
-        );
-      }
-    };
+    for (const loan of relatedOpenLoans) {
+      await equipmentGateway.closeEquipmentLoan({
+        id: loan.id,
+        returnCaseId: caseItem.id,
+        returnLocationLabel: null,
+        returnLocationType: EQUIPMENT_LOCATION_TYPES.CASE,
+        returnedAtDate: date,
+        returnedAtTime: time,
+        returnedByUsername: actor.username,
+      });
+    }
+  };
 
+  try {
     if (currentCase && (!nextCase || currentCase.id !== nextCase.id)) {
-      clearLegacyCaseLoans(currentCase);
-      updateEquipmentItemStorage.run({
+      await clearLegacyCaseLoans(currentCase);
+      await equipmentGateway.updateEquipmentItemStorage({
         id: currentCase.id,
         locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
         locationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
@@ -4520,8 +4173,8 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
     }
 
     if (nextCase) {
-      clearLegacyCaseLoans(nextCase);
-      updateEquipmentItemStorage.run({
+      await clearLegacyCaseLoans(nextCase);
+      await equipmentGateway.updateEquipmentItemStorage({
         id: nextCase.id,
         locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
         locationLabel: null,
@@ -4531,7 +4184,7 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
         storageAtDate: date,
         storageAtTime: time,
       });
-      updateEquipmentAssignmentMetadata.run({
+      await equipmentGateway.updateEquipmentAssignmentMetadata({
         id: nextCase.id,
         assignedByUsername: actor.username,
         assignedAtDate: date,
@@ -4539,17 +4192,13 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
       });
     }
 
-    beginnersCourseWriteGateway.updateParticipantCase({
+    await beginnersCourseWriteGateway.updateParticipantCase({
       actorUsername: actor.username,
       assignedAtDate: date,
       assignedAtTime: time,
       assignedCaseId: nextCase?.id ?? null,
       participantId: participant.id,
     });
-  });
-
-  try {
-    assignTransaction();
   } catch (error) {
     res.status(400).json({
       success: false,
@@ -4804,7 +4453,7 @@ registerMemberActivityRoutes({
   buildTournamentDataMaps,
   buildUsageWindow,
   getActorUser,
-  listTournaments: async () => listTournaments.all(),
+  listTournaments: async () => tournamentGateway.listTournaments(),
   PERMISSIONS,
   startOfUtcDay,
   toUtcDateString,

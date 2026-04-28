@@ -1,8 +1,9 @@
 # PostgreSQL Migration Plan
 
-This repository now has environment and bootstrap support for selecting a
-PostgreSQL runtime connection, but the application logic is still implemented
-through SQLite-specific statements embedded in `server/index.js`.
+This repository now has environment, bootstrap, and cutover-tooling support for
+selecting a PostgreSQL runtime connection. The main remaining work is no longer
+basic engine wiring; it is staging verification, route-parity confidence, and
+deployment rollout.
 
 ## What Is Already Done
 
@@ -78,8 +79,9 @@ through SQLite-specific statements embedded in `server/index.js`.
   `bootstrapSqliteCourseScheduleCompatibility`.
 - PostgreSQL now has a startup migration runner in
   `runPostgresMigrations`, which creates the base schema plus permission,
-  role, committee-role, and default equipment-location seed data before the
-  remaining Postgres safety guard stops the server.
+  role, committee-role, equipment-location, and initial user seed data.
+- PostgreSQL startup now runs through `bootstrapPersistence`, so Postgres skips
+  all SQLite-only schema-compatibility bootstrap paths cleanly.
 - The remaining SQLite query layer is also starting to move out of
   `server/index.js`; beginner-course statements now live in
   `createSqliteBeginnersCourseStatements`.
@@ -101,21 +103,28 @@ through SQLite-specific statements embedded in `server/index.js`.
 - `server/index.js` no longer prepares SQLite statements directly with
   `db.prepare(...)`; its remaining PostgreSQL blockers are now higher-level
   helpers and startup flows rather than inline statement definitions.
-- The server now fails fast with a clear message if PostgreSQL is configured
-  before the remaining query layer is migrated.
+- Membership-fee status syncing and member-profile save orchestration now run
+  through `memberPersistenceService`, so the remaining mixed sync/async helper
+  logic is no longer embedded in `server/index.js`.
+- The auth routes now await membership-status synchronization, which removes the
+  last SQLite-era sync assumption from those flows.
+- A SQLite-to-PostgreSQL cutover script now exists at
+  `scripts/migrateSqliteToPostgres.mjs`, with a package script entry
+  `npm run migrate:postgres`.
+- The SQLite-specific SQL still present in the codebase is now isolated to the
+  SQLite bootstrap and compatibility modules rather than the PostgreSQL runtime
+  path.
 
 ## Remaining Work
 
-1. Finish splitting startup/bootstrap so PostgreSQL can skip all SQLite-only
-   initialization paths cleanly.
-2. Replace remaining synchronous SQLite helper access and mixed transaction
-   logic in `server/index.js` with async repository or gateway calls.
-3. Replace SQLite-specific SQL, including:
-   - `PRAGMA table_info(...)`
-   - `sqlite_master`
-   - `INSERT OR IGNORE`
-   - `INTEGER PRIMARY KEY AUTOINCREMENT`
-4. Add a data migration path from SQLite to PostgreSQL for live cutover.
+1. Boot and exercise the full server with `DATABASE_ENGINE=postgres` in a real
+   staging environment.
+2. Add broader route-parity coverage so feature behavior is verified against
+   PostgreSQL, not just the migration/bootstrap helpers.
+3. Keep future PostgreSQL schema changes in numbered migrations instead of
+   extending only the initial migration bootstrap.
+4. Decide when to retire or freeze the SQLite compatibility modules after live
+   PostgreSQL cutover.
 
 ## Recommended Order
 
@@ -126,3 +135,78 @@ through SQLite-specific statements embedded in `server/index.js`.
    blockers iteratively.
 4. Enable PostgreSQL in a staging environment only after route parity tests
    pass.
+
+## Working Checklist
+
+### 1. Bootstrap and startup
+
+- [x] Add a PostgreSQL user/bootstrap path for empty databases.
+- [x] Decide what should be seeded in PostgreSQL for development versus live:
+  demo users, developer account, committee roles, and any default reference
+  data.
+- [x] Move SQLite-only startup concerns behind a clearly named SQLite bootstrap
+  branch so `server/index.js` stops assembling unused SQLite helpers in
+  PostgreSQL mode.
+- [x] Remove or shrink the `createUnsupportedPreparedStatement*` fallbacks once
+  the Postgres path no longer depends on SQLite statement wiring.
+- [ ] Confirm the server can boot with `DATABASE_ENGINE=postgres` and an empty
+  database without manual SQL steps.
+
+### 2. Service and gateway cleanup
+
+- [x] Move remaining cross-engine business logic out of `server/index.js` and
+  into focused services or gateways where practical.
+- [x] Review helpers that still coordinate persistence across multiple concerns,
+  especially member-profile saves and membership-fee status sync.
+- [x] Replace any remaining mixed sync/async persistence assumptions with fully
+  async repository or gateway calls.
+- [x] Re-check route registration modules after cleanup so they depend on
+  engine-agnostic interfaces only.
+
+### 3. Schema and migration coverage
+
+- [x] Verify `runPostgresMigrations` covers every table and index needed by the
+  current app features.
+- [ ] Add new numbered PostgreSQL migrations for future schema changes instead
+  of growing the initial migration forever.
+- [x] Audit remaining SQLite-only compatibility modules and confirm they are
+  isolated to SQLite startup only.
+- [ ] Document which SQLite compatibility files can eventually be retired after
+  production cutover.
+
+### 4. Data cutover tooling
+
+- [x] Create a one-way export/import script to copy live SQLite data into
+  PostgreSQL.
+- [x] Migrate all current domains: users, roles, permissions, disciplines, loan
+  bows, login events, guest logins, schedule/events, tournaments, equipment,
+  beginners courses, and distance sign-offs.
+- [x] Preserve key relationships during import, including username-based and
+  user-id-based references.
+- [x] Reset PostgreSQL sequences after import so future inserts do not collide
+  with imported ids.
+- [x] Add a dry-run mode and logging so the cutover can be rehearsed safely.
+- [ ] Write a rollback/recovery note for failed imports or partial cutovers.
+
+### 5. Verification and parity testing
+
+- [ ] Add automated tests that boot the app with `DATABASE_ENGINE=postgres`.
+- [ ] Add route-level parity coverage for auth, member profiles, roles,
+  committee roles, schedule, tournaments, equipment, reporting, and
+  beginners-course flows.
+- [x] Add migration-runner tests beyond the current schema bootstrap coverage.
+- [ ] Run a manual smoke test against PostgreSQL covering login, profile edits,
+  bookings, approvals, equipment loans, and beginner-course operations.
+- [ ] Stand up a staging environment on PostgreSQL before switching any live
+  deployment.
+
+### 6. Documentation and rollout
+
+- [ ] Update `README.md` once PostgreSQL is a supported runtime rather than a
+  partial migration target.
+- [ ] Add a deployment runbook covering required environment variables,
+  migration execution, and cutover steps.
+- [ ] Document backup expectations for both the source SQLite database and the
+  target PostgreSQL database before migration.
+- [ ] Define the final go-live checklist: backup taken, import run, smoke tests
+  passed, and old SQLite writes disabled.

@@ -64,5 +64,14 @@ await import(
   pathToFileURL(path.join(root, "server/observability/securityEventLogger.test.js"))
 );
 await import(
+  pathToFileURL(path.join(root, "server/infrastructure/persistence/runPostgresMigrations.test.js"))
+);
+await import(
+  pathToFileURL(path.join(root, "server/infrastructure/persistence/sqliteToPostgresMigration.test.js"))
+);
+await import(
+  pathToFileURL(path.join(root, "server/domain/services/memberPersistenceService.test.js"))
+);
+await import(
   pathToFileURL(path.join(root, "server/presentation/http/securedRoutes.test.js"))
 );

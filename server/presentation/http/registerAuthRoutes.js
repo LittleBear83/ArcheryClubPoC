@@ -43,7 +43,7 @@ export function registerAuthRoutes({
 
     const loginUser = await memberAuthGateway.findUserByCredentials(username);
     const isValidPassword = verifyPassword(password, loginUser?.password);
-    const user = syncMemberStatusWithFees(isValidPassword ? loginUser : null);
+    const user = await syncMemberStatusWithFees(isValidPassword ? loginUser : null);
 
     if (!user) {
       res.status(401).json({
@@ -102,10 +102,10 @@ export function registerAuthRoutes({
     }
 
     const user =
-      syncMemberStatusWithFees(await memberAuthGateway.findUserByRfid(rfidTag)) ??
-      syncMemberStatusWithFees(
+      (await syncMemberStatusWithFees(await memberAuthGateway.findUserByRfid(rfidTag))) ??
+      (await syncMemberStatusWithFees(
         await memberAuthGateway.findUserByRfid(getDeactivatedRfidTag(rfidTag)),
-      );
+      ));
 
     if (!user) {
       res.status(401).json({
@@ -160,14 +160,14 @@ export function registerAuthRoutes({
     latestRfidScan.deliveredSequence = latestRfidScan.sequence;
 
     const user =
-      syncMemberStatusWithFees(
+      (await syncMemberStatusWithFees(
         await memberAuthGateway.findUserByRfid(latestRfidScan.rfidTag),
-      ) ??
-      syncMemberStatusWithFees(
+      )) ??
+      (await syncMemberStatusWithFees(
         await memberAuthGateway.findUserByRfid(
           getDeactivatedRfidTag(latestRfidScan.rfidTag),
         ),
-      );
+      ));
 
     if (!user) {
       res.status(401).json({
@@ -237,7 +237,7 @@ export function registerAuthRoutes({
       return;
     }
 
-    const user = syncMemberStatusWithFees(
+    const user = await syncMemberStatusWithFees(
       await memberAuthGateway.findUserByUsername(sessionUsername),
     );
 

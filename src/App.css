@@ -1505,6 +1505,33 @@ button:disabled {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.role-permissions-delete-button {
+  margin-top: 0;
+}
+
+.role-permissions-disabled-hint {
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.role-delete-modal {
+  display: grid;
+  gap: 14px;
+}
+
+.role-delete-modal p {
+  margin: 0;
+}
+
+.role-delete-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .role-permissions-group-grid {

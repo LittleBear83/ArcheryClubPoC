@@ -5,5 +5,8 @@ export abstract class RoleRepository {
 
   abstract updateRole(actorUsername: string, roleKey: string, roleDefinition: unknown): Promise<unknown>;
 
-  abstract deleteRole(actorUsername: string, roleKey: string): Promise<void>;
+  abstract deleteRole(
+    actorUsername: string,
+    roleKey: string,
+  ): Promise<{ deletedRoleKey: string; reassignedUserCount: number }>;
 }

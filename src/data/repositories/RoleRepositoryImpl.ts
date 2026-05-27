@@ -11,7 +11,10 @@ type RoleDataSource = {
     roleKey: string,
     roleDefinition: unknown,
   ): Promise<{ role: unknown }>;
-  deleteRole(actorUsername: string, roleKey: string): Promise<void>;
+  deleteRole(
+    actorUsername: string,
+    roleKey: string,
+  ): Promise<{ deletedRoleKey: string; reassignedUserCount: number }>;
 };
 
 // Role repository responses are normalized so screens can work with arrays even
@@ -44,6 +47,6 @@ export class RoleRepositoryImpl extends RoleRepository {
   }
 
   async deleteRole(actorUsername, roleKey) {
-    await this.dataSource.deleteRole(actorUsername, roleKey);
+    return this.dataSource.deleteRole(actorUsername, roleKey);
   }
 }

@@ -5,6 +5,7 @@ export const PERMISSIONS = {
   MANAGE_MEMBER_DISCIPLINES: "manage_member_disciplines",
   SIGN_OFF_DISTANCES: "sign_off_distances",
   MANAGE_ROLES_PERMISSIONS: "manage_roles_permissions",
+  DELETE_ROLES: "delete_roles",
   MANAGE_COMMITTEE_ROLES: "manage_committee_roles",
   ADD_EVENTS: "add_events",
   APPROVE_EVENTS: "approve_events",
@@ -46,6 +47,11 @@ export const PERMISSION_DEFINITIONS = [
     key: PERMISSIONS.MANAGE_ROLES_PERMISSIONS,
     label: "Manage Roles And Permissions",
     description: "Create roles and assign permission sets.",
+  },
+  {
+    key: PERMISSIONS.DELETE_ROLES,
+    label: "Delete Roles",
+    description: "Delete roles and revert assigned members back to general.",
   },
   {
     key: PERMISSIONS.MANAGE_COMMITTEE_ROLES,

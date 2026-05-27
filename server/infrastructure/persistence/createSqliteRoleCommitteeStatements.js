@@ -63,6 +63,12 @@ export function createSqliteRoleCommitteeStatements(db) {
     WHERE role_key = ?
   `);
 
+  const reassignUsersByRoleKey = db.prepare(`
+    UPDATE user_types
+    SET user_type = ?
+    WHERE user_type = ?
+  `);
+
   const countUsersByRoleKey = db.prepare(`
     SELECT COUNT(*) AS count
     FROM user_types
@@ -173,6 +179,7 @@ export function createSqliteRoleCommitteeStatements(db) {
     listPermissionDefinitions,
     listRoleDefinitions,
     listRolePermissionKeysByRoleKey,
+    reassignUsersByRoleKey,
     updateCommitteeRoleDetails,
     updateRoleDefinition,
     upsertRole,

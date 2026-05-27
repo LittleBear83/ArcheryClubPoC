@@ -5,6 +5,7 @@ const ROLE_PERMISSION_FALLBACKS = {
   admin: [
     "manage_members",
     "manage_roles_permissions",
+    "delete_roles",
     "manage_committee_roles",
     "add_events",
     "approve_events",
@@ -26,6 +27,7 @@ const ROLE_PERMISSION_FALLBACKS = {
   developer: [
     "manage_members",
     "manage_roles_permissions",
+    "delete_roles",
     "manage_committee_roles",
     "add_events",
     "approve_events",

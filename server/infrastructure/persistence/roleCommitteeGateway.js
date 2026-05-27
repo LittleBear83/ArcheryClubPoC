@@ -26,6 +26,12 @@ function normalizeCountRow(row, key = "count") {
   };
 }
 
+function normalizeCountLikeResult(result) {
+  return {
+    changes: Number(result?.changes ?? result?.rowCount ?? 0),
+  };
+}
+
 function createSqliteRoleCommitteeGateway({
   countUsersByRoleKey,
   deleteCommitteeRoleById,
@@ -41,6 +47,7 @@ function createSqliteRoleCommitteeGateway({
   listPermissionDefinitions,
   listRoleDefinitions,
   listRolePermissionKeysByRoleKey,
+  reassignUsersByRoleKey,
   updateCommitteeRoleDetails,
   updateRoleDefinition,
   upsertRole,
@@ -66,9 +73,16 @@ function createSqliteRoleCommitteeGateway({
     async deleteCommitteeRoleById(id) {
       deleteCommitteeRoleById.run(id);
     },
-    async deleteRole(roleKey) {
+    async deleteRole(roleKey, replacementRoleKey) {
+      const reassignedUsers = normalizeCountLikeResult(
+        reassignUsersByRoleKey.run(replacementRoleKey, roleKey),
+      );
       deleteRolePermissionsByRoleKey.run(roleKey);
       deleteRoleDefinition.run(roleKey);
+
+      return {
+        reassignedUserCount: reassignedUsers.changes,
+      };
     },
     async findCommitteeRoleById(id) {
       return normalizeCommitteeRoleRow(findCommitteeRoleById.get(id));
@@ -191,11 +205,19 @@ function createPostgresRoleCommitteeGateway({ pool }) {
         [id],
       );
     },
-    async deleteRole(roleKey) {
+    async deleteRole(roleKey, replacementRoleKey) {
       const client = await pool.connect();
 
       try {
         await client.query("BEGIN");
+        const reassignedUsers = await client.query(
+          `
+            UPDATE user_types
+            SET user_type = $1
+            WHERE user_type = $2
+          `,
+          [replacementRoleKey, roleKey],
+        );
         await client.query(
           `
             DELETE FROM role_permissions
@@ -211,6 +233,10 @@ function createPostgresRoleCommitteeGateway({ pool }) {
           [roleKey],
         );
         await client.query("COMMIT");
+
+        return {
+          reassignedUserCount: Number(reassignedUsers.rowCount ?? 0),
+        };
       } catch (error) {
         await client.query("ROLLBACK");
         throw error;

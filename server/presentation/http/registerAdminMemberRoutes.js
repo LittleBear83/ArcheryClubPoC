@@ -281,7 +281,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    if (!actorHasPermission(actor, PERMISSIONS.MANAGE_ROLES_PERMISSIONS)) {
+    if (!actorHasPermission(actor, PERMISSIONS.DELETE_ROLES)) {
       res.status(403).json({
         success: false,
         message: "You do not have permission to delete roles.",
@@ -308,23 +308,23 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const assignedUserCount =
-      (await roleCommitteeGateway.countUsersByRoleKey(roleKey))?.count ?? 0;
+    const fallbackRole = await roleCommitteeGateway.findRoleDefinitionByKey("general");
 
-    if (assignedUserCount > 0) {
-      res.status(409).json({
+    if (!fallbackRole) {
+      res.status(500).json({
         success: false,
-        message: "This role is still assigned to members and cannot be deleted.",
+        message: "The fallback general role could not be found.",
       });
       return;
     }
 
-    await roleCommitteeGateway.deleteRole(roleKey);
+    const deleteResult = await roleCommitteeGateway.deleteRole(roleKey, "general");
     await refreshRoleAccessSnapshot();
 
     res.json({
       success: true,
       deletedRoleKey: roleKey,
+      reassignedUserCount: deleteResult?.reassignedUserCount ?? 0,
     });
   });
 

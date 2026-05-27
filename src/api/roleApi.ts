@@ -25,9 +25,12 @@ export class RoleApi {
   }
 
   async deleteRole(actorUsername: string, roleKey: string) {
-    await fetchApi(`/api/roles/${roleKey}`, {
+    return fetchApi<{ success: true; deletedRoleKey: string; reassignedUserCount: number }>(
+      `/api/roles/${roleKey}`,
+      {
       method: "DELETE",
       headers: buildActorHeaders(actorUsername),
-    });
+      },
+    );
   }
 }

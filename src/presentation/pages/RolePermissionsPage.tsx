@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { LabeledSelect } from "../components/LabeledSelect";
+import { Modal } from "../components/Modal";
 import { hasPermission } from "../../utils/userProfile";
 import type { PermissionOption, Role } from "../../domain/entities/Role";
 
@@ -64,6 +65,7 @@ function getPermissionGroup(permissionKey: string): PermissionGroupKey {
     case "manage_tournaments":
       return "events-coaching";
     case "manage_roles_permissions":
+    case "delete_roles":
     case "manage_equipment_storage_locations":
     case "view_reports":
       return "system-admin";
@@ -83,6 +85,7 @@ export function RolePermissionsPage({
   const [isCreating, setIsCreating] = useState(false);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -90,6 +93,7 @@ export function RolePermissionsPage({
     currentUserProfile,
     "manage_roles_permissions",
   );
+  const canDeleteRoles = hasPermission(currentUserProfile, "delete_roles");
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const queryClient = useQueryClient();
 
@@ -122,6 +126,19 @@ export function RolePermissionsPage({
       roles.find((role) => role.roleKey === effectiveSelectedRoleKey) ?? null,
     [effectiveSelectedRoleKey, roles],
   );
+  const canShowDeleteRoleButton = useMemo(() => {
+    if (!selectedRole || isCreating || !canDeleteRoles) {
+      return false;
+    }
+
+    const protectedRoleKeys = new Set(["admin", "developer"]);
+    const normalizedRoleKey = selectedRole.roleKey.trim().toLowerCase();
+    const normalizedTitle = selectedRole.title.trim().toLowerCase();
+
+    return !protectedRoleKeys.has(normalizedRoleKey) &&
+      normalizedTitle !== "admin" &&
+      normalizedTitle !== "developer";
+  }, [canDeleteRoles, isCreating, selectedRole]);
   const groupedPermissionOptions = useMemo(() => {
     const groupedPermissions = new Map<PermissionGroupKey, PermissionOption[]>(
       PERMISSION_GROUP_ORDER.map((groupKey) => [groupKey, []]),
@@ -140,6 +157,17 @@ export function RolePermissionsPage({
       permissions: groupedPermissions.get(groupKey) ?? [],
     })).filter((group) => group.permissions.length > 0);
   }, [permissionOptions]);
+  const deleteRoleDisabledReason = useMemo(() => {
+    if (!selectedRole || isCreating) {
+      return "";
+    }
+
+    if (isSaving) {
+      return "Please wait while the current role update finishes.";
+    }
+
+    return "";
+  }, [isCreating, isSaving, selectedRole]);
 
   useEffect(() => {
     const refresh = () => {
@@ -298,8 +326,14 @@ export function RolePermissionsPage({
       setError("");
       setMessage("");
     },
-    onSuccess: async () => {
-      setMessage("Role deleted successfully.");
+    onSuccess: async (result) => {
+      const reassignedUserCount = result?.reassignedUserCount ?? 0;
+      setMessage(
+        reassignedUserCount > 0
+          ? `Role deleted successfully. ${reassignedUserCount} member${reassignedUserCount === 1 ? "" : "s"} reverted to general members.`
+          : "Role deleted successfully.",
+      );
+      setIsDeleteModalOpen(false);
       setSelectedRoleKey("");
       setIsFormDirty(false);
       window.dispatchEvent(new Event("profile-data-updated"));
@@ -323,12 +357,6 @@ export function RolePermissionsPage({
 
   const handleDeleteRole = async () => {
     if (!selectedRole) {
-      return;
-    }
-
-    const confirmed = window.confirm(`Delete role '${selectedRole.title}'?`);
-
-    if (!confirmed) {
       return;
     }
 
@@ -462,23 +490,25 @@ export function RolePermissionsPage({
                     : "Save role"}
               </Button>
 
-              {!isCreating && selectedRole && !selectedRole.isSystem ? (
+              {canShowDeleteRoleButton ? (
                 <Button
                   type="button"
-                  className="event-cancel-button"
-                  onClick={handleDeleteRole}
-                  disabled={isSaving || selectedRole.assignedUserCount > 0}
-                  title={
-                    selectedRole.assignedUserCount > 0
-                      ? "Remove users from this role before deleting it."
-                      : "Delete role"
-                  }
+                  className="role-permissions-delete-button"
+                  onClick={() => setIsDeleteModalOpen(true)}
+                  disabled={Boolean(deleteRoleDisabledReason)}
+                  title={deleteRoleDisabledReason || "Delete role"}
                   variant="danger"
                 >
                   Delete role
                 </Button>
               ) : null}
             </div>
+
+            {canShowDeleteRoleButton && deleteRoleDisabledReason ? (
+              <p className="role-permissions-disabled-hint">
+                {deleteRoleDisabledReason}
+              </p>
+            ) : null}
 
             <fieldset className="profile-discipline-fieldset">
               <legend>Roles vs Permissions</legend>
@@ -533,6 +563,47 @@ export function RolePermissionsPage({
           </form>
         </section>
       ) : null}
+
+      <Modal
+        open={isDeleteModalOpen}
+        onClose={() => {
+          if (isSaving) {
+            return;
+          }
+
+          setIsDeleteModalOpen(false);
+        }}
+        title="Delete Role"
+      >
+        {selectedRole ? (
+          <div className="role-delete-modal">
+            <p>
+              Deleting <strong>{selectedRole.title}</strong> will revert{" "}
+              <strong>{selectedRole.assignedUserCount}</strong> member
+              {selectedRole.assignedUserCount === 1 ? "" : "s"} to general members.
+            </p>
+            <p>Do you want to continue?</p>
+            <div className="role-delete-modal-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={isSaving}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => void handleDeleteRole()}
+                disabled={isSaving}
+              >
+                {isSaving ? "Confirming..." : "Confirm"}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

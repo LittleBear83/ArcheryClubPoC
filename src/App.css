@@ -2912,7 +2912,57 @@ button:disabled {
 }
 
 @media (max-width: 640px) {
+  .approvals-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .approvals-panel {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .approvals-card {
+    padding: 14px;
+  }
+
+  .approvals-card-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .approvals-card-actions .app-button,
+  .approvals-card-actions button,
+  .approvals-reject-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .committee-admin-selector {
+    margin-bottom: 14px;
+  }
+
+  .committee-admin-selector-field {
+    max-width: none;
+  }
+
   .committee-admin-editor {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .committee-admin-card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .committee-admin-photo-column {
+    justify-items: start;
+  }
+
+  .committee-admin-actions {
+    display: grid;
     grid-template-columns: 1fr;
   }
 
@@ -3604,7 +3654,7 @@ button:disabled {
   .target-arch-banner {
     min-height: auto;
     height: auto;
-    padding: 12px 0 0;
+    padding: 12px 0 10px;
   }
 
   .target-arch-banner .menu-button {
@@ -3620,23 +3670,24 @@ button:disabled {
     padding:
       calc(var(--logo-size) + 28px)
       12px
-      0
+      12px
       clamp(88px, 24vw, 116px);
   }
 
   .page-toolbar {
     height: auto;
-    padding: 0;
+    padding: 0 12px;
+    margin-top: 0;
   }
 
   .page-toolbar-content {
     justify-content: flex-end;
     padding-right: 0;
-    transform: translate(18px, -26px);
+    transform: none;
   }
 
   .page-shell {
-    padding-top: calc(var(--section-gap) + 4rem);
+    padding-top: 18px;
   }
 
   .page-heading-group,
@@ -3649,6 +3700,18 @@ button:disabled {
   .role-title-field {
     max-width: none;
     min-width: 0;
+  }
+
+  .event-summary-panel,
+  .tournament-list-panel,
+  .tournament-summary-card,
+  .tournament-registrations-card,
+  .tournament-score-card,
+  .tournament-bracket-card,
+  .beginners-course-panel,
+  .beginners-course-subpanel {
+    padding: 14px;
+    border-radius: 14px;
   }
 
   .profile-form-grid,
@@ -3675,6 +3738,24 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .event-calendar-key {
+    gap: 8px 10px;
+  }
+
+  .event-key-item,
+  .event-key-filter {
+    width: 100%;
+  }
+
+  .event-summary-panel {
+    padding-top: 14px;
+  }
+
+  .event-summary-hint {
+    padding: 10px 12px;
+    font-size: 0.92rem;
+  }
+
   .tournament-primary-button,
   .tournament-secondary-button,
   .tournament-setup-button,
@@ -3695,19 +3776,19 @@ button:disabled {
     min-width: 0;
     margin-left: auto;
     margin-right: 0;
-    min-height: 12px;
-    padding: 1px 3px;
-    gap: 1px;
-    font-size: 0.63rem;
+    min-height: 24px;
+    padding: 4px 8px;
+    gap: 4px;
+    font-size: 0.72rem;
   }
 
   .theme-toggle-button strong {
-    font-size: 0.57rem;
+    font-size: 0.72rem;
     line-height: 1;
   }
 
   .theme-toggle-label {
-    font-size: 0.54rem;
+    font-size: 0.62rem;
     margin-right: 0;
   }
 
@@ -3734,7 +3815,7 @@ button:disabled {
   }
 
   .calendar-table {
-    min-width: 540px;
+    min-width: 520px;
   }
 
   .calendar-day-cell {
@@ -3746,6 +3827,70 @@ button:disabled {
   .event-calendar-layout-expanded .calendar-day-cell {
     height: auto;
     min-height: 140px;
+  }
+
+  .tournament-list-panel,
+  .tournament-detail-panel {
+    gap: 14px;
+  }
+
+  .tournament-list-item {
+    padding: 12px 14px;
+  }
+
+  .tournament-setup-header {
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .tournament-bracket-graphic {
+    gap: 22px;
+  }
+
+  .tournament-bracket-column,
+  .tournament-bracket-match {
+    min-width: 190px;
+  }
+
+  .beginners-course-page,
+  .beginners-course-list {
+    gap: 18px;
+  }
+
+  .beginners-course-panel,
+  .beginners-course-subpanel {
+    gap: 14px;
+  }
+
+  .beginners-course-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .beginners-course-header {
+    gap: 12px;
+  }
+
+  .beginners-course-row-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .beginners-course-row-action-button--edit,
+  .beginners-course-row-action-button--save,
+  .beginners-course-row-action-button--reset,
+  .beginners-course-row-action-button--convert {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .beginners-course-actions-heading,
+  .beginners-course-actions-cell {
+    width: 240px;
+    min-width: 240px;
+  }
+
+  .beginners-course-attendance-table {
+    min-width: 680px;
   }
 }
 
@@ -3766,12 +3911,12 @@ button:disabled {
     padding:
       calc(var(--logo-size) + 28px)
       10px
-      0
+      10px
       clamp(84px, 26vw, 104px);
   }
 
   .page-toolbar {
-    padding: 10px;
+    padding: 0 10px;
   }
 
   .page-shell,
@@ -3877,6 +4022,51 @@ button:disabled {
     border-radius: 14px;
   }
 
+  .equipment-page {
+    gap: 18px;
+  }
+
+  .equipment-action-card {
+    gap: 10px;
+  }
+
+  .equipment-action-card button,
+  .equipment-case-card button,
+  .equipment-table-toolbar input[type="search"] {
+    width: 100%;
+  }
+
+  .equipment-meta-copy {
+    font-size: 0.88rem;
+  }
+
+  .records-page-copy {
+    gap: 6px;
+  }
+
+  .records-page-copy h2 {
+    font-size: clamp(1.35rem, 1.15rem + 1.1vw, 1.7rem);
+    line-height: 1.1;
+  }
+
+  .records-page-panel,
+  .records-records-panel {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .records-records-panel h3 {
+    margin-bottom: 10px;
+  }
+
+  .records-page-panel-copy {
+    font-size: 0.92rem;
+  }
+
+  .records-score-table {
+    min-width: 640px;
+  }
+
   .profile-distance-signoff-table th,
   .profile-distance-signoff-table td {
     min-width: 92px;
@@ -3954,6 +4144,100 @@ button:disabled {
   .reporting-table,
   .profile-distance-signoff-table {
     font-size: 0.86rem;
+  }
+
+  .equipment-case-card,
+  .equipment-action-card {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .approvals-panel,
+  .approvals-card,
+  .committee-admin-card {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .approvals-card p,
+  .approvals-conflict-list,
+  .committee-admin-file-field {
+    font-size: 0.9rem;
+  }
+
+  .committee-admin-fields {
+    gap: 12px;
+  }
+
+  .event-summary-panel,
+  .tournament-list-panel,
+  .tournament-summary-card,
+  .tournament-registrations-card,
+  .tournament-score-card,
+  .tournament-bracket-card,
+  .beginners-course-panel,
+  .beginners-course-subpanel {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .event-key-item,
+  .event-key-filter,
+  .event-summary-panel p,
+  .tournament-registration-note,
+  .beginners-course-checkbox {
+    font-size: 0.9rem;
+  }
+
+  .calendar-table {
+    min-width: 500px;
+  }
+
+  .calendar-day-cell {
+    min-height: 148px;
+  }
+
+  .tournament-bracket-graphic {
+    gap: 18px;
+  }
+
+  .tournament-bracket-column,
+  .tournament-bracket-match {
+    min-width: 176px;
+  }
+
+  .beginners-course-actions-heading,
+  .beginners-course-actions-cell {
+    width: 220px;
+    min-width: 220px;
+  }
+
+  .beginners-course-attendance-table {
+    min-width: 640px;
+  }
+
+  .equipment-case-list {
+    gap: 8px 12px;
+    padding-left: 16px;
+  }
+
+  .records-page {
+    gap: 14px;
+  }
+
+  .records-page-copy h2 {
+    font-size: 1.28rem;
+  }
+
+  .records-page-panel-copy,
+  .records-page-note,
+  .records-records-table,
+  .records-score-table {
+    font-size: 0.9rem;
+  }
+
+  .records-score-table {
+    min-width: 600px;
   }
 
   .reporting-source-fieldset {
@@ -4724,6 +5008,7 @@ button:disabled {
   margin: 0;
   color: var(--muted);
   max-width: 62ch;
+  line-height: 1.5;
 }
 
 .records-records-panel {
@@ -4858,6 +5143,10 @@ button:disabled {
 }
 
 @media (max-width: 720px) {
+  .records-page {
+    gap: 16px;
+  }
+
   .beginners-course-header {
     flex-direction: column;
   }
@@ -4883,6 +5172,22 @@ button:disabled {
 
   .records-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .records-form {
+    gap: 14px;
+  }
+
+  .records-page-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .records-records-table th,
+  .records-records-table td,
+  .records-score-table th,
+  .records-score-table td {
+    padding: 9px 8px;
   }
 }
 

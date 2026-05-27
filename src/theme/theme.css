@@ -232,6 +232,35 @@
   }
 }
 
+@media (max-width: 640px) {
+  :root {
+    --page-gutter: 12px;
+    --section-gap: 18px;
+    --panel-padding: 14px;
+    --banner-height: 96px;
+    --logo-size: 72px;
+    --banner-title-offset: 0px;
+    --banner-title-width: min(100%, 18ch);
+    --banner-title-font-size: 1.95rem;
+    --drawer-width: min(320px, 92vw);
+    --dashboard-card-min: 100%;
+    --admin-card-min: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --page-gutter: 10px;
+    --section-gap: 16px;
+    --panel-padding: 12px;
+    --banner-height: 88px;
+    --logo-size: 64px;
+    --banner-title-width: min(100%, 16ch);
+    --banner-title-font-size: 1.8rem;
+    --drawer-width: min(300px, 94vw);
+  }
+}
+
 :root[data-theme="archery"] {
   color-scheme: dark;
 }

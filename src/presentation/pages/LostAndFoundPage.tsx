@@ -34,9 +34,9 @@ export function LostAndFoundPage() {
   };
 
   return (
-    <>
+    <div className="profile-page utility-form-page">
       <p>Register lost or found items.</p>
-      <form onSubmit={handleSubmit} className="left-align-form">
+      <form onSubmit={handleSubmit} className="left-align-form profile-form utility-form-card">
         <div className="radio-group">
           <strong>Type</strong>
           <div className="radio-options">
@@ -154,6 +154,6 @@ export function LostAndFoundPage() {
         <Button type="submit">Submit</Button>
       </form>
       {submitted ? <p className="profile-success">{submitted}</p> : null}
-    </>
+    </div>
   );
 }

@@ -1200,6 +1200,14 @@ button:disabled {
   gap: 18px;
 }
 
+.utility-form-page {
+  align-content: start;
+}
+
+.utility-form-card {
+  max-width: 760px;
+}
+
 .general-info-page {
   align-content: start;
 }
@@ -3702,6 +3710,29 @@ button:disabled {
     min-width: 0;
   }
 
+  .home-panel,
+  .member-panel,
+  .guest-panel,
+  .usage-filter-panel,
+  .committee-role-card,
+  .utility-form-card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .drawer-header-content {
+    gap: 10px;
+  }
+
+  .drawer-logo {
+    width: 64px;
+    height: 64px;
+  }
+
+  .drawer-user-name {
+    overflow-wrap: anywhere;
+  }
+
   .event-summary-panel,
   .tournament-list-panel,
   .tournament-summary-card,
@@ -3724,6 +3755,19 @@ button:disabled {
 
   .welcome-message {
     font-size: 1.3rem;
+  }
+
+  .home-panel-title {
+    font-size: 1.02rem;
+  }
+
+  .home-info-list {
+    padding-left: 18px;
+  }
+
+  .home-info-list li,
+  .range-members-list li {
+    margin-bottom: 6px;
   }
 
   .usage-hourly-row,
@@ -3891,6 +3935,22 @@ button:disabled {
 
   .beginners-course-attendance-table {
     min-width: 680px;
+  }
+
+  .loan-bow-status {
+    align-items: flex-start;
+  }
+
+  .loan-bow-status-copy {
+    font-size: 0.9rem;
+  }
+
+  .committee-role-card {
+    gap: 12px;
+  }
+
+  .committee-role-card-meta {
+    gap: 10px;
   }
 }
 
@@ -4187,6 +4247,48 @@ button:disabled {
   .tournament-registration-note,
   .beginners-course-checkbox {
     font-size: 0.9rem;
+  }
+
+  .home-panel,
+  .member-panel,
+  .guest-panel,
+  .usage-filter-panel,
+  .committee-role-card,
+  .utility-form-card {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .drawer-header {
+    padding-bottom: 12px;
+  }
+
+  .drawer-logo {
+    width: 56px;
+    height: 56px;
+  }
+
+  .drawer-user-label,
+  .drawer-user-name,
+  .drawer-section-label,
+  .side-drawer button {
+    font-size: 0.92rem;
+  }
+
+  .home-panel-title,
+  .committee-roles-title {
+    font-size: 1rem;
+  }
+
+  .home-info-list,
+  .range-members-list {
+    padding-left: 16px;
+  }
+
+  .loan-bow-status-copy,
+  .committee-role-card-cta,
+  .committee-role-assignment-label {
+    font-size: 0.88rem;
   }
 
   .calendar-table {

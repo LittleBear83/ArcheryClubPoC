@@ -14,9 +14,9 @@ export function FeedbackFormPage() {
   };
 
   return (
-    <>
+    <div className="profile-page utility-form-page">
       <p>Submit your feedback.</p>
-      <form onSubmit={handleSubmit} className="left-align-form">
+      <form onSubmit={handleSubmit} className="left-align-form profile-form utility-form-card">
         <label>
           Who is submitting (leave blank to be anonymous)
           <input
@@ -38,6 +38,6 @@ export function FeedbackFormPage() {
         <Button type="submit">Submit feedback</Button>
       </form>
       {submitted ? <p className="profile-success">{submitted}</p> : null}
-    </>
+    </div>
   );
 }

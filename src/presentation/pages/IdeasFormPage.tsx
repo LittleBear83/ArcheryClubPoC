@@ -23,9 +23,9 @@ export function IdeasFormPage() {
   };
 
   return (
-    <>
+    <div className="profile-page utility-form-page">
       <p>Share your ideas for the club.</p>
-      <form onSubmit={handleSubmit} className="left-align-form">
+      <form onSubmit={handleSubmit} className="left-align-form profile-form utility-form-card">
         <label>
           Who is submitting (leave blank to be anonymous)
           <input
@@ -73,6 +73,6 @@ export function IdeasFormPage() {
         <Button type="submit">Submit idea</Button>
       </form>
       {submitted ? <p className="profile-success">{submitted}</p> : null}
-    </>
+    </div>
   );
 }

@@ -38,6 +38,7 @@ const CSRF_EXCLUDED_PATHS = new Set([
   "/api/auth/rfid/latest-login",
   "/api/auth/guest-login",
 ]);
+const SERVICE_UNAVAILABLE_STATUSES = new Set([502, 503, 504]);
 
 let csrfTokenCache = "";
 
@@ -129,6 +130,12 @@ export async function fetchApi<T extends ApiEnvelope = ApiEnvelope & Record<stri
     const responseText = await response.text();
     const summary = responseText.trim().slice(0, 160);
     const statusLabel = `${response.status} ${response.statusText}`.trim();
+
+    if (SERVICE_UNAVAILABLE_STATUSES.has(response.status)) {
+      throw new Error(
+        "The API service is unavailable. Make sure the local server is running.",
+      );
+    }
 
     throw new Error(
       summary

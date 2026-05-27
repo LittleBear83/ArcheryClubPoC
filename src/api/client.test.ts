@@ -46,3 +46,17 @@ test("fetchApi explains non-JSON responses", async () => {
     /unexpected response \(404 Not Found\)/,
   );
 });
+
+test("fetchApi turns gateway failures into a service-unavailable message", async () => {
+  globalThis.fetch = async () =>
+    new Response("Bad Gateway", {
+      headers: { "content-type": "text/html" },
+      status: 502,
+      statusText: "Bad Gateway",
+    });
+
+  await assert.rejects(
+    () => fetchApi("/api/example"),
+    /API service is unavailable/,
+  );
+});

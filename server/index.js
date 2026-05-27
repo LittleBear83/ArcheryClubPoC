@@ -515,6 +515,51 @@ const {
   updateEquipmentItemStorage,
 } = sqliteEquipmentStatements ?? {};
 
+const sqliteScheduleTournamentStatements =
+  serverRuntime.databaseEngine === "sqlite"
+    ? createSqliteScheduleTournamentStatements(db)
+    : null;
+const {
+  approveClubEventById,
+  approveCoachingSessionById,
+  deleteBookingsByCoachingSessionId,
+  deleteBookingsByEventId,
+  deleteClubEventById,
+  deleteCoachingSessionById,
+  deleteCoachingSessionBooking,
+  deleteEventBooking,
+  deleteTournamentById,
+  deleteTournamentRegistration,
+  deleteTournamentRegistrationsByTournamentId,
+  deleteTournamentScoresByTournamentId,
+  findClubEventById,
+  findCoachingSessionById,
+  findMemberCoachingBookingsByUserId,
+  findMemberEventBookingsByUserId,
+  findTournamentById,
+  insertClubEvent,
+  insertCoachingSession,
+  insertCoachingSessionBooking,
+  insertEventBooking,
+  insertTournament,
+  insertTournamentRegistration,
+  listAllCoachingSessionBookings,
+  listAllEventBookings,
+  listAllTournamentRegistrations,
+  listAllTournamentScores,
+  listBookingsByCoachingSessionId,
+  listClubEvents,
+  listCoachingSessions,
+  listEventBookingsByEventId,
+  listTournamentRegistrationsByTournamentId,
+  listTournamentScoresByTournamentId,
+  listTournaments,
+  rejectClubEventById,
+  rejectCoachingSessionById,
+  updateTournamentById,
+  upsertTournamentScore,
+} = sqliteScheduleTournamentStatements ?? {};
+
 const equipmentGateway = createEquipmentGateway({
   closeEquipmentLoan,
   countEquipmentItemsByStorageLocation,
@@ -570,51 +615,6 @@ const {
   updateBeginnersCourseParticipant,
   updateBeginnersCourseParticipantCase,
 } = sqliteBeginnersCourseStatements ?? {};
-
-const sqliteScheduleTournamentStatements =
-  serverRuntime.databaseEngine === "sqlite"
-    ? createSqliteScheduleTournamentStatements(db)
-    : null;
-const {
-  approveClubEventById,
-  approveCoachingSessionById,
-  deleteBookingsByCoachingSessionId,
-  deleteBookingsByEventId,
-  deleteClubEventById,
-  deleteCoachingSessionById,
-  deleteCoachingSessionBooking,
-  deleteEventBooking,
-  deleteTournamentById,
-  deleteTournamentRegistration,
-  deleteTournamentRegistrationsByTournamentId,
-  deleteTournamentScoresByTournamentId,
-  findClubEventById,
-  findCoachingSessionById,
-  findMemberCoachingBookingsByUserId,
-  findMemberEventBookingsByUserId,
-  findTournamentById,
-  insertClubEvent,
-  insertCoachingSession,
-  insertCoachingSessionBooking,
-  insertEventBooking,
-  insertTournament,
-  insertTournamentRegistration,
-  listAllCoachingSessionBookings,
-  listAllEventBookings,
-  listAllTournamentRegistrations,
-  listAllTournamentScores,
-  listBookingsByCoachingSessionId,
-  listClubEvents,
-  listCoachingSessions,
-  listEventBookingsByEventId,
-  listTournamentRegistrationsByTournamentId,
-  listTournamentScoresByTournamentId,
-  listTournaments,
-  rejectClubEventById,
-  rejectCoachingSessionById,
-  updateTournamentById,
-  upsertTournamentScore,
-} = sqliteScheduleTournamentStatements ?? {};
 
 const tournamentGateway = createTournamentGateway({
   databaseEngine: serverRuntime.databaseEngine,

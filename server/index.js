@@ -70,11 +70,6 @@ import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRo
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
-
-const memberDistanceSignOffRepository = createMemberDistanceSignOffRepository(db, {
-  allowedDisciplines: ALLOWED_DISCIPLINES,
-  distanceYards: DISTANCE_SIGN_OFF_YARDS,
-});
 const SESSION_COOKIE_NAME = "archeryclubpoc_session";
 const SESSION_MAX_AGE_SECONDS = 8 * 60 * 60;
 const SESSION_SECRET =
@@ -189,6 +184,11 @@ const sqliteUserDataStatements = await bootstrapPersistence({
   permissionDefinitions: PERMISSION_DEFINITIONS,
   runtime: serverRuntime,
   systemRoleDefinitions: SYSTEM_ROLE_DEFINITIONS,
+});
+
+const memberDistanceSignOffRepository = createMemberDistanceSignOffRepository(db, {
+  allowedDisciplines: ALLOWED_DISCIPLINES,
+  distanceYards: DISTANCE_SIGN_OFF_YARDS,
 });
 
 function verifyPassword(password, storedPassword) {

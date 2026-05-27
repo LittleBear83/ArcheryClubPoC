@@ -24,6 +24,7 @@ import { RolePermissionsPage } from "./RolePermissionsPage";
 import { ReportingPage } from "./ReportingPage";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { GeneralInfoPage } from "./GeneralInfoPage";
+import { RecordsPage } from "./RecordsPage";
 import { formatDate } from "../../utils/dateTime";
 import {
   getMyBeginnerDashboard,
@@ -152,6 +153,7 @@ const pageTitleMap = {
   "feedback-form": "Feedback Form",
   "ideas-form": "Ideas Form",
   tournaments: "Tournaments",
+  records: "Records",
   "tournament-setup": "Tournament Setup",
   "committee-org-chart": "Committee Org Chart",
   "committee-admin": "Committee Admin",
@@ -174,6 +176,7 @@ const pathToPageId = {
   "/feedback-form": "feedback-form",
   "/ideas-form": "ideas-form",
   "/tournaments": "tournaments",
+  "/records": "records",
   "/tournament-setup": "tournament-setup",
   "/committee-org-chart": "committee-org-chart",
   "/committee-admin": "committee-admin",
@@ -621,6 +624,7 @@ export function HomePage({
                 />
               }
             />
+            <Route path="/records" element={<RecordsPage />} />
             <Route
               path="/tournament-setup"
               element={

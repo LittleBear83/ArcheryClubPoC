@@ -24,6 +24,12 @@ const pages = [
     path: "/tournaments",
     disabledForRoles: ["beginner"],
   },
+  {
+    id: "records",
+    label: "Records",
+    path: "/records",
+    disabledForRoles: ["beginner"],
+  },
   { id: "feedback-form", label: "Feedback Form", path: "/feedback-form" },
   { id: "ideas-form", label: "Ideas Form", path: "/ideas-form" },
   {

@@ -8,6 +8,14 @@ body {
   color: var(--text);
   font-family: var(--sans);
   font-size: var(--app-font-size);
+  overflow-x: hidden;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
 }
 
 .login-shell {
@@ -1574,6 +1582,19 @@ button:disabled {
 .role-permissions-checkbox-list {
   display: grid;
   gap: 10px;
+}
+
+.role-permissions-matrix {
+  border-collapse: separate;
+  border-spacing: 12px 0;
+}
+
+.role-permissions-matrix-cell {
+  padding: 8px;
+}
+
+.role-permissions-matrix-cell--center {
+  text-align: center;
 }
 
 .event-calendar-layout {
@@ -3630,6 +3651,14 @@ button:disabled {
     min-width: 0;
   }
 
+  .profile-form-grid,
+  .profile-discipline-grid,
+  .committee-role-modal-grid,
+  .equipment-case-modal-grid,
+  .beginners-course-form-grid {
+    grid-template-columns: 1fr;
+  }
+
   .welcome-message {
     font-size: 1.3rem;
   }
@@ -3745,6 +3774,21 @@ button:disabled {
     padding: 10px;
   }
 
+  .page-shell,
+  .page-shell--wide {
+    width: calc(100% - 16px);
+  }
+
+  .profile-discipline-fieldset,
+  .records-page-panel,
+  .records-records-panel,
+  .member-panel,
+  .guest-panel,
+  .usage-filter-panel {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
   .usage-graph {
     gap: 6px;
   }
@@ -3756,6 +3800,175 @@ button:disabled {
 
   .usage-graph-label {
     font-size: 0.68rem;
+  }
+}
+
+@media (max-width: 900px) {
+  .profile-admin-actions,
+  .profile-card-issue-actions,
+  .profile-distance-signoff-header,
+  .equipment-case-header {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .profile-distance-signoff-header {
+    gap: 12px;
+  }
+
+  .profile-distance-signoff-header p {
+    max-width: none;
+  }
+
+  .profile-distance-signoff-table th,
+  .profile-distance-signoff-table td {
+    min-width: 104px;
+  }
+
+  .profile-distance-signoff-table th:first-child,
+  .profile-distance-signoff-table td:first-child {
+    min-width: 136px;
+  }
+
+  .equipment-case-list {
+    grid-template-columns: 1fr;
+    padding-left: 18px;
+  }
+
+  .equipment-table-toolbar {
+    gap: 12px;
+  }
+
+  .equipment-inventory-table,
+  .committee-roles-table,
+  .reporting-table,
+  .profile-distance-signoff-table {
+    font-size: 0.92rem;
+  }
+
+  .equipment-inventory-table th,
+  .equipment-inventory-table td,
+  .committee-roles-table th,
+  .committee-roles-table td,
+  .reporting-table th,
+  .reporting-table td,
+  .profile-distance-signoff-table th,
+  .profile-distance-signoff-table td {
+    padding: 10px 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .role-permissions-group-grid,
+  .usage-cards,
+  .general-info-grid,
+  .home-split-view {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-admin-panel,
+  .profile-form,
+  .role-permissions-group-card,
+  .equipment-case-modal-group,
+  .usage-card,
+  .usage-hourly-panel {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .profile-distance-signoff-table th,
+  .profile-distance-signoff-table td {
+    min-width: 92px;
+  }
+
+  .profile-distance-signoff-table th:first-child,
+  .profile-distance-signoff-table td:first-child {
+    min-width: 124px;
+  }
+
+  .role-meta-copy,
+  .role-permissions-group-copy,
+  .profile-distance-signoff-cell span,
+  .profile-distance-signoff-empty,
+  .reporting-table-note {
+    font-size: 0.85rem;
+  }
+
+  .reporting-source-fieldset {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .reporting-source-label {
+    grid-column: 1 / -1;
+  }
+
+  .reporting-export-panel,
+  .reporting-export-panel .primary-button,
+  .reporting-export-panel button {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .role-permissions-matrix {
+    border-spacing: 6px 0;
+  }
+
+  .role-permissions-matrix-cell {
+    padding: 7px 6px;
+  }
+
+  .role-permissions-matrix th:first-child,
+  .role-permissions-matrix td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--surface-deep);
+  }
+
+  .role-permissions-matrix thead th:first-child {
+    z-index: 2;
+  }
+
+  .committee-roles-table,
+  .reporting-table,
+  .equipment-inventory-table,
+  .profile-distance-signoff-table {
+    min-width: max-content;
+  }
+}
+
+@media (max-width: 480px) {
+  .role-select-field select,
+  .role-title-field input,
+  .usage-filter-form label,
+  .reporting-source-label,
+  .reporting-source-fieldset .profile-checkbox {
+    font-size: 0.96rem;
+  }
+
+  .equipment-inventory-table,
+  .committee-roles-table,
+  .reporting-table,
+  .profile-distance-signoff-table {
+    font-size: 0.86rem;
+  }
+
+  .reporting-source-fieldset {
+    grid-template-columns: 1fr;
+  }
+
+  .equipment-inventory-table th,
+  .equipment-inventory-table td,
+  .committee-roles-table th,
+  .committee-roles-table td,
+  .reporting-table th,
+  .reporting-table td,
+  .profile-distance-signoff-table th,
+  .profile-distance-signoff-table td {
+    padding: 8px 6px;
   }
 }
 
@@ -4634,6 +4847,16 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.calendar-table-wrap,
+.committee-roles-table-wrap,
+.equipment-inventory-table-wrap,
+.records-records-table-wrap,
+.records-score-table-wrap,
+.reporting-table-wrap {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable both-edges;
+}
+
 @media (max-width: 720px) {
   .beginners-course-header {
     flex-direction: column;
@@ -4660,6 +4883,106 @@ button:disabled {
 
   .records-form-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .records-page-layout {
+    grid-template-columns: 1fr;
+    padding-top: 0;
+  }
+
+  .records-page-sidebar {
+    justify-content: stretch;
+  }
+
+  .records-records-panel {
+    width: 100%;
+  }
+
+  .page-shell,
+  .page-shell--wide {
+    width: calc(100% - 24px);
+  }
+
+  .page-content {
+    overflow-x: clip;
+  }
+
+  .role-permissions-toolbar,
+  .role-permissions-actions,
+  .records-page-actions,
+  .records-form-actions,
+  .role-delete-modal-actions,
+  .loan-bow-return-actions,
+  .event-modal-actions,
+  .event-multi-date-toolbar,
+  .equipment-table-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .role-select-field,
+  .role-title-field,
+  .reporting-filter-form > label {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    flex-basis: 100%;
+  }
+
+  .role-permissions-actions .app-button,
+  .records-page-actions .app-button,
+  .records-form-actions .app-button,
+  .role-delete-modal-actions .app-button,
+  .loan-bow-return-actions .app-button,
+  .event-modal-actions .app-button,
+  .equipment-table-toolbar .app-button,
+  .equipment-table-toolbar button {
+    width: 100%;
+  }
+
+  .reporting-filter-form {
+    display: grid;
+    grid-template-columns: 1fr;
+    min-width: 0;
+    gap: 14px;
+  }
+
+  .reporting-source-fieldset {
+    flex-wrap: wrap;
+    white-space: normal;
+    gap: 12px;
+    min-height: 0;
+    padding: 8px 0;
+  }
+
+  .reporting-export-panel {
+    justify-content: stretch;
+    min-height: 0;
+  }
+
+  .reporting-export-panel .primary-button,
+  .reporting-export-panel button,
+  .equipment-table-toolbar input[type="search"] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .equipment-inline-control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .equipment-action-card,
+  .equipment-case-card,
+  .reporting-panel {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .role-permissions-matrix {
+    border-spacing: 8px 0;
   }
 }
 

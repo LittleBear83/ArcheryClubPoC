@@ -513,18 +513,15 @@ export function RolePermissionsPage({
             <fieldset className="profile-discipline-fieldset">
               <legend>Roles vs Permissions</legend>
               <div className="committee-roles-table-wrap">
-                <table
-                  className="committee-roles-table"
-                  style={{
-                    borderCollapse: "separate",
-                    borderSpacing: "12px 0", // 👈 horizontal gap between columns
-                  }}
-                >
+                <table className="committee-roles-table role-permissions-matrix">
                   <thead>
                     <tr>
-                      <th style={{ padding: "8px" }}>Permission</th>
+                      <th className="role-permissions-matrix-cell">Permission</th>
                       {roles.map((role) => (
-                        <th key={role.roleKey} style={{ padding: "8px" }}>
+                        <th
+                          key={role.roleKey}
+                          className="role-permissions-matrix-cell"
+                        >
                           {role.title}
                         </th>
                       ))}
@@ -533,14 +530,13 @@ export function RolePermissionsPage({
                   <tbody>
                     {permissionOptions.map((permission) => (
                       <tr key={permission.key}>
-                        <td style={{ padding: "8px" }}>{permission.label}</td>
+                        <td className="role-permissions-matrix-cell">
+                          {permission.label}
+                        </td>
                         {roles.map((role) => (
                           <td
                             key={`${permission.key}-${role.roleKey}`}
-                            style={{
-                              padding: "8px",
-                              textAlign: "center",
-                            }}
+                            className="role-permissions-matrix-cell role-permissions-matrix-cell--center"
                           >
                             {role.permissions.includes(permission.key) ? (
                               <span

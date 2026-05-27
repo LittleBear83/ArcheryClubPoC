@@ -3662,29 +3662,38 @@ button:disabled {
   .target-arch-banner {
     min-height: auto;
     height: auto;
-    padding: 12px 0 10px;
+    padding: 8px 0 8px;
   }
 
   .target-arch-banner .menu-button {
-    top: 14px;
+    top: 10px;
     left: 12px;
     transform: none;
   }
 
+  .target-arch-banner .menu-button-logo {
+    width: 72px;
+    height: 72px;
+  }
+
+  .target-arch-banner .menu-button-label {
+    font-size: 0.78rem;
+  }
+
   .target-arch-banner .heading-wrap {
-    justify-content: flex-start;
-    align-items: flex-start;
+    justify-content: center;
+    align-items: flex-end;
     min-height: 0;
     padding:
-      calc(var(--logo-size) + 28px)
+      104px
       12px
-      12px
-      clamp(88px, 24vw, 116px);
+      8px
+      12px;
   }
 
   .page-toolbar {
     height: auto;
-    padding: 0 12px;
+    padding: 0 12px 8px;
     margin-top: 0;
   }
 
@@ -3695,13 +3704,22 @@ button:disabled {
   }
 
   .page-shell {
-    padding-top: 18px;
+    padding-top: 12px;
   }
 
   .page-heading-group,
   .target-arch-banner .heading-wrap h1 {
-    width: auto;
+    width: 100%;
     max-width: 100%;
+  }
+
+  .page-heading-group {
+    justify-items: center;
+  }
+
+  .target-arch-banner .heading-wrap h1 {
+    text-align: center;
+    font-size: clamp(2rem, 1.55rem + 2vw, 2.65rem);
   }
 
   .profile-member-select,
@@ -3783,12 +3801,24 @@ button:disabled {
   }
 
   .event-calendar-key {
-    gap: 8px 10px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .event-key-item,
   .event-key-filter {
     width: 100%;
+    justify-content: flex-start;
+    min-height: 52px;
+    padding: 10px 12px;
+    font-size: 0.92rem;
+  }
+
+  .event-key-clear-button {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 48px;
   }
 
   .event-summary-panel {
@@ -3969,10 +3999,24 @@ button:disabled {
 
   .target-arch-banner .heading-wrap {
     padding:
-      calc(var(--logo-size) + 28px)
+      92px
       10px
-      10px
-      clamp(84px, 26vw, 104px);
+      8px
+      10px;
+  }
+
+  .target-arch-banner .menu-button {
+    top: 8px;
+    left: 10px;
+  }
+
+  .target-arch-banner .menu-button-logo {
+    width: 64px;
+    height: 64px;
+  }
+
+  .target-arch-banner .heading-wrap h1 {
+    font-size: 1.9rem;
   }
 
   .page-toolbar {
@@ -4247,6 +4291,10 @@ button:disabled {
   .tournament-registration-note,
   .beginners-course-checkbox {
     font-size: 0.9rem;
+  }
+
+  .event-calendar-key {
+    grid-template-columns: 1fr;
   }
 
   .home-panel,

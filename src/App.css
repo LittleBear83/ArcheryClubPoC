@@ -191,6 +191,7 @@ canvas {
   margin: 0 0 24px;
   color: var(--muted);
   max-width: 60ch;
+  line-height: 1.5;
 }
 
 .login-form {
@@ -485,6 +486,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   gap: 20px;
 }
 
+.login-panel {
+  align-content: start;
+}
+
 .rfid-panel {
   padding: clamp(16px, 1.8vw, 20px);
   border: 1px solid var(--panel-border);
@@ -621,6 +626,30 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .login-card {
     padding: 18px 14px;
   }
+
+  .login-header {
+    margin-bottom: 18px;
+  }
+
+  .login-copy {
+    margin-bottom: 18px;
+    font-size: 0.95rem;
+  }
+
+  .rfid-panel {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .login-submit,
+  .rfid-simulate-button,
+  .guest-submit-button {
+    width: 100%;
+  }
+
+  .guest-member-modal-results {
+    max-height: min(40vh, 300px);
+  }
 }
 
 .target-arch-banner {
@@ -674,6 +703,20 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .membership-reminder-ticker-track span,
 .admin-warning-ticker-track span {
   display: block;
+}
+
+.membership-reminder-ticker--mobile,
+.admin-warning-ticker--mobile {
+  overflow: visible;
+}
+
+.membership-reminder-ticker-track--mobile,
+.admin-warning-ticker-track--mobile {
+  display: block;
+  min-width: 0;
+  padding: 12px 14px;
+  white-space: normal;
+  animation: none;
 }
 
 @keyframes admin-warning-scroll {
@@ -2308,15 +2351,30 @@ button:disabled {
   color: var(--text-h);
 }
 
+.home-panel-copy {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.home-panel-copy p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .home-info-list {
   margin: 0;
   padding-left: 22px;
   text-align: left;
+  display: grid;
+  gap: 10px;
 }
 
 .home-info-list li {
-  margin-bottom: 10px;
   color: var(--text);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .tournament-layout {
@@ -3358,6 +3416,123 @@ button:disabled {
   color: var(--muted);
 }
 
+.mobile-section-header {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.mobile-section-header-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.mobile-section-header-copy h3,
+.mobile-section-header-copy p {
+  margin: 0;
+}
+
+.mobile-section-header-copy p {
+  color: var(--muted);
+}
+
+.mobile-action-bar {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.mobile-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.mobile-key-value-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.mobile-key-value-row {
+  display: grid;
+  grid-template-columns: minmax(0, 108px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.mobile-key-value-row dt,
+.mobile-key-value-row dd {
+  margin: 0;
+}
+
+.mobile-key-value-row dt {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.mobile-key-value-row dd {
+  color: var(--text-h);
+  overflow-wrap: anywhere;
+}
+
+.mobile-empty-state {
+  margin: 0;
+  color: var(--muted);
+}
+
+.reporting-page--mobile .reporting-filter-form--mobile {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-width: 0;
+  gap: 14px;
+}
+
+.reporting-page--mobile .reporting-source-fieldset--mobile {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+  min-height: 0;
+  white-space: normal;
+}
+
+.reporting-page--mobile .reporting-source-fieldset--mobile .reporting-source-label {
+  grid-column: 1 / -1;
+}
+
+.reporting-mobile-graph-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.reporting-mobile-row-list {
+  margin-top: 2px;
+}
+
+.reporting-mobile-row-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--surface-deep);
+}
+
+.reporting-mobile-row-title {
+  margin: 0;
+  color: var(--text-h);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.range-usage-filter-form--mobile {
+  grid-template-columns: 1fr;
+}
+
+.range-usage-mobile-graph-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .usage-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
@@ -3788,6 +3963,10 @@ button:disabled {
     margin-bottom: 6px;
   }
 
+  .home-info-list li {
+    font-size: 0.95rem;
+  }
+
   .usage-hourly-row,
   .usage-card-stats {
     grid-template-columns: 1fr;
@@ -3991,6 +4170,14 @@ button:disabled {
 
   .login-card {
     padding: 16px 12px;
+  }
+
+  .login-title {
+    font-size: 1.7rem;
+  }
+
+  .login-copy {
+    font-size: 0.92rem;
   }
 
   .target-arch-banner .menu-button {
@@ -4331,6 +4518,12 @@ button:disabled {
   .home-info-list,
   .range-members-list {
     padding-left: 16px;
+  }
+
+  .membership-reminder-ticker-track--mobile,
+  .admin-warning-ticker-track--mobile {
+    padding: 10px 12px;
+    font-size: 0.88rem;
   }
 
   .loan-bow-status-copy,
@@ -5280,6 +5473,36 @@ button:disabled {
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.records-mobile-card-list {
+  margin-top: 2px;
+}
+
+.records-mobile-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--surface-deep);
+}
+
+.records-mobile-card-title {
+  margin: 0;
+  color: var(--text-h);
+  font-weight: 800;
+}
+
+.records-mobile-card-values {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.records-mobile-score-grid {
+  display: grid;
+  gap: 12px;
 }
 
 .calendar-table-wrap,

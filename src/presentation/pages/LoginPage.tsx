@@ -325,7 +325,7 @@ export function LoginPage({
         </div>
 
         <div className="login-sections">
-          <section className="member-panel" aria-label="Member sign in">
+          <section className="member-panel login-panel" aria-label="Member sign in">
             <p className="section-title">Member Sign In</p>
             <form
               className="login-form"
@@ -385,7 +385,7 @@ export function LoginPage({
             ) : null}
           </section>
 
-          <section className="guest-panel" aria-label="Guest sign in">
+          <section className="guest-panel login-panel" aria-label="Guest sign in">
             <p className="section-title">Guest Sign In</p>
             <p className="rfid-copy">
               Record a guest visit with their name and Archery GB membership

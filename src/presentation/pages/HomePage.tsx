@@ -38,6 +38,7 @@ import { listTournaments } from "../../api/tournamentApi";
 import { useTheme } from "../../theme/useTheme";
 import type { HomeMember, UserProfile } from "../../types/app";
 import type { AppDependencies } from "../../bootstrap/createAppDependencies";
+import { useIsMobile } from "../hooks/useIsMobile";
 import {
   formatMemberDisplayName,
   hasPermission,
@@ -324,6 +325,7 @@ export function HomePage({
   equipmentCrud,
 }: HomePageProps) {
   const { theme, themeName, toggleTheme } = useTheme();
+  const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -425,22 +427,48 @@ export function HomePage({
   return (
     <>
       {homeTickerMessage ? (
-        <div className="membership-reminder-ticker" role="status" aria-live="polite">
-          <div className="membership-reminder-ticker-track">
+        <div
+          className={[
+            "membership-reminder-ticker",
+            isMobile ? "membership-reminder-ticker--mobile" : "",
+          ].filter(Boolean).join(" ")}
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className={[
+              "membership-reminder-ticker-track",
+              isMobile ? "membership-reminder-ticker-track--mobile" : "",
+            ].filter(Boolean).join(" ")}
+          >
             <span>{homeTickerMessage}</span>
           </div>
         </div>
       ) : null}
 
       {adminTournamentWarnings.length > 0 ? (
-        <div className="admin-warning-ticker" role="status" aria-live="polite">
-          <div className="admin-warning-ticker-track">
+        <div
+          className={[
+            "admin-warning-ticker",
+            isMobile ? "admin-warning-ticker--mobile" : "",
+          ].filter(Boolean).join(" ")}
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className={[
+              "admin-warning-ticker-track",
+              isMobile ? "admin-warning-ticker-track--mobile" : "",
+            ].filter(Boolean).join(" ")}
+          >
             <span>
               {adminTournamentWarnings.join("   |   ")}
             </span>
-            <span aria-hidden="true">
-              {adminTournamentWarnings.join("   |   ")}
-            </span>
+            {isMobile ? null : (
+              <span aria-hidden="true">
+                {adminTournamentWarnings.join("   |   ")}
+              </span>
+            )}
           </div>
         </div>
       ) : null}

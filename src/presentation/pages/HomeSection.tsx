@@ -5,7 +5,7 @@ function SignedUpEventsList({ events }) {
   return (
     <section className="home-panel">
       <h3 className="home-panel-title">Your Club Events List</h3>
-      <ul className="home-info-list">
+      <ul className="home-info-list home-info-list--events">
         {events.length > 0 ? (
           events.map((event) => (
             <li key={event.id}>
@@ -25,7 +25,7 @@ function TournamentRemindersList({ reminders }) {
   return (
     <section className="home-panel">
       <h3 className="home-panel-title">Tournament Reminders</h3>
-      <ul className="home-info-list">
+      <ul className="home-info-list home-info-list--events">
         {reminders.length > 0 ? (
           reminders.map((reminder) => (
             <li key={reminder.id}>
@@ -45,7 +45,7 @@ function MembersAtRangeList({ members }) {
   return (
     <section className="home-panel">
       <h3 className="home-panel-title">Current Members At The Range</h3>
-      <ul className="home-info-list">
+      <ul className="home-info-list home-info-list--members">
         {members.length > 0 ? (
           members.map((member) => (
             <li key={getUserProfileKey(member)}>
@@ -74,7 +74,7 @@ function BeginnerTodayCard({ dashboard }) {
     <section className="home-panel">
       <h3 className="home-panel-title">Beginners Course Today</h3>
       {dashboard.lessonToday ? (
-        <>
+        <div className="home-panel-copy">
           <p>
             Lesson {dashboard.lessonToday.lessonNumber} on{" "}
             <strong>{formatDate(dashboard.lessonToday.date)}</strong>
@@ -85,11 +85,13 @@ function BeginnerTodayCard({ dashboard }) {
               ? dashboard.coaches.map((coach) => coach.fullName).join(", ")
               : "No coaches assigned yet"}
           </p>
-        </>
+        </div>
       ) : (
-        <p>No lesson is scheduled for you today.</p>
+        <div className="home-panel-copy">
+          <p>No lesson is scheduled for you today.</p>
+        </div>
       )}
-      <ul className="home-info-list">
+      <ul className="home-info-list home-info-list--equipment">
         {dashboard.equipment.length > 0 ? (
           dashboard.equipment.map((item) => (
             <li key={item.id}>
@@ -113,7 +115,7 @@ function BeginnerCoachAssignmentsCard({ assignments }) {
   return (
     <section className="home-panel">
       <h3 className="home-panel-title">Beginners Coaching</h3>
-      <ul className="home-info-list">
+      <ul className="home-info-list home-info-list--events">
         {assignments.map((assignment) => (
           <li key={assignment.id}>
             <strong>{formatDate(assignment.date)}</strong>

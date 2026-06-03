@@ -31,8 +31,44 @@ const DEFAULT_PAYMENT_CARD_MESSAGE =
 const PAYMENT_CARD_WARNING_MESSAGE =
   "No Monies have been taken, Please ensure not to use any other token or card other than the one that was issued to you";
 
+function safeLocalStorageGet(key: string) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeLocalStorageSet(key: string, value: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    return;
+  }
+}
+
+function safeLocalStorageRemove(key: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    return;
+  }
+}
+
 function loadStoredUserProfile() {
-  const storedUser = window.localStorage.getItem(AUTH_USER_STORAGE_KEY);
+  const storedUser = safeLocalStorageGet(AUTH_USER_STORAGE_KEY);
 
   if (!storedUser) {
     return null;
@@ -96,13 +132,13 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   const lastActivityAtRef = useRef(Date.now());
   const queryClient = useQueryClient();
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
-    return window.localStorage.getItem(AUTH_STORAGE_KEY) === "true";
+    return safeLocalStorageGet(AUTH_STORAGE_KEY) === "true";
   });
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(() =>
     loadStoredUserProfile(),
   );
   const [loginMessage, setLoginMessage] = useState(() => {
-    return window.localStorage.getItem(AUTH_MESSAGE_STORAGE_KEY) ?? "";
+    return safeLocalStorageGet(AUTH_MESSAGE_STORAGE_KEY) ?? "";
   });
   const [paymentCardModal, setPaymentCardModal] = useState({
     open: false,
@@ -135,10 +171,10 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     const storedUserProfile = normalizeUserProfile(userProfile);
 
     lastActivityAtRef.current = Date.now();
-    window.localStorage.removeItem(AUTH_MESSAGE_STORAGE_KEY);
+    safeLocalStorageRemove(AUTH_MESSAGE_STORAGE_KEY);
     setLoginMessage("");
-    window.localStorage.setItem(AUTH_STORAGE_KEY, "true");
-    window.localStorage.setItem(
+    safeLocalStorageSet(AUTH_STORAGE_KEY, "true");
+    safeLocalStorageSet(
       AUTH_USER_STORAGE_KEY,
       JSON.stringify(storedUserProfile),
     );
@@ -184,14 +220,14 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
 
     lastActivityAtRef.current = Date.now();
     if (message) {
-      window.localStorage.setItem(AUTH_MESSAGE_STORAGE_KEY, message);
+      safeLocalStorageSet(AUTH_MESSAGE_STORAGE_KEY, message);
       setLoginMessage(message);
     } else {
-      window.localStorage.removeItem(AUTH_MESSAGE_STORAGE_KEY);
+      safeLocalStorageRemove(AUTH_MESSAGE_STORAGE_KEY);
       setLoginMessage("");
     }
-    window.localStorage.removeItem(AUTH_STORAGE_KEY);
-    window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
+    safeLocalStorageRemove(AUTH_STORAGE_KEY);
+    safeLocalStorageRemove(AUTH_USER_STORAGE_KEY);
     void logoutSession().catch(() => undefined);
     setIsAuthenticated(false);
     setCurrentUserProfile(null);

@@ -16,6 +16,30 @@ function resolveThemeName(value: string | null | undefined): ThemeName {
   return defaultThemeName;
 }
 
+function safeThemeStorageGet(key: string) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeThemeStorageSet(key: string, value: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    return;
+  }
+}
+
 export function ThemeProvider({
   children,
   themeName = defaultThemeName,
@@ -28,7 +52,7 @@ export function ThemeProvider({
       return themeName;
     }
 
-    return resolveThemeName(window.localStorage.getItem(THEME_STORAGE_KEY) ?? themeName);
+    return resolveThemeName(safeThemeStorageGet(THEME_STORAGE_KEY) ?? themeName);
   });
 
   const activeTheme = themes[activeThemeName];
@@ -43,7 +67,7 @@ export function ThemeProvider({
       root.style.setProperty(token, value);
     });
 
-    window.localStorage.setItem(THEME_STORAGE_KEY, activeThemeName);
+    safeThemeStorageSet(THEME_STORAGE_KEY, activeThemeName);
   }, [activeTheme, activeThemeName]);
 
   const value = useMemo<ThemeContextValue>(() => {

@@ -16,16 +16,29 @@ export function useIsMobile(breakpointPx = DEFAULT_MOBILE_BREAKPOINT_PX) {
     }
 
     const mediaQuery = window.matchMedia(`(max-width: ${breakpointPx - 1}px)`);
-    const updateIsMobile = (event?: MediaQueryListEvent) => {
+    const updateIsMobile = (event?: MediaQueryListEvent | MediaQueryList) => {
       setIsMobile(event ? event.matches : mediaQuery.matches);
     };
 
     updateIsMobile();
-    mediaQuery.addEventListener("change", updateIsMobile);
 
-    return () => {
-      mediaQuery.removeEventListener("change", updateIsMobile);
-    };
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", updateIsMobile);
+
+      return () => {
+        mediaQuery.removeEventListener("change", updateIsMobile);
+      };
+    }
+
+    if (typeof mediaQuery.addListener === "function") {
+      mediaQuery.addListener(updateIsMobile);
+
+      return () => {
+        mediaQuery.removeListener(updateIsMobile);
+      };
+    }
+
+    return undefined;
   }, [breakpointPx]);
 
   return isMobile;

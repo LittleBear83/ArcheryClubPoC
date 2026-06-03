@@ -2114,6 +2114,23 @@ button:disabled {
   font-weight: 700;
 }
 
+.approvals-page--mobile {
+  gap: 16px;
+}
+
+.approvals-panel--mobile {
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.approvals-card--mobile {
+  gap: 12px;
+}
+
+.approvals-card--mobile .mobile-section-header {
+  margin-bottom: 0;
+}
+
 .approvals-conflict-box {
   margin-top: 12px;
   padding: 12px 14px;
@@ -3027,6 +3044,32 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.committee-admin-page--mobile {
+  gap: 16px;
+}
+
+.committee-admin-card--mobile {
+  gap: 16px;
+}
+
+.committee-admin-editor--mobile {
+  gap: 16px;
+}
+
+.committee-admin-photo-column--mobile {
+  gap: 14px;
+}
+
+.committee-admin-fields--mobile {
+  gap: 16px;
+}
+
+.committee-admin-actions--mobile {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
 .committee-roles-title {
   text-align: center;
 }
@@ -3182,6 +3225,18 @@ button:disabled {
   gap: 18px;
 }
 
+.committee-org-page--mobile {
+  gap: 16px;
+}
+
+.committee-role-modal-sheet {
+  width: min(100%, 760px);
+}
+
+.committee-role-modal--mobile {
+  gap: 16px;
+}
+
 .committee-role-modal-hero {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);
@@ -3295,8 +3350,24 @@ button:disabled {
     height: 96px;
   }
 
+  .committee-role-card {
+    gap: 14px;
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .committee-role-card-meta {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .committee-role-card-cta {
+    font-size: 0.92rem;
+  }
+
   .committee-role-card-header {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .committee-role-photo-placeholder {
@@ -3307,6 +3378,14 @@ button:disabled {
   .committee-role-modal-hero,
   .committee-role-modal-grid {
     grid-template-columns: 1fr;
+  }
+
+  .committee-role-modal--mobile .committee-role-modal-hero {
+    gap: 14px;
+  }
+
+  .committee-role-modal--mobile .committee-role-modal-hero-copy {
+    gap: 14px;
   }
 
   .committee-role-photo-placeholder--large {

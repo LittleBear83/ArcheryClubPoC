@@ -1,8 +1,11 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
+import { MobileKeyValueList } from "../components/mobile/MobileKeyValueList";
+import { MobileSectionHeader } from "../components/mobile/MobileSectionHeader";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
+import { useIsMobile } from "../hooks/useIsMobile";
 import {
   formatMemberDisplayName,
   formatMemberDisplayUsername,
@@ -90,6 +93,7 @@ function readImageAsDataUrl(file: File) {
 }
 
 export function CommitteeAdminPage({ currentUserProfile }) {
+  const isMobile = useIsMobile();
   const [drafts, setDrafts] = useState<Record<number, CommitteeRoleDraft>>({});
   const [createDraft, setCreateDraft] = useState<CommitteeRoleDraft>(emptyDraft);
   const [selectedRoleId, setSelectedRoleId] = useState<string>(createOptionValue);
@@ -282,7 +286,14 @@ export function CommitteeAdminPage({ currentUserProfile }) {
   }
 
   return (
-    <div className="profile-page">
+    <div
+      className={[
+        "profile-page",
+        isMobile ? "committee-admin-page--mobile" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <p>
         Create and manage committee positions, assign members, and maintain the
         content shown on the committee org chart.
@@ -314,9 +325,41 @@ export function CommitteeAdminPage({ currentUserProfile }) {
           </label>
         </div>
 
-        <article className="committee-admin-card">
-          <div className="committee-admin-editor left-align-form">
-            <div className="committee-admin-photo-column">
+        <article
+          className={[
+            "committee-admin-card",
+            isMobile ? "committee-admin-card--mobile" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <div
+            className={[
+              "committee-admin-editor",
+              "left-align-form",
+              isMobile ? "committee-admin-editor--mobile" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            <div
+              className={[
+                "committee-admin-photo-column",
+                isMobile ? "committee-admin-photo-column--mobile" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              {isMobile ? (
+                <MobileSectionHeader
+                  title={isCreateMode ? "New Position" : "Edit Position"}
+                  description={
+                    isCreateMode
+                      ? "Set up a committee role with member assignment, card copy, and profile details."
+                      : "Update the selected committee role and keep the org chart in sync."
+                  }
+                />
+              ) : null}
               {activeDraft.photoDataUrl ? (
                 <img
                   src={activeDraft.photoDataUrl}
@@ -328,6 +371,27 @@ export function CommitteeAdminPage({ currentUserProfile }) {
                   <span>Photo</span>
                 </div>
               )}
+              {isMobile ? (
+                <MobileKeyValueList
+                  items={[
+                    {
+                      label: "Mode",
+                      value: isCreateMode ? "Create" : "Edit",
+                    },
+                    {
+                      label: "Assigned",
+                      value:
+                        members.find(
+                          (member) => member.username === activeDraft.assignedUsername,
+                        )?.fullName ?? "Unassigned",
+                    },
+                    {
+                      label: "Photo",
+                      value: activeDraft.photoDataUrl ? "Added" : "Not added",
+                    },
+                  ]}
+                />
+              ) : null}
               <label className="committee-admin-file-field">
                 <span>Upload profile photo</span>
                 <input
@@ -350,7 +414,14 @@ export function CommitteeAdminPage({ currentUserProfile }) {
               ) : null}
             </div>
 
-            <div className="committee-admin-fields">
+            <div
+              className={[
+                "committee-admin-fields",
+                isMobile ? "committee-admin-fields--mobile" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
               <label>
                 Position title
                 <input
@@ -404,7 +475,14 @@ export function CommitteeAdminPage({ currentUserProfile }) {
                   ))}
                 </select>
               </label>
-              <div className="committee-admin-actions">
+              <div
+                className={[
+                  "committee-admin-actions",
+                  isMobile ? "committee-admin-actions--mobile" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
                 <Button
                   type="button"
                   onClick={handleSave}

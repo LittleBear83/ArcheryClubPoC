@@ -120,6 +120,7 @@ export function EquipmentDesktopView({
                     <input
                       type="number"
                       min="20"
+                      inputMode="numeric"
                       value={addForm.arrowLength}
                       onChange={updateAddFormField("arrowLength")}
                     />
@@ -131,6 +132,7 @@ export function EquipmentDesktopView({
                       type="number"
                       min="1"
                       max="12"
+                      inputMode="numeric"
                       value={addForm.arrowQuantity}
                       onChange={updateAddFormField("arrowQuantity")}
                     />

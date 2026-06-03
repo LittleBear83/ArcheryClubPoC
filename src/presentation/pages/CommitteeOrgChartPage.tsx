@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { MobileKeyValueList } from "../components/mobile/MobileKeyValueList";
+import { MobileSectionHeader } from "../components/mobile/MobileSectionHeader";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { Modal } from "../components/Modal";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { listCommitteeRoles } from "../../api/committeeApi";
 import {
   formatMemberDisplayName,
@@ -50,6 +53,7 @@ const committeeQueryKeys = {
 };
 
 export function CommitteeOrgChartPage({ currentUserProfile }) {
+  const isMobile = useIsMobile();
   const [selectedRole, setSelectedRole] = useState<CommitteeRole | null>(null);
   const actorUsername = currentUserProfile?.auth?.username ?? "";
 
@@ -63,7 +67,14 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
   const roles = data?.roles ?? [];
 
   return (
-    <div className="profile-page">
+    <div
+      className={[
+        "profile-page",
+        isMobile ? "committee-org-page--mobile" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <p>
         Committee roles for the archery club, ordered from senior governance roles
         through to associate member positions.
@@ -139,10 +150,22 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
         open={Boolean(selectedRole)}
         onClose={() => setSelectedRole(null)}
         title={selectedRole?.title ?? "Committee Role"}
-        contentClassName="modal-content--wide"
+        contentClassName={[
+          "modal-content--wide",
+          isMobile ? "committee-role-modal-sheet" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
         {selectedRole ? (
-          <div className="committee-role-modal">
+          <div
+            className={[
+              "committee-role-modal",
+              isMobile ? "committee-role-modal--mobile" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
             <div className="committee-role-modal-hero">
               {selectedRole.photoDataUrl ? (
                 <img
@@ -159,13 +182,40 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
                 </div>
               )}
               <div className="committee-role-modal-hero-copy">
-                <p className="committee-role-summary">{selectedRole.summary}</p>
-                <p className="committee-role-member">
-                  <strong>Assigned member:</strong>{" "}
-                  {selectedRole.assignedMember
-                    ? `${formatMemberDisplayName(selectedRole.assignedMember)} (${formatMemberDisplayUsername(selectedRole.assignedMember)})`
-                    : "Unassigned"}
-                </p>
+                {isMobile ? (
+                  <>
+                    <MobileSectionHeader
+                      title={selectedRole.title}
+                      description={selectedRole.summary}
+                    />
+                    <MobileKeyValueList
+                      items={[
+                        {
+                          label: "Member",
+                          value: selectedRole.assignedMember
+                            ? formatMemberDisplayName(selectedRole.assignedMember)
+                            : "Unassigned",
+                        },
+                        {
+                          label: "Username",
+                          value: selectedRole.assignedMember
+                            ? formatMemberDisplayUsername(selectedRole.assignedMember)
+                            : "Not assigned",
+                        },
+                      ]}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <p className="committee-role-summary">{selectedRole.summary}</p>
+                    <p className="committee-role-member">
+                      <strong>Assigned member:</strong>{" "}
+                      {selectedRole.assignedMember
+                        ? `${formatMemberDisplayName(selectedRole.assignedMember)} (${formatMemberDisplayUsername(selectedRole.assignedMember)})`
+                        : "Unassigned"}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
 

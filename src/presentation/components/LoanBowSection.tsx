@@ -107,6 +107,7 @@ export function LoanBowSection({
             <input
               type="number"
               min="1"
+              inputMode="numeric"
               value={loanBow.arrowCount}
               onChange={onLoanBowFieldChange("arrowCount")}
               disabled={disabled}

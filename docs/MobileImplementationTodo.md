@@ -191,7 +191,7 @@ Outcome:
   - max height
   - internal scrolling
   - safe action button placement
-- [ ] Review all forms for:
+- [x] Review all forms for:
   - touch target size
   - label clarity
   - stacked layout
@@ -209,9 +209,23 @@ Outcome:
 - [ ] Check drawer open/close behavior across breakpoints
 - [ ] Check date picker layering and dismissal
 - [ ] Check event, equipment, and reporting actions for regressions
-- [ ] Run lint
-- [ ] Run typecheck
-- [ ] Run tests
+- [x] Run lint
+- [x] Run typecheck
+- [x] Run tests
+
+## Remaining Manual QA
+
+The remaining unchecked items now require either:
+
+- real browser viewport testing
+- live mobile device testing
+- behavior verification that depends on production-like data or file export behavior
+
+Automated checks currently passing:
+
+- `npm run lint`
+- `npm run typecheck`
+- `npm test`
 
 ## Priority Order
 

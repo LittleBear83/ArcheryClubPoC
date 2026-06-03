@@ -1,4 +1,5 @@
 import { Button } from "./Button";
+import { MobileSectionHeader } from "./mobile/MobileSectionHeader";
 
 type ApprovalAction = {
   disabled?: boolean;
@@ -11,6 +12,7 @@ type ApprovalCardProps = {
   actions: ApprovalAction[];
   children: React.ReactNode;
   conflictWarnings?: Array<{ id: string; text: string }>;
+  isMobile?: boolean;
   title: string;
 };
 
@@ -18,11 +20,23 @@ export function ApprovalCard({
   actions,
   children,
   conflictWarnings = [],
+  isMobile = false,
   title,
 }: ApprovalCardProps) {
   return (
-    <article className="approvals-card">
-      <p className="approvals-card-title">{title}</p>
+    <article
+      className={[
+        "approvals-card",
+        isMobile ? "approvals-card--mobile" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {isMobile ? (
+        <MobileSectionHeader title={title} />
+      ) : (
+        <p className="approvals-card-title">{title}</p>
+      )}
       {children}
       {conflictWarnings.length > 0 ? (
         <div className="approvals-conflict-box">

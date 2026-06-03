@@ -4,7 +4,9 @@ import { Button } from "../components/Button";
 import { Modal } from "../components/Modal";
 import { formatClockTime, formatDate, formatDateTime } from "../../utils/dateTime";
 import { ApprovalCard } from "../components/ApprovalCard";
+import { MobileSectionHeader } from "../components/mobile/MobileSectionHeader";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { hasPermission } from "../../utils/userProfile";
 import {
   approveCoachingSession,
@@ -225,6 +227,7 @@ type RejectingCourseApproval = {
 };
 
 export function ApprovalsPage({ currentUserProfile }) {
+  const isMobile = useIsMobile();
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [processingKey, setProcessingKey] = useState("");
@@ -411,7 +414,14 @@ export function ApprovalsPage({ currentUserProfile }) {
   }
 
   return (
-    <div className="approvals-page">
+    <div
+      className={[
+        "approvals-page",
+        isMobile ? "approvals-page--mobile" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <p>Review submitted events, coaching sessions, beginners courses, and Have a Go sessions before they are published to members.</p>
       <StatusMessagePanel
         error={error}
@@ -426,8 +436,22 @@ export function ApprovalsPage({ currentUserProfile }) {
 
       <section className="approvals-layout">
         {canApproveEvents ? (
-          <section className="approvals-panel">
-            <h3>Pending events</h3>
+          <section
+            className={[
+              "approvals-panel",
+              isMobile ? "approvals-panel--mobile" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {isMobile ? (
+              <MobileSectionHeader
+                title="Pending Events"
+                description={`${events.length} awaiting review`}
+              />
+            ) : (
+              <h3>Pending events</h3>
+            )}
             {events.length === 0 ? (
               <p>No events are waiting for approval.</p>
             ) : (
@@ -437,6 +461,7 @@ export function ApprovalsPage({ currentUserProfile }) {
                     key={event.id}
                     title={event.title}
                     conflictWarnings={conflictWarningsByKey.get(`event:${event.id}`) ?? []}
+                    isMobile={isMobile}
                     actions={[
                       {
                         disabled: Boolean(processingKey),
@@ -482,8 +507,22 @@ export function ApprovalsPage({ currentUserProfile }) {
         ) : null}
 
         {canApproveCoaching ? (
-          <section className="approvals-panel">
-            <h3>Pending coaching sessions</h3>
+          <section
+            className={[
+              "approvals-panel",
+              isMobile ? "approvals-panel--mobile" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {isMobile ? (
+              <MobileSectionHeader
+                title="Pending Coaching"
+                description={`${sessions.length} awaiting review`}
+              />
+            ) : (
+              <h3>Pending coaching sessions</h3>
+            )}
             {sessions.length === 0 ? (
               <p>No coaching sessions are waiting for approval.</p>
             ) : (
@@ -493,6 +532,7 @@ export function ApprovalsPage({ currentUserProfile }) {
                     key={session.id}
                     title={session.topic}
                     conflictWarnings={conflictWarningsByKey.get(`session:${session.id}`) ?? []}
+                    isMobile={isMobile}
                     actions={[
                       {
                         disabled: Boolean(processingKey),
@@ -544,8 +584,22 @@ export function ApprovalsPage({ currentUserProfile }) {
         ) : null}
 
         {canApproveBeginnersCourses ? (
-          <section className="approvals-panel">
-            <h3>Pending beginners courses</h3>
+          <section
+            className={[
+              "approvals-panel",
+              isMobile ? "approvals-panel--mobile" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {isMobile ? (
+              <MobileSectionHeader
+                title="Pending Beginners"
+                description={`${beginnersCourses.length} awaiting review`}
+              />
+            ) : (
+              <h3>Pending beginners courses</h3>
+            )}
             {beginnersCourses.length === 0 ? (
               <p>No beginners courses are waiting for approval.</p>
             ) : (
@@ -554,6 +608,7 @@ export function ApprovalsPage({ currentUserProfile }) {
                   <ApprovalCard
                     key={course.id}
                     title={`Beginners course from ${formatDate(course.firstLessonDate)}`}
+                    isMobile={isMobile}
                     actions={[
                       {
                         disabled: Boolean(processingKey),
@@ -603,8 +658,22 @@ export function ApprovalsPage({ currentUserProfile }) {
         ) : null}
 
         {canApproveHaveAGoSessions ? (
-          <section className="approvals-panel">
-            <h3>Pending Have a Go sessions</h3>
+          <section
+            className={[
+              "approvals-panel",
+              isMobile ? "approvals-panel--mobile" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {isMobile ? (
+              <MobileSectionHeader
+                title="Pending Have a Go"
+                description={`${haveAGoSessions.length} awaiting review`}
+              />
+            ) : (
+              <h3>Pending Have a Go sessions</h3>
+            )}
             {haveAGoSessions.length === 0 ? (
               <p>No Have a Go sessions are waiting for approval.</p>
             ) : (
@@ -613,6 +682,7 @@ export function ApprovalsPage({ currentUserProfile }) {
                   <ApprovalCard
                     key={session.id}
                     title={`Have a Go session from ${formatDate(session.firstLessonDate)}`}
+                    isMobile={isMobile}
                     actions={[
                       {
                         disabled: Boolean(processingKey),

@@ -2,8 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { Button } from "../components/Button";
 import { DatePicker } from "../components/DatePicker";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
+import { TournamentsDesktopView } from "./tournaments/TournamentsDesktopView";
+import { TournamentsMobileView } from "./tournaments/TournamentsMobileView";
+import type { TournamentRecord } from "./tournaments/tournamentViewTypes";
 
 const BRACKET_MATCH_HEIGHT = 92;
 const BRACKET_BASE_GAP = 18;
@@ -147,6 +151,7 @@ export function TournamentsPage({
   showSetupForm = false,
   tournamentCrud,
 }) {
+  const isMobile = useIsMobile();
   const today = new Date().toISOString().slice(0, 10);
   const [tournaments, setTournaments] = useState([]);
   const [tournamentTypes, setTournamentTypes] = useState([]);
@@ -554,6 +559,140 @@ export function TournamentsPage({
     }
   };
 
+  const selectedTournamentDetail = selectedTournament ? (
+    <>
+      <div className="tournament-summary-card">
+        <h3>{selectedTournament.name}</h3>
+        <p>{selectedTournament.typeLabel}</p>
+        <p>
+          Registration window:{" "}
+          {formatDate(selectedTournament.registrationWindow.startDate)} to{" "}
+          {formatDate(selectedTournament.registrationWindow.endDate)}
+        </p>
+        <p>
+          Score window: {formatDate(selectedTournament.scoreWindow.startDate)} to{" "}
+          {formatDate(selectedTournament.scoreWindow.endDate)}
+        </p>
+        <p>Registered competitors: {selectedTournament.registrationCount}</p>
+        {selectedTournament.bracket.winner ? (
+          <p>
+            Winner: <strong>{selectedTournament.bracket.winner.fullName}</strong>
+          </p>
+        ) : null}
+        {selectedTournament.needsScoreReminder ? (
+          <p className="profile-success">
+            Round {selectedTournament.currentRoundNumber} is waiting for your
+            score.
+          </p>
+        ) : null}
+        <p
+          className={
+            selectedTournament.isRegistered
+              ? "profile-success"
+              : "tournament-registration-note"
+          }
+        >
+          {registrationStatusText}
+        </p>
+
+        <div className="tournament-action-row">
+          <Button
+            type="button"
+            className="tournament-primary-button"
+            onClick={handleRegister}
+            disabled={!selectedTournament.canRegister || isSaving}
+          >
+            {isSaving && selectedTournament.canRegister
+              ? "Registering..."
+              : selectedTournament.canRegister
+                ? "Register"
+                : selectedTournament.isRegistered
+                  ? "Already registered"
+                  : selectedTournament.registrationWindow.isOpen
+                    ? "Registration unavailable"
+                    : "Registration not open yet"}
+          </Button>
+
+          <Button
+            type="button"
+            className="tournament-secondary-button"
+            onClick={handleWithdraw}
+            disabled={!selectedTournament.canWithdraw || isSaving}
+            variant="secondary"
+          >
+            {isSaving && selectedTournament.canWithdraw
+              ? "Updating..."
+              : "Withdraw"}
+          </Button>
+
+          {canManageTournaments ? (
+            <Button
+              type="button"
+              className="tournament-secondary-button"
+              onClick={handleSaveCompetitorList}
+              variant="secondary"
+            >
+              Save competitor list
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="tournament-registrations-card">
+        <h4>Competing Members</h4>
+        {selectedTournament.registrations.length > 0 ? (
+          <ul className="event-summary-list">
+            {selectedTournament.registrations.map((registration) => (
+              <li key={registration.username}>{registration.fullName}</li>
+            ))}
+          </ul>
+        ) : (
+          <p>No members have registered yet.</p>
+        )}
+      </div>
+
+      {selectedTournament.canSubmitScore ? (
+        <form
+          onSubmit={handleSubmitScore}
+          className="left-align-form tournament-score-card"
+        >
+          <h4>Submit Round {selectedTournament.currentRoundNumber} Score</h4>
+          <label>
+            Score
+            <input
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={scoreValue}
+              onChange={(event) => setScoreValue(event.target.value)}
+              required
+            />
+          </label>
+          <Button type="submit" disabled={isSubmittingScore}>
+            {isSubmittingScore ? "Saving score..." : "Submit score"}
+          </Button>
+        </form>
+      ) : null}
+
+      <div className="tournament-bracket-card">
+        <h4>Tournament Line Up</h4>
+        {!selectedTournament.bracketReady ? (
+          <p>
+            The tournament bracket graphic will be generated once
+            registration closes on{" "}
+            {formatDate(selectedTournament.registrationWindow.endDate)}.
+          </p>
+        ) : selectedTournament.bracket.rounds.length === 0 ? (
+          <p>The bracket will appear once enough competitors are registered.</p>
+        ) : (
+          <TournamentBracketGraphic tournament={selectedTournament} />
+        )}
+      </div>
+    </>
+  ) : (
+    <p>Select a tournament to view the registration list and bracket.</p>
+  );
+
   return (
     <div className="profile-page">
       <p>
@@ -847,179 +986,48 @@ export function TournamentsPage({
       {message ? <p className="profile-success">{message}</p> : null}
 
       {hasLoadedTournaments ? (
-        <section className="tournament-layout">
-          <div className="tournament-list-panel">
-            <h3 className="profile-section-title">Tournaments</h3>
-            {tournaments.length === 0 ? (
-              <p>No tournaments have been set up yet.</p>
-            ) : (
-              <div className="tournament-list">
-                {tournaments.map((tournament) => (
-                  <Button
-                    key={tournament.id}
-                    className={`tournament-list-item ${
-                      tournament.id === selectedTournament?.id ? "active" : ""
-                    }`}
-                    onClick={() => {
-                      setSelectedTournamentId(tournament.id);
-                      if (showSetupForm && canManageTournaments) {
-                        setIsEditingTournament(true);
-                      }
-                    }}
-                    variant="unstyled"
-                  >
-                    <strong>{tournament.name}</strong>
-                    <span>{tournament.typeLabel}</span>
-                    <span>
-                      Registration: {formatDate(tournament.registrationWindow.startDate)} to{" "}
-                      {formatDate(tournament.registrationWindow.endDate)}
-                    </span>
-                    {showSetupForm && canManageTournaments ? (
-                      <span className="tournament-admin-hint">Select to amend or delete</span>
-                    ) : null}
-                  </Button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="tournament-detail-panel">
-            {selectedTournament ? (
-              <>
-                <div className="tournament-summary-card">
-                  <h3>{selectedTournament.name}</h3>
-                  <p>{selectedTournament.typeLabel}</p>
-                  <p>
-                    Registration window:{" "}
-                    {formatDate(selectedTournament.registrationWindow.startDate)} to{" "}
-                    {formatDate(selectedTournament.registrationWindow.endDate)}
-                  </p>
-                  <p>
-                    Score window: {formatDate(selectedTournament.scoreWindow.startDate)} to{" "}
-                    {formatDate(selectedTournament.scoreWindow.endDate)}
-                  </p>
-                  <p>
-                    Registered competitors: {selectedTournament.registrationCount}
-                  </p>
-                  {selectedTournament.bracket.winner ? (
-                    <p>
-                      Winner: <strong>{selectedTournament.bracket.winner.fullName}</strong>
-                    </p>
-                  ) : null}
-                  {selectedTournament.needsScoreReminder ? (
-                    <p className="profile-success">
-                      Round {selectedTournament.currentRoundNumber} is waiting for your
-                      score.
-                    </p>
-                  ) : null}
-                  <p
-                    className={
-                      selectedTournament.isRegistered
-                        ? "profile-success"
-                        : "tournament-registration-note"
-                    }
-                  >
-                    {registrationStatusText}
-                  </p>
-
-                  <div className="tournament-action-row">
-                    <Button
-                      type="button"
-                      className="tournament-primary-button"
-                      onClick={handleRegister}
-                      disabled={!selectedTournament.canRegister || isSaving}
-                    >
-                      {isSaving && selectedTournament.canRegister
-                        ? "Registering..."
-                        : selectedTournament.canRegister
-                          ? "Register"
-                          : selectedTournament.isRegistered
-                            ? "Already registered"
-                            : selectedTournament.registrationWindow.isOpen
-                              ? "Registration unavailable"
-                              : "Registration not open yet"}
-                    </Button>
-
-                    <Button
-                      type="button"
-                      className="tournament-secondary-button"
-                      onClick={handleWithdraw}
-                      disabled={!selectedTournament.canWithdraw || isSaving}
-                      variant="secondary"
-                    >
-                      {isSaving && selectedTournament.canWithdraw
-                        ? "Updating..."
-                        : "Withdraw"}
-                    </Button>
-
-                    {canManageTournaments ? (
-                      <Button
-                        type="button"
-                        className="tournament-secondary-button"
-                        onClick={handleSaveCompetitorList}
-                        variant="secondary"
-                      >
-                        Save competitor list
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="tournament-registrations-card">
-                  <h4>Competing Members</h4>
-                  {selectedTournament.registrations.length > 0 ? (
-                    <ul className="event-summary-list">
-                      {selectedTournament.registrations.map((registration) => (
-                        <li key={registration.username}>{registration.fullName}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p>No members have registered yet.</p>
-                  )}
-                </div>
-
-                {selectedTournament.canSubmitScore ? (
-                  <form
-                    onSubmit={handleSubmitScore}
-                    className="left-align-form tournament-score-card"
-                  >
-                    <h4>Submit Round {selectedTournament.currentRoundNumber} Score</h4>
-                    <label>
-                      Score
-                      <input
-                        type="number"
-                        min="0"
-                        value={scoreValue}
-                        onChange={(event) => setScoreValue(event.target.value)}
-                        required
-                      />
-                    </label>
-                    <Button type="submit" disabled={isSubmittingScore}>
-                      {isSubmittingScore ? "Saving score..." : "Submit score"}
-                    </Button>
-                  </form>
-                ) : null}
-
-                <div className="tournament-bracket-card">
-                  <h4>Tournament Line Up</h4>
-                  {!selectedTournament.bracketReady ? (
-                    <p>
-                      The tournament bracket graphic will be generated once
-                      registration closes on{" "}
-                      {formatDate(selectedTournament.registrationWindow.endDate)}.
-                    </p>
-                  ) : selectedTournament.bracket.rounds.length === 0 ? (
-                    <p>The bracket will appear once enough competitors are registered.</p>
-                  ) : (
-                    <TournamentBracketGraphic tournament={selectedTournament} />
-                  )}
-                </div>
-              </>
-            ) : (
-              <p>Select a tournament to view the registration list and bracket.</p>
-            )}
-          </div>
-        </section>
+        isMobile ? (
+          <TournamentsMobileView
+            tournaments={tournaments as TournamentRecord[]}
+            selectedTournament={selectedTournament as TournamentRecord | null}
+            showSetupForm={showSetupForm}
+            canManageTournaments={canManageTournaments}
+            isSaving={isSaving}
+            isSubmittingScore={isSubmittingScore}
+            registrationStatusText={registrationStatusText}
+            scoreValue={scoreValue}
+            bracketGraphic={
+              selectedTournament?.bracket.rounds.length ? (
+                <TournamentBracketGraphic tournament={selectedTournament} />
+              ) : null
+            }
+            onSelectTournament={(tournamentId) => {
+              setSelectedTournamentId(tournamentId);
+              if (showSetupForm && canManageTournaments) {
+                setIsEditingTournament(true);
+              }
+            }}
+            onRegister={handleRegister}
+            onWithdraw={handleWithdraw}
+            onSaveCompetitorList={handleSaveCompetitorList}
+            onScoreValueChange={setScoreValue}
+            onSubmitScore={handleSubmitScore}
+          />
+        ) : (
+          <TournamentsDesktopView
+            tournaments={tournaments as TournamentRecord[]}
+            selectedTournament={selectedTournament as TournamentRecord | null}
+            showSetupForm={showSetupForm}
+            canManageTournaments={canManageTournaments}
+            detailContent={selectedTournamentDetail}
+            onSelectTournament={(tournamentId) => {
+              setSelectedTournamentId(tournamentId);
+              if (showSetupForm && canManageTournaments) {
+                setIsEditingTournament(true);
+              }
+            }}
+          />
+        )
       ) : null}
     </div>
   );

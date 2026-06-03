@@ -120,6 +120,10 @@
   --card-radius: clamp(16px, 2vw, 24px);
   --control-height: clamp(42px, 5vw, 48px);
   --touch-target: 44px;
+  --mobile-stack-gap: 14px;
+  --mobile-card-gap: 12px;
+  --mobile-modal-padding: 14px;
+  --modal-safe-height: calc(100svh - 24px);
   --banner-height: clamp(96px, 14vw, 160px);
   --logo-size: clamp(60px, 8vw, 86px);
   --banner-title-offset: clamp(40px, 6vw, 84px);
@@ -148,6 +152,10 @@
     --panel-padding: 18px;
     --control-height: 48px;
     --touch-target: 48px;
+    --mobile-stack-gap: 16px;
+    --mobile-card-gap: 14px;
+    --mobile-modal-padding: 16px;
+    --modal-safe-height: calc(100svh - 28px);
     --banner-height: 112px;
     --logo-size: 68px;
     --banner-title-offset: 48px;
@@ -229,6 +237,8 @@
   :root {
     --control-height: max(52px, var(--control-height));
     --touch-target: max(52px, var(--touch-target));
+    --mobile-stack-gap: max(16px, var(--mobile-stack-gap));
+    --mobile-modal-padding: max(16px, var(--mobile-modal-padding));
   }
 }
 
@@ -237,6 +247,10 @@
     --page-gutter: 12px;
     --section-gap: 18px;
     --panel-padding: 14px;
+    --mobile-stack-gap: 14px;
+    --mobile-card-gap: 12px;
+    --mobile-modal-padding: 14px;
+    --modal-safe-height: calc(100svh - 20px);
     --banner-height: 96px;
     --logo-size: 72px;
     --banner-title-offset: 0px;
@@ -253,6 +267,10 @@
     --page-gutter: 10px;
     --section-gap: 16px;
     --panel-padding: 12px;
+    --mobile-stack-gap: 12px;
+    --mobile-card-gap: 10px;
+    --mobile-modal-padding: 12px;
+    --modal-safe-height: calc(100svh - 16px);
     --banner-height: 88px;
     --logo-size: 64px;
     --banner-title-width: min(100%, 16ch);

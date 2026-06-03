@@ -4,6 +4,10 @@ import { Button } from "../components/Button";
 import { DatePicker } from "../components/DatePicker";
 import { Modal } from "../components/Modal";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
+import { MobileCardList } from "../components/mobile/MobileCardList";
+import { MobileEmptyState } from "../components/mobile/MobileEmptyState";
+import { MobileKeyValueList } from "../components/mobile/MobileKeyValueList";
+import { useIsMobile } from "../hooks/useIsMobile";
 import {
   addBeginnerToCourse,
   assignBeginnerCase,
@@ -237,6 +241,20 @@ function BeginnerFormFields({ copy, form, onChange, onToggle }) {
   );
 }
 
+function getAvailableCasesForBeginner(
+  availableCases: CaseOption[],
+  beginner: CourseBeginner,
+) {
+  return availableCases.filter(
+    (caseItem) =>
+      caseItem.reference &&
+      caseItem.reference !== "Main Cupboard" &&
+      (!caseItem.memberUsername ||
+        caseItem.memberUsername === beginner.username ||
+        String(caseItem.id) === String(beginner.assignedCaseId ?? "")),
+  );
+}
+
 const BEGINNERS_COPY = {
   courseType: "beginners",
   participantPlural: "beginners",
@@ -342,6 +360,7 @@ const HAVE_A_GO_COPY = {
 };
 
 export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners" }) {
+  const isMobile = useIsMobile();
   const copy = variant === "have-a-go" ? HAVE_A_GO_COPY : BEGINNERS_COPY;
   const usesEquipmentAssignment = copy.courseType === "beginners";
   const actorUsername = currentUserProfile?.auth?.username ?? "";
@@ -704,6 +723,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                   type="number"
                   min={1}
                   max={24}
+                  inputMode="numeric"
                   value={courseForm.lessonCount}
                   onChange={(event) =>
                     setCourseForm((current) => ({
@@ -719,6 +739,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                   type="number"
                   min={1}
                   max={48}
+                  inputMode="numeric"
                   value={courseForm.beginnerCapacity}
                   onChange={(event) =>
                     setCourseForm((current) => ({
@@ -799,41 +820,70 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
               <section className="beginners-course-subpanel">
                 <h4>{copy.participantListTitle}</h4>
-                <div className="equipment-inventory-table-wrap">
-                  <table className="equipment-inventory-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Username</th>
-                        <th>Password</th>
-                        <th>Type</th>
-                        <th>Initial Email</th>
-                        <th>30 Day</th>
-                        <th>Fee Paid</th>
-                        {usesEquipmentAssignment ? (
-                          <th className="beginners-course-case-heading">
-                            Assigned Case
-                          </th>
-                        ) : null}
-                        <th className="beginners-course-actions-heading">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {course.beginners.length > 0 ? (
-                        course.beginners.map((beginner) => (
-                          <tr key={beginner.id}>
-                            <td>{formatMemberDisplayName(beginner)}</td>
-                            <td>{formatMemberDisplayUsername(beginner)}</td>
-                            <td>
-                              {temporaryPasswords[beginner.username] ??
-                                (beginner.passwordSet ? "Set" : "Not set")}
-                            </td>
-                            <td>{beginner.sizeCategory === "junior" ? "Jr" : "Snr"}</td>
-                            <td>{beginner.initialEmailSent ? "Yes" : "No"}</td>
-                            <td>{beginner.thirtyDayReminderSent ? "Yes" : "No"}</td>
-                            <td>{beginner.courseFeePaid ? "Yes" : "No"}</td>
+                {isMobile ? (
+                  course.beginners.length > 0 ? (
+                    <MobileCardList className="beginners-course-mobile-card-list">
+                      {course.beginners.map((beginner) => {
+                        const canConvertBeginner = usesEquipmentAssignment
+                          ? hasCourseFinished(course)
+                          : false;
+                        const convertButtonLabel = beginner.convertedToMember
+                          ? "Converted"
+                          : "Convert to member";
+                        const convertButtonTitle = beginner.convertedToMember
+                          ? `${formatMemberDisplayName(beginner)} is already a full member.`
+                          : canConvertBeginner
+                            ? `Convert ${formatMemberDisplayName(beginner)} to a full member.`
+                            : `This button becomes available once the ${copy.itemLowerLabel} has completed.`;
+
+                        return (
+                          <article
+                            key={beginner.id}
+                            className="beginners-course-mobile-card"
+                          >
+                            <h5>{formatMemberDisplayName(beginner)}</h5>
+                            <MobileKeyValueList
+                              items={[
+                                {
+                                  label: "Username",
+                                  value: formatMemberDisplayUsername(beginner),
+                                },
+                                {
+                                  label: "Password",
+                                  value:
+                                    temporaryPasswords[beginner.username] ??
+                                    (beginner.passwordSet ? "Set" : "Not set"),
+                                },
+                                {
+                                  label: "Type",
+                                  value:
+                                    beginner.sizeCategory === "junior" ? "Junior" : "Senior",
+                                },
+                                {
+                                  label: "Initial Email",
+                                  value: beginner.initialEmailSent ? "Yes" : "No",
+                                },
+                                {
+                                  label: "30 Day",
+                                  value: beginner.thirtyDayReminderSent ? "Yes" : "No",
+                                },
+                                {
+                                  label: "Fee Paid",
+                                  value: beginner.courseFeePaid ? "Yes" : "No",
+                                },
+                                ...(usesEquipmentAssignment
+                                  ? [
+                                      {
+                                        label: "Assigned Case",
+                                        value: beginner.assignedCaseNumber || "No case assigned",
+                                      },
+                                    ]
+                                  : []),
+                              ]}
+                            />
                             {usesEquipmentAssignment ? (
-                              <td className="beginners-course-case-cell">
+                              <label className="beginners-course-mobile-field">
+                                Assigned Case
                                 <select
                                   value={
                                     caseSelections[beginner.id] ??
@@ -849,195 +899,392 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                   }
                                 >
                                   <option value="">No case assigned</option>
-                                  {availableCases
-                                    .filter(
-                                      (caseItem) =>
-                                        caseItem.reference &&
-                                        caseItem.reference !== "Main Cupboard" &&
-                                        (
-                                          !caseItem.memberUsername ||
-                                          caseItem.memberUsername === beginner.username ||
-                                          String(caseItem.id) ===
-                                            String(beginner.assignedCaseId ?? "")
-                                        ),
-                                    )
-                                    .map((caseItem) => (
+                                  {getAvailableCasesForBeginner(
+                                    availableCases,
+                                    beginner,
+                                  ).map((caseItem) => (
+                                    <option key={caseItem.id} value={caseItem.id}>
+                                      {caseItem.reference}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : null}
+                            <div className="beginners-course-actions beginners-course-mobile-actions">
+                              <Button
+                                className="beginners-course-row-action-button beginners-course-row-action-button--edit"
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => openBeginnerEdit(beginner)}
+                              >
+                                Edit
+                              </Button>
+                              {usesEquipmentAssignment ? (
+                                <>
+                                  <Button
+                                    className="beginners-course-row-action-button beginners-course-row-action-button--save"
+                                    size="sm"
+                                    onClick={() => void saveCaseAssignment(beginner)}
+                                  >
+                                    Save case
+                                  </Button>
+                                  <Button
+                                    className="beginners-course-row-action-button beginners-course-row-action-button--convert"
+                                    size="sm"
+                                    variant="info"
+                                    disabled={
+                                      beginner.convertedToMember || !canConvertBeginner
+                                    }
+                                    title={convertButtonTitle}
+                                    onClick={() => void convertBeginnerToMember(beginner)}
+                                  >
+                                    {convertButtonLabel}
+                                  </Button>
+                                </>
+                              ) : null}
+                              {permissions.canManageBeginnersCourses ? (
+                                <Button
+                                  className="beginners-course-row-action-button beginners-course-row-action-button--reset"
+                                  size="sm"
+                                  variant="danger"
+                                  onClick={() => void resetPassword(beginner)}
+                                >
+                                  Reset password
+                                </Button>
+                              ) : null}
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </MobileCardList>
+                  ) : (
+                    <MobileEmptyState message={copy.emptyParticipantText} />
+                  )
+                ) : (
+                  <div className="equipment-inventory-table-wrap">
+                    <table className="equipment-inventory-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Username</th>
+                          <th>Password</th>
+                          <th>Type</th>
+                          <th>Initial Email</th>
+                          <th>30 Day</th>
+                          <th>Fee Paid</th>
+                          {usesEquipmentAssignment ? (
+                            <th className="beginners-course-case-heading">
+                              Assigned Case
+                            </th>
+                          ) : null}
+                          <th className="beginners-course-actions-heading">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {course.beginners.length > 0 ? (
+                          course.beginners.map((beginner) => (
+                            <tr key={beginner.id}>
+                              <td>{formatMemberDisplayName(beginner)}</td>
+                              <td>{formatMemberDisplayUsername(beginner)}</td>
+                              <td>
+                                {temporaryPasswords[beginner.username] ??
+                                  (beginner.passwordSet ? "Set" : "Not set")}
+                              </td>
+                              <td>{beginner.sizeCategory === "junior" ? "Jr" : "Snr"}</td>
+                              <td>{beginner.initialEmailSent ? "Yes" : "No"}</td>
+                              <td>{beginner.thirtyDayReminderSent ? "Yes" : "No"}</td>
+                              <td>{beginner.courseFeePaid ? "Yes" : "No"}</td>
+                              {usesEquipmentAssignment ? (
+                                <td className="beginners-course-case-cell">
+                                  <select
+                                    value={
+                                      caseSelections[beginner.id] ??
+                                      (beginner.assignedCaseId
+                                        ? String(beginner.assignedCaseId)
+                                        : "")
+                                    }
+                                    onChange={(event) =>
+                                      setCaseSelections((current) => ({
+                                        ...current,
+                                        [beginner.id]: event.target.value,
+                                      }))
+                                    }
+                                  >
+                                    <option value="">No case assigned</option>
+                                    {getAvailableCasesForBeginner(
+                                      availableCases,
+                                      beginner,
+                                    ).map((caseItem) => (
                                       <option key={caseItem.id} value={caseItem.id}>
                                         {caseItem.reference}
                                       </option>
                                     ))}
-                                </select>
-                              </td>
-                            ) : null}
-                            <td className="beginners-course-actions-cell">
-                              <div className="beginners-course-row-actions">
-                                <Button
-                                  className="beginners-course-row-action-button beginners-course-row-action-button--edit"
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => openBeginnerEdit(beginner)}
-                                >
-                                  Edit
-                                </Button>
-                                {usesEquipmentAssignment
-                                  ? (() => {
-                                      const canConvertBeginner = hasCourseFinished(course);
-                                      const convertButtonLabel = beginner.convertedToMember
-                                        ? "Converted"
-                                        : "Convert to member";
-                                      const convertButtonTitle = beginner.convertedToMember
-                                        ? `${formatMemberDisplayName(beginner)} is already a full member.`
-                                        : canConvertBeginner
-                                        ? `Convert ${formatMemberDisplayName(beginner)} to a full member.`
-                                        : `This button becomes available once the ${copy.itemLowerLabel} has completed.`;
-
-                                      return (
-                                        <>
-                                          <Button
-                                            className="beginners-course-row-action-button beginners-course-row-action-button--save"
-                                            size="sm"
-                                            onClick={() => void saveCaseAssignment(beginner)}
-                                          >
-                                            Save case
-                                          </Button>
-                                          <Button
-                                            className="beginners-course-row-action-button beginners-course-row-action-button--convert"
-                                            size="sm"
-                                            variant="info"
-                                            disabled={beginner.convertedToMember || !canConvertBeginner}
-                                            title={convertButtonTitle}
-                                            onClick={() => void convertBeginnerToMember(beginner)}
-                                          >
-                                            {convertButtonLabel}
-                                          </Button>
-                                        </>
-                                      );
-                                    })()
-                                  : null}
-                                {permissions.canManageBeginnersCourses ? (
+                                  </select>
+                                </td>
+                              ) : null}
+                              <td className="beginners-course-actions-cell">
+                                <div className="beginners-course-row-actions">
                                   <Button
-                                    className="beginners-course-row-action-button beginners-course-row-action-button--reset"
+                                    className="beginners-course-row-action-button beginners-course-row-action-button--edit"
                                     size="sm"
-                                    variant="danger"
-                                    onClick={() => void resetPassword(beginner)}
+                                    variant="secondary"
+                                    onClick={() => openBeginnerEdit(beginner)}
                                   >
-                                    Reset password
+                                    Edit
                                   </Button>
-                                ) : null}
-                              </div>
+                                  {usesEquipmentAssignment
+                                    ? (() => {
+                                        const canConvertBeginner = hasCourseFinished(course);
+                                        const convertButtonLabel = beginner.convertedToMember
+                                          ? "Converted"
+                                          : "Convert to member";
+                                        const convertButtonTitle = beginner.convertedToMember
+                                          ? `${formatMemberDisplayName(beginner)} is already a full member.`
+                                          : canConvertBeginner
+                                            ? `Convert ${formatMemberDisplayName(beginner)} to a full member.`
+                                            : `This button becomes available once the ${copy.itemLowerLabel} has completed.`;
+
+                                        return (
+                                          <>
+                                            <Button
+                                              className="beginners-course-row-action-button beginners-course-row-action-button--save"
+                                              size="sm"
+                                              onClick={() => void saveCaseAssignment(beginner)}
+                                            >
+                                              Save case
+                                            </Button>
+                                            <Button
+                                              className="beginners-course-row-action-button beginners-course-row-action-button--convert"
+                                              size="sm"
+                                              variant="info"
+                                              disabled={beginner.convertedToMember || !canConvertBeginner}
+                                              title={convertButtonTitle}
+                                              onClick={() => void convertBeginnerToMember(beginner)}
+                                            >
+                                              {convertButtonLabel}
+                                            </Button>
+                                          </>
+                                        );
+                                      })()
+                                    : null}
+                                  {permissions.canManageBeginnersCourses ? (
+                                    <Button
+                                      className="beginners-course-row-action-button beginners-course-row-action-button--reset"
+                                      size="sm"
+                                      variant="danger"
+                                      onClick={() => void resetPassword(beginner)}
+                                    >
+                                      Reset password
+                                    </Button>
+                                  ) : null}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={usesEquipmentAssignment ? 9 : 8}>
+                              {copy.emptyParticipantText}
                             </td>
                           </tr>
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={usesEquipmentAssignment ? 9 : 8}>
-                            {copy.emptyParticipantText}
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </section>
 
               <section className="beginners-course-subpanel">
                 <h4>Attendance Register</h4>
-                <div className="equipment-inventory-table-wrap">
-                  <table className="equipment-inventory-table beginners-course-attendance-table">
-                    <thead>
-                      <tr>
-                        <th>{copy.participantLabel}</th>
-                        {course.lessons.map((lesson) => (
-                          <th key={lesson.id}>
-                            {formatDate(lesson.date)}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {course.beginners.length > 0 ? (
-                        course.beginners.map((beginner) => (
-                          <tr key={beginner.id}>
-                            <td>{formatMemberDisplayName(beginner)}</td>
+                {isMobile ? (
+                  course.beginners.length > 0 ? (
+                    <MobileCardList className="beginners-course-mobile-card-list">
+                      {course.beginners.map((beginner) => (
+                        <article
+                          key={beginner.id}
+                          className="beginners-course-mobile-card"
+                        >
+                          <h5>{formatMemberDisplayName(beginner)}</h5>
+                          <p className="equipment-meta-copy">
+                            Attended {beginner.attendanceDates?.length ?? 0} of{" "}
+                            {course.lessons.length} {copy.countMetaLabel.toLowerCase()}
+                          </p>
+                          <div className="beginners-course-mobile-attendance-list">
                             {course.lessons.map((lesson) => {
                               const attended = beginner.attendanceDates?.includes(
                                 lesson.date,
                               );
 
                               return (
-                                <td
+                                <div
                                   key={`${beginner.id}-${lesson.id}`}
-                                  className="beginners-course-attendance-cell"
+                                  className="beginners-course-mobile-attendance-item"
                                 >
-                                  {attended ? (
-                                    <span
-                                      className="beginners-course-attendance-check"
-                                      aria-label="Attended"
-                                    >
-                                      {"\u2713"}
-                                    </span>
-                                  ) : (
-                                    ""
-                                  )}
-                                </td>
+                                  <span>{formatDate(lesson.date)}</span>
+                                  <span
+                                    className={
+                                      attended
+                                        ? "beginners-course-attendance-check"
+                                        : "beginners-course-mobile-attendance-miss"
+                                    }
+                                  >
+                                    {attended ? "Attended" : "Not recorded"}
+                                  </span>
+                                </div>
                               );
                             })}
-                          </tr>
-                        ))
-                      ) : (
+                          </div>
+                        </article>
+                      ))}
+                    </MobileCardList>
+                  ) : (
+                    <MobileEmptyState
+                      message={`Add ${copy.participantPlural} to start the attendance register.`}
+                    />
+                  )
+                ) : (
+                  <div className="equipment-inventory-table-wrap">
+                    <table className="equipment-inventory-table beginners-course-attendance-table">
+                      <thead>
                         <tr>
-                          <td colSpan={course.lessons.length + 1}>
-                            Add {copy.participantPlural} to start the attendance register.
-                          </td>
+                          <th>{copy.participantLabel}</th>
+                          {course.lessons.map((lesson) => (
+                            <th key={lesson.id}>
+                              {formatDate(lesson.date)}
+                            </th>
+                          ))}
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {course.beginners.length > 0 ? (
+                          course.beginners.map((beginner) => (
+                            <tr key={beginner.id}>
+                              <td>{formatMemberDisplayName(beginner)}</td>
+                              {course.lessons.map((lesson) => {
+                                const attended = beginner.attendanceDates?.includes(
+                                  lesson.date,
+                                );
+
+                                return (
+                                  <td
+                                    key={`${beginner.id}-${lesson.id}`}
+                                    className="beginners-course-attendance-cell"
+                                  >
+                                    {attended ? (
+                                      <span
+                                        className="beginners-course-attendance-check"
+                                        aria-label="Attended"
+                                      >
+                                        {"\u2713"}
+                                      </span>
+                                    ) : (
+                                      ""
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={course.lessons.length + 1}>
+                              Add {copy.participantPlural} to start the attendance register.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </section>
 
               <section className="beginners-course-subpanel">
                 <h4>{copy.planTitle}</h4>
-                <div className="equipment-inventory-table-wrap">
-                  <table className="equipment-inventory-table">
-                    <thead>
-                      <tr>
-                        <th>{copy.lessonColumn}</th>
-                        <th>Date</th>
-                        <th>Time</th>
-                        <th>Coaches</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {course.lessons.map((lesson) => (
-                        <tr key={lesson.id}>
-                          <td>{lesson.lessonNumber}</td>
-                          <td>{formatDate(lesson.date)}</td>
-                          <td>
-                            {formatClockTime(lesson.startTime)} to {formatClockTime(lesson.endTime)}
-                          </td>
-                          <td>
-                            {lesson.coaches.length > 0
-                              ? lesson.coaches.map((coach) => coach.fullName).join(", ")
-                              : "No coaches assigned"}
-                          </td>
-                          <td>
-                            {permissions.canManageBeginnersCourses ? (
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                onClick={() => openCoachModal(lesson)}
-                              >
-                                {copy.assignCoachesButton}
-                              </Button>
-                            ) : null}
-                          </td>
+                {isMobile ? (
+                  <MobileCardList className="beginners-course-mobile-card-list">
+                    {course.lessons.map((lesson) => (
+                      <article
+                        key={lesson.id}
+                        className="beginners-course-mobile-card"
+                      >
+                        <h5>
+                          {copy.lessonColumn} {lesson.lessonNumber}
+                        </h5>
+                        <MobileKeyValueList
+                          items={[
+                            {
+                              label: "Date",
+                              value: formatDate(lesson.date),
+                            },
+                            {
+                              label: "Time",
+                              value: `${formatClockTime(lesson.startTime)} to ${formatClockTime(lesson.endTime)}`,
+                            },
+                            {
+                              label: "Coaches",
+                              value:
+                                lesson.coaches.length > 0
+                                  ? lesson.coaches.map((coach) => coach.fullName).join(", ")
+                                  : "No coaches assigned",
+                            },
+                          ]}
+                        />
+                        {permissions.canManageBeginnersCourses ? (
+                          <div className="beginners-course-actions beginners-course-mobile-actions">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => openCoachModal(lesson)}
+                            >
+                              {copy.assignCoachesButton}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </article>
+                    ))}
+                  </MobileCardList>
+                ) : (
+                  <div className="equipment-inventory-table-wrap">
+                    <table className="equipment-inventory-table">
+                      <thead>
+                        <tr>
+                          <th>{copy.lessonColumn}</th>
+                          <th>Date</th>
+                          <th>Time</th>
+                          <th>Coaches</th>
+                          <th>Action</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {course.lessons.map((lesson) => (
+                          <tr key={lesson.id}>
+                            <td>{lesson.lessonNumber}</td>
+                            <td>{formatDate(lesson.date)}</td>
+                            <td>
+                              {formatClockTime(lesson.startTime)} to {formatClockTime(lesson.endTime)}
+                            </td>
+                            <td>
+                              {lesson.coaches.length > 0
+                                ? lesson.coaches.map((coach) => coach.fullName).join(", ")
+                                : "No coaches assigned"}
+                            </td>
+                            <td>
+                              {permissions.canManageBeginnersCourses ? (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => openCoachModal(lesson)}
+                                >
+                                  {copy.assignCoachesButton}
+                                </Button>
+                              ) : null}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </section>
             </section>
           );

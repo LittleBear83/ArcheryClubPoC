@@ -30,7 +30,7 @@ The mobile work is complete when:
 - [x] Add `src/presentation/hooks/useIsMobile.ts`
   - Use `window.matchMedia`
   - Start with one breakpoint at `900px`
-- [ ] Decide and document the primary breakpoints
+- [x] Decide and document the primary breakpoints
   - `phone < 640px`
   - `tablet 640px - 899px`
   - `desktop >= 900px`
@@ -40,7 +40,7 @@ The mobile work is complete when:
   - `MobileKeyValueList.tsx`
   - `MobileActionBar.tsx`
   - `MobileEmptyState.tsx`
-- [ ] Add a short note to developer docs describing the desktop/mobile split pattern
+- [x] Add a short note to developer docs describing the desktop/mobile split pattern
 - [ ] Sanity-test the existing app shell at `390px`, `430px`, `768px`, and `1024px`
 
 Outcome:
@@ -156,27 +156,27 @@ Outcome:
 - [x] Keep desktop month grid as default desktop experience
 - [x] Make mobile default to agenda/list view instead of dense month grid
 - [x] Keep booking/approval actions shared
-- [ ] Make event and coaching details comfortable in mobile modal/sheet layout
-- [ ] Verify multi-date and recurring flows on touch devices
-- [ ] Confirm selected-day summaries are still easy to scan on mobile
+- [x] Make event and coaching details comfortable in mobile modal/sheet layout
+- [x] Verify multi-date and recurring flows on touch devices
+- [x] Confirm selected-day summaries are still easy to scan on mobile
 
 #### Tournaments
 
-- [ ] Split into desktop and mobile views
-- [ ] Keep desktop bracket graphic intact
-- [ ] Replace mobile default bracket view with:
+- [x] Split into desktop and mobile views
+- [x] Keep desktop bracket graphic intact
+- [x] Replace mobile default bracket view with:
   - tournament cards
   - registration status
   - score entry
   - simplified rounds/winner summary
-- [ ] Keep detailed bracket as optional drill-in if still usable
+- [x] Keep detailed bracket as optional drill-in if still usable
 - [ ] Verify export behavior and setup form usability on phones
 
 #### Beginners Courses
 
-- [ ] Review whether a mobile split is needed immediately or later
-- [ ] Replace widest tables with stacked card layouts where practical
-- [ ] Rework row action clusters that do not fit on narrow screens
+- [x] Review whether a mobile split is needed immediately or later
+- [x] Replace widest tables with stacked card layouts where practical
+- [x] Rework row action clusters that do not fit on narrow screens
 
 Outcome:
 
@@ -184,8 +184,8 @@ Outcome:
 
 ### Phase 5: Shared Cleanup
 
-- [ ] Standardize mobile spacing tokens where needed
-- [ ] Standardize mobile card/list/table replacement patterns
+- [x] Standardize mobile spacing tokens where needed
+- [x] Standardize mobile card/list/table replacement patterns
 - [ ] Replace any remaining phone-hostile tables in important flows
 - [ ] Review all modals for:
   - max height

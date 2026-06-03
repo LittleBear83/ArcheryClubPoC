@@ -120,8 +120,11 @@ export function Calendar({
                     ? `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
                     : null;
                   const items = dateKey ? itemsByDate[dateKey] ?? [] : [];
+                  const isMultiSelected = Boolean(
+                    dateKey && selectedDates.includes(dateKey),
+                  );
                   const isSelected =
-                    selectedDate === dateKey || Boolean(dateKey && selectedDates.includes(dateKey));
+                    selectedDate === dateKey || isMultiSelected;
                   const hasItems = Boolean(items?.length);
 
                   return (
@@ -130,6 +133,7 @@ export function Calendar({
                       className={[
                         "calendar-day-cell",
                         isSelected ? "selected" : "",
+                        isMultiSelected ? "is-multi-selected" : "",
                         hasItems ? "has-items" : "",
                         dateKey ? "is-clickable" : "is-empty",
                       ]
@@ -143,6 +147,11 @@ export function Calendar({
                     >
                       <div className="calendar-day-header">
                         <div className="calendar-day-number">{day || ""}</div>
+                        {isMultiSelected ? (
+                          <span className="calendar-day-selection-badge">
+                            Selected
+                          </span>
+                        ) : null}
                         {dateKey && hasItems && renderDayMeta
                           ? renderDayMeta(items, dateKey)
                           : null}

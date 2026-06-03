@@ -211,7 +211,7 @@ canvas {
 .guest-member-modal-search input,
 .usage-filter-form input {
   width: 100%;
-  min-height: var(--control-height);
+  min-height: max(var(--control-height), var(--touch-target));
   padding: 12px 14px;
   border: 1px solid var(--input-border);
   border-radius: 12px;
@@ -1033,7 +1033,7 @@ button:disabled {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--mobile-stack-gap);
   text-align: left;
   width: 100%;
 }
@@ -1064,7 +1064,8 @@ button:disabled {
 
 .left-align-form label {
   width: 100%;
-  display: block;
+  display: grid;
+  gap: 8px;
   color: var(--text-soft);
 }
 
@@ -1157,7 +1158,7 @@ button:disabled {
 .left-align-form select {
   width: 100%;
   box-sizing: border-box;
-  min-height: var(--control-height);
+  min-height: max(var(--control-height), var(--touch-target));
   padding: 12px 14px;
   border: 1px solid var(--input-border);
   border-radius: 12px;
@@ -1194,6 +1195,7 @@ button:disabled {
 
 .left-align-form button {
   align-self: flex-start;
+  min-height: var(--touch-target);
 }
 
 .stack-gap-12 {
@@ -1918,6 +1920,17 @@ button:disabled {
   margin-bottom: 18px;
 }
 
+.event-selected-day-summary {
+  margin-bottom: 16px;
+}
+
+.event-selected-day-summary--mobile {
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: var(--surface-deep);
+}
+
 .event-mobile-agenda-panel {
   display: grid;
   gap: 16px;
@@ -2311,6 +2324,35 @@ button:disabled {
   gap: 12px;
 }
 
+.event-mobile-modal {
+  width: min(100%, 680px);
+}
+
+.event-detail-modal--mobile {
+  gap: var(--mobile-stack-gap);
+}
+
+.event-detail-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.event-detail-copy-block {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--surface-deep);
+}
+
+.event-detail-copy-block strong,
+.event-detail-copy-block p {
+  margin: 0;
+}
+
 .event-cancel-flow {
   display: grid;
   gap: 14px;
@@ -2412,19 +2454,58 @@ button:disabled {
   gap: 14px;
 }
 
+.event-multi-date-modal--mobile {
+  gap: var(--mobile-stack-gap);
+}
+
 .event-multi-date-modal p {
   margin: 0;
 }
 
 .event-multi-date-summary {
+  display: grid;
+  gap: 8px;
   color: var(--muted);
   font-size: 0.9rem;
   line-height: 1.5;
 }
 
+.event-multi-date-summary strong {
+  color: var(--text-h);
+  font-size: 0.95rem;
+}
+
+.event-multi-date-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.event-multi-date-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid var(--panel-border-strong);
+  border-radius: 999px;
+  background: var(--surface-selected);
+  color: var(--text-h);
+  font-weight: 700;
+}
+
 .event-form-error {
   margin: 0;
   color: var(--danger);
+}
+
+.event-detail-modal--mobile .event-detail-actions,
+.event-multi-date-modal--mobile .event-detail-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.event-detail-modal--mobile .mobile-key-value-row {
+  grid-template-columns: minmax(0, 104px) minmax(0, 1fr);
 }
 
 .home-panel-title {
@@ -2772,6 +2853,101 @@ button:disabled {
 
 .tournament-bracket-card p {
   margin-bottom: 0;
+}
+
+.tournament-mobile-layout,
+.tournament-mobile-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.tournament-mobile-selector-list,
+.tournament-mobile-registration-list,
+.tournament-mobile-round-list {
+  gap: 12px;
+}
+
+.tournament-mobile-selector {
+  min-height: 0;
+}
+
+.tournament-mobile-summary-card,
+.tournament-mobile-score-card,
+.tournament-mobile-bracket-card {
+  gap: 14px;
+}
+
+.tournament-mobile-status-note {
+  margin: 0;
+}
+
+.tournament-mobile-action-row {
+  margin-top: 0;
+}
+
+.tournament-mobile-registration-card,
+.tournament-mobile-round-card,
+.tournament-mobile-match {
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: var(--surface-deep);
+}
+
+.tournament-mobile-round-card {
+  display: grid;
+  gap: 12px;
+}
+
+.tournament-mobile-round-card h5 {
+  margin: 0;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.82rem;
+}
+
+.tournament-mobile-round-matches {
+  display: grid;
+  gap: 10px;
+}
+
+.tournament-mobile-match {
+  display: grid;
+  gap: 4px;
+}
+
+.tournament-mobile-match strong {
+  font-size: 0.96rem;
+}
+
+.tournament-mobile-match span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.tournament-mobile-match--completed {
+  border-color: var(--connector-accent-soft);
+  background: color-mix(in srgb, var(--connector-accent-soft) 18%, var(--surface-deep));
+}
+
+.tournament-mobile-match--bye {
+  border-style: dashed;
+}
+
+.tournament-mobile-bracket-details {
+  border-top: 1px solid var(--panel-border);
+  padding-top: 12px;
+}
+
+.tournament-mobile-bracket-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.tournament-mobile-bracket-graphic {
+  margin-top: 12px;
 }
 
 .committee-roles-panel {
@@ -3531,7 +3707,7 @@ button:disabled {
 
 .mobile-section-header {
   display: grid;
-  gap: 10px;
+  gap: var(--mobile-stack-gap);
   margin-bottom: 16px;
 }
 
@@ -3551,18 +3727,18 @@ button:disabled {
 
 .mobile-action-bar {
   display: grid;
-  gap: 10px;
+  gap: var(--mobile-stack-gap);
   width: 100%;
 }
 
 .mobile-card-list {
   display: grid;
-  gap: 12px;
+  gap: var(--mobile-card-gap);
 }
 
 .mobile-key-value-list {
   display: grid;
-  gap: 10px;
+  gap: calc(var(--mobile-card-gap) - 2px);
   margin: 0;
 }
 
@@ -4818,6 +4994,23 @@ button:disabled {
   cursor: pointer;
 }
 
+.calendar-day-cell.is-multi-selected {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.calendar-day-selection-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .calendar-day-cell.has-items {
   background: var(--surface-selected-strong);
 }
@@ -5415,6 +5608,57 @@ button:disabled {
   background: var(--surface-deep);
 }
 
+.beginners-course-mobile-card-list {
+  gap: 12px;
+}
+
+.beginners-course-mobile-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: var(--surface-deep);
+}
+
+.beginners-course-mobile-card h5 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.beginners-course-mobile-field {
+  display: grid;
+  gap: 8px;
+}
+
+.beginners-course-mobile-field select {
+  width: 100%;
+}
+
+.beginners-course-mobile-actions {
+  margin-top: 0;
+}
+
+.beginners-course-mobile-attendance-list {
+  display: grid;
+  gap: 8px;
+}
+
+.beginners-course-mobile-attendance-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.beginners-course-mobile-attendance-miss {
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .records-page {
   display: grid;
   gap: 20px;
@@ -5763,6 +6007,20 @@ button:disabled {
     grid-template-columns: 1fr;
     min-width: 0;
     gap: 14px;
+  }
+
+  .modal-body .role-delete-modal-actions,
+  .modal-body .loan-bow-return-actions,
+  .modal-body .event-modal-actions,
+  .modal-body .beginners-course-actions,
+  .modal-body .tournament-setup-actions,
+  .modal-body .records-form-actions {
+    position: sticky;
+    bottom: calc(-1 * var(--mobile-modal-padding));
+    padding-top: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    background:
+      linear-gradient(180deg, rgb(16 16 16 / 0), var(--modal-bg) 22%);
   }
 
   .reporting-source-fieldset {

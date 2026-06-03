@@ -1,0 +1,301 @@
+import type { FormEvent, ReactNode } from "react";
+import { Button } from "../../components/Button";
+import { MobileCardList } from "../../components/mobile/MobileCardList";
+import { MobileEmptyState } from "../../components/mobile/MobileEmptyState";
+import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
+import { MobileSectionHeader } from "../../components/mobile/MobileSectionHeader";
+import { formatDate } from "../../../utils/dateTime";
+import type {
+  TournamentMatch,
+  TournamentRecord,
+  TournamentRound,
+} from "./tournamentViewTypes";
+
+function getParticipantLabel(participant?: TournamentMatch["leftParticipant"]) {
+  if (!participant) {
+    return "TBD";
+  }
+
+  return participant.seed ? `(${participant.seed}) ${participant.fullName}` : participant.fullName;
+}
+
+function getMatchSummary(match: TournamentMatch) {
+  const competitors = `${getParticipantLabel(match.leftParticipant)} vs ${getParticipantLabel(match.rightParticipant)}`;
+  const hasScores =
+    typeof match.leftScore === "number" || typeof match.rightScore === "number";
+  const scoreText = hasScores
+    ? `${typeof match.leftScore === "number" ? match.leftScore : "-"} - ${
+        typeof match.rightScore === "number" ? match.rightScore : "-"
+      }`
+    : "Scores pending";
+  const winnerText = match.winner ? `Winner: ${match.winner.fullName}` : "Winner pending";
+
+  return { competitors, scoreText, winnerText };
+}
+
+function TournamentRoundSummary({ round }: { round: TournamentRound }) {
+  return (
+    <article className="tournament-mobile-round-card">
+      <h5>{round.title}</h5>
+      <div className="tournament-mobile-round-matches">
+        {round.matches.map((match) => {
+          const summary = getMatchSummary(match);
+
+          return (
+            <div
+              key={match.id}
+              className={`tournament-mobile-match tournament-mobile-match--${match.status}`}
+            >
+              <strong>{summary.competitors}</strong>
+              <span>{summary.scoreText}</span>
+              <span>{summary.winnerText}</span>
+            </div>
+          );
+        })}
+      </div>
+    </article>
+  );
+}
+
+type TournamentsMobileViewProps = {
+  tournaments: TournamentRecord[];
+  selectedTournament: TournamentRecord | null;
+  showSetupForm: boolean;
+  canManageTournaments: boolean;
+  isSaving: boolean;
+  isSubmittingScore: boolean;
+  registrationStatusText: string;
+  scoreValue: string;
+  bracketGraphic: ReactNode;
+  onSelectTournament: (tournamentId: TournamentRecord["id"]) => void;
+  onRegister: () => void;
+  onWithdraw: () => void;
+  onSaveCompetitorList: () => void;
+  onScoreValueChange: (nextValue: string) => void;
+  onSubmitScore: (event: FormEvent<HTMLFormElement>) => void;
+};
+
+export function TournamentsMobileView({
+  tournaments,
+  selectedTournament,
+  showSetupForm,
+  canManageTournaments,
+  isSaving,
+  isSubmittingScore,
+  registrationStatusText,
+  scoreValue,
+  bracketGraphic,
+  onSelectTournament,
+  onRegister,
+  onWithdraw,
+  onSaveCompetitorList,
+  onScoreValueChange,
+  onSubmitScore,
+}: TournamentsMobileViewProps) {
+  return (
+    <section className="tournament-mobile-layout">
+      <section className="tournament-list-panel tournament-mobile-list-panel">
+        <MobileSectionHeader
+          title="Tournaments"
+          description={
+            tournaments.length > 0
+              ? "Choose a tournament to view registration, scoring, and bracket progress."
+              : undefined
+          }
+        />
+        {tournaments.length === 0 ? (
+          <MobileEmptyState message="No tournaments have been set up yet." />
+        ) : (
+          <MobileCardList className="tournament-mobile-selector-list">
+            {tournaments.map((tournament) => (
+              <Button
+                key={tournament.id}
+                type="button"
+                className={`tournament-list-item tournament-mobile-selector ${
+                  tournament.id === selectedTournament?.id ? "active" : ""
+                }`}
+                onClick={() => onSelectTournament(tournament.id)}
+                variant="unstyled"
+              >
+                <strong>{tournament.name}</strong>
+                <span>{tournament.typeLabel}</span>
+                <span>
+                  Registration: {formatDate(tournament.registrationWindow.startDate)} to{" "}
+                  {formatDate(tournament.registrationWindow.endDate)}
+                </span>
+                {showSetupForm && canManageTournaments ? (
+                  <span className="tournament-admin-hint">
+                    Tap to amend or delete
+                  </span>
+                ) : null}
+              </Button>
+            ))}
+          </MobileCardList>
+        )}
+      </section>
+
+      {selectedTournament ? (
+        <div className="tournament-mobile-detail">
+          <section className="tournament-summary-card tournament-mobile-summary-card">
+            <MobileSectionHeader
+              title={selectedTournament.name}
+              description={selectedTournament.typeLabel}
+            />
+            <MobileKeyValueList
+              items={[
+                {
+                  label: "Registration",
+                  value: `${formatDate(selectedTournament.registrationWindow.startDate)} to ${formatDate(selectedTournament.registrationWindow.endDate)}`,
+                },
+                {
+                  label: "Score window",
+                  value: `${formatDate(selectedTournament.scoreWindow.startDate)} to ${formatDate(selectedTournament.scoreWindow.endDate)}`,
+                },
+                {
+                  label: "Competitors",
+                  value: String(selectedTournament.registrationCount),
+                },
+                ...(selectedTournament.bracket.winner
+                  ? [
+                      {
+                        label: "Winner",
+                        value: selectedTournament.bracket.winner.fullName,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+            {selectedTournament.needsScoreReminder ? (
+              <p className="profile-success tournament-mobile-status-note">
+                Round {selectedTournament.currentRoundNumber} is waiting for your score.
+              </p>
+            ) : null}
+            <p
+              className={
+                selectedTournament.isRegistered
+                  ? "profile-success tournament-mobile-status-note"
+                  : "tournament-registration-note tournament-mobile-status-note"
+              }
+            >
+              {registrationStatusText}
+            </p>
+
+            <div className="tournament-action-row tournament-mobile-action-row">
+              <Button
+                type="button"
+                className="tournament-primary-button"
+                onClick={onRegister}
+                disabled={!selectedTournament.canRegister || isSaving}
+              >
+                {isSaving && selectedTournament.canRegister
+                  ? "Registering..."
+                  : selectedTournament.canRegister
+                    ? "Register"
+                    : selectedTournament.isRegistered
+                      ? "Already registered"
+                      : selectedTournament.registrationWindow.isOpen
+                        ? "Registration unavailable"
+                        : "Registration not open yet"}
+              </Button>
+
+              <Button
+                type="button"
+                className="tournament-secondary-button"
+                onClick={onWithdraw}
+                disabled={!selectedTournament.canWithdraw || isSaving}
+                variant="secondary"
+              >
+                {isSaving && selectedTournament.canWithdraw ? "Updating..." : "Withdraw"}
+              </Button>
+
+              {canManageTournaments ? (
+                <Button
+                  type="button"
+                  className="tournament-secondary-button"
+                  onClick={onSaveCompetitorList}
+                  variant="secondary"
+                >
+                  Save competitor list
+                </Button>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="tournament-registrations-card">
+            <MobileSectionHeader
+              title="Competing Members"
+              description={`${selectedTournament.registrations.length} registered`}
+            />
+            {selectedTournament.registrations.length > 0 ? (
+              <MobileCardList className="tournament-mobile-registration-list">
+                {selectedTournament.registrations.map((registration) => (
+                  <div key={registration.username} className="tournament-mobile-registration-card">
+                    {registration.fullName}
+                  </div>
+                ))}
+              </MobileCardList>
+            ) : (
+              <MobileEmptyState message="No members have registered yet." />
+            )}
+          </section>
+
+          {selectedTournament.canSubmitScore ? (
+            <form
+              onSubmit={onSubmitScore}
+              className="left-align-form tournament-score-card tournament-mobile-score-card"
+            >
+              <MobileSectionHeader
+                title={`Submit Round ${selectedTournament.currentRoundNumber} Score`}
+              />
+              <label>
+                Score
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={scoreValue}
+                  onChange={(event) => onScoreValueChange(event.target.value)}
+                  required
+                />
+              </label>
+              <Button type="submit" disabled={isSubmittingScore}>
+                {isSubmittingScore ? "Saving score..." : "Submit score"}
+              </Button>
+            </form>
+          ) : null}
+
+          <section className="tournament-bracket-card tournament-mobile-bracket-card">
+            <MobileSectionHeader
+              title="Tournament Progress"
+              description="Phone view defaults to a simpler round-by-round summary."
+            />
+            {!selectedTournament.bracketReady ? (
+              <p>
+                The tournament bracket graphic will be generated once registration
+                closes on {formatDate(selectedTournament.registrationWindow.endDate)}.
+              </p>
+            ) : selectedTournament.bracket.rounds.length === 0 ? (
+              <p>The bracket will appear once enough competitors are registered.</p>
+            ) : (
+              <>
+                <MobileCardList className="tournament-mobile-round-list">
+                  {selectedTournament.bracket.rounds.map((round) => (
+                    <TournamentRoundSummary key={round.roundNumber} round={round} />
+                  ))}
+                </MobileCardList>
+                <details className="tournament-mobile-bracket-details">
+                  <summary>Show full bracket graphic</summary>
+                  <div className="tournament-mobile-bracket-graphic">{bracketGraphic}</div>
+                </details>
+              </>
+            )}
+          </section>
+        </div>
+      ) : (
+        <section className="tournament-summary-card">
+          <MobileEmptyState message="Choose a tournament to view registration, scoring, and bracket details." />
+        </section>
+      )}
+    </section>
+  );
+}

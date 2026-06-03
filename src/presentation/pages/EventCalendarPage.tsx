@@ -4,6 +4,8 @@ import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
 import { Button } from "../components/Button";
 import { DatePicker } from "../components/DatePicker";
+import { MobileKeyValueList } from "../components/mobile/MobileKeyValueList";
+import { MobileSectionHeader } from "../components/mobile/MobileSectionHeader";
 import { SummaryDate } from "../components/SummaryDate";
 import { SummaryList } from "../components/SummaryList";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -1121,6 +1123,18 @@ export function EventCalendarPage({
   };
 
   const monthLabel = formatDate(`${year}-${String(month + 1).padStart(2, "0")}-01`);
+  const eventRecurringPreviewDates =
+    eventCreationMode === "recurring"
+      ? buildRecurringDates(newEventDate, repeatUntilDate, repeatPattern)
+      : [];
+  const coachingRecurringPreviewDates =
+    coachingCreationMode === "recurring"
+      ? buildRecurringDates(
+          coachingForm.date,
+          coachingRepeatUntilDate,
+          coachingRepeatPattern,
+        )
+      : [];
   const mobileAgendaCards = currentMonthAgendaItems.map((item) => ({
     key: `${item.kind}-${item.id}`,
     badge:
@@ -1159,12 +1173,69 @@ export function EventCalendarPage({
       | "secondary",
     onOpen: () => handleOpenScheduleItem(item),
   }));
+  const eventModalContentClassName = isMobile ? "event-mobile-modal" : "";
+  const eventDetailModalClassName = [
+    "event-detail-modal",
+    isMobile ? "event-detail-modal--mobile" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const eventMultiDateModalClassName = [
+    "event-multi-date-modal",
+    isMobile ? "event-multi-date-modal--mobile" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const selectedDaySummaryCardClassName = [
+    "event-selected-day-summary",
+    isMobile ? "event-selected-day-summary--mobile" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const renderSelectedDateList = (dates: string[]) =>
+    dates.length === 0 ? (
+      "No dates selected."
+    ) : isMobile ? (
+      <div className="event-multi-date-chip-list">
+        {dates.map((date) => (
+          <span key={date} className="event-multi-date-chip">
+            {formatDate(date)}
+          </span>
+        ))}
+      </div>
+    ) : (
+      dates.join(", ")
+    );
 
   const summaryContent = !selectedDate ? (
     <p>Select a date on the calendar to view event details.</p>
   ) : (
     <>
-      <SummaryDate date={selectedDate} />
+      {isMobile ? (
+        <div className={selectedDaySummaryCardClassName}>
+          <MobileSectionHeader
+            title="Selected Day"
+            description={formatDate(selectedDate)}
+          />
+          <MobileKeyValueList
+            items={[
+              {
+                label: "Items",
+                value: String(selectedScheduleItems.length),
+              },
+              {
+                label: "Filters",
+                value:
+                  activeFilters.length === 0
+                    ? "All calendar items"
+                    : `${activeFilters.length} active`,
+              },
+            ]}
+          />
+        </div>
+      ) : (
+        <SummaryDate date={selectedDate} />
+      )}
       {selectedScheduleItems.length === 0 ? (
         <p>
           {activeFilters.length === 0
@@ -1175,9 +1246,16 @@ export function EventCalendarPage({
         <>
           {activeSelectedEvents.length > 0 ? (
             <>
-              <p className="event-summary-hint">
-                Click on an event for more information and booking options.
-              </p>
+              {isMobile ? (
+                <MobileSectionHeader
+                  title="Events"
+                  description="Tap a card for booking options and more detail."
+                />
+              ) : (
+                <p className="event-summary-hint">
+                  Click on an event for more information and booking options.
+                </p>
+              )}
               <div className="event-summary-card-list">
                 {activeSelectedEvents.map((evt) => (
                   <Button
@@ -1226,7 +1304,11 @@ export function EventCalendarPage({
           ) : null}
           {activeSelectedCoachingSessions.length > 0 ? (
             <>
-              <h4>Coaching sessions</h4>
+              {isMobile ? (
+                <MobileSectionHeader title="Coaching Sessions" />
+              ) : (
+                <h4>Coaching sessions</h4>
+              )}
               <div className="event-summary-card-list">
                 {activeSelectedCoachingSessions.map((session) => (
                   <Button
@@ -1274,7 +1356,11 @@ export function EventCalendarPage({
           ) : null}
           {activeSelectedBeginnersLessons.length > 0 ? (
             <>
-              <h4>Beginners and Have a Go sessions</h4>
+              {isMobile ? (
+                <MobileSectionHeader title="Beginners And Have a Go" />
+              ) : (
+                <h4>Beginners and Have a Go sessions</h4>
+              )}
               <div className="event-summary-card-list">
                 {activeSelectedBeginnersLessons.map((lesson) => (
                   <div
@@ -1320,7 +1406,11 @@ export function EventCalendarPage({
           ) : null}
           {hasRejectedSummaryItems ? (
             <>
-              <h4 className="event-summary-status-heading">Rejected</h4>
+              {isMobile ? (
+                <MobileSectionHeader title="Rejected" />
+              ) : (
+                <h4 className="event-summary-status-heading">Rejected</h4>
+              )}
               <div className="event-summary-card-list">
                 {rejectedSelectedEvents.map((evt) => (
                   <Button
@@ -1379,7 +1469,11 @@ export function EventCalendarPage({
           ) : null}
           {hasCancelledSummaryItems ? (
             <>
-              <h4 className="event-summary-status-heading">Cancelled</h4>
+              {isMobile ? (
+                <MobileSectionHeader title="Cancelled" />
+              ) : (
+                <h4 className="event-summary-status-heading">Cancelled</h4>
+              )}
               <div className="event-summary-card-list">
                 {cancelledSelectedEvents.map((evt) => (
                   <Button
@@ -1569,6 +1663,7 @@ export function EventCalendarPage({
         open={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         title="Add Event"
+        contentClassName={eventModalContentClassName}
       >
         <form
           onSubmit={addEvent}
@@ -1707,6 +1802,20 @@ export function EventCalendarPage({
                   required
                 />
               </label>
+              <div className="event-multi-date-summary">
+                {eventRecurringPreviewDates.length > 0 ? (
+                  <>
+                    <strong>
+                      {eventRecurringPreviewDates.length} event date
+                      {eventRecurringPreviewDates.length === 1 ? "" : "s"} will be
+                      created.
+                    </strong>
+                    {renderSelectedDateList(eventRecurringPreviewDates.slice(0, 8))}
+                  </>
+                ) : (
+                  "Choose a repeat-until date to preview the schedule."
+                )}
+              </div>
             </>
           ) : null}
           {eventCreationMode === "multiple" ? (
@@ -1786,11 +1895,17 @@ export function EventCalendarPage({
         open={multiDateModalOpen}
         onClose={() => setMultiDateModalOpen(false)}
         title="Choose Event Dates"
+        contentClassName={eventModalContentClassName}
       >
-        <div className="event-multi-date-modal">
+        <div className={eventMultiDateModalClassName}>
           <p>
             Select every date this event should be created on. Each chosen day will be submitted as its own event.
           </p>
+          <div className="event-multi-date-summary">
+            <strong>
+              Tap days to add or remove them from this event schedule.
+            </strong>
+          </div>
           <Calendar
             year={multiDateYear}
             month={multiDateMonth}
@@ -1820,9 +1935,7 @@ export function EventCalendarPage({
             }}
           />
           <div className="event-multi-date-summary">
-            {selectedMultiDates.length === 0
-              ? "No dates selected."
-              : selectedMultiDates.join(", ")}
+            {renderSelectedDateList(selectedMultiDates)}
           </div>
           <div className="event-detail-actions">
             <Button
@@ -1847,6 +1960,7 @@ export function EventCalendarPage({
         open={isCoachingModalOpen}
         onClose={() => setIsCoachingModalOpen(false)}
         title="Add Coaching Session"
+        contentClassName={eventModalContentClassName}
       >
         <form
           onSubmit={(event) => {
@@ -2011,6 +2125,22 @@ export function EventCalendarPage({
                   required
                 />
               </label>
+              <div className="event-multi-date-summary">
+                {coachingRecurringPreviewDates.length > 0 ? (
+                  <>
+                    <strong>
+                      {coachingRecurringPreviewDates.length} coaching date
+                      {coachingRecurringPreviewDates.length === 1 ? "" : "s"} will be
+                      created.
+                    </strong>
+                    {renderSelectedDateList(
+                      coachingRecurringPreviewDates.slice(0, 8),
+                    )}
+                  </>
+                ) : (
+                  "Choose a repeat-until date to preview the schedule."
+                )}
+              </div>
             </>
           ) : null}
           {coachingCreationMode === "multiple" ? (
@@ -2092,6 +2222,7 @@ export function EventCalendarPage({
             <input
               type="number"
               min="1"
+              inputMode="numeric"
               value={coachingForm.availableSlots}
               onChange={(event) =>
                 setCoachingForm((current) => ({
@@ -2120,12 +2251,18 @@ export function EventCalendarPage({
         open={coachingMultiDateModalOpen}
         onClose={() => setCoachingMultiDateModalOpen(false)}
         title="Choose Coaching Dates"
+        contentClassName={eventModalContentClassName}
       >
-        <div className="event-multi-date-modal">
+        <div className={eventMultiDateModalClassName}>
           <p>
             Select every date this coaching session should be created on. Each
             chosen day will be submitted as its own session.
           </p>
+          <div className="event-multi-date-summary">
+            <strong>
+              Tap days to add or remove them from this coaching schedule.
+            </strong>
+          </div>
           <Calendar
             year={coachingMultiDateYear}
             month={coachingMultiDateMonth}
@@ -2155,9 +2292,7 @@ export function EventCalendarPage({
             }}
           />
           <div className="event-multi-date-summary">
-            {selectedCoachingMultiDates.length === 0
-              ? "No dates selected."
-              : selectedCoachingMultiDates.join(", ")}
+            {renderSelectedDateList(selectedCoachingMultiDates)}
           </div>
           <div className="event-detail-actions">
             <Button
@@ -2182,47 +2317,84 @@ export function EventCalendarPage({
         open={Boolean(selectedEventDetail)}
         onClose={() => setSelectedEventId(null)}
         title={selectedEventDetail?.title ?? "Event details"}
+        contentClassName={eventModalContentClassName}
       >
         {selectedEventDetail ? (
-          <div className="event-detail-modal">
-            <p>
+          <div className={eventDetailModalClassName}>
+            <div className="event-detail-badge-row">
               <span
                 className={`event-type-badge ${getEventTypeDetails(selectedEventDetail.type).className}`}
               >
                 {getEventTypeDetails(selectedEventDetail.type).label}
               </span>
-            </p>
-            <p>
-              <strong>Date:</strong> {formatDate(selectedEventDetail.date)}
-            </p>
-            <p>
-              <strong>Time:</strong> {formatClockTime(selectedEventDetail.startTime)} to{" "}
-              {formatClockTime(selectedEventDetail.endTime)}
-            </p>
-            <p>
-              <strong>Venue:</strong> {getVenueLabel(selectedEventDetail.venue)}
-            </p>
+            </div>
+            {isMobile ? (
+              <MobileKeyValueList
+                items={[
+                  {
+                    label: "Date",
+                    value: formatDate(selectedEventDetail.date),
+                  },
+                  {
+                    label: "Time",
+                    value: `${formatClockTime(selectedEventDetail.startTime)} to ${formatClockTime(selectedEventDetail.endTime)}`,
+                  },
+                  {
+                    label: "Venue",
+                    value: getVenueLabel(selectedEventDetail.venue),
+                  },
+                  {
+                    label: "Status",
+                    value: selectedEventDetail.isBookedOn
+                      ? "Booked on"
+                      : selectedEventDetail.isPendingApproval
+                        ? "Pending approval"
+                        : selectedEventDetail.isRejected
+                          ? "Request rejected"
+                          : hasEventEnded(selectedEventDetail)
+                            ? "Event finished"
+                            : selectedEventDetail.type === "range-closed"
+                              ? "Not bookable"
+                              : "Open for booking",
+                  },
+                ]}
+              />
+            ) : (
+              <>
+                <p>
+                  <strong>Date:</strong> {formatDate(selectedEventDetail.date)}
+                </p>
+                <p>
+                  <strong>Time:</strong> {formatClockTime(selectedEventDetail.startTime)} to{" "}
+                  {formatClockTime(selectedEventDetail.endTime)}
+                </p>
+                <p>
+                  <strong>Venue:</strong> {getVenueLabel(selectedEventDetail.venue)}
+                </p>
+                <p>
+                  <strong>Status:</strong>{" "}
+                  <span className="event-detail-status">
+                    {selectedEventDetail.isBookedOn
+                      ? "Booked on"
+                      : selectedEventDetail.isPendingApproval
+                        ? "Pending approval"
+                        : selectedEventDetail.isRejected
+                          ? "Request rejected"
+                          : hasEventEnded(selectedEventDetail)
+                            ? "Event finished"
+                            : selectedEventDetail.type === "range-closed"
+                              ? "Not bookable"
+                              : "Open for booking"}
+                  </span>
+                </p>
+              </>
+            )}
             {selectedEventDetail.details ? (
-              <p>
-                <strong>Details:</strong> {selectedEventDetail.details}
-              </p>
+              <div className="event-detail-copy-block">
+                <strong>Details</strong>
+                <p>{selectedEventDetail.details}</p>
+              </div>
             ) : null}
-            <p>
-              <strong>Status:</strong>{" "}
-              <span className="event-detail-status">
-                {selectedEventDetail.isBookedOn
-                  ? "Booked on"
-                  : selectedEventDetail.isPendingApproval
-                    ? "Pending approval"
-                    : selectedEventDetail.isRejected
-                      ? "Request rejected"
-                      : hasEventEnded(selectedEventDetail)
-                        ? "Event finished"
-                        : selectedEventDetail.type === "range-closed"
-                          ? "Not bookable"
-                          : "Open for booking"}
-              </span>
-            </p>
             {selectedEventDetail.type === "range-closed" ? (
               <p className="event-detail-note event-detail-note-range-closed">
                 Range closed event: this entry closes the range and cannot be booked onto.
@@ -2276,52 +2448,97 @@ export function EventCalendarPage({
         open={Boolean(selectedCoachingSessionDetail)}
         onClose={() => setSelectedCoachingSessionId(null)}
         title={selectedCoachingSessionDetail?.topic ?? "Coaching session details"}
+        contentClassName={eventModalContentClassName}
       >
         {selectedCoachingSessionDetail ? (
-          <div className="event-detail-modal">
-            <p className="coaching-summary-heading">
+          <div className={eventDetailModalClassName}>
+            <p className="coaching-summary-heading event-detail-badge-row">
               <span className="coaching-session-badge">
                 <TrainingIcon className="coaching-badge-icon" />
                 Archery training
               </span>
             </p>
-            <p>
-              <strong>Date:</strong> {formatDate(selectedCoachingSessionDetail.date)}
-            </p>
-            <p>
-              <strong>Time:</strong> {formatClockTime(selectedCoachingSessionDetail.startTime)} to{" "}
-              {formatClockTime(selectedCoachingSessionDetail.endTime)}
-            </p>
-            <p>
-              <strong>Venue:</strong> {getVenueLabel(selectedCoachingSessionDetail.venue)}
-            </p>
-            <p>
-              <strong>Coach:</strong> {selectedCoachingSessionDetail.coach.fullName}
-            </p>
-            <p>
-              <strong>Details:</strong> {selectedCoachingSessionDetail.summary}
-            </p>
-            <p>
-              <strong>Status:</strong>{" "}
-              <span className="event-detail-status">
-                {selectedCoachingSessionDetail.isBookedOn
-                  ? "Booked on"
-                  : selectedCoachingSessionDetail.isPendingApproval
-                    ? "Pending approval"
-                    : selectedCoachingSessionDetail.isRejected
-                      ? "Request rejected"
-                      : hasSessionEnded(selectedCoachingSessionDetail)
-                        ? "Session finished"
-                        : selectedCoachingSessionDetail.remainingSlots <= 0
-                          ? "Session full"
-                          : "Open for booking"}
-              </span>
-            </p>
-            <p>
-              <strong>Capacity:</strong> {selectedCoachingSessionDetail.bookingCount} of{" "}
-              {selectedCoachingSessionDetail.availableSlots} slot
-              {selectedCoachingSessionDetail.availableSlots === 1 ? "" : "s"} booked.
-            </p>
+            {isMobile ? (
+              <MobileKeyValueList
+                items={[
+                  {
+                    label: "Date",
+                    value: formatDate(selectedCoachingSessionDetail.date),
+                  },
+                  {
+                    label: "Time",
+                    value: `${formatClockTime(selectedCoachingSessionDetail.startTime)} to ${formatClockTime(selectedCoachingSessionDetail.endTime)}`,
+                  },
+                  {
+                    label: "Venue",
+                    value: getVenueLabel(selectedCoachingSessionDetail.venue),
+                  },
+                  {
+                    label: "Coach",
+                    value: selectedCoachingSessionDetail.coach.fullName,
+                  },
+                  {
+                    label: "Status",
+                    value: selectedCoachingSessionDetail.isBookedOn
+                      ? "Booked on"
+                      : selectedCoachingSessionDetail.isPendingApproval
+                        ? "Pending approval"
+                        : selectedCoachingSessionDetail.isRejected
+                          ? "Request rejected"
+                          : hasSessionEnded(selectedCoachingSessionDetail)
+                            ? "Session finished"
+                            : selectedCoachingSessionDetail.remainingSlots <= 0
+                              ? "Session full"
+                              : "Open for booking",
+                  },
+                  {
+                    label: "Capacity",
+                    value: `${selectedCoachingSessionDetail.bookingCount} of ${selectedCoachingSessionDetail.availableSlots} slot${selectedCoachingSessionDetail.availableSlots === 1 ? "" : "s"} booked`,
+                  },
+                ]}
+              />
+            ) : (
+              <>
+                <p>
+                  <strong>Date:</strong> {formatDate(selectedCoachingSessionDetail.date)}
+                </p>
+                <p>
+                  <strong>Time:</strong> {formatClockTime(selectedCoachingSessionDetail.startTime)} to{" "}
+                  {formatClockTime(selectedCoachingSessionDetail.endTime)}
+                </p>
+                <p>
+                  <strong>Venue:</strong> {getVenueLabel(selectedCoachingSessionDetail.venue)}
+                </p>
+                <p>
+                  <strong>Coach:</strong> {selectedCoachingSessionDetail.coach.fullName}
+                </p>
+                <p>
+                  <strong>Status:</strong>{" "}
+                  <span className="event-detail-status">
+                    {selectedCoachingSessionDetail.isBookedOn
+                      ? "Booked on"
+                      : selectedCoachingSessionDetail.isPendingApproval
+                        ? "Pending approval"
+                        : selectedCoachingSessionDetail.isRejected
+                          ? "Request rejected"
+                          : hasSessionEnded(selectedCoachingSessionDetail)
+                            ? "Session finished"
+                            : selectedCoachingSessionDetail.remainingSlots <= 0
+                              ? "Session full"
+                              : "Open for booking"}
+                  </span>
+                </p>
+                <p>
+                  <strong>Capacity:</strong> {selectedCoachingSessionDetail.bookingCount} of{" "}
+                  {selectedCoachingSessionDetail.availableSlots} slot
+                  {selectedCoachingSessionDetail.availableSlots === 1 ? "" : "s"} booked.
+                </p>
+              </>
+            )}
+            <div className="event-detail-copy-block">
+              <strong>Details</strong>
+              <p>{selectedCoachingSessionDetail.summary}</p>
+            </div>
             {selectedCoachingSessionDetail.isRejected ? (
               <p className="event-form-error">
                 This coaching session request was rejected.
@@ -2458,6 +2675,7 @@ export function EventCalendarPage({
           setCancelConfirmationText("");
         }}
         title="Cancel Event"
+        contentClassName={eventModalContentClassName}
       >
         <div className="event-cancel-flow">
           <p>Select an event to cancel.</p>

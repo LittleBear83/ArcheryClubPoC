@@ -38,6 +38,28 @@ This keeps:
 - mobile and desktop markup separated
 - desktop behavior stable
 
+## Breakpoints
+
+Use these viewport ranges consistently when making layout decisions:
+
+- `phone`: under `640px`
+- `tablet`: `640px` to `899px`
+- `desktop`: `900px` and above
+
+Implementation note:
+
+- `useIsMobile()` should continue to treat `900px` as the mobile/desktop split
+- tablets can usually share the mobile layout unless a specific desktop pattern still fits comfortably
+
+## Developer Note
+
+When adding new screens or extending existing ones:
+
+- keep route-level state, queries, mutations, and permissions in the page container or extracted page-state hook
+- keep desktop markup as the default unless the mobile version truly needs different structure
+- prefer `MobileCardList`, `MobileKeyValueList`, `MobileSectionHeader`, and stacked action bars over horizontally compressed tables
+- treat modals as mobile-first surfaces: avoid sideways scroll, keep actions reachable, and prefer vertical form layouts
+
 ## Proposed Building Blocks
 
 ### 1. Viewport hook

@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Button } from "../components/Button";
@@ -116,42 +116,6 @@ export function LoginPage({
       setIsSubmitting(false);
     }
   };
-  const attemptLatestRfidLoginEvent = useEffectEvent(async () => {
-    if (
-      isSubmitting ||
-      latestRfidLoginInFlightRef.current ||
-      latestRfidLoginUnavailableRef.current
-    ) {
-      return;
-    }
-
-    latestRfidLoginInFlightRef.current = true;
-
-    try {
-      const loginResult = await onLatestRfidLogin();
-
-      if (loginResult?.unavailable) {
-        latestRfidLoginUnavailableRef.current = true;
-        return;
-      }
-
-      if (loginResult?.pending) {
-        return;
-      }
-
-      if (!loginResult?.success) {
-        setError(loginResult?.message ?? "Unable to log in with RFID.");
-        return;
-      }
-
-      setError("");
-    } catch {
-      setError("RFID service is unavailable. Make sure the local auth server is running.");
-    } finally {
-      latestRfidLoginInFlightRef.current = false;
-    }
-  });
-
   useEffect(() => {
     setError(initialMessage);
   }, [initialMessage]);
@@ -167,6 +131,42 @@ export function LoginPage({
       : "";
 
   useEffect(() => {
+    const attemptLatestRfidLogin = async () => {
+      if (
+        isSubmitting ||
+        latestRfidLoginInFlightRef.current ||
+        latestRfidLoginUnavailableRef.current
+      ) {
+        return;
+      }
+
+      latestRfidLoginInFlightRef.current = true;
+
+      try {
+        const loginResult = await onLatestRfidLogin();
+
+        if (loginResult?.unavailable) {
+          latestRfidLoginUnavailableRef.current = true;
+          return;
+        }
+
+        if (loginResult?.pending) {
+          return;
+        }
+
+        if (!loginResult?.success) {
+          setError(loginResult?.message ?? "Unable to log in with RFID.");
+          return;
+        }
+
+        setError("");
+      } catch {
+        setError("RFID service is unavailable. Make sure the local auth server is running.");
+      } finally {
+        latestRfidLoginInFlightRef.current = false;
+      }
+    };
+
     const intervalId = window.setInterval(() => {
       if (latestRfidLoginUnavailableRef.current) {
         window.clearInterval(intervalId);
@@ -174,18 +174,18 @@ export function LoginPage({
       }
 
       try {
-        void attemptLatestRfidLoginEvent();
+        void attemptLatestRfidLogin();
       } catch {
         setIsSubmitting(false);
       }
     }, RFID_LOGIN_POLL_INTERVAL_MS);
 
-    void attemptLatestRfidLoginEvent();
+    void attemptLatestRfidLogin();
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, []);
+  }, [isSubmitting, onLatestRfidLogin]);
 
   const filteredAllMembers = useMemo(() => {
     const normalizedSearch = memberSearchSurname.trim().toLowerCase();

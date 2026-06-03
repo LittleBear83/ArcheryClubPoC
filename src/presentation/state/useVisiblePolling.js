@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from "react";
+import { useEffect, useRef } from "react";
 
 export function useVisiblePolling(
   callback,
@@ -6,9 +6,11 @@ export function useVisiblePolling(
 ) {
   // Runs polling only while the tab is visible, then refreshes immediately when
   // the user returns so stale dashboards catch up without background churn.
-  const runPolledCallback = useEffectEvent(() => {
-    callback();
-  });
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   useEffect(() => {
     if (!enabled) {
@@ -18,7 +20,7 @@ export function useVisiblePolling(
     let intervalId = null;
 
     const runCallback = () => {
-      runPolledCallback();
+      callbackRef.current();
     };
 
     const startInterval = () => {

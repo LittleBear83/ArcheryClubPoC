@@ -17,9 +17,25 @@ export function startServer({
   if (existsSync(distDirectory)) {
     // In preview/live mode the same Express process serves the built frontend
     // and falls back to index.html for client-side routes.
-    app.use(express.static(distDirectory));
+    app.use(express.static(distDirectory, {
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith(".html")) {
+          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+          res.setHeader("Pragma", "no-cache");
+          res.setHeader("Expires", "0");
+          return;
+        }
+
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      },
+    }));
 
     app.get(/^\/(?!api).*/, (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.sendFile(path.join(distDirectory, "index.html"));
     });
   }

@@ -1,5 +1,5 @@
 import "./App.css";
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import lawnmower from "./assets/lawnmower.svg";
@@ -234,7 +234,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     void queryClient.invalidateQueries();
   }, [queryClient]);
 
-  const handleRfidLogin = async (rfidTag: string) => {
+  const handleRfidLogin = useCallback(async (rfidTag: string) => {
     try {
       const result = await loginWithRfid(rfidTag);
 
@@ -265,7 +265,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         message,
       };
     }
-  };
+  }, []);
 
   const handleLatestRfidLogin = async () => {
     try {
@@ -326,38 +326,6 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     }
   };
 
-  const handleLogoutEvent = useEffectEvent((message = "") => {
-    handleLogout(message);
-  });
-  const handleRfidLoginEvent = useEffectEvent(async (rfidTag: string) => {
-    return handleRfidLogin(rfidTag);
-  });
-  const validateServerSessionEvent = useEffectEvent(async () => {
-    if (!isAuthenticated) {
-      return;
-    }
-
-    try {
-      const result = await getCurrentSession();
-      const sessionProfile = normalizeUserProfile(result.userProfile);
-      const storedUsername = currentUserProfile?.auth?.username;
-      const sessionUsername = sessionProfile?.auth?.username;
-
-      if (storedUsername && sessionUsername && storedUsername !== sessionUsername) {
-        handleLogout("Your session has changed. Please sign in again.");
-        return;
-      }
-
-      persistAuthenticatedUser(result.userProfile);
-    } catch (error) {
-      handleLogout(
-        error instanceof Error
-          ? error.message
-          : "Your session has expired. Please sign in again.",
-      );
-    }
-  });
-
   useEffect(() => {
     if (isAuthenticated && !currentUserProfile) {
       handleLogout();
@@ -369,8 +337,30 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       return;
     }
 
-    void validateServerSessionEvent();
-  }, [isAuthenticated]);
+    const validateServerSession = async () => {
+      try {
+        const result = await getCurrentSession();
+        const sessionProfile = normalizeUserProfile(result.userProfile);
+        const storedUsername = currentUserProfile?.auth?.username;
+        const sessionUsername = sessionProfile?.auth?.username;
+
+        if (storedUsername && sessionUsername && storedUsername !== sessionUsername) {
+          handleLogout("Your session has changed. Please sign in again.");
+          return;
+        }
+
+        persistAuthenticatedUser(result.userProfile);
+      } catch (error) {
+        handleLogout(
+          error instanceof Error
+            ? error.message
+            : "Your session has expired. Please sign in again.",
+        );
+      }
+    };
+
+    void validateServerSession();
+  }, [currentUserProfile?.auth?.username, handleLogout, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -454,7 +444,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       }
 
       inactivityTimeoutRef.current = window.setTimeout(() => {
-        handleLogoutEvent();
+        handleLogout();
       }, INACTIVITY_TIMEOUT_MS);
     };
 
@@ -483,7 +473,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         window.removeEventListener(eventName, resetInactivityTimeout);
       }
     };
-  }, [isAuthenticated]);
+  }, [handleLogout, handleRfidLogin, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -513,20 +503,20 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       isHandingOff = true;
 
       try {
-        const loginResult = await handleRfidLoginEvent(scan.rfidTag);
+        const loginResult = await handleRfidLogin(scan.rfidTag);
 
         if (!isActive) {
           return;
         }
 
         if (!loginResult.success) {
-          handleLogoutEvent(loginResult.message);
+          handleLogout(loginResult.message);
         }
       } finally {
         isHandingOff = false;
       }
     });
-  }, [isAuthenticated]);
+  }, [handleLogout, handleRfidLogin, isAuthenticated]);
 
   if (!isAuthenticated) {
     return (

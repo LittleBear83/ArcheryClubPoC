@@ -1673,6 +1673,38 @@ button:disabled {
   text-align: center;
 }
 
+.role-permissions-mobile-role-list {
+  margin-top: 16px;
+}
+
+.role-permissions-mobile-role-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.role-permissions-mobile-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.role-permissions-mobile-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  border: 1px solid var(--panel-border);
+  color: var(--text-h);
+  font-size: 0.82rem;
+  line-height: 1.2;
+  word-break: break-word;
+}
+
 .event-calendar-layout {
   display: grid;
   grid-template-columns: minmax(0, 2.35fr) minmax(300px, 0.75fr);
@@ -1884,6 +1916,30 @@ button:disabled {
   display: grid;
   gap: 12px;
   margin-bottom: 18px;
+}
+
+.event-mobile-agenda-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.event-mobile-agenda-nav {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.event-mobile-agenda-list {
+  gap: 16px;
+}
+
+.event-mobile-agenda-card {
+  text-align: left;
+}
+
+.event-mobile-agenda-card-head {
+  display: grid;
+  gap: 10px;
 }
 
 .event-summary-card {
@@ -3848,6 +3904,11 @@ button:disabled {
     border-left: 0;
     border-top: 1px solid var(--input-border);
   }
+
+  .event-calendar-layout--mobile .event-summary-panel {
+    padding-top: 0;
+    border-top: 0;
+  }
 }
 
 @media (max-width: 820px) {
@@ -4059,6 +4120,10 @@ button:disabled {
 
   .event-summary-panel {
     padding-top: 14px;
+  }
+
+  .event-mobile-agenda-nav {
+    grid-template-columns: 1fr;
   }
 
   .event-summary-hint {
@@ -4396,6 +4461,11 @@ button:disabled {
 
   .equipment-meta-copy {
     font-size: 0.88rem;
+  }
+
+  .role-permissions-mobile-role-card {
+    padding: 14px;
+    border-radius: 14px;
   }
 
   .records-page-copy {

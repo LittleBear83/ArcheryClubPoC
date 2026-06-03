@@ -131,11 +131,11 @@ Outcome:
 
 #### Role Permissions
 
-- [ ] Split into desktop and mobile views
-- [ ] Keep desktop matrix intact
-- [ ] Build mobile grouped permission editor by category
-- [ ] Replace full role matrix on mobile with role summary cards or grouped lists
-- [ ] Verify create, edit, and delete role flows remain clear on phone
+- [x] Split into desktop and mobile views
+- [x] Keep desktop matrix intact
+- [x] Build mobile grouped permission editor by category
+- [x] Replace full role matrix on mobile with role summary cards or grouped lists
+- [x] Verify create, edit, and delete role flows remain clear on phone
 
 #### Reporting Follow-Up
 
@@ -154,7 +154,7 @@ Outcome:
 - [ ] Create `EventCalendarDesktopView.tsx`
 - [ ] Create `EventCalendarMobileView.tsx`
 - [ ] Keep desktop month grid as default desktop experience
-- [ ] Make mobile default to agenda/list view instead of dense month grid
+- [x] Make mobile default to agenda/list view instead of dense month grid
 - [ ] Keep booking/approval actions shared
 - [ ] Make event and coaching details comfortable in mobile modal/sheet layout
 - [ ] Verify multi-date and recurring flows on touch devices

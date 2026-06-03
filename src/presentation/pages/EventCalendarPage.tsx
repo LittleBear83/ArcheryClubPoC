@@ -4,8 +4,12 @@ import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
 import { Button } from "../components/Button";
 import { DatePicker } from "../components/DatePicker";
+import { MobileCardList } from "../components/mobile/MobileCardList";
+import { MobileEmptyState } from "../components/mobile/MobileEmptyState";
+import { MobileSectionHeader } from "../components/mobile/MobileSectionHeader";
 import { SummaryDate } from "../components/SummaryDate";
 import { SummaryList } from "../components/SummaryList";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
 import {
@@ -266,6 +270,7 @@ export function EventCalendarPage({
   currentUserProfile,
   onBookingsChanged,
 }: EventCalendarPageProps) {
+  const isMobile = useIsMobile();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -905,6 +910,57 @@ export function EventCalendarPage({
     await cancelEventMutation.mutateAsync(cancelEventTarget);
   };
 
+  const handleCalendarToday = () => {
+    const todayDate = new Date();
+    setYear(todayDate.getFullYear());
+    setMonth(todayDate.getMonth());
+    handleDateSelect(todayDate.toISOString().slice(0, 10));
+  };
+
+  const handleCalendarPrevMonth = () => {
+    if (month === 0) {
+      setMonth(11);
+      setYear((current) => current - 1);
+    } else {
+      setMonth((current) => current - 1);
+    }
+  };
+
+  const handleCalendarNextMonth = () => {
+    if (month === 11) {
+      setMonth(0);
+      setYear((current) => current + 1);
+    } else {
+      setMonth((current) => current + 1);
+    }
+  };
+
+  const handleOpenScheduleItem = (item: CalendarScheduleItem) => {
+    setSelectedDate(item.date);
+
+    if (item.kind === "event") {
+      setSelectedEventId(item.id);
+      return;
+    }
+
+    if (item.kind === "coaching") {
+      setSelectedCoachingSessionId(item.id);
+    }
+  };
+
+  const currentMonthAgendaItems = useMemo(
+    () =>
+      filteredScheduleItems.filter((item) => {
+        const itemDate = new Date(`${item.date}T12:00:00`);
+
+        return (
+          itemDate.getFullYear() === year &&
+          itemDate.getMonth() === month
+        );
+      }),
+    [filteredScheduleItems, month, year],
+  );
+
   return (
     <div className="event-calendar-page">
       <p>
@@ -912,7 +968,15 @@ export function EventCalendarPage({
         events, coaching sessions, and approved beginners course lessons
         together in one view.
       </p>
-      <section className="event-calendar-layout event-calendar-layout-expanded">
+      <section
+        className={[
+          "event-calendar-layout",
+          "event-calendar-layout-expanded",
+          isMobile ? "event-calendar-layout--mobile" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <div className="event-calendar-main">
           <div className="event-calendar-key" aria-label="Event type key">
             {EVENT_TYPE_OPTIONS.map((option) => (
@@ -976,125 +1040,190 @@ export function EventCalendarPage({
               Clear filters
             </Button>
           </div>
-          <Calendar
-            year={year}
-            month={month}
-            selectedDate={selectedDate}
-            onDayClick={handleDateSelect}
-            onToday={() => {
-              const todayDate = new Date();
-              setYear(todayDate.getFullYear());
-              setMonth(todayDate.getMonth());
-              handleDateSelect(todayDate.toISOString().slice(0, 10));
-            }}
-            onPrevMonth={() => {
-              if (month === 0) {
-                setMonth(11);
-                setYear((y) => y - 1);
-              } else {
-                setMonth((m) => m - 1);
-              }
-            }}
-            onNextMonth={() => {
-              if (month === 11) {
-                setMonth(0);
-                setYear((y) => y + 1);
-              } else {
-                setMonth((m) => m + 1);
-              }
-            }}
-            itemsByDate={scheduleItemsByDate}
-            renderDayMeta={(items) => {
-              const typeClasses = [
-                ...new Set(
-                  items
-                    .filter(
-                      (item): item is MixedCalendarEvent => item.kind === "event",
-                    )
-                    .map((item) => getEventTypeDetails(item.type).className),
-                ),
-              ] as string[];
-              const hasRejectedItems = items.some((item) => item.isRejected);
-              const hasCoachingItems = items.some((item) => item.kind === "coaching");
-              const hasBeginnersLessons = items.some(
-                (item) => item.kind === "beginners",
-              );
-
-              return (
-                <span className="calendar-day-key-markers" aria-hidden="true">
-                  {hasRejectedItems ? (
-                    <span className="calendar-day-rejected-flag" />
-                  ) : null}
-                  {typeClasses.map((typeClass) => (
-                    <span
-                      key={typeClass}
-                      className={`calendar-day-key-dot ${typeClass}`}
-                    />
+          {isMobile ? (
+            <section className="event-mobile-agenda-panel">
+              <MobileSectionHeader
+                title="Month Agenda"
+                description={`Showing ${currentMonthAgendaItems.length} item${currentMonthAgendaItems.length === 1 ? "" : "s"} for ${formatDate(`${year}-${String(month + 1).padStart(2, "0")}-01`)}.`}
+                actions={
+                  <Button
+                    type="button"
+                    onClick={handleCalendarToday}
+                    variant="secondary"
+                    fullWidth
+                  >
+                    Today
+                  </Button>
+                }
+              />
+              <div className="event-mobile-agenda-nav">
+                <Button type="button" onClick={handleCalendarPrevMonth} variant="ghost">
+                  Previous
+                </Button>
+                <Button type="button" onClick={handleCalendarNextMonth} variant="ghost">
+                  Next
+                </Button>
+              </div>
+              {currentMonthAgendaItems.length > 0 ? (
+                <MobileCardList className="event-mobile-agenda-list">
+                  {currentMonthAgendaItems.map((item) => (
+                    <article
+                      key={`${item.kind}-${item.id}`}
+                      className="event-summary-card event-mobile-agenda-card"
+                    >
+                      <div className="event-mobile-agenda-card-head">
+                        {item.kind === "event" ? (
+                          <span
+                            className={`event-type-badge ${getEventTypeDetails(item.type).className}`}
+                          >
+                            {getEventTypeDetails(item.type).label}
+                          </span>
+                        ) : item.kind === "coaching" ? (
+                          <span className="coaching-session-badge">
+                            <TrainingIcon className="coaching-badge-icon" />
+                            Coaching session
+                          </span>
+                        ) : (
+                          <span className="event-type-badge beginners-course-badge">
+                            {item.title}
+                          </span>
+                        )}
+                        <strong className="event-summary-card-title">
+                          {item.kind === "event"
+                            ? item.title
+                            : item.kind === "coaching"
+                              ? item.topic
+                              : `${getCourseLessonLabel(item)} ${item.lessonNumber}`}
+                        </strong>
+                      </div>
+                      <span className="event-summary-card-time">
+                        {formatDate(item.date)} | {formatClockTime(item.startTime)} to{" "}
+                        {formatClockTime(item.endTime)}
+                      </span>
+                      <span className="event-summary-card-meta">
+                        {item.kind === "event"
+                          ? getVenueLabel(item.venue)
+                          : item.kind === "coaching"
+                            ? `${getVenueLabel(item.venue)} | Coach: ${item.coach.fullName}`
+                            : `Coordinator: ${item.coordinatorName}`}
+                      </span>
+                      <Button
+                        type="button"
+                        onClick={() => handleOpenScheduleItem(item)}
+                        variant={item.kind === "beginners" ? "secondary" : "primary"}
+                        fullWidth
+                      >
+                        {item.kind === "beginners" ? "View selected day" : "Open details"}
+                      </Button>
+                    </article>
                   ))}
-                  {hasCoachingItems ? (
-                    <span className="coaching-day-key-icon-wrap">
-                      <TrainingIcon className="coaching-day-key-icon" />
+                </MobileCardList>
+              ) : (
+                <MobileEmptyState message="No calendar items match the current filters for this month." />
+              )}
+            </section>
+          ) : (
+            <Calendar
+              year={year}
+              month={month}
+              selectedDate={selectedDate}
+              onDayClick={handleDateSelect}
+              onToday={handleCalendarToday}
+              onPrevMonth={handleCalendarPrevMonth}
+              onNextMonth={handleCalendarNextMonth}
+              itemsByDate={scheduleItemsByDate}
+              renderDayMeta={(items) => {
+                const typeClasses = [
+                  ...new Set(
+                    items
+                      .filter(
+                        (item): item is MixedCalendarEvent => item.kind === "event",
+                      )
+                      .map((item) => getEventTypeDetails(item.type).className),
+                  ),
+                ] as string[];
+                const hasRejectedItems = items.some((item) => item.isRejected);
+                const hasCoachingItems = items.some((item) => item.kind === "coaching");
+                const hasBeginnersLessons = items.some(
+                  (item) => item.kind === "beginners",
+                );
+
+                return (
+                  <span className="calendar-day-key-markers" aria-hidden="true">
+                    {hasRejectedItems ? (
+                      <span className="calendar-day-rejected-flag" />
+                    ) : null}
+                    {typeClasses.map((typeClass) => (
+                      <span
+                        key={typeClass}
+                        className={`calendar-day-key-dot ${typeClass}`}
+                      />
+                    ))}
+                    {hasCoachingItems ? (
+                      <span className="coaching-day-key-icon-wrap">
+                        <TrainingIcon className="coaching-day-key-icon" />
+                      </span>
+                    ) : null}
+                    {hasBeginnersLessons ? (
+                      <span className="calendar-day-key-dot beginners-course-key-swatch" />
+                    ) : null}
+                  </span>
+                );
+              }}
+              renderItem={(item: CalendarScheduleItem) => {
+                if (item.kind === "event") {
+                  return (
+                    <span
+                      className={[
+                        "calendar-entry-label",
+                        getEventTypeDetails(item.type).className,
+                        item.isRejected ? "is-rejected" : "",
+                        item.isCancelled ? "is-cancelled" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      {item.title}
                     </span>
-                  ) : null}
-                  {hasBeginnersLessons ? (
-                    <span className="calendar-day-key-dot beginners-course-key-swatch" />
-                  ) : null}
-                </span>
-              );
-            }}
-            renderItem={(item: CalendarScheduleItem) => {
-              if (item.kind === "event") {
+                  );
+                }
+
+                if (item.kind === "coaching") {
+                  return (
+                    <span
+                      className={[
+                        "calendar-entry-label",
+                        "coaching-session-badge",
+                        item.isRejected ? "is-rejected" : "",
+                        item.isCancelled ? "is-cancelled" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      <TrainingIcon className="coaching-badge-icon" />
+                      {item.topic}
+                    </span>
+                  );
+                }
+
                 return (
                   <span
                     className={[
                       "calendar-entry-label",
-                      getEventTypeDetails(item.type).className,
-                      item.isRejected ? "is-rejected" : "",
+                      "beginners-course-badge",
                       item.isCancelled ? "is-cancelled" : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
                   >
-                    {item.title}
+                    {item.courseType === "have-a-go" ? "Have a Go" : "Beginners"}{" "}
+                    {getCourseLessonLabel(item).slice(0, 1)}
+                    {item.lessonNumber}
                   </span>
                 );
-              }
-
-              if (item.kind === "coaching") {
-                return (
-                  <span
-                    className={[
-                      "calendar-entry-label",
-                      "coaching-session-badge",
-                      item.isRejected ? "is-rejected" : "",
-                      item.isCancelled ? "is-cancelled" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  >
-                    <TrainingIcon className="coaching-badge-icon" />
-                    {item.topic}
-                  </span>
-                );
-              }
-
-              return (
-                <span
-                  className={[
-                    "calendar-entry-label",
-                    "beginners-course-badge",
-                    item.isCancelled ? "is-cancelled" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  {item.courseType === "have-a-go" ? "Have a Go" : "Beginners"}{" "}
-                  {getCourseLessonLabel(item).slice(0, 1)}
-                  {item.lessonNumber}
-                </span>
-              );
-            }}
-          />
+              }}
+            />
+          )}
         </div>
 
         <aside className="event-summary-panel">

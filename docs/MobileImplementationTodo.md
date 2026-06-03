@@ -100,11 +100,11 @@ Outcome:
 
 #### Profile
 
-- [ ] Identify desktop-only sections in `ProfilePage`
-- [ ] Split into `ProfileDesktopView` and `ProfileMobileView` only if needed
-- [ ] Keep data loading and mutations shared
-- [ ] Convert loan/equipment and distance sign-off tables to mobile cards or stacked sections
-- [ ] Ensure card assignment and distance sign-off modals fit on phones
+- [x] Identify desktop-only sections in `ProfilePage`
+- [x] Split into `ProfileDesktopView` and `ProfileMobileView` only if needed
+- [x] Keep data loading and mutations shared
+- [x] Convert loan/equipment and distance sign-off tables to mobile cards or stacked sections
+- [x] Ensure card assignment and distance sign-off modals fit on phones
 
 Outcome:
 
@@ -114,20 +114,20 @@ Outcome:
 
 #### Equipment
 
-- [ ] Extract state into `src/presentation/pages/equipment/useEquipmentPageState.ts`
-- [ ] Create `EquipmentDesktopView.tsx`
-- [ ] Create `EquipmentMobileView.tsx`
-- [ ] Keep desktop inventory table and action layout intact
-- [ ] Build mobile inventory cards with search/filter support
-- [ ] Build mobile action sections for:
+- [x] Extract state into `src/presentation/pages/equipment/useEquipmentPageState.ts`
+- [x] Create `EquipmentDesktopView.tsx`
+- [x] Create `EquipmentMobileView.tsx`
+- [x] Keep desktop inventory table and action layout intact
+- [x] Build mobile inventory cards with search/filter support
+- [x] Build mobile action sections for:
   - add equipment
   - assign equipment
   - return equipment
   - update storage
   - manage storage locations
   - decommission equipment
-- [ ] Convert case contents into collapsible mobile cards
-- [ ] Ensure case assignment modal works within phone viewport
+- [x] Convert case contents into collapsible mobile cards
+- [x] Ensure case assignment modal works within phone viewport
 
 #### Role Permissions
 

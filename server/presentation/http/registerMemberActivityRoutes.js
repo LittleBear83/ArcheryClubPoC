@@ -15,7 +15,7 @@ export function registerMemberActivityRoutes({
   startOfUtcDay,
   toUtcDateString,
 }) {
-  const RANGE_USAGE_MAX_DAYS = 93;
+  const RANGE_USAGE_MAX_DAYS = 366;
   const REPORTING_MAX_DAYS = 366;
 
   const getInclusiveDayCount = (startDate, endDate) => {

@@ -151,11 +151,11 @@ Outcome:
 #### Event Calendar
 
 - [ ] Extract state into `src/presentation/pages/event-calendar/useEventCalendarPageState.ts`
-- [ ] Create `EventCalendarDesktopView.tsx`
-- [ ] Create `EventCalendarMobileView.tsx`
-- [ ] Keep desktop month grid as default desktop experience
+- [x] Create `EventCalendarDesktopView.tsx`
+- [x] Create `EventCalendarMobileView.tsx`
+- [x] Keep desktop month grid as default desktop experience
 - [x] Make mobile default to agenda/list view instead of dense month grid
-- [ ] Keep booking/approval actions shared
+- [x] Keep booking/approval actions shared
 - [ ] Make event and coaching details comfortable in mobile modal/sheet layout
 - [ ] Verify multi-date and recurring flows on touch devices
 - [ ] Confirm selected-day summaries are still easy to scan on mobile

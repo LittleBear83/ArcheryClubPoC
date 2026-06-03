@@ -4,12 +4,11 @@ import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
 import { Button } from "../components/Button";
 import { DatePicker } from "../components/DatePicker";
-import { MobileCardList } from "../components/mobile/MobileCardList";
-import { MobileEmptyState } from "../components/mobile/MobileEmptyState";
-import { MobileSectionHeader } from "../components/mobile/MobileSectionHeader";
 import { SummaryDate } from "../components/SummaryDate";
 import { SummaryList } from "../components/SummaryList";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { EventCalendarDesktopView } from "./event-calendar/EventCalendarDesktopView";
+import { EventCalendarMobileView } from "./event-calendar/EventCalendarMobileView";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
 import {
@@ -961,6 +960,512 @@ export function EventCalendarPage({
     [filteredScheduleItems, month, year],
   );
 
+  const filterBar = (
+    <div className="event-calendar-key" aria-label="Event type key">
+      {EVENT_TYPE_OPTIONS.map((option) => (
+        <Button
+          key={option.value}
+          type="button"
+          className={[
+            "event-key-item",
+            "event-key-filter",
+            activeFilters.includes(option.value) ? "is-active" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          onClick={() => toggleFilter(option.value)}
+          variant="ghost"
+        >
+          <span className={`event-key-swatch ${option.className}`} />
+          {option.label}
+        </Button>
+      ))}
+      <Button
+        type="button"
+        className={[
+          "event-key-item",
+          "event-key-filter",
+          "coaching-key-item",
+          activeFilters.includes("coaching") ? "is-active" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        onClick={() => toggleFilter("coaching")}
+        variant="ghost"
+      >
+        <span className="coaching-key-icon-wrap">
+          <TrainingIcon className="coaching-key-icon" />
+        </span>
+        Coaching session
+      </Button>
+      <Button
+        type="button"
+        className={[
+          "event-key-item",
+          "event-key-filter",
+          activeFilters.includes("beginners") ? "is-active" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        onClick={() => toggleFilter("beginners")}
+        variant="ghost"
+      >
+        <span className="event-key-swatch beginners-course-key-swatch" />
+        Beginners / Have a Go
+      </Button>
+      <Button
+        type="button"
+        className="event-key-clear-button"
+        onClick={clearFilters}
+        disabled={activeFilters.length === 0}
+        variant="ghost"
+      >
+        Clear filters
+      </Button>
+    </div>
+  );
+
+  const renderDesktopDayMeta = (items: Array<{ id: string | number }>) => {
+    const scheduleItems = items as CalendarScheduleItem[];
+    const typeClasses = [
+      ...new Set(
+        scheduleItems
+          .filter(
+            (item): item is MixedCalendarEvent => item.kind === "event",
+          )
+          .map((item) => getEventTypeDetails(item.type).className),
+      ),
+    ] as string[];
+    const hasRejectedItems = scheduleItems.some(
+      (item) => "isRejected" in item && Boolean(item.isRejected),
+    );
+    const hasCoachingItems = scheduleItems.some((item) => item.kind === "coaching");
+    const hasBeginnersLessons = scheduleItems.some(
+      (item) => item.kind === "beginners",
+    );
+
+    return (
+      <span className="calendar-day-key-markers" aria-hidden="true">
+        {hasRejectedItems ? <span className="calendar-day-rejected-flag" /> : null}
+        {typeClasses.map((typeClass) => (
+          <span
+            key={typeClass}
+            className={`calendar-day-key-dot ${typeClass}`}
+          />
+        ))}
+        {hasCoachingItems ? (
+          <span className="coaching-day-key-icon-wrap">
+            <TrainingIcon className="coaching-day-key-icon" />
+          </span>
+        ) : null}
+        {hasBeginnersLessons ? (
+          <span className="calendar-day-key-dot beginners-course-key-swatch" />
+        ) : null}
+      </span>
+    );
+  };
+
+  const renderDesktopCalendarItem = (itemLike: { id: string | number }) => {
+    const item = itemLike as CalendarScheduleItem;
+
+    if (item.kind === "event") {
+      return (
+        <span
+          className={[
+            "calendar-entry-label",
+            getEventTypeDetails(item.type).className,
+            item.isRejected ? "is-rejected" : "",
+            item.isCancelled ? "is-cancelled" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {item.title}
+        </span>
+      );
+    }
+
+    if (item.kind === "coaching") {
+      return (
+        <span
+          className={[
+            "calendar-entry-label",
+            "coaching-session-badge",
+            item.isRejected ? "is-rejected" : "",
+            item.isCancelled ? "is-cancelled" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <TrainingIcon className="coaching-badge-icon" />
+          {item.topic}
+        </span>
+      );
+    }
+
+    return (
+      <span
+        className={[
+          "calendar-entry-label",
+          "beginners-course-badge",
+          item.isCancelled ? "is-cancelled" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        {item.courseType === "have-a-go" ? "Have a Go" : "Beginners"}{" "}
+        {getCourseLessonLabel(item).slice(0, 1)}
+        {item.lessonNumber}
+      </span>
+    );
+  };
+
+  const monthLabel = formatDate(`${year}-${String(month + 1).padStart(2, "0")}-01`);
+  const mobileAgendaCards = currentMonthAgendaItems.map((item) => ({
+    key: `${item.kind}-${item.id}`,
+    badge:
+      item.kind === "event" ? (
+        <span
+          className={`event-type-badge ${getEventTypeDetails(item.type).className}`}
+        >
+          {getEventTypeDetails(item.type).label}
+        </span>
+      ) : item.kind === "coaching" ? (
+        <span className="coaching-session-badge">
+          <TrainingIcon className="coaching-badge-icon" />
+          Coaching session
+        </span>
+      ) : (
+        <span className="event-type-badge beginners-course-badge">
+          {item.title}
+        </span>
+      ),
+    title:
+      item.kind === "event"
+        ? item.title
+        : item.kind === "coaching"
+          ? item.topic
+          : `${getCourseLessonLabel(item)} ${item.lessonNumber}`,
+    timeLabel: `${formatDate(item.date)} | ${formatClockTime(item.startTime)} to ${formatClockTime(item.endTime)}`,
+    metaLabel:
+      item.kind === "event"
+        ? getVenueLabel(item.venue)
+        : item.kind === "coaching"
+          ? `${getVenueLabel(item.venue)} | Coach: ${item.coach.fullName}`
+          : `Coordinator: ${item.coordinatorName}`,
+    actionLabel: item.kind === "beginners" ? "View selected day" : "Open details",
+    actionVariant: (item.kind === "beginners" ? "secondary" : "primary") as
+      | "primary"
+      | "secondary",
+    onOpen: () => handleOpenScheduleItem(item),
+  }));
+
+  const summaryContent = !selectedDate ? (
+    <p>Select a date on the calendar to view event details.</p>
+  ) : (
+    <>
+      <SummaryDate date={selectedDate} />
+      {selectedScheduleItems.length === 0 ? (
+        <p>
+          {activeFilters.length === 0
+            ? "No events, coaching sessions, or beginners lessons are scheduled for this date yet."
+            : "No calendar items match the current filters for this date."}
+        </p>
+      ) : (
+        <>
+          {activeSelectedEvents.length > 0 ? (
+            <>
+              <p className="event-summary-hint">
+                Click on an event for more information and booking options.
+              </p>
+              <div className="event-summary-card-list">
+                {activeSelectedEvents.map((evt) => (
+                  <Button
+                    key={evt.id}
+                    type="button"
+                    className={[
+                      "event-summary-card",
+                      evt.isRejected ? "is-rejected" : "",
+                      evt.isCancelled ? "is-cancelled" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onClick={() => setSelectedEventId(evt.id)}
+                    variant="unstyled"
+                  >
+                    <span
+                      className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
+                    >
+                      {getEventTypeDetails(evt.type).label}
+                    </span>
+                    {evt.isCancelled ? (
+                      <span className="event-summary-status-badge is-cancelled">
+                        Cancelled
+                      </span>
+                    ) : null}
+                    <strong className="event-summary-card-title">{evt.title}</strong>
+                    <span className="event-summary-card-time">
+                      {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)}
+                    </span>
+                    <span className="event-summary-card-meta">
+                      {getVenueLabel(evt.venue)}
+                      {evt.isBookedOn ? " | Booked on" : ""}
+                      {evt.isPendingApproval ? " | Pending approval" : ""}
+                      {evt.isRejected ? " | Request rejected" : ""}
+                      {evt.isCancelled
+                        ? getCancelledSummary(evt.cancellationReason)
+                        : ""}
+                      {!evt.isCancelled && !evt.isBookedOn && hasEventEnded(evt)
+                        ? " | Event finished"
+                        : ""}
+                    </span>
+                  </Button>
+                ))}
+              </div>
+            </>
+          ) : null}
+          {activeSelectedCoachingSessions.length > 0 ? (
+            <>
+              <h4>Coaching sessions</h4>
+              <div className="event-summary-card-list">
+                {activeSelectedCoachingSessions.map((session) => (
+                  <Button
+                    key={session.id}
+                    type="button"
+                    className={[
+                      "event-summary-card",
+                      session.isRejected ? "is-rejected" : "",
+                      session.isCancelled ? "is-cancelled" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onClick={() => setSelectedCoachingSessionId(session.id)}
+                    variant="unstyled"
+                  >
+                    <span className="coaching-session-badge">Coaching session</span>
+                    {session.isCancelled ? (
+                      <span className="event-summary-status-badge is-cancelled">
+                        Cancelled
+                      </span>
+                    ) : null}
+                    <strong className="event-summary-card-title">{session.topic}</strong>
+                    <span className="event-summary-card-time">
+                      {formatClockTime(session.startTime)} to{" "}
+                      {formatClockTime(session.endTime)}
+                    </span>
+                    <span className="event-summary-card-meta">
+                      {getVenueLabel(session.venue)} | Coach: {session.coach.fullName}
+                      {session.isBookedOn ? " | Booked on" : ""}
+                      {session.isPendingApproval ? " | Pending approval" : ""}
+                      {session.isRejected ? " | Request rejected" : ""}
+                      {session.isCancelled
+                        ? getCancelledSummary(session.cancellationReason)
+                        : ""}
+                      {!session.isCancelled &&
+                      !session.isBookedOn &&
+                      hasSessionEnded(session)
+                        ? " | Session finished"
+                        : ""}
+                    </span>
+                  </Button>
+                ))}
+              </div>
+            </>
+          ) : null}
+          {activeSelectedBeginnersLessons.length > 0 ? (
+            <>
+              <h4>Beginners and Have a Go sessions</h4>
+              <div className="event-summary-card-list">
+                {activeSelectedBeginnersLessons.map((lesson) => (
+                  <div
+                    key={lesson.id}
+                    className={[
+                      "event-summary-card",
+                      lesson.isCancelled ? "is-cancelled" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <span className="event-type-badge beginners-course-badge">
+                      {lesson.title}
+                    </span>
+                    {lesson.isCancelled ? (
+                      <span className="event-summary-status-badge is-cancelled">
+                        Cancelled
+                      </span>
+                    ) : null}
+                    <strong className="event-summary-card-title">
+                      {getCourseLessonLabel(lesson)} {lesson.lessonNumber}
+                    </strong>
+                    <span className="event-summary-card-time">
+                      {formatClockTime(lesson.startTime)} to{" "}
+                      {formatClockTime(lesson.endTime)}
+                    </span>
+                    <span className="event-summary-card-meta">
+                      Coordinator: {lesson.coordinatorName} | Coaches:{" "}
+                      {lesson.coachNames.length > 0
+                        ? lesson.coachNames.join(", ")
+                        : "To be assigned"}{" "}
+                      | {getCourseParticipantLabel(lesson)}:{" "}
+                      {lesson.participantCount ?? lesson.beginnerCount}/
+                      {lesson.participantCapacity ?? lesson.beginnerCapacity}
+                      {lesson.isCancelled
+                        ? getCancelledSummary(lesson.cancellationReason)
+                        : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+          {hasRejectedSummaryItems ? (
+            <>
+              <h4 className="event-summary-status-heading">Rejected</h4>
+              <div className="event-summary-card-list">
+                {rejectedSelectedEvents.map((evt) => (
+                  <Button
+                    key={evt.id}
+                    type="button"
+                    className="event-summary-card is-rejected"
+                    onClick={() => setSelectedEventId(evt.id)}
+                    variant="unstyled"
+                  >
+                    <span
+                      className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
+                    >
+                      {getEventTypeDetails(evt.type).label}
+                    </span>
+                    <span className="event-summary-status-badge is-rejected">
+                      Rejected
+                    </span>
+                    <strong className="event-summary-card-title">{evt.title}</strong>
+                    <span className="event-summary-card-time">
+                      {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)}
+                    </span>
+                    <span className="event-summary-card-meta">
+                      {getVenueLabel(evt.venue)} | Request rejected
+                      {evt.rejectionReason ? `: ${evt.rejectionReason}` : ""}
+                    </span>
+                  </Button>
+                ))}
+                {rejectedSelectedCoachingSessions.map((session) => (
+                  <Button
+                    key={session.id}
+                    type="button"
+                    className="event-summary-card is-rejected"
+                    onClick={() => setSelectedCoachingSessionId(session.id)}
+                    variant="unstyled"
+                  >
+                    <span className="coaching-session-badge">Coaching session</span>
+                    <span className="event-summary-status-badge is-rejected">
+                      Rejected
+                    </span>
+                    <strong className="event-summary-card-title">{session.topic}</strong>
+                    <span className="event-summary-card-time">
+                      {formatClockTime(session.startTime)} to{" "}
+                      {formatClockTime(session.endTime)}
+                    </span>
+                    <span className="event-summary-card-meta">
+                      {getVenueLabel(session.venue)} | Coach: {session.coach.fullName} |
+                      Request rejected
+                      {session.rejectionReason
+                        ? `: ${session.rejectionReason}`
+                        : ""}
+                    </span>
+                  </Button>
+                ))}
+              </div>
+            </>
+          ) : null}
+          {hasCancelledSummaryItems ? (
+            <>
+              <h4 className="event-summary-status-heading">Cancelled</h4>
+              <div className="event-summary-card-list">
+                {cancelledSelectedEvents.map((evt) => (
+                  <Button
+                    key={evt.id}
+                    type="button"
+                    className="event-summary-card is-cancelled"
+                    onClick={() => setSelectedEventId(evt.id)}
+                    variant="unstyled"
+                  >
+                    <span
+                      className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
+                    >
+                      {getEventTypeDetails(evt.type).label}
+                    </span>
+                    <span className="event-summary-status-badge is-cancelled">
+                      Cancelled
+                    </span>
+                    <strong className="event-summary-card-title">{evt.title}</strong>
+                    <span className="event-summary-card-time">
+                      {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)}
+                    </span>
+                    <span className="event-summary-card-meta">
+                      {getVenueLabel(evt.venue)}
+                      {getCancelledSummary(evt.cancellationReason)}
+                    </span>
+                  </Button>
+                ))}
+                {cancelledSelectedCoachingSessions.map((session) => (
+                  <Button
+                    key={session.id}
+                    type="button"
+                    className="event-summary-card is-cancelled"
+                    onClick={() => setSelectedCoachingSessionId(session.id)}
+                    variant="unstyled"
+                  >
+                    <span className="coaching-session-badge">Coaching session</span>
+                    <span className="event-summary-status-badge is-cancelled">
+                      Cancelled
+                    </span>
+                    <strong className="event-summary-card-title">{session.topic}</strong>
+                    <span className="event-summary-card-time">
+                      {formatClockTime(session.startTime)} to{" "}
+                      {formatClockTime(session.endTime)}
+                    </span>
+                    <span className="event-summary-card-meta">
+                      {getVenueLabel(session.venue)} | Coach: {session.coach.fullName}
+                      {getCancelledSummary(session.cancellationReason)}
+                    </span>
+                  </Button>
+                ))}
+                {cancelledSelectedBeginnersLessons.map((lesson) => (
+                  <div key={lesson.id} className="event-summary-card is-cancelled">
+                    <span className="event-type-badge beginners-course-badge">
+                      {lesson.title}
+                    </span>
+                    <span className="event-summary-status-badge is-cancelled">
+                      Cancelled
+                    </span>
+                    <strong className="event-summary-card-title">
+                      {getCourseLessonLabel(lesson)} {lesson.lessonNumber}
+                    </strong>
+                    <span className="event-summary-card-time">
+                      {formatClockTime(lesson.startTime)} to{" "}
+                      {formatClockTime(lesson.endTime)}
+                    </span>
+                    <span className="event-summary-card-meta">
+                      Coordinator: {lesson.coordinatorName} | Coaches:{" "}
+                      {lesson.coachNames.length > 0
+                        ? lesson.coachNames.join(", ")
+                        : "To be assigned"}
+                      {getCancelledSummary(lesson.cancellationReason)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
+        </>
+      )}
+      {pendingSelectedEvents.length > 0 && !canApproveEvents ? (
+        <p>Pending events cannot be booked until approved.</p>
+      ) : null}
+      {bookingMessage ? <p className="event-booking-message">{bookingMessage}</p> : null}
+    </>
+  );
+
   return (
     <div className="event-calendar-page">
       <p>
@@ -968,575 +1473,32 @@ export function EventCalendarPage({
         events, coaching sessions, and approved beginners course lessons
         together in one view.
       </p>
-      <section
-        className={[
-          "event-calendar-layout",
-          "event-calendar-layout-expanded",
-          isMobile ? "event-calendar-layout--mobile" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        <div className="event-calendar-main">
-          <div className="event-calendar-key" aria-label="Event type key">
-            {EVENT_TYPE_OPTIONS.map((option) => (
-              <Button
-                key={option.value}
-                type="button"
-                className={[
-                  "event-key-item",
-                  "event-key-filter",
-                  activeFilters.includes(option.value) ? "is-active" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onClick={() => toggleFilter(option.value)}
-                variant="ghost"
-              >
-                <span className={`event-key-swatch ${option.className}`} />
-                {option.label}
-              </Button>
-            ))}
-            <Button
-              type="button"
-              className={[
-                "event-key-item",
-                "event-key-filter",
-                "coaching-key-item",
-                activeFilters.includes("coaching") ? "is-active" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              onClick={() => toggleFilter("coaching")}
-              variant="ghost"
-            >
-              <span className="coaching-key-icon-wrap">
-                <TrainingIcon className="coaching-key-icon" />
-              </span>
-              Coaching session
-            </Button>
-            <Button
-              type="button"
-              className={[
-                "event-key-item",
-                "event-key-filter",
-                activeFilters.includes("beginners") ? "is-active" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              onClick={() => toggleFilter("beginners")}
-              variant="ghost"
-            >
-              <span className="event-key-swatch beginners-course-key-swatch" />
-              Beginners / Have a Go
-            </Button>
-            <Button
-              type="button"
-              className="event-key-clear-button"
-              onClick={clearFilters}
-              disabled={activeFilters.length === 0}
-              variant="ghost"
-            >
-              Clear filters
-            </Button>
-          </div>
-          {isMobile ? (
-            <section className="event-mobile-agenda-panel">
-              <MobileSectionHeader
-                title="Month Agenda"
-                description={`Showing ${currentMonthAgendaItems.length} item${currentMonthAgendaItems.length === 1 ? "" : "s"} for ${formatDate(`${year}-${String(month + 1).padStart(2, "0")}-01`)}.`}
-                actions={
-                  <Button
-                    type="button"
-                    onClick={handleCalendarToday}
-                    variant="secondary"
-                    fullWidth
-                  >
-                    Today
-                  </Button>
-                }
-              />
-              <div className="event-mobile-agenda-nav">
-                <Button type="button" onClick={handleCalendarPrevMonth} variant="ghost">
-                  Previous
-                </Button>
-                <Button type="button" onClick={handleCalendarNextMonth} variant="ghost">
-                  Next
-                </Button>
-              </div>
-              {currentMonthAgendaItems.length > 0 ? (
-                <MobileCardList className="event-mobile-agenda-list">
-                  {currentMonthAgendaItems.map((item) => (
-                    <article
-                      key={`${item.kind}-${item.id}`}
-                      className="event-summary-card event-mobile-agenda-card"
-                    >
-                      <div className="event-mobile-agenda-card-head">
-                        {item.kind === "event" ? (
-                          <span
-                            className={`event-type-badge ${getEventTypeDetails(item.type).className}`}
-                          >
-                            {getEventTypeDetails(item.type).label}
-                          </span>
-                        ) : item.kind === "coaching" ? (
-                          <span className="coaching-session-badge">
-                            <TrainingIcon className="coaching-badge-icon" />
-                            Coaching session
-                          </span>
-                        ) : (
-                          <span className="event-type-badge beginners-course-badge">
-                            {item.title}
-                          </span>
-                        )}
-                        <strong className="event-summary-card-title">
-                          {item.kind === "event"
-                            ? item.title
-                            : item.kind === "coaching"
-                              ? item.topic
-                              : `${getCourseLessonLabel(item)} ${item.lessonNumber}`}
-                        </strong>
-                      </div>
-                      <span className="event-summary-card-time">
-                        {formatDate(item.date)} | {formatClockTime(item.startTime)} to{" "}
-                        {formatClockTime(item.endTime)}
-                      </span>
-                      <span className="event-summary-card-meta">
-                        {item.kind === "event"
-                          ? getVenueLabel(item.venue)
-                          : item.kind === "coaching"
-                            ? `${getVenueLabel(item.venue)} | Coach: ${item.coach.fullName}`
-                            : `Coordinator: ${item.coordinatorName}`}
-                      </span>
-                      <Button
-                        type="button"
-                        onClick={() => handleOpenScheduleItem(item)}
-                        variant={item.kind === "beginners" ? "secondary" : "primary"}
-                        fullWidth
-                      >
-                        {item.kind === "beginners" ? "View selected day" : "Open details"}
-                      </Button>
-                    </article>
-                  ))}
-                </MobileCardList>
-              ) : (
-                <MobileEmptyState message="No calendar items match the current filters for this month." />
-              )}
-            </section>
-          ) : (
-            <Calendar
-              year={year}
-              month={month}
-              selectedDate={selectedDate}
-              onDayClick={handleDateSelect}
-              onToday={handleCalendarToday}
-              onPrevMonth={handleCalendarPrevMonth}
-              onNextMonth={handleCalendarNextMonth}
-              itemsByDate={scheduleItemsByDate}
-              renderDayMeta={(items) => {
-                const typeClasses = [
-                  ...new Set(
-                    items
-                      .filter(
-                        (item): item is MixedCalendarEvent => item.kind === "event",
-                      )
-                      .map((item) => getEventTypeDetails(item.type).className),
-                  ),
-                ] as string[];
-                const hasRejectedItems = items.some((item) => item.isRejected);
-                const hasCoachingItems = items.some((item) => item.kind === "coaching");
-                const hasBeginnersLessons = items.some(
-                  (item) => item.kind === "beginners",
-                );
-
-                return (
-                  <span className="calendar-day-key-markers" aria-hidden="true">
-                    {hasRejectedItems ? (
-                      <span className="calendar-day-rejected-flag" />
-                    ) : null}
-                    {typeClasses.map((typeClass) => (
-                      <span
-                        key={typeClass}
-                        className={`calendar-day-key-dot ${typeClass}`}
-                      />
-                    ))}
-                    {hasCoachingItems ? (
-                      <span className="coaching-day-key-icon-wrap">
-                        <TrainingIcon className="coaching-day-key-icon" />
-                      </span>
-                    ) : null}
-                    {hasBeginnersLessons ? (
-                      <span className="calendar-day-key-dot beginners-course-key-swatch" />
-                    ) : null}
-                  </span>
-                );
-              }}
-              renderItem={(item: CalendarScheduleItem) => {
-                if (item.kind === "event") {
-                  return (
-                    <span
-                      className={[
-                        "calendar-entry-label",
-                        getEventTypeDetails(item.type).className,
-                        item.isRejected ? "is-rejected" : "",
-                        item.isCancelled ? "is-cancelled" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      {item.title}
-                    </span>
-                  );
-                }
-
-                if (item.kind === "coaching") {
-                  return (
-                    <span
-                      className={[
-                        "calendar-entry-label",
-                        "coaching-session-badge",
-                        item.isRejected ? "is-rejected" : "",
-                        item.isCancelled ? "is-cancelled" : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <TrainingIcon className="coaching-badge-icon" />
-                      {item.topic}
-                    </span>
-                  );
-                }
-
-                return (
-                  <span
-                    className={[
-                      "calendar-entry-label",
-                      "beginners-course-badge",
-                      item.isCancelled ? "is-cancelled" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
-                  >
-                    {item.courseType === "have-a-go" ? "Have a Go" : "Beginners"}{" "}
-                    {getCourseLessonLabel(item).slice(0, 1)}
-                    {item.lessonNumber}
-                  </span>
-                );
-              }}
-            />
-          )}
-        </div>
-
-        <aside className="event-summary-panel">
-          <h3>Calendar summary</h3>
-          {!selectedDate ? (
-            <p>Select a date on the calendar to view event details.</p>
-          ) : (
-            <>
-              <SummaryDate date={selectedDate} />
-              {selectedScheduleItems.length === 0 ? (
-                <p>
-                  {activeFilters.length === 0
-                    ? "No events, coaching sessions, or beginners lessons are scheduled for this date yet."
-                    : "No calendar items match the current filters for this date."}
-                </p>
-              ) : (
-                <>
-                  {activeSelectedEvents.length > 0 ? (
-                    <>
-                      <p className="event-summary-hint">
-                        Click on an event for more information and booking options.
-                      </p>
-                      <div className="event-summary-card-list">
-                        {activeSelectedEvents.map((evt) => (
-                          <Button
-                            key={evt.id}
-                            type="button"
-                            className={[
-                              "event-summary-card",
-                              evt.isRejected ? "is-rejected" : "",
-                              evt.isCancelled ? "is-cancelled" : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                            onClick={() => setSelectedEventId(evt.id)}
-                            variant="unstyled"
-                          >
-                            <span
-                              className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
-                            >
-                              {getEventTypeDetails(evt.type).label}
-                            </span>
-                            {evt.isCancelled ? (
-                              <span className="event-summary-status-badge is-cancelled">
-                                Cancelled
-                              </span>
-                            ) : null}
-                            <strong className="event-summary-card-title">{evt.title}</strong>
-                            <span className="event-summary-card-time">
-                              {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)}
-                            </span>
-                            <span className="event-summary-card-meta">
-                              {getVenueLabel(evt.venue)}
-                              {evt.isBookedOn ? " | Booked on" : ""}
-                              {evt.isPendingApproval ? " | Pending approval" : ""}
-                              {evt.isRejected ? " | Request rejected" : ""}
-                              {evt.isCancelled
-                                ? getCancelledSummary(evt.cancellationReason)
-                                : ""}
-                              {!evt.isCancelled && !evt.isBookedOn && hasEventEnded(evt)
-                                ? " | Event finished"
-                                : ""}
-                            </span>
-                          </Button>
-                        ))}
-                      </div>
-                    </>
-                  ) : null}
-                  {activeSelectedCoachingSessions.length > 0 ? (
-                    <>
-                      <h4>Coaching sessions</h4>
-                      <div className="event-summary-card-list">
-                        {activeSelectedCoachingSessions.map((session) => (
-                          <Button
-                            key={session.id}
-                            type="button"
-                            className={[
-                              "event-summary-card",
-                              session.isRejected ? "is-rejected" : "",
-                              session.isCancelled ? "is-cancelled" : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                            onClick={() => setSelectedCoachingSessionId(session.id)}
-                            variant="unstyled"
-                          >
-                            <span className="coaching-session-badge">Coaching session</span>
-                            {session.isCancelled ? (
-                              <span className="event-summary-status-badge is-cancelled">
-                                Cancelled
-                              </span>
-                            ) : null}
-                            <strong className="event-summary-card-title">{session.topic}</strong>
-                            <span className="event-summary-card-time">
-                              {formatClockTime(session.startTime)} to{" "}
-                              {formatClockTime(session.endTime)}
-                            </span>
-                            <span className="event-summary-card-meta">
-                              {getVenueLabel(session.venue)} | Coach: {session.coach.fullName}
-                              {session.isBookedOn ? " | Booked on" : ""}
-                              {session.isPendingApproval ? " | Pending approval" : ""}
-                              {session.isRejected ? " | Request rejected" : ""}
-                              {session.isCancelled
-                                ? getCancelledSummary(session.cancellationReason)
-                                : ""}
-                              {!session.isCancelled &&
-                              !session.isBookedOn &&
-                              hasSessionEnded(session)
-                                ? " | Session finished"
-                                : ""}
-                            </span>
-                          </Button>
-                        ))}
-                      </div>
-                    </>
-                  ) : null}
-                  {activeSelectedBeginnersLessons.length > 0 ? (
-                    <>
-                      <h4>Beginners and Have a Go sessions</h4>
-                      <div className="event-summary-card-list">
-                        {activeSelectedBeginnersLessons.map((lesson) => (
-                          <div
-                            key={lesson.id}
-                            className={[
-                              "event-summary-card",
-                              lesson.isCancelled ? "is-cancelled" : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                          >
-                            <span className="event-type-badge beginners-course-badge">
-                              {lesson.title}
-                            </span>
-                            {lesson.isCancelled ? (
-                              <span className="event-summary-status-badge is-cancelled">
-                                Cancelled
-                              </span>
-                            ) : null}
-                            <strong className="event-summary-card-title">
-                              {getCourseLessonLabel(lesson)} {lesson.lessonNumber}
-                            </strong>
-                            <span className="event-summary-card-time">
-                              {formatClockTime(lesson.startTime)} to{" "}
-                              {formatClockTime(lesson.endTime)}
-                            </span>
-                            <span className="event-summary-card-meta">
-                              Coordinator: {lesson.coordinatorName} | Coaches:{" "}
-                              {lesson.coachNames.length > 0
-                                ? lesson.coachNames.join(", ")
-                                : "To be assigned"}{" "}
-                              | {getCourseParticipantLabel(lesson)}:{" "}
-                              {lesson.participantCount ?? lesson.beginnerCount}/
-                              {lesson.participantCapacity ?? lesson.beginnerCapacity}
-                              {lesson.isCancelled
-                                ? getCancelledSummary(lesson.cancellationReason)
-                                : ""}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : null}
-                  {hasRejectedSummaryItems ? (
-                    <>
-                      <h4 className="event-summary-status-heading">Rejected</h4>
-                      <div className="event-summary-card-list">
-                        {rejectedSelectedEvents.map((evt) => (
-                          <Button
-                            key={evt.id}
-                            type="button"
-                            className="event-summary-card is-rejected"
-                            onClick={() => setSelectedEventId(evt.id)}
-                            variant="unstyled"
-                          >
-                            <span
-                              className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
-                            >
-                              {getEventTypeDetails(evt.type).label}
-                            </span>
-                            <span className="event-summary-status-badge is-rejected">
-                              Rejected
-                            </span>
-                            <strong className="event-summary-card-title">{evt.title}</strong>
-                            <span className="event-summary-card-time">
-                              {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)}
-                            </span>
-                            <span className="event-summary-card-meta">
-                              {getVenueLabel(evt.venue)} | Request rejected
-                              {evt.rejectionReason ? `: ${evt.rejectionReason}` : ""}
-                            </span>
-                          </Button>
-                        ))}
-                        {rejectedSelectedCoachingSessions.map((session) => (
-                          <Button
-                            key={session.id}
-                            type="button"
-                            className="event-summary-card is-rejected"
-                            onClick={() => setSelectedCoachingSessionId(session.id)}
-                            variant="unstyled"
-                          >
-                            <span className="coaching-session-badge">Coaching session</span>
-                            <span className="event-summary-status-badge is-rejected">
-                              Rejected
-                            </span>
-                            <strong className="event-summary-card-title">{session.topic}</strong>
-                            <span className="event-summary-card-time">
-                              {formatClockTime(session.startTime)} to{" "}
-                              {formatClockTime(session.endTime)}
-                            </span>
-                            <span className="event-summary-card-meta">
-                              {getVenueLabel(session.venue)} | Coach: {session.coach.fullName} |
-                              Request rejected
-                              {session.rejectionReason
-                                ? `: ${session.rejectionReason}`
-                                : ""}
-                            </span>
-                          </Button>
-                        ))}
-                      </div>
-                    </>
-                  ) : null}
-                  {hasCancelledSummaryItems ? (
-                    <>
-                      <h4 className="event-summary-status-heading">Cancelled</h4>
-                      <div className="event-summary-card-list">
-                        {cancelledSelectedEvents.map((evt) => (
-                          <Button
-                            key={evt.id}
-                            type="button"
-                            className="event-summary-card is-cancelled"
-                            onClick={() => setSelectedEventId(evt.id)}
-                            variant="unstyled"
-                          >
-                            <span
-                              className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
-                            >
-                              {getEventTypeDetails(evt.type).label}
-                            </span>
-                            <span className="event-summary-status-badge is-cancelled">
-                              Cancelled
-                            </span>
-                            <strong className="event-summary-card-title">{evt.title}</strong>
-                            <span className="event-summary-card-time">
-                              {formatClockTime(evt.startTime)} to {formatClockTime(evt.endTime)}
-                            </span>
-                            <span className="event-summary-card-meta">
-                              {getVenueLabel(evt.venue)}
-                              {getCancelledSummary(evt.cancellationReason)}
-                            </span>
-                          </Button>
-                        ))}
-                        {cancelledSelectedCoachingSessions.map((session) => (
-                          <Button
-                            key={session.id}
-                            type="button"
-                            className="event-summary-card is-cancelled"
-                            onClick={() => setSelectedCoachingSessionId(session.id)}
-                            variant="unstyled"
-                          >
-                            <span className="coaching-session-badge">Coaching session</span>
-                            <span className="event-summary-status-badge is-cancelled">
-                              Cancelled
-                            </span>
-                            <strong className="event-summary-card-title">{session.topic}</strong>
-                            <span className="event-summary-card-time">
-                              {formatClockTime(session.startTime)} to{" "}
-                              {formatClockTime(session.endTime)}
-                            </span>
-                            <span className="event-summary-card-meta">
-                              {getVenueLabel(session.venue)} | Coach: {session.coach.fullName}
-                              {getCancelledSummary(session.cancellationReason)}
-                            </span>
-                          </Button>
-                        ))}
-                        {cancelledSelectedBeginnersLessons.map((lesson) => (
-                          <div key={lesson.id} className="event-summary-card is-cancelled">
-                            <span className="event-type-badge beginners-course-badge">
-                              {lesson.title}
-                            </span>
-                            <span className="event-summary-status-badge is-cancelled">
-                              Cancelled
-                            </span>
-                            <strong className="event-summary-card-title">
-                              {getCourseLessonLabel(lesson)} {lesson.lessonNumber}
-                            </strong>
-                            <span className="event-summary-card-time">
-                              {formatClockTime(lesson.startTime)} to{" "}
-                              {formatClockTime(lesson.endTime)}
-                            </span>
-                            <span className="event-summary-card-meta">
-                              Coordinator: {lesson.coordinatorName} | Coaches:{" "}
-                              {lesson.coachNames.length > 0
-                                ? lesson.coachNames.join(", ")
-                                : "To be assigned"}
-                              {getCancelledSummary(lesson.cancellationReason)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : null}
-                </>
-              )}
-              {pendingSelectedEvents.length > 0 && !canApproveEvents ? (
-                <p>Pending events cannot be booked until approved.</p>
-              ) : null}
-              {bookingMessage && (
-                <p className="event-booking-message">{bookingMessage}</p>
-              )}
-            </>
-          )}
-        </aside>
-      </section>
+      {isMobile ? (
+        <EventCalendarMobileView
+          filterBar={filterBar}
+          summaryContent={summaryContent}
+          monthLabel={monthLabel}
+          agendaCards={mobileAgendaCards}
+          onToday={handleCalendarToday}
+          onPrevMonth={handleCalendarPrevMonth}
+          onNextMonth={handleCalendarNextMonth}
+        />
+      ) : (
+        <EventCalendarDesktopView
+          filterBar={filterBar}
+          summaryContent={summaryContent}
+          year={year}
+          month={month}
+          selectedDate={selectedDate}
+          scheduleItemsByDate={scheduleItemsByDate}
+          onDayClick={handleDateSelect}
+          onToday={handleCalendarToday}
+          onPrevMonth={handleCalendarPrevMonth}
+          onNextMonth={handleCalendarNextMonth}
+          renderDayMeta={renderDesktopDayMeta}
+          renderItem={renderDesktopCalendarItem}
+        />
+      )}
 
       {canCreateEvents ? (
         <div className="event-page-actions">

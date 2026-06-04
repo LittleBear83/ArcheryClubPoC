@@ -874,6 +874,19 @@ export function registerAdminMemberRoutes({
       return;
     }
 
+    if (
+      actor.username.localeCompare(member.username, undefined, {
+        sensitivity: "accent",
+      }) === 0
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "Members cannot sign themselves off. Another authorised member must complete the sign-off.",
+      });
+      return;
+    }
+
     const discipline =
       typeof req.body?.discipline === "string" ? req.body.discipline.trim() : "";
     const distanceYards = Number.parseInt(req.body?.distanceYards, 10);

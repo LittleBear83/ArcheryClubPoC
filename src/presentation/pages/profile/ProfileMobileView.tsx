@@ -28,6 +28,7 @@ export function ProfileMobileView({
   canManageMemberDisciplines,
   canManageMembers,
   canSelectMembers,
+  canSignOffSelectedMember,
   canSignOffDistances,
   disciplineOptions,
   editableProfile,
@@ -127,9 +128,9 @@ export function ProfileMobileView({
         <section className="profile-form">
           <MobileSectionHeader
             title="Distance Sign Offs"
-            description="Tap an unsigned distance below to approve that exact distance for the member."
+            description="Tap an unsigned distance below to approve that exact distance for the member. Members cannot sign off their own profile."
             actions={
-              canSignOffDistances && hasUnsignedDistances ? (
+              canSignOffSelectedMember && hasUnsignedDistances ? (
                 <Button
                   type="button"
                   onClick={handleOpenDistanceSignOffModal}
@@ -162,7 +163,7 @@ export function ProfileMobileView({
                           <strong>{distance.distanceYards} yds</strong>
                           <span>{formatSignOffValue(distance.signOff)}</span>
                         </div>
-                        {!distance.signOff && canSignOffDistances ? (
+                        {!distance.signOff && canSignOffSelectedMember ? (
                           <Button
                             type="button"
                             size="sm"

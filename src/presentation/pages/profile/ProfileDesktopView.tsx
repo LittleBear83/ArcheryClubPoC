@@ -17,6 +17,7 @@ export function ProfileDesktopView({
   canManageMemberDisciplines,
   canManageMembers,
   canSelectMembers,
+  canSignOffSelectedMember,
   canSignOffDistances,
   disciplineOptions,
   distanceSignOffOptions,
@@ -118,9 +119,9 @@ export function ProfileDesktopView({
             <p>
               Signed-off distances are recorded separately for each discipline.
               Use the action inside an unsigned cell to approve that exact
-              distance.
+              distance. Members cannot sign off their own profile.
             </p>
-            {canSignOffDistances && hasUnsignedDistances ? (
+            {canSignOffSelectedMember && hasUnsignedDistances ? (
               <Button
                 type="button"
                 className="secondary-button"
@@ -162,7 +163,7 @@ export function ProfileDesktopView({
                                 <strong>{formatDate(signOff.signedOffAt)}</strong>
                                 <span>{signOff.signedOffByName}</span>
                               </span>
-                            ) : canSignOffDistances ? (
+                            ) : canSignOffSelectedMember ? (
                               <div className="profile-distance-signoff-action">
                                 <span className="profile-distance-signoff-empty">
                                   Not signed off

@@ -72,6 +72,10 @@ export function useProfilePageState({
   const canEditCurrentProfile =
     canManageMembers ||
     editableProfile?.username === currentUserProfile?.auth?.username;
+  const canSignOffSelectedMember =
+    canSignOffDistances &&
+    Boolean(editableProfile?.username) &&
+    editableProfile.username !== actorUsername;
   const distanceSignOffDisciplines = useMemo(
     () =>
       editableProfile?.distanceSignOffs
@@ -503,6 +507,13 @@ export function useProfilePageState({
     discipline?: string;
     distanceYards?: number;
   }) => {
+    if (!canSignOffSelectedMember) {
+      setError(
+        "Members cannot sign themselves off. Another authorised member must complete the sign-off.",
+      );
+      return;
+    }
+
     if (!editableProfile?.disciplines?.length) {
       setError("Add at least one discipline before signing off a distance.");
       return;
@@ -619,6 +630,7 @@ export function useProfilePageState({
     canManageMemberDisciplines,
     canManageMembers,
     canSelectMembers,
+    canSignOffSelectedMember,
     canSignOffDistances,
     cardIssueError,
     cardIssueStatus,

@@ -55,6 +55,10 @@ const committeeQueryKeys = {
 };
 
 const createOptionValue = "__create__";
+const MAX_COMMITTEE_PHOTO_DIMENSION_PX = 1200;
+const TARGET_COMMITTEE_PHOTO_DATA_URL_LENGTH = 850_000;
+const MIN_COMMITTEE_PHOTO_QUALITY = 0.45;
+const COMMITTEE_PHOTO_QUALITY_STEP = 0.1;
 
 const emptyDraft: CommitteeRoleDraft = {
   title: "",
@@ -76,20 +80,83 @@ function buildDraft(role: CommitteeRole): CommitteeRoleDraft {
   };
 }
 
-function readImageAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
+function loadImageFromFile(file: File) {
+  const objectUrl = URL.createObjectURL(file);
 
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
       reject(new Error("The selected image could not be read."));
     };
-    reader.onerror = () => reject(new Error("The selected image could not be read."));
-    reader.readAsDataURL(file);
+    image.src = objectUrl;
   });
+}
+
+function calculateScaledDimensions(width: number, height: number, maxDimension: number) {
+  if (width <= maxDimension && height <= maxDimension) {
+    return { width, height };
+  }
+
+  if (width >= height) {
+    return {
+      width: maxDimension,
+      height: Math.max(1, Math.round((height / width) * maxDimension)),
+    };
+  }
+
+  return {
+    width: Math.max(1, Math.round((width / height) * maxDimension)),
+    height: maxDimension,
+  };
+}
+
+async function buildCompressedImageDataUrl(file: File) {
+  const image = await loadImageFromFile(file);
+  let maxDimension = MAX_COMMITTEE_PHOTO_DIMENSION_PX;
+
+  while (maxDimension >= 400) {
+    const { width, height } = calculateScaledDimensions(
+      image.naturalWidth,
+      image.naturalHeight,
+      maxDimension,
+    );
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Image upload is not supported in this browser.");
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+
+    for (
+      let quality = 0.9;
+      quality >= MIN_COMMITTEE_PHOTO_QUALITY;
+      quality -= COMMITTEE_PHOTO_QUALITY_STEP
+    ) {
+      const roundedQuality = Number(quality.toFixed(2));
+      const dataUrl = canvas.toDataURL("image/webp", roundedQuality);
+
+      if (dataUrl.length <= TARGET_COMMITTEE_PHOTO_DATA_URL_LENGTH) {
+        return dataUrl;
+      }
+    }
+
+    maxDimension = Math.round(maxDimension * 0.75);
+  }
+
+  throw new Error(
+    "The selected image is still too large after compression. Please choose a smaller photo.",
+  );
 }
 
 export function CommitteeAdminPage({ currentUserProfile }) {
@@ -246,8 +313,9 @@ export function CommitteeAdminPage({ currentUserProfile }) {
     }
 
     try {
-      const dataUrl = await readImageAsDataUrl(file);
+      const dataUrl = await buildCompressedImageDataUrl(file);
       handleActiveDraftChange("photoDataUrl", dataUrl);
+      setError("");
     } catch (photoError) {
       setError(photoError instanceof Error ? photoError.message : "Image upload failed.");
     }

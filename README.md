@@ -105,9 +105,10 @@ During development, `npm run dev:full` starts both with `concurrently`.
 
 The backend creates the SQLite database automatically if it does not already exist. It also seeds a small set of example users for testing the proof of concept.
 
-Live mode uses `server/data/auth.live.sqlite` by default and seeds only the
-developer user `Cfleetham` when that database is empty. You can override the
-database path with `DATABASE_PATH`.
+Live mode uses `server/data/auth.live.sqlite` by default and seeds baseline
+live accounts including `Cfleetham` and `tstark`. On SQLite live mode those
+baseline accounts are upserted on startup so an existing live database can pick
+them up. You can override the database path with `DATABASE_PATH`.
 
 The runtime now understands two database engines:
 

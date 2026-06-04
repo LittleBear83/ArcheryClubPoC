@@ -96,7 +96,7 @@ export function bootstrapSqliteUserData({
     .prepare(`SELECT COUNT(*) AS count FROM users`)
     .get().count;
 
-  if (existingUserCount === 0) {
+  if (existingUserCount === 0 || isLive) {
     for (const user of seedUsers) {
       upsertUser.run({
         ...user,

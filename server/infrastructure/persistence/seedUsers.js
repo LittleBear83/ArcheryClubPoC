@@ -24,6 +24,18 @@ const seedUsers = [
     disciplines: ["Recurve Bow"],
   },
   {
+    username: "tstark",
+    firstName: "Tony",
+    surname: "Stark",
+    password: "123",
+    rfidTag: null,
+    activeMember: true,
+    membershipFeesDue: "2026-12-31",
+    coachingVolunteer: false,
+    userType: "general",
+    disciplines: ["Bare Bow", "Recurve Bow"],
+  },
+  {
     username: "DStevens",
     firstName: "Kamala",
     surname: "Khan",
@@ -157,9 +169,10 @@ function toSeedUserRecord(user, hashPassword) {
 
 export function getSeedUsers({ hashPassword, isLive }) {
   const selectedUsers = isLive
-    ? seedUsers.filter((user) => user.username === "Cfleetham")
+    ? seedUsers.filter((user) =>
+        ["Cfleetham", "tstark"].includes(user.username)
+      )
     : seedUsers;
 
   return selectedUsers.map((user) => toSeedUserRecord(user, hashPassword));
 }
-

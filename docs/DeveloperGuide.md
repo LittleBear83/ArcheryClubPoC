@@ -1,404 +1,431 @@
-# 📘 Archery Club PoC – Developer Guide
+# ArcheryClubPoC Onboarding Guide
 
----
+## Purpose
 
-# 1. 🧠 Overview
+This document is the main starting point for:
 
-**ArcheryClubPoC** is a full-stack web application designed to manage archery-related workflows such as:
+- support team members who need to understand what the app does and how to
+  triage common issues
+- developers who are new to the repository and need to become productive
+  quickly
 
-- Archer management
-- Competition handling (future-ready)
-- Scoring and data tracking (extendable)
-- Local-first data persistence
+Use this guide as the first stop. Follow the linked documents for deeper
+security, migration, or user-facing detail.
 
-## 🧱 Architecture Style
+## What This App Is
 
-The application follows a **Clean Architecture / Domain-Driven Design** approach:
+ArcheryClubPoC is a browser-based club operations portal for Selby Archers.
 
-```
-Presentation (UI)
-↓
-Use Cases (Application Logic)
-↓
-Domain (Business Rules)
-↓
-Infrastructure (DB / APIs)
-```
+It currently supports:
 
-### Benefits
+- member login with username/password
+- RFID-based member sign-in flows
+- guest sign-in
+- home/dashboard views
+- profile editing and member administration
+- role and permission administration
+- event, coaching, and tournament workflows
+- range usage and reporting
+- equipment and beginner-course administration
 
-- Highly maintainable
-- Testable
-- Scalable for future features (mobile, AI scoring, RFID)
+The system is a proof of concept, but it already contains real application
+structure and operational flows.
 
----
+## Who This Guide Is For
 
-# 2. ⚙️ Tech Stack
+### Support Team
 
-## Frontend
+You likely need to know:
 
-- React 19
-- TypeScript
-- Vite
-- React Router
-- @tanstack/react-query
+- what the major user journeys are
+- which pages and roles exist
+- what "normal" behavior looks like
+- where to look when something fails
+- when an issue is probably user error, data/state drift, or a code defect
 
-## Backend
+### New Developers
 
-- Node.js
-- Express (v5)
-- better-sqlite3 (local database)
+You likely need to know:
 
-## Tooling
+- how to run the app locally
+- how the frontend and backend are organized
+- where data comes from
+- which files are the best entry points for common changes
+- which docs are current and authoritative
 
-- ESLint
-- Concurrently (run frontend + backend)
+## High-Level Mental Model
 
----
+The app has two main parts:
 
-# 3. 📁 Project Structure
+- a React frontend under `src/`
+- an Express backend under `server/`
 
-## Frontend (`/src`)
+The frontend renders pages, collects user input, and calls JSON APIs.
 
-```
-src/
-├── application/      # Application services (orchestration)
-├── domain/           # Core business logic & models
-├── usecases/         # Business actions
-├── infrastructure/   # Database + external integrations
-├── presentation/     # UI components/pages
-├── shared/           # Shared utilities/constants
-├── utils/            # Helper functions
-├── types/            # Global TypeScript types
-├── theme/            # Styling/theming
-├── data/             # Static/mock data
-├── assets/           # Images/icons
-```
+The backend:
 
-## Backend
+- authenticates users
+- applies permission checks
+- reads/writes data
+- returns normalized JSON responses
 
-```
-server/
-├── index.js          # Express server entry point
-```
+The default local database is SQLite. PostgreSQL support exists, but rollout is
+still tracked separately.
 
----
+## Core User Flows
 
-# 4. 🧩 Architectural Layers
+These are the most important flows to understand before troubleshooting.
 
----
+### 1. Member login
 
-## 4.1 Domain Layer (`/domain`)
+Member login can happen through:
 
-The **core of the system**.
+- username and password
+- RFID tag/card
 
-### Responsibilities
+Relevant frontend files:
 
-- Business entities (Archer, Score, Round)
-- Business rules
-- Validation logic
+- `src/presentation/pages/LoginPage.tsx`
+- `src/App.tsx`
+- `src/api/authApi.ts`
 
-### Rules
+Relevant backend files:
 
-- No dependencies on UI, frameworks, or database
-- Pure TypeScript logic
+- `server/presentation/http/registerAuthRoutes.js`
+- `server/infrastructure/persistence/memberAuthGateway.js`
 
----
+### 2. Guest sign-in
 
-## 4.2 Use Cases (`/usecases`)
+Guests are signed in separately and are associated with an inviting member.
 
-Defines **what the system can do**.
-
-### Examples
-
-- Register Archer
-- Record Score
-- Start Competition
-- Calculate Results
-
-### Pattern
-
-Each use case:
-
-1. Accepts input
-2. Uses domain logic
-3. Calls infrastructure if needed
-4. Returns a result
-
----
-
-## 4.3 Application Layer (`/application`)
-
-Acts as a **coordinator**.
-
-### Responsibilities
-
-- Orchestrates multiple use cases
-- Handles workflows
-- Bridges UI and business logic
-
----
-
-## 4.4 Infrastructure Layer (`/infrastructure`)
-
-Handles **external systems**.
-
-### Responsibilities
-
-- Database access (SQLite)
-- API calls
-- Data persistence
-
-### Typical Pattern
-
-```
-Repositories:
-- ArcherRepository
-- ScoreRepository
-```
-
----
-
-## 4.5 Presentation Layer (`/presentation`)
-
-React-based UI.
-
-### Includes
-
-- Pages
-- Components
-- Hooks
-
-### Integrations
-
-- React Router (navigation)
-- React Query (data fetching + caching)
-
----
-
-# 5. 🔄 Data Flow
-
-Typical request lifecycle:
-
-```
-User Action (UI)
-↓
-React Component
-↓
-React Query / Hook
-↓
-Use Case
-↓
-Domain Logic
-↓
-Repository (Infrastructure)
-↓
-SQLite Database
-```
-
----
-
-# 6. 🖥️ Backend (Express Server)
-
-## Entry Point
-
-```
-server/index.js
-```
-
-## Responsibilities
-
-- API endpoints
-- Serve frontend (production)
-- Database access
-
----
-
-# 7. 📦 Dependencies
-
-## Runtime
-
-| Dependency            | Purpose        |
-| --------------------- | -------------- |
-| react                 | UI framework   |
-| react-router-dom      | Routing        |
-| @tanstack/react-query | Data fetching  |
-| express               | Backend API    |
-| better-sqlite3        | Local database |
-| concurrently          | Dev workflow   |
-
-## Development
-
-| Dependency           | Purpose       |
-| -------------------- | ------------- |
-| vite                 | Build tool    |
-| typescript           | Type safety   |
-| eslint               | Code quality  |
-| @vitejs/plugin-react | React support |
-
----
-
-# 8. 🧠 Key Features
-
-## Current
-
-- Modular UI structure
-- Local database persistence
-- API-driven architecture
-- Clean separation of concerns
-
-## Designed For (Future)
-
-- Archer registration
-- Competition brackets
-- Round management
-- Score tracking
-- Historical results
-- Mobile integration
-
----
-
-# 9. 🧪 Development Workflow
-
-## Run Locally
+Relevant files:
+
+- `src/presentation/pages/LoginPage.tsx`
+- `server/presentation/http/registerAuthRoutes.js`
+
+### 3. Home/dashboard
+
+The home page shows:
+
+- members currently at the range
+- upcoming bookings and reminders
+- beginner-related items for beginner users
+
+Relevant files:
+
+- `src/presentation/pages/HomePage.tsx`
+- `src/presentation/pages/HomeSection.tsx`
+- `src/api/homeApi.ts`
+- `src/api/memberApi.ts`
+- `server/presentation/http/registerMemberActivityRoutes.js`
+
+### 4. Admin and operational flows
+
+Important admin areas include:
+
+- profile and member management
+- roles and permissions
+- committee administration
+- reporting
+- equipment
+- tournaments
+- beginner-course administration
+
+Most of these flows use permission-gated routes on the backend and page-level
+permission checks on the frontend.
+
+## Repository Map
+
+### Frontend
+
+- `src/presentation/`
+  Pages, shared UI components, view-specific rendering, and presentation hooks.
+- `src/api/`
+  Frontend API wrappers around the backend routes.
+- `src/application/`
+  Frontend use cases and workflow coordination.
+- `src/domain/`
+  Frontend entities and repository contracts.
+- `src/data/`
+  Repository implementations that bridge frontend logic to API/data sources.
+- `src/bootstrap/`
+  App composition and dependency wiring.
+- `src/theme/`
+  Theme provider and theme helpers.
+- `src/utils/`
+  General utility helpers used across the app.
+
+### Backend
+
+- `server/index.js`
+  Main backend composition root.
+- `server/presentation/http/`
+  Route registration modules.
+- `server/infrastructure/persistence/`
+  SQLite/PostgreSQL gateways, statements, migrations, and compatibility logic.
+- `server/domain/`
+  Backend constants and shared domain services.
+- `server/bootstrap/`
+  Startup/bootstrap helpers.
+- `server/security/`
+  CSRF and rate limiting.
+- `server/observability/`
+  Logging and security event helpers.
+
+## How To Run The App
+
+Install dependencies:
 
 ```bash
-npm install
+npm ci
+```
+
+Run frontend only:
+
+```bash
 npm run dev
 ```
 
-## Build
+Run backend only:
 
 ```bash
+npm run dev:server
+```
+
+Run both together:
+
+```bash
+npm run dev:full
+```
+
+Useful validation commands:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
 npm run build
-npm run preview
 ```
 
----
+## Support Triage Guide
 
-# 10. 🧱 Extending the Application
+When a user reports a problem, classify it into one of these buckets first.
 
-## Example: Add “Score an End”
+### Login issue
 
-### Step 1 – Domain
+Examples:
 
-```
-domain/Score.ts
-```
+- incorrect username/password
+- RFID not recognized
+- session expired
+- guest sign-in not completing
 
-### Step 2 – Use Case
+Check:
 
-```
-usecases/recordScore.ts
-```
+- `src/presentation/pages/LoginPage.tsx`
+- `src/api/authApi.ts`
+- `server/presentation/http/registerAuthRoutes.js`
 
-### Step 3 – Infrastructure
+Typical causes:
 
-```
-infrastructure/ScoreRepository.ts
-```
+- wrong credentials
+- expired or inactive member status
+- missing backend server
+- RFID route/service problems
+- local/session cookie issues
 
-### Step 4 – UI Component
+### Permission issue
 
-```
-presentation/components/ScoreInput.tsx
-```
+Examples:
 
-### Step 5 – Connect via React Query
+- page missing from menu
+- action button disabled or absent
+- API returns 403
 
----
+Check:
 
-# 11. ⚠️ Recommendations
+- current user role and permissions
+- `src/utils/userProfile.js`
+- page-level permission checks in the relevant screen
+- backend permission checks in the relevant route module
 
-## Improvements
+Typical causes:
 
-### 1. API Abstraction Layer
+- expected permission not assigned to the role
+- frontend correctly hiding restricted actions
+- backend correctly blocking restricted requests
 
-Create:
+### Data display issue
 
-```
-infrastructure/api/
-```
+Examples:
 
----
+- range member list looks wrong
+- profile details not updating
+- reporting totals look unexpected
+- tournament or event lists differ from expectation
 
-### 2. Environment Configuration
+Check:
 
-Use:
+- API response first
+- query invalidation/refresh behavior on the frontend
+- normalization logic in `src/utils/userProfile.js`
+- backend aggregation/query logic in reporting or activity gateways
 
-```
-.env
-```
+Typical causes:
 
----
+- stale frontend state
+- expected polling delay
+- older login/activity records still inside the reporting window
+- query/filter logic mismatch
 
-### 3. Logging Layer
+### File or image upload issue
 
-```
-shared/logger.ts
-```
+Examples:
 
----
+- committee photo upload fails
+- "request entity too large"
 
-### 4. Validation
+Check:
 
-Introduce:
+- `src/presentation/pages/CommitteeAdminPage.tsx`
+- `server/index.js`
+- `server/presentation/http/registerAdminMemberRoutes.js`
 
-- Zod or Yup
+Typical causes:
 
----
+- image too large before compression
+- invalid image type
+- body size limits
 
-### 5. Testing
+## Common Issue Playbooks
 
-- Unit tests (domain)
-- Integration tests (use cases)
+### "The app loads but sign-in fails"
 
----
+1. Confirm the backend is running.
+2. Check whether the error is a 401, 403, or network/API failure.
+3. If password login fails, inspect the auth route behavior.
+4. If RFID fails, check the RFID-specific routes and reader state.
 
-# 12. 🔮 Future Roadmap
+### "A page is missing"
 
-## 📱 Mobile App
+1. Confirm the user is signed in.
+2. Confirm the user role.
+3. Confirm the role has the required permission.
+4. Check both frontend page gating and backend route protection.
 
-- React Native / Expo
-- Reuse domain + usecases
+### "The home page says someone is at the range when they should not be"
 
----
+1. Check whether the backend `/api/range-members` response includes them.
+2. Check whether they had an older qualifying login within the current time
+   window.
+3. Check recent login method behavior if the issue is mobile vs RFID vs desktop.
 
-## 🎯 AI Scoring
+### "Saving changes does nothing or reverts"
 
-- Image upload
-- Arrow detection
-- User correction feedback loop
+1. Check browser console/network tab for failed API requests.
+2. Confirm CSRF-protected mutating requests are succeeding.
+3. Check whether the page invalidates/refetches the relevant query after save.
+4. Confirm the backend persistence gateway updated the expected records.
 
----
+## Current Frontend Pattern
 
-## 🏹 Competition Engine
+Most newer frontend work follows this shape:
 
-- Bracket generation
-- Round progression
-- Live leaderboard
+1. Page container owns route-level queries, permissions, and mutations.
+2. Shared state may be extracted into a page-specific hook when the page is
+   large.
+3. Desktop and mobile markup may be split into separate view components when
+   the layout differs materially.
+4. Shared UI primitives live in `src/presentation/components/`.
 
----
+Examples already using this approach include:
 
-## 🔐 RFID Integration
+- `src/presentation/pages/reporting/`
+- `src/presentation/pages/range-usage/`
+- `src/presentation/pages/records/`
+- `src/presentation/pages/equipment/`
+- `src/presentation/pages/event-calendar/`
+- `src/presentation/pages/tournaments/`
+- `src/presentation/pages/profile/`
+- `src/presentation/pages/roles/`
 
-- Access control
-- Member validation
-- Entry logging
+## Current Backend Pattern
 
----
+The backend is still centered on `server/index.js`, but most feature behavior is
+registered through focused route modules and gateway/repository helpers.
 
-# 13. 🧾 Summary
+Typical backend flow:
 
-This project provides a **solid foundation** for a full archery platform.
+1. Express route receives the request.
+2. Route-level permission/session checks run.
+3. A gateway or service handles persistence and business coordination.
+4. A normalized JSON response is returned to the frontend.
 
-### Strengths
+Important backend abstractions include:
 
-- Clean architecture
-- Scalable design
-- Strong separation of concerns
-- Ready for advanced features
+- `memberAuthGateway`
+- `memberProfileGateway`
+- `roleCommitteeGateway`
+- `activityReportingGateway`
+- `scheduleGateway`
+- `tournamentGateway`
+- `equipmentGateway`
 
-With additional layers (validation, testing, API abstraction), this can evolve into a **production-grade system**.
+## Mobile Support
 
----
+The app supports mobile-specific presentation patterns without changing the
+underlying routes or APIs.
+
+Guidelines:
+
+- use `src/presentation/hooks/useIsMobile.ts` for mobile/desktop switching
+- keep queries and business logic shared between variants
+- prefer cards and stacked forms over squeezed tables on narrow screens
+- preserve desktop behavior unless the same change clearly improves both views
+
+The active mobile checklist lives in `docs/MobileImplementationTodo.md`.
+Historical mobile planning notes live under `docs/archive/`.
+
+## Data And Runtime Notes
+
+- local development defaults to SQLite
+- PostgreSQL support exists, but rollout is still tracked as migration work
+- auth is cookie-based
+- CSRF protection is enabled for mutating API requests except session-creation
+  routes
+- committee role photos are stored as compressed image data URLs
+
+## Best Entry Points For Changes
+
+If you are changing:
+
+- login/session behavior
+  Start with `src/App.tsx`, `src/api/authApi.ts`, and
+  `server/presentation/http/registerAuthRoutes.js`.
+- page layout or interaction behavior
+  Start in `src/presentation/pages/` and related shared components.
+- API calls or frontend data flow
+  Check `src/api/`, `src/data/`, and `src/application/`.
+- permission behavior
+  Check `src/utils/userProfile.js` and the relevant backend route module.
+- persistence or migrations
+  Check `server/infrastructure/persistence/`.
+
+## Related Docs
+
+- `docs/ProductionSecurity.md`
+  Security and deployment baseline.
+- `docs/PostgresMigrationPlan.md`
+  PostgreSQL migration and rollout status.
+- `docs/MobileImplementationTodo.md`
+  Active mobile implementation checklist.
+- `docs/NewMemberPortalGuide.md`
+  End-user/member-facing guide.
+
+## Maintenance Notes
+
+- Prefer updating existing docs instead of creating parallel docs for the same
+  topic.
+- Treat `docs/archive/` as historical reference, not current guidance.
+- If you change scripts, runtime assumptions, or folder structure, update
+  `README.md` and this guide in the same change.

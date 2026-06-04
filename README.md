@@ -70,28 +70,36 @@ npm ci
 2. Start the frontend and backend together:
 
 ```bash
-npm run dev
+npm run dev:full
 ```
 
 3. Open the app in your browser using the Vite development URL shown in the terminal.
 
-The backend runs from `server/index.js` and the frontend runs through Vite. During development, both are started together with `concurrently`.
+The backend runs from `server/index.js` and the frontend runs through Vite.
+During development, `npm run dev:full` starts both with `concurrently`.
 
 ## Available Scripts
 
 - `npm run dev`
+  Starts the Vite client only.
+- `npm run dev:server`
+  Starts the Express server only.
+- `npm run dev:full`
   Starts both the Express server and the Vite client.
 - `npm run build`
   Builds the frontend for production.
 - `npm run preview`
-  Builds the frontend and then starts the Express server.
+  Serves the built frontend through Vite preview.
 - `npm run start`
   Starts the Express server.
-- `npm run start:live`
-  Starts the Express server in live mode. An empty live database seeds only the
-  developer account `Cfleetham`.
 - `npm run lint`
   Runs ESLint across the project.
+- `npm run typecheck`
+  Runs the TypeScript compiler without emitting files.
+- `npm run migrate:postgres`
+  Runs the SQLite-to-PostgreSQL migration script.
+- `npm test`
+  Runs the project test suite.
 
 ## Database Notes
 
@@ -112,9 +120,10 @@ The runtime now understands two database engines:
   running on Cloud Run with Cloud SQL, `INSTANCE_CONNECTION_NAME` can be used
   to connect through the `/cloudsql/...` Unix socket path.
 
-Important: the server is still functionally backed by SQLite queries today.
-PostgreSQL runtime configuration is now wired in, but the query and migration
-layer still needs to be ported before `DATABASE_ENGINE=postgres` can be used.
+PostgreSQL runtime configuration and persistence support now exist in the
+codebase, but rollout is still an active migration effort. Treat SQLite as the
+default working runtime unless you are explicitly validating the PostgreSQL path
+described in `docs/PostgresMigrationPlan.md`.
 
 RFID simulation is hidden in production builds by default. To deliberately
 enable it for a non-live test build, set `VITE_ENABLE_RFID_SIMULATOR=true`

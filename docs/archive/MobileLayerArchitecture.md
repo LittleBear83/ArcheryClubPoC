@@ -1,5 +1,10 @@
 # Mobile Layer Architecture
 
+Archived: this design note reflects the proposed mobile architecture on
+2026-06-03. Some proposed files were never created exactly as written. Use
+`docs/MobileImplementationTodo.md` and `docs/DeveloperGuide.md` for current
+guidance.
+
 Date: 2026-06-03
 
 ## Goal

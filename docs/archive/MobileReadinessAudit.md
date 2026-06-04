@@ -1,5 +1,9 @@
 # Mobile Readiness Audit
 
+Archived: this audit reflects the state of the mobile effort on 2026-06-03 and
+is preserved for historical context. The active checklist now lives in
+`docs/MobileImplementationTodo.md`.
+
 Date: 2026-06-03
 
 ## Summary

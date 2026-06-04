@@ -42,8 +42,6 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import {
   formatMemberDisplayName,
   hasPermission,
-  isSameUserProfile,
-  normalizeUserProfile,
 } from "../../utils/userProfile";
 
 type HomePageProps = {
@@ -366,23 +364,6 @@ export function HomePage({
     [beginnerDashboard, currentUserProfile],
   );
 
-  // Include the current signed-in member immediately, even if the range member
-  // polling endpoint has not caught up to the fresh session yet.
-  const membersAtRange = useMemo(() => {
-    if (!currentUserProfile) {
-      return rangeMembers;
-    }
-
-    const normalizedCurrentUser = normalizeUserProfile(currentUserProfile);
-    const alreadyIncluded = rangeMembers.some((member) =>
-      isSameUserProfile(normalizedCurrentUser, member),
-    );
-
-    return alreadyIncluded
-      ? rangeMembers
-      : [normalizedCurrentUser, ...rangeMembers];
-  }, [currentUserProfile, rangeMembers]);
-
   useEffect(() => {
     // Event-driven invalidation keeps summary panels current after child pages
     // mutate bookings, sessions, tournaments, or beginner-course data.
@@ -608,7 +589,7 @@ export function HomePage({
               path="/"
               element={
                 <HomeSection
-                  members={membersAtRange}
+                  members={rangeMembers}
                   signedUpEvents={signedUpEvents}
                   tournamentReminders={tournamentReminders}
                   beginnerDashboard={beginnerDashboard}

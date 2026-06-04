@@ -2749,7 +2749,8 @@ button:disabled {
 .tournament-modal {
   width: min(760px, 100%);
   max-height: calc(100svh - (var(--page-gutter) * 2));
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: clamp(18px, 2vw, 28px);
   border: 1px solid var(--panel-border);
   border-radius: 20px;

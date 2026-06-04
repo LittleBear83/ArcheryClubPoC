@@ -10,6 +10,7 @@ type DatePickerProps = {
   label?: string;
   max?: string;
   min?: string;
+  nativeMode?: "always" | "auto" | "never";
   onChange: (value: string) => void;
   required?: boolean;
   value: string;
@@ -79,11 +80,14 @@ export function DatePicker({
   label,
   max,
   min,
+  nativeMode = "auto",
   onChange,
   required = false,
   value,
 }: DatePickerProps) {
   const isMobile = useIsMobile();
+  const shouldUseNative =
+    nativeMode === "always" || (nativeMode === "auto" && isMobile);
   const selectedDate = parseIsoDate(value);
   const todayIso = toIsoDate(new Date());
   const fallbackDate = selectedDate ?? parseIsoDate(max ?? "") ?? new Date();
@@ -197,7 +201,7 @@ export function DatePicker({
   const selectedIso = selectedDate ? toIsoDate(selectedDate) : "";
   const monthLabel = `${MONTH_LABELS[viewMonth.getUTCMonth()]} ${viewMonth.getUTCFullYear()}`;
 
-  if (isMobile) {
+  if (shouldUseNative) {
     return (
       <label className="custom-date-picker custom-date-picker--native">
         {label ? (

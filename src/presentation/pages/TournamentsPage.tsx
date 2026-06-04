@@ -904,6 +904,7 @@ export function TournamentsPage({
                 <label>
                   Registration opens
                   <DatePicker
+                    nativeMode="always"
                     value={createForm.registrationStartDate}
                     onChange={(value) =>
                       setCreateForm((current) => ({
@@ -918,6 +919,7 @@ export function TournamentsPage({
                 <label>
                   Registration closes
                   <DatePicker
+                    nativeMode="always"
                     value={createForm.registrationEndDate}
                     onChange={(value) =>
                       setCreateForm((current) => ({
@@ -932,6 +934,7 @@ export function TournamentsPage({
                 <label>
                   Score submission opens
                   <DatePicker
+                    nativeMode="always"
                     value={createForm.scoreSubmissionStartDate}
                     onChange={(value) =>
                       setCreateForm((current) => ({
@@ -946,6 +949,7 @@ export function TournamentsPage({
                 <label>
                   Score submission closes
                   <DatePicker
+                    nativeMode="always"
                     value={createForm.scoreSubmissionEndDate}
                     onChange={(value) =>
                       setCreateForm((current) => ({

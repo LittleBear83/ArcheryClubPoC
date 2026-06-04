@@ -328,11 +328,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .custom-date-picker-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
-  z-index: 1000;
-  width: min(420px, calc(100vw - 32px));
+  position: fixed;
+  z-index: 10000;
+  max-width: calc(100vw - 16px);
   padding: 18px;
   border: 2px solid var(--panel-border-strong);
   border-radius: 10px;

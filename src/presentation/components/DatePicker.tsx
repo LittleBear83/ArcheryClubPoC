@@ -30,6 +30,9 @@ const MONTH_LABELS = [
   "December",
 ];
 const WEEKDAY_LABELS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+const DATE_PICKER_POPOVER_MAX_WIDTH = 420;
+const DATE_PICKER_POPOVER_VIEWPORT_MARGIN = 8;
+const DATE_PICKER_POPOVER_OFFSET = 8;
 
 function parseIsoDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -87,7 +90,59 @@ export function DatePicker({
   const [open, setOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(fallbackDate));
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+  const [popoverStyle, setPopoverStyle] = useState<{
+    left: number;
+    top: number;
+    width: number;
+  } | null>(null);
   const calendarDays = useMemo(() => getCalendarDays(viewMonth), [viewMonth]);
+
+  useEffect(() => {
+    if (!open || !wrapperRef.current) {
+      return undefined;
+    }
+
+    const updatePopoverPosition = () => {
+      if (!wrapperRef.current) {
+        return;
+      }
+
+      const triggerRect = wrapperRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const width = Math.min(
+        DATE_PICKER_POPOVER_MAX_WIDTH,
+        viewportWidth - DATE_PICKER_POPOVER_VIEWPORT_MARGIN * 2,
+      );
+      const measuredHeight = popoverRef.current?.offsetHeight ?? 360;
+      const left = Math.min(
+        Math.max(triggerRect.left, DATE_PICKER_POPOVER_VIEWPORT_MARGIN),
+        viewportWidth - width - DATE_PICKER_POPOVER_VIEWPORT_MARGIN,
+      );
+      const preferredTop = triggerRect.bottom + DATE_PICKER_POPOVER_OFFSET;
+      const top =
+        preferredTop + measuredHeight <=
+        viewportHeight - DATE_PICKER_POPOVER_VIEWPORT_MARGIN
+          ? preferredTop
+          : Math.max(
+              DATE_PICKER_POPOVER_VIEWPORT_MARGIN,
+              triggerRect.top - measuredHeight - DATE_PICKER_POPOVER_OFFSET,
+            );
+
+      setPopoverStyle({ left, top, width });
+    };
+
+    updatePopoverPosition();
+
+    window.addEventListener("resize", updatePopoverPosition);
+    window.addEventListener("scroll", updatePopoverPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePopoverPosition);
+      window.removeEventListener("scroll", updatePopoverPosition, true);
+    };
+  }, [open, viewMonth]);
 
   useEffect(() => {
     if (!open) {
@@ -197,7 +252,21 @@ export function DatePicker({
       </Button>
 
       {open ? (
-        <div className="custom-date-picker-popover" role="dialog" aria-label="Choose date">
+        <div
+          ref={popoverRef}
+          className="custom-date-picker-popover"
+          role="dialog"
+          aria-label="Choose date"
+          style={
+            popoverStyle
+              ? {
+                  left: `${popoverStyle.left}px`,
+                  top: `${popoverStyle.top}px`,
+                  width: `${popoverStyle.width}px`,
+                }
+              : undefined
+          }
+        >
           <div className="custom-date-picker-header">
             <strong>{monthLabel}</strong>
             <div className="custom-date-picker-nav">

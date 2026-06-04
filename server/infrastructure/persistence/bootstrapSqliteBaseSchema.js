@@ -2,7 +2,7 @@ export const LOGIN_EVENTS_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS login_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL,
-    login_method TEXT NOT NULL CHECK (login_method IN ('password', 'rfid')),
+    login_method TEXT NOT NULL CHECK (login_method IN ('password', 'password-mobile', 'rfid')),
     logged_in_date TEXT NOT NULL,
     logged_in_time TEXT NOT NULL,
     FOREIGN KEY (username) REFERENCES users(username)

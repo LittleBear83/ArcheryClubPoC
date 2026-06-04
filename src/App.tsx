@@ -190,14 +190,20 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   };
 
   const handleLogin = async ({
+    deviceType,
     username,
     password,
   }: {
+    deviceType?: "desktop" | "mobile";
     username: string;
     password: string;
   }) => {
     try {
-      const result = await loginWithCredentials(username, password);
+      const result = await loginWithCredentials(
+        username,
+        password,
+        deviceType ?? "desktop",
+      );
 
       persistAuthenticatedUser(result.userProfile);
 

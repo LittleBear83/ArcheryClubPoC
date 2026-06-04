@@ -31,7 +31,7 @@ export function registerAuthRoutes({
   };
 
   app.post("/api/auth/login", async (req, res) => {
-    const { username, password } = req.body ?? {};
+    const { username, password, deviceType } = req.body ?? {};
 
     if (!username || !password) {
       res.status(400).json({
@@ -71,7 +71,7 @@ export function registerAuthRoutes({
     }
 
     await memberAuthGateway.recordLoginEvent({
-      method: "password",
+      method: deviceType === "mobile" ? "password-mobile" : "password",
       timestampParts: getUtcTimestampParts(),
       username: user.username,
     });

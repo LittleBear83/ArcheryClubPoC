@@ -1,6 +1,8 @@
 import { fetchApi } from "./client";
 import type { UserProfile } from "../types/app";
 
+type CredentialLoginDeviceType = "desktop" | "mobile";
+
 export type RfidScan = {
   sequence: number;
   rfidTag?: string;
@@ -14,13 +16,17 @@ export type RfidReaderStatus = {
   detected: boolean;
 };
 
-export async function loginWithCredentials(username: string, password: string) {
+export async function loginWithCredentials(
+  username: string,
+  password: string,
+  deviceType: CredentialLoginDeviceType = "desktop",
+) {
   return fetchApi<{ success: true; userProfile: UserProfile }>("/api/auth/login", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, deviceType }),
   });
 }
 

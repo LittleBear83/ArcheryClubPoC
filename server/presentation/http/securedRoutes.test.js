@@ -67,7 +67,7 @@ function noopStatement(value = null) {
   };
 }
 
-function registerAuthTestRoutes(app, getSessionUsername) {
+function registerAuthTestRoutes(app, getSessionUsername, overrides = {}) {
   const noopGateway = {
     findDisciplinesByUsername: async () => [],
     findUserByCredentials: async () => null,
@@ -78,11 +78,15 @@ function registerAuthTestRoutes(app, getSessionUsername) {
     recordLoginEvent: async () => {},
     updateUserPassword: async () => {},
   };
+  const memberAuthGateway = {
+    ...noopGateway,
+    ...(overrides.memberAuthGateway ?? {}),
+  };
 
   registerAuthRoutes({
     app,
-    buildGuestUserProfile: () => ({}),
-    buildMemberUserProfile: () => ({}),
+    buildGuestUserProfile: overrides.buildGuestUserProfile ?? (() => ({})),
+    buildMemberUserProfile: overrides.buildMemberUserProfile ?? (() => ({})),
     clearCsrfCookie: () => "archeryclubpoc_csrf=; Max-Age=0",
     clearSessionCookie: () => "archeryclubpoc_session=; Max-Age=0",
     createCsrfCookie: () => "archeryclubpoc_csrf=test",
@@ -91,8 +95,8 @@ function registerAuthTestRoutes(app, getSessionUsername) {
     getDeactivatedRfidTag: (rfidTag) => `deactivated-${rfidTag}`,
     getSessionUsername,
     getUtcTimestampParts: () => ["2026-04-21", "10:00:00"],
-    hashPassword: (password) => `hashed-${password}`,
-    latestRfidScan: {
+    hashPassword: overrides.hashPassword ?? ((password) => `hashed-${password}`),
+    latestRfidScan: overrides.latestRfidScan ?? {
       cardBrand: null,
       deliveredSequence: 0,
       rfidTag: null,
@@ -101,13 +105,13 @@ function registerAuthTestRoutes(app, getSessionUsername) {
       sequence: 0,
       source: null,
     },
-    memberAuthGateway: noopGateway,
-    rfidReaderStatus: {
+    memberAuthGateway,
+    rfidReaderStatus: overrides.rfidReaderStatus ?? {
       checked: true,
       detected: false,
     },
-    syncMemberStatusWithFees: (user) => user,
-    verifyPassword: () => false,
+    syncMemberStatusWithFees: overrides.syncMemberStatusWithFees ?? ((user) => user),
+    verifyPassword: overrides.verifyPassword ?? (() => false),
   });
 }
 
@@ -380,6 +384,52 @@ test("auth routes expose RFID reader detection status for the login page", async
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve(undefined)));
     });
+  }
+});
+
+test("mobile password login is recorded without marking range presence as an RFID-style check-in", async () => {
+  const app = express();
+  app.use(express.json());
+  const recordedMethods = [];
+
+  registerAuthTestRoutes(app, () => null, {
+    buildMemberUserProfile: (user) => ({
+      auth: {
+        username: user.username,
+      },
+    }),
+    memberAuthGateway: {
+      findDisciplinesByUsername: async () => [],
+      findUserByCredentials: async () => ({
+        active_member: 1,
+        password: "hashed-secret",
+        username: "mobile-member",
+      }),
+      recordLoginEvent: async ({ method }) => {
+        recordedMethods.push(method);
+      },
+      updateUserPassword: async () => {},
+    },
+    verifyPassword: (providedPassword, storedPassword) =>
+      providedPassword === "secret" && storedPassword === "hashed-secret",
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/login", {
+      body: {
+        username: "mobile-member",
+        password: "secret",
+        deviceType: "mobile",
+      },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(recordedMethods, ["password-mobile"]);
+  } finally {
+    server.close();
   }
 });
 

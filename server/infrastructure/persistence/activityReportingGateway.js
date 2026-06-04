@@ -214,6 +214,7 @@ function createPostgresActivityReportingGateway({ pool }) {
         INNER JOIN users ON users.id = login_events.user_id
         INNER JOIN user_types ON user_types.user_id = users.id
         WHERE (login_events.logged_in_date::text || 'T' || login_events.logged_in_time::text) >= $1
+          AND login_events.login_method != 'password-mobile'
         GROUP BY users.id, users.username, users.first_name, users.surname, users.rfid_tag, users.active_member, users.membership_fees_due, user_types.user_type
         ORDER BY users.surname ASC, users.first_name ASC`,
         [cutoff],

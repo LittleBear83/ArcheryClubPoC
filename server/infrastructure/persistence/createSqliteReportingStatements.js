@@ -18,6 +18,7 @@ export function createSqliteReportingStatements(db) {
     INNER JOIN user_types
       ON user_types.user_id = users.id
     WHERE login_events.logged_in_date || 'T' || login_events.logged_in_time >= ?
+      AND login_events.login_method != 'password-mobile'
     GROUP BY users.id, users.username, users.first_name, users.surname, users.password,
       users.rfid_tag, users.active_member, users.membership_fees_due, users.coaching_volunteer, user_types.user_type
     ORDER BY users.surname ASC, users.first_name ASC

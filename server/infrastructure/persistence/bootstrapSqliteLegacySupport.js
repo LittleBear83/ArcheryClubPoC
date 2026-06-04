@@ -113,6 +113,54 @@ function migrateCombinedDateTimeColumn({
   return true;
 }
 
+function ensureLoginEventsTableSupportsMobilePassword({ db, loginEventsTableSql }) {
+  const loginEventsTable = db
+    .prepare(
+      `
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'login_events'
+      `,
+    )
+    .get();
+  const currentSql = String(loginEventsTable?.sql ?? "").toLowerCase();
+
+  if (!currentSql || currentSql.includes("password-mobile")) {
+    return;
+  }
+
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+
+    BEGIN TRANSACTION;
+
+    ALTER TABLE login_events RENAME TO login_events_old;
+
+    ${loginEventsTableSql.trim()};
+
+    INSERT INTO login_events (
+      id,
+      username,
+      login_method,
+      logged_in_date,
+      logged_in_time
+    )
+    SELECT
+      id,
+      username,
+      login_method,
+      logged_in_date,
+      logged_in_time
+    FROM login_events_old;
+
+    DROP TABLE login_events_old;
+
+    COMMIT;
+
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
 export function bootstrapSqliteLegacyDateSupport({
   clubEventsTableSql,
   coachingSessionBookingsTableSql,
@@ -144,6 +192,10 @@ export function bootstrapSqliteLegacyDateSupport({
       "substr(logged_in_at, 12)",
     ],
     tableName: "login_events",
+  });
+  ensureLoginEventsTableSupportsMobilePassword({
+    db,
+    loginEventsTableSql,
   });
 
   migrateCombinedDateTimeColumn({

@@ -304,6 +304,7 @@ function createAdminRoleTestApp() {
     saveLoanBowRecord: noopStatement(),
     saveMemberProfile: noopStatement(),
     TOURNAMENT_TYPE_OPTIONS: [],
+    verifyPassword: (provided, stored) => provided === stored,
   });
 
   return { app, csrf };

@@ -221,8 +221,8 @@ export class SignOffMemberDistanceUseCase {
       throw new Error("Choose a distance.");
     }
 
-    if (!signOff?.memberUsernameConfirmation?.trim()) {
-      throw new Error("The member must enter their username to confirm.");
+    if (!signOff?.memberPasswordConfirmation?.trim()) {
+      throw new Error("The member must enter their password to confirm.");
     }
 
     return this.memberProfileRepository.signOffDistance(

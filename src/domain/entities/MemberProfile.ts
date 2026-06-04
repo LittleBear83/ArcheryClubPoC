@@ -119,7 +119,7 @@ export type LoanBowReturnResult = {
 export type DistanceSignOffInput = {
   discipline: string;
   distanceYards: number;
-  memberUsernameConfirmation: string;
+  memberPasswordConfirmation: string;
 };
 
 export type DistanceSignOffResult = {

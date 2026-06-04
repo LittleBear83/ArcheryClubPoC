@@ -3383,6 +3383,7 @@ registerAdminMemberRoutes({
   saveLoanBowRecord,
   saveMemberProfile: (...args) => memberPersistenceService.saveMemberProfile(...args),
   TOURNAMENT_TYPE_OPTIONS,
+  verifyPassword,
 });
 
 registerEquipmentRoutes({

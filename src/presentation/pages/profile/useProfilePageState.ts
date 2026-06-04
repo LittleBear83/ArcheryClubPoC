@@ -41,7 +41,7 @@ export function useProfilePageState({
   const [distanceSignOffForm, setDistanceSignOffForm] = useState({
     discipline: "",
     distanceYards: "20",
-    memberUsernameConfirmation: "",
+    memberPasswordConfirmation: "",
   });
   const [distanceSignOffError, setDistanceSignOffError] = useState("");
   const [isSavingDistanceSignOff, setIsSavingDistanceSignOff] = useState(false);
@@ -537,7 +537,7 @@ export function useProfilePageState({
     setDistanceSignOffForm({
       discipline: selectedDiscipline,
       distanceYards: String(selectedDistance ?? ""),
-      memberUsernameConfirmation: "",
+      memberPasswordConfirmation: "",
     });
     setIsDistanceSignOffModalOpen(true);
   };
@@ -598,8 +598,8 @@ export function useProfilePageState({
               distanceSignOffForm.distanceYards,
               10,
             ),
-            memberUsernameConfirmation:
-              distanceSignOffForm.memberUsernameConfirmation,
+            memberPasswordConfirmation:
+              distanceSignOffForm.memberPasswordConfirmation,
           },
         });
 

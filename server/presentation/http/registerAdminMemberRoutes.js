@@ -22,6 +22,7 @@ export function registerAdminMemberRoutes({
   saveLoanBowRecord,
   saveMemberProfile,
   TOURNAMENT_TYPE_OPTIONS,
+  verifyPassword,
   buildMemberUserProfile,
   memberDistanceSignOffRepository,
 }) {
@@ -876,9 +877,9 @@ export function registerAdminMemberRoutes({
     const discipline =
       typeof req.body?.discipline === "string" ? req.body.discipline.trim() : "";
     const distanceYards = Number.parseInt(req.body?.distanceYards, 10);
-    const memberUsernameConfirmation =
-      typeof req.body?.memberUsernameConfirmation === "string"
-        ? req.body.memberUsernameConfirmation.trim()
+    const memberPasswordConfirmation =
+      typeof req.body?.memberPasswordConfirmation === "string"
+        ? req.body.memberPasswordConfirmation
         : "";
     const disciplines = await listMemberDisciplines(member.username);
 
@@ -898,14 +899,10 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    if (
-      member.username.localeCompare(memberUsernameConfirmation, undefined, {
-        sensitivity: "accent",
-      }) !== 0
-    ) {
+    if (!verifyPassword(memberPasswordConfirmation, member.password)) {
       res.status(400).json({
         success: false,
-        message: "The member username confirmation does not match.",
+        message: "The member password confirmation is incorrect.",
       });
       return;
     }

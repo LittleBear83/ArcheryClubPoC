@@ -42,7 +42,7 @@ export function ProfilePage({
           >
             <p>
               Choose the unsigned distance to approve, then ask the member to
-              confirm they are present by typing their username.
+              confirm they are present by entering their password.
             </p>
             <label>
               Discipline
@@ -83,15 +83,17 @@ export function ProfilePage({
             <label>
               Member present confirmation
               <input
+                type="password"
                 value={
                   profilePageState.distanceSignOffForm
-                    .memberUsernameConfirmation
+                    .memberPasswordConfirmation
                 }
                 onChange={profilePageState.handleDistanceSignOffChange(
-                  "memberUsernameConfirmation",
+                  "memberPasswordConfirmation",
                 )}
                 disabled={profilePageState.isSavingDistanceSignOff}
-                placeholder={`Expected username: ${profilePageState.editableProfile.username}`}
+                placeholder="Member password"
+                autoComplete="current-password"
                 required
               />
             </label>

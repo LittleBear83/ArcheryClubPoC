@@ -284,6 +284,26 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   line-height: 1.1;
 }
 
+.custom-date-picker--native {
+  display: grid;
+  gap: 6px;
+}
+
+.custom-date-picker--native input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 2px solid var(--panel-border-strong);
+  border-radius: 12px;
+  background: var(--input-bg);
+  color: var(--input-text);
+  font: inherit;
+}
+
+.custom-date-picker--native input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .custom-date-picker-trigger:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

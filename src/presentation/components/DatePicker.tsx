@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "./Button";
 import { formatDate } from "../../utils/dateTime";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 type DatePickerProps = {
   disabled?: boolean;
@@ -79,6 +80,7 @@ export function DatePicker({
   required = false,
   value,
 }: DatePickerProps) {
+  const isMobile = useIsMobile();
   const selectedDate = parseIsoDate(value);
   const todayIso = toIsoDate(new Date());
   const fallbackDate = selectedDate ?? parseIsoDate(max ?? "") ?? new Date();
@@ -139,6 +141,29 @@ export function DatePicker({
 
   const selectedIso = selectedDate ? toIsoDate(selectedDate) : "";
   const monthLabel = `${MONTH_LABELS[viewMonth.getUTCMonth()]} ${viewMonth.getUTCFullYear()}`;
+
+  if (isMobile) {
+    return (
+      <label className="custom-date-picker custom-date-picker--native">
+        {label ? (
+          <span className="custom-date-picker-field-label">{label}</span>
+        ) : null}
+        <input
+          type="date"
+          id={id}
+          value={value}
+          min={min}
+          max={max}
+          required={required}
+          disabled={disabled}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {helperText ? (
+          <span className="custom-date-picker-helper">{helperText}</span>
+        ) : null}
+      </label>
+    );
+  }
 
   return (
     <div className="custom-date-picker" ref={wrapperRef}>

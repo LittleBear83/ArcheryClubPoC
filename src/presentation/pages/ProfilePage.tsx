@@ -41,8 +41,8 @@ export function ProfilePage({
             onSubmit={profilePageState.handleSignOffDistance}
           >
             <p>
-              The member must enter their username to confirm they are present
-              for this sign-off.
+              Choose the unsigned distance to approve, then ask the member to
+              confirm they are present by typing their username.
             </p>
             <label>
               Discipline
@@ -54,7 +54,7 @@ export function ProfilePage({
                 disabled={profilePageState.isSavingDistanceSignOff}
                 required
               >
-                {profilePageState.editableProfile.disciplines.map(
+                {profilePageState.distanceSignOffDisciplines.map(
                   (discipline) => (
                     <option key={discipline} value={discipline}>
                       {discipline}
@@ -73,7 +73,7 @@ export function ProfilePage({
                 disabled={profilePageState.isSavingDistanceSignOff}
                 required
               >
-                {profilePageState.distanceSignOffOptions.map((distance) => (
+                {profilePageState.availableDistanceSignOffOptions.map((distance) => (
                   <option key={distance} value={distance}>
                     {distance} yds
                   </option>
@@ -81,7 +81,7 @@ export function ProfilePage({
               </select>
             </label>
             <label>
-              Member username confirmation
+              Member present confirmation
               <input
                 value={
                   profilePageState.distanceSignOffForm
@@ -91,7 +91,7 @@ export function ProfilePage({
                   "memberUsernameConfirmation",
                 )}
                 disabled={profilePageState.isSavingDistanceSignOff}
-                placeholder={profilePageState.editableProfile.username}
+                placeholder={`Expected username: ${profilePageState.editableProfile.username}`}
                 required
               />
             </label>

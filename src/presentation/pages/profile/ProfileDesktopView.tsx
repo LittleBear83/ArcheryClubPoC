@@ -40,6 +40,11 @@ export function ProfileDesktopView({
   submitLabel,
   toggleDiscipline,
 }: ProfilePageState) {
+  const hasUnsignedDistances = editableProfile?.distanceSignOffs?.some(
+    (disciplineGroup) =>
+      disciplineGroup.distances.some((distance) => !distance.signOff),
+  );
+
   return (
     <div className="profile-page">
       <p>Manage your member profile and account details.</p>
@@ -111,10 +116,11 @@ export function ProfileDesktopView({
         <SectionPanel className="profile-form" title="Distance Sign Offs">
           <div className="profile-distance-signoff-header">
             <p>
-              Signed-off distances are recorded separately for each discipline on
-              the member profile.
+              Signed-off distances are recorded separately for each discipline.
+              Use the action inside an unsigned cell to approve that exact
+              distance.
             </p>
-            {canSignOffDistances ? (
+            {canSignOffDistances && hasUnsignedDistances ? (
               <Button
                 type="button"
                 className="secondary-button"
@@ -122,7 +128,7 @@ export function ProfileDesktopView({
                 disabled={isInitialLoading || isRefreshingProfile || isSaving}
                 variant="secondary"
               >
-                Sign off distance
+                Sign off next distance
               </Button>
             ) : null}
           </div>
@@ -156,9 +162,33 @@ export function ProfileDesktopView({
                                 <strong>{formatDate(signOff.signedOffAt)}</strong>
                                 <span>{signOff.signedOffByName}</span>
                               </span>
+                            ) : canSignOffDistances ? (
+                              <div className="profile-distance-signoff-action">
+                                <span className="profile-distance-signoff-empty">
+                                  Not signed off
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() =>
+                                    handleOpenDistanceSignOffModal({
+                                      discipline: disciplineGroup.discipline,
+                                      distanceYards: distance,
+                                    })
+                                  }
+                                  disabled={
+                                    isInitialLoading ||
+                                    isRefreshingProfile ||
+                                    isSaving
+                                  }
+                                >
+                                  Sign off
+                                </Button>
+                              </div>
                             ) : (
                               <span className="profile-distance-signoff-empty">
-                                -
+                                Not signed off
                               </span>
                             )}
                           </td>

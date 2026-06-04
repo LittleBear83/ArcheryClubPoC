@@ -5,7 +5,6 @@ import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
 import { MobileCardList } from "../../components/mobile/MobileCardList";
 import { MobileEmptyState } from "../../components/mobile/MobileEmptyState";
-import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { MobileSectionHeader } from "../../components/mobile/MobileSectionHeader";
 import { formatDate, formatDateTime } from "../../../utils/dateTime";
 import {
@@ -51,6 +50,11 @@ export function ProfileMobileView({
   submitLabel,
   toggleDiscipline,
 }: ProfilePageState) {
+  const hasUnsignedDistances = editableProfile?.distanceSignOffs?.some(
+    (disciplineGroup) =>
+      disciplineGroup.distances.some((distance) => !distance.signOff),
+  );
+
   return (
     <div className="profile-page profile-page--mobile">
       <p>Manage your member profile and account details.</p>
@@ -123,9 +127,9 @@ export function ProfileMobileView({
         <section className="profile-form">
           <MobileSectionHeader
             title="Distance Sign Offs"
-            description="Signed-off distances are recorded separately for each discipline."
+            description="Tap an unsigned distance below to approve that exact distance for the member."
             actions={
-              canSignOffDistances ? (
+              canSignOffDistances && hasUnsignedDistances ? (
                 <Button
                   type="button"
                   onClick={handleOpenDistanceSignOffModal}
@@ -133,7 +137,7 @@ export function ProfileMobileView({
                   variant="secondary"
                   fullWidth
                 >
-                  Sign off distance
+                  Sign off next distance
                 </Button>
               ) : null
             }
@@ -148,12 +152,39 @@ export function ProfileMobileView({
                   <p className="profile-mobile-card-title">
                     {disciplineGroup.discipline}
                   </p>
-                  <MobileKeyValueList
-                    items={disciplineGroup.distances.map((distance) => ({
-                      label: `${distance.distanceYards} yds`,
-                      value: formatSignOffValue(distance.signOff),
-                    }))}
-                  />
+                  <div className="profile-distance-mobile-list">
+                    {disciplineGroup.distances.map((distance) => (
+                      <div
+                        key={`${disciplineGroup.discipline}-${distance.distanceYards}`}
+                        className="profile-distance-mobile-item"
+                      >
+                        <div className="profile-distance-mobile-copy">
+                          <strong>{distance.distanceYards} yds</strong>
+                          <span>{formatSignOffValue(distance.signOff)}</span>
+                        </div>
+                        {!distance.signOff && canSignOffDistances ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            onClick={() =>
+                              handleOpenDistanceSignOffModal({
+                                discipline: disciplineGroup.discipline,
+                                distanceYards: distance.distanceYards,
+                              })
+                            }
+                            disabled={
+                              isInitialLoading ||
+                              isRefreshingProfile ||
+                              isSaving
+                            }
+                          >
+                            Sign off
+                          </Button>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
                 </article>
               ))}
             </MobileCardList>

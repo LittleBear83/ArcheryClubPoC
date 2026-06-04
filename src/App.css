@@ -1347,6 +1347,11 @@ button:disabled {
   line-height: 1.25;
 }
 
+.profile-distance-signoff-action {
+  display: grid;
+  gap: 10px;
+}
+
 .profile-distance-signoff-cell span {
   color: var(--muted);
   font-size: 0.82rem;
@@ -1565,6 +1570,41 @@ button:disabled {
   font-size: 1rem;
   font-weight: 700;
   color: var(--text-h);
+}
+
+.profile-distance-mobile-list {
+  display: grid;
+  gap: 12px;
+}
+
+.profile-distance-mobile-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.profile-distance-mobile-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.profile-distance-mobile-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.profile-distance-mobile-copy strong {
+  color: var(--text-h);
+  font-size: 0.95rem;
+}
+
+.profile-distance-mobile-copy span {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .role-permissions-panel {

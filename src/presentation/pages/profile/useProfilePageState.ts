@@ -72,6 +72,15 @@ export function useProfilePageState({
   const canEditCurrentProfile =
     canManageMembers ||
     editableProfile?.username === currentUserProfile?.auth?.username;
+  const distanceSignOffDisciplines = useMemo(
+    () =>
+      editableProfile?.distanceSignOffs
+        ?.filter((disciplineGroup) =>
+          disciplineGroup.distances.some((distance) => !distance.signOff),
+        )
+        .map((disciplineGroup) => disciplineGroup.discipline) ?? [],
+    [editableProfile?.distanceSignOffs],
+  );
   const distanceSignOffOptions = useMemo(
     () =>
       editableProfile?.distanceSignOffs?.[0]?.distances.map(
@@ -79,6 +88,16 @@ export function useProfilePageState({
       ) ?? [],
     [editableProfile?.distanceSignOffs],
   );
+  const availableDistanceSignOffOptions = useMemo(() => {
+    const selectedDisciplineGroup = editableProfile?.distanceSignOffs?.find(
+      (disciplineGroup) =>
+        disciplineGroup.discipline === distanceSignOffForm.discipline,
+    );
+
+    return selectedDisciplineGroup?.distances
+      .filter((distance) => !distance.signOff)
+      .map((distance) => distance.distanceYards) ?? [];
+  }, [distanceSignOffForm.discipline, editableProfile?.distanceSignOffs]);
   const submitLabel = isSaving
     ? "Saving profile..."
     : isRefreshingProfile
@@ -480,18 +499,44 @@ export function useProfilePageState({
     setCardIssueSuccess("");
   };
 
-  const handleOpenDistanceSignOffModal = () => {
+  const handleOpenDistanceSignOffModal = (nextSelection?: {
+    discipline?: string;
+    distanceYards?: number;
+  }) => {
     if (!editableProfile?.disciplines?.length) {
       setError("Add at least one discipline before signing off a distance.");
       return;
     }
 
+    if (!distanceSignOffDisciplines.length) {
+      setError("All available distances are already signed off for this member.");
+      return;
+    }
+
+    const selectedDiscipline =
+      nextSelection?.discipline &&
+      distanceSignOffDisciplines.includes(nextSelection.discipline)
+        ? nextSelection.discipline
+        : distanceSignOffDisciplines[0];
+    const selectedDisciplineGroup = editableProfile.distanceSignOffs?.find(
+      (disciplineGroup) => disciplineGroup.discipline === selectedDiscipline,
+    );
+    const unsignedDistances =
+      selectedDisciplineGroup?.distances
+        .filter((distance) => !distance.signOff)
+        .map((distance) => distance.distanceYards) ?? [];
+    const selectedDistance =
+      nextSelection?.distanceYards &&
+      unsignedDistances.includes(nextSelection.distanceYards)
+        ? nextSelection.distanceYards
+        : unsignedDistances[0];
+
     setError("");
     setMessage("");
     setDistanceSignOffError("");
     setDistanceSignOffForm({
-      discipline: editableProfile.disciplines[0],
-      distanceYards: "20",
+      discipline: selectedDiscipline,
+      distanceYards: String(selectedDistance ?? ""),
       memberUsernameConfirmation: "",
     });
     setIsDistanceSignOffModalOpen(true);
@@ -505,10 +550,29 @@ export function useProfilePageState({
   };
 
   const handleDistanceSignOffChange = (field) => (event) => {
-    setDistanceSignOffForm((current) => ({
-      ...current,
-      [field]: event.target.value,
-    }));
+    const nextValue = event.target.value;
+
+    setDistanceSignOffForm((current) => {
+      if (field !== "discipline") {
+        return {
+          ...current,
+          [field]: nextValue,
+        };
+      }
+
+      const nextDisciplineGroup = editableProfile?.distanceSignOffs?.find(
+        (disciplineGroup) => disciplineGroup.discipline === nextValue,
+      );
+      const nextUnsignedDistance =
+        nextDisciplineGroup?.distances.find((distance) => !distance.signOff)
+          ?.distanceYards ?? "";
+
+      return {
+        ...current,
+        discipline: nextValue,
+        distanceYards: String(nextUnsignedDistance),
+      };
+    });
   };
 
   const handleSignOffDistance = async (event) => {
@@ -560,7 +624,9 @@ export function useProfilePageState({
     cardIssueStatus,
     cardIssueSuccess,
     currentUserProfile,
+    availableDistanceSignOffOptions,
     disciplineOptions,
+    distanceSignOffDisciplines,
     distanceSignOffForm,
     distanceSignOffError,
     distanceSignOffOptions,

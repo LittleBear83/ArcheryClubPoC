@@ -198,6 +198,35 @@ export function bootstrapSqliteBaseSchema({
   `);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS announcements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      active_from_date TEXT NOT NULL,
+      active_till_date TEXT NOT NULL,
+      severity TEXT NOT NULL CHECK (
+        severity IN ('information', 'urgent', 'urgent_important')
+      ),
+      message TEXT NOT NULL,
+      escalate_severity INTEGER NOT NULL DEFAULT 0,
+      created_by_username TEXT NOT NULL,
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      FOREIGN KEY (created_by_username) REFERENCES users(username)
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS announcement_seen_members (
+      announcement_id INTEGER NOT NULL,
+      username TEXT NOT NULL,
+      seen_at_date TEXT NOT NULL,
+      seen_at_time TEXT NOT NULL,
+      PRIMARY KEY (announcement_id, username),
+      FOREIGN KEY (announcement_id) REFERENCES announcements(id),
+      FOREIGN KEY (username) REFERENCES users(username)
+    )
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS user_types (
       username TEXT PRIMARY KEY,
       user_type TEXT NOT NULL,

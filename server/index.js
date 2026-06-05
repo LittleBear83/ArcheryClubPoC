@@ -47,9 +47,11 @@ import { createBeginnersCourseWriteGateway } from "./infrastructure/persistence/
 import { createSqliteBeginnersCourseStatements } from "./infrastructure/persistence/createSqliteBeginnersCourseStatements.js";
 import { createSqliteEquipmentStatements } from "./infrastructure/persistence/createSqliteEquipmentStatements.js";
 import { createSqliteLoanBowStatements } from "./infrastructure/persistence/createSqliteLoanBowStatements.js";
+import { createSqliteAnnouncementStatements } from "./infrastructure/persistence/createSqliteAnnouncementStatements.js";
 import { createSqliteReportingStatements } from "./infrastructure/persistence/createSqliteReportingStatements.js";
 import { createSqliteRoleCommitteeStatements } from "./infrastructure/persistence/createSqliteRoleCommitteeStatements.js";
 import { createSqliteScheduleTournamentStatements } from "./infrastructure/persistence/createSqliteScheduleTournamentStatements.js";
+import { createAnnouncementGateway } from "./infrastructure/persistence/announcementGateway.js";
 import { createEquipmentGateway } from "./infrastructure/persistence/equipmentGateway.js";
 import { createMemberAuthGateway } from "./infrastructure/persistence/memberAuthGateway.js";
 import { createMemberProfileGateway } from "./infrastructure/persistence/memberProfileGateway.js";
@@ -65,6 +67,7 @@ import { registerTournamentRoutes } from "./presentation/http/registerTournament
 import { registerMemberActivityRoutes } from "./presentation/http/registerMemberActivityRoutes.js";
 import { registerScheduleRoutes } from "./presentation/http/registerScheduleRoutes.js";
 import { registerAdminMemberRoutes } from "./presentation/http/registerAdminMemberRoutes.js";
+import { registerAnnouncementRoutes } from "./presentation/http/registerAnnouncementRoutes.js";
 import { registerAuthRoutes } from "./presentation/http/registerAuthRoutes.js";
 import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRoutes.js";
 
@@ -458,6 +461,25 @@ const roleCommitteeGateway = createRoleCommitteeGateway({
   updateCommitteeRoleDetails,
   updateRoleDefinition,
   upsertRole,
+});
+
+const sqliteAnnouncementStatements =
+  serverRuntime.databaseEngine === "sqlite"
+    ? createSqliteAnnouncementStatements(db)
+    : null;
+
+const announcementGateway = createAnnouncementGateway({
+  countSeenMembersByAnnouncementId:
+    sqliteAnnouncementStatements?.countSeenMembersByAnnouncementId,
+  createAnnouncement: sqliteAnnouncementStatements?.createAnnouncement,
+  databaseEngine: serverRuntime.databaseEngine,
+  findAnnouncementById: sqliteAnnouncementStatements?.findAnnouncementById,
+  listActiveAnnouncements: sqliteAnnouncementStatements?.listActiveAnnouncements,
+  listAnnouncements: sqliteAnnouncementStatements?.listAnnouncements,
+  listSeenMembersByAnnouncementId:
+    sqliteAnnouncementStatements?.listSeenMembersByAnnouncementId,
+  markAnnouncementSeen: sqliteAnnouncementStatements?.markAnnouncementSeen,
+  pool: db.pool,
 });
 
 let cachedAssignableRoleKeys = [];
@@ -3337,6 +3359,7 @@ async function buildPersonalUsageWindow(username, label, startDate, endDateExclu
 // Route modules receive prepared statements and shared helpers from this file so
 // each module can stay focused on HTTP behavior for its own feature area.
 registerAuthRoutes({
+  announcementGateway,
   app,
   buildGuestUserProfile,
   buildMemberUserProfile,
@@ -3406,6 +3429,16 @@ registerEquipmentRoutes({
   sanitizeCupboardLabel,
   sanitizeEquipmentCreatePayload,
   validateCaseAssignment,
+});
+
+registerAnnouncementRoutes({
+  actorHasPermission,
+  announcementGateway,
+  app,
+  getActorUser,
+  getUtcTimestampParts,
+  PERMISSIONS,
+  toUtcDateString,
 });
 
 app.get("/api/beginners-courses/dashboard", async (req, res) => {

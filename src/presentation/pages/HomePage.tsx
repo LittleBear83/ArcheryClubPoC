@@ -25,6 +25,7 @@ import { ReportingPage } from "./ReportingPage";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { GeneralInfoPage } from "./GeneralInfoPage";
 import { RecordsPage } from "./RecordsPage";
+import { AnnouncementsPage } from "./AnnouncementsPage";
 import { formatDate } from "../../utils/dateTime";
 import {
   getMyBeginnerDashboard,
@@ -34,6 +35,10 @@ import {
   listMyTournamentReminders,
 } from "../../api/homeApi";
 import { listRangeMembers } from "../../api/memberApi";
+import {
+  listActiveAnnouncements,
+  type AnnouncementRecord,
+} from "../../api/announcementApi";
 import { listTournaments } from "../../api/tournamentApi";
 import { useTheme } from "../../theme/useTheme";
 import type { HomeMember, UserProfile } from "../../types/app";
@@ -42,6 +47,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import {
   formatMemberDisplayName,
   hasPermission,
+  normalizeUserProfile,
 } from "../../utils/userProfile";
 
 type HomePageProps = {
@@ -133,6 +139,8 @@ const homeQueryKeys = {
   activity: (username: string) => ["home-activity", username] as const,
   adminWarnings: (username: string) =>
     ["admin-tournament-warnings", username] as const,
+  activeAnnouncements: (username: string) =>
+    ["active-announcements", username] as const,
 };
 
 const TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS = 2;
@@ -156,6 +164,7 @@ const pageTitleMap = {
   "tournament-setup": "Tournament Setup",
   "committee-org-chart": "Committee Org Chart",
   "committee-admin": "Committee Admin",
+  announcements: "Announcements",
   "general-info": "General Info",
   "lost-and-found": "Lost and Found",
 };
@@ -179,6 +188,7 @@ const pathToPageId = {
   "/tournament-setup": "tournament-setup",
   "/committee-org-chart": "committee-org-chart",
   "/committee-admin": "committee-admin",
+  "/announcements": "announcements",
   "/general-info": "general-info",
   "/lost-and-found": "lost-and-found",
 };
@@ -240,6 +250,81 @@ function getHomeTickerMessage(currentUserProfile, beginnerDashboard) {
   }
 
   return "";
+}
+
+function getAnnouncementSeverityLevel(severity: AnnouncementRecord["severity"]) {
+  switch (severity) {
+    case "urgent_important":
+      return 3;
+    case "urgent":
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+function getAnnouncementTickerTone(announcement: AnnouncementRecord) {
+  const baseLevel = getAnnouncementSeverityLevel(announcement.severity);
+
+  if (!announcement.escalateSeverity) {
+    return baseLevel === 1 ? "green" : baseLevel === 2 ? "yellow" : "red";
+  }
+
+  const startTime = Date.parse(`${announcement.activeFromDate}T00:00:00Z`);
+  const endTime = Date.parse(`${announcement.activeTillDate}T23:59:59Z`);
+  const totalDuration = endTime - startTime;
+
+  if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
+    return baseLevel === 1 ? "green" : baseLevel === 2 ? "yellow" : "red";
+  }
+
+  const remainingRatio = (endTime - Date.now()) / totalDuration;
+
+  if (announcement.severity === "information") {
+    if (remainingRatio <= 0.2) {
+      return "red";
+    }
+
+    if (remainingRatio <= 0.5) {
+      return "yellow";
+    }
+
+    return "green";
+  }
+
+  if (announcement.severity === "urgent") {
+    return remainingRatio <= 0.5 ? "red" : "yellow";
+  }
+
+  return remainingRatio <= 0.3 ? "red" : "yellow";
+}
+
+function getAnnouncementTickerState(announcements: AnnouncementRecord[]) {
+  if (announcements.length === 0) {
+    return null;
+  }
+
+  const message = announcements
+    .map((announcement) => announcement.message)
+    .join("   |   ");
+  const tone = announcements.reduce<"green" | "yellow" | "red">(
+    (current, announcement) => {
+      const nextTone = getAnnouncementTickerTone(announcement);
+
+      if (current === "red" || nextTone === "red") {
+        return "red";
+      }
+
+      if (current === "yellow" || nextTone === "yellow") {
+        return "yellow";
+      }
+
+      return "green";
+    },
+    "green",
+  );
+
+  return { message, tone };
 }
 
 async function fetchRangeMembers(): Promise<HomeMember[]> {
@@ -313,6 +398,12 @@ async function fetchAdminTournamentWarnings(username: string): Promise<string[]>
   });
 }
 
+async function fetchActiveAnnouncements(actor: UserProfile | null) {
+  const result = await listActiveAnnouncements(actor);
+
+  return result.announcements ?? [];
+}
+
 export function HomePage({
   currentUserProfile,
   onCurrentUserProfileUpdate,
@@ -354,6 +445,12 @@ export function HomePage({
     enabled: canManageTournaments && Boolean(actorUsername),
     refetchInterval: canManageTournaments ? 60000 : false,
   });
+  const { data: activeAnnouncements = [] } = useQuery({
+    queryKey: homeQueryKeys.activeAnnouncements(actorUsername),
+    queryFn: () => fetchActiveAnnouncements(currentUserProfile),
+    enabled: Boolean(actorUsername),
+    refetchInterval: 60000,
+  });
 
   const signedUpEvents = homeActivity?.signedUpEvents ?? [];
   const tournamentReminders = homeActivity?.tournamentReminders ?? [];
@@ -362,6 +459,10 @@ export function HomePage({
   const homeTickerMessage = useMemo(
     () => getHomeTickerMessage(currentUserProfile, beginnerDashboard),
     [beginnerDashboard, currentUserProfile],
+  );
+  const announcementTicker = useMemo(
+    () => getAnnouncementTickerState(activeAnnouncements),
+    [activeAnnouncements],
   );
 
   useEffect(() => {
@@ -379,6 +480,11 @@ export function HomePage({
       if (canManageTournaments && actorUsername) {
         void queryClient.invalidateQueries({
           queryKey: homeQueryKeys.adminWarnings(actorUsername),
+        });
+      }
+      if (actorUsername) {
+        void queryClient.invalidateQueries({
+          queryKey: homeQueryKeys.activeAnnouncements(actorUsername),
         });
       }
     };
@@ -407,6 +513,30 @@ export function HomePage({
 
   return (
     <>
+      {announcementTicker ? (
+        <div
+          className={[
+            "announcement-ticker",
+            `announcement-ticker--${announcementTicker.tone}`,
+            isMobile ? "announcement-ticker--mobile" : "",
+          ].filter(Boolean).join(" ")}
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className={[
+              "announcement-ticker-track",
+              isMobile ? "announcement-ticker-track--mobile" : "",
+            ].filter(Boolean).join(" ")}
+          >
+            <span>{announcementTicker.message}</span>
+            {isMobile ? null : (
+              <span aria-hidden="true">{announcementTicker.message}</span>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {homeTickerMessage ? (
         <div
           className={[
@@ -511,7 +641,9 @@ export function HomePage({
       <main
         className={[
           "page-shell",
-          activePage === "role-permissions" || activePage === "reporting"
+          activePage === "role-permissions" ||
+          activePage === "reporting" ||
+          activePage === "announcements"
             ? "page-shell--wide"
             : "",
         ]
@@ -659,6 +791,12 @@ export function HomePage({
               path="/committee-admin"
               element={
                 <CommitteeAdminPage currentUserProfile={currentUserProfile} />
+              }
+            />
+            <Route
+              path="/announcements"
+              element={
+                <AnnouncementsPage currentUserProfile={currentUserProfile} />
               }
             />
             <Route path="/feedback-form" element={<FeedbackFormPage />} />

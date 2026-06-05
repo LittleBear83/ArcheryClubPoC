@@ -690,6 +690,27 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: var(--admin-ticker-text);
 }
 
+.announcement-ticker {
+  width: 100%;
+  overflow: hidden;
+  border-bottom: 1px solid var(--panel-border-strong);
+}
+
+.announcement-ticker--green {
+  background: #1d6f42;
+  color: #f3fff7;
+}
+
+.announcement-ticker--yellow {
+  background: #e0ac00;
+  color: #2e2200;
+}
+
+.announcement-ticker--red {
+  background: #b3322f;
+  color: #fff6f5;
+}
+
 .membership-reminder-ticker {
   width: 100%;
   overflow: hidden;
@@ -699,7 +720,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .membership-reminder-ticker-track,
-.admin-warning-ticker-track {
+.admin-warning-ticker-track,
+.announcement-ticker-track {
   display: inline-flex;
   gap: 48px;
   min-width: max-content;
@@ -714,22 +736,26 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   white-space: pre-line;
 }
 
-.admin-warning-ticker-track {
+.admin-warning-ticker-track,
+.announcement-ticker-track {
   white-space: nowrap;
 }
 
 .membership-reminder-ticker-track span,
-.admin-warning-ticker-track span {
+.admin-warning-ticker-track span,
+.announcement-ticker-track span {
   display: block;
 }
 
 .membership-reminder-ticker--mobile,
-.admin-warning-ticker--mobile {
+.admin-warning-ticker--mobile,
+.announcement-ticker--mobile {
   overflow: visible;
 }
 
 .membership-reminder-ticker-track--mobile,
-.admin-warning-ticker-track--mobile {
+.admin-warning-ticker-track--mobile,
+.announcement-ticker-track--mobile {
   display: block;
   min-width: 0;
   padding: 12px 14px;
@@ -3129,6 +3155,85 @@ button:disabled {
   grid-template-columns: 1fr;
 }
 
+.announcements-page {
+  display: grid;
+  gap: 24px;
+}
+
+.announcements-form {
+  gap: 18px;
+}
+
+.announcements-page-note {
+  width: 100%;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--surface-raised);
+  border: 1px solid var(--panel-border);
+  color: var(--text-soft);
+}
+
+.announcements-page-note strong {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.announcements-date-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.announcements-history-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.announcements-history-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.announcements-history-table th,
+.announcements-history-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--panel-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.announcements-history-message-cell {
+  min-width: 260px;
+  white-space: pre-wrap;
+}
+
+.announcements-seen-modal {
+  display: grid;
+  gap: 16px;
+}
+
+.announcements-seen-modal-message {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.announcements-seen-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 10px;
+}
+
 .committee-roles-title {
   text-align: center;
 }
@@ -4972,7 +5077,8 @@ button:disabled {
   }
 
   .membership-reminder-ticker-track--mobile,
-  .admin-warning-ticker-track--mobile {
+  .admin-warning-ticker-track--mobile,
+  .announcement-ticker-track--mobile {
     padding: 10px 12px;
     font-size: 0.88rem;
   }

@@ -49,6 +49,26 @@ function buildInitialSchemaSql() {
       PRIMARY KEY (role_key, permission_key)
     );
 
+    CREATE TABLE IF NOT EXISTS announcements (
+      id BIGSERIAL PRIMARY KEY,
+      active_from_date TEXT NOT NULL,
+      active_till_date TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      message TEXT NOT NULL,
+      escalate_severity INTEGER NOT NULL DEFAULT 0,
+      created_by_username TEXT NOT NULL REFERENCES users(username),
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS announcement_seen_members (
+      announcement_id BIGINT NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+      username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+      seen_at_date TEXT NOT NULL,
+      seen_at_time TEXT NOT NULL,
+      PRIMARY KEY (announcement_id, username)
+    );
+
     CREATE TABLE IF NOT EXISTS user_types (
       username TEXT PRIMARY KEY REFERENCES users(username) ON DELETE CASCADE,
       user_type TEXT NOT NULL REFERENCES roles(role_key),

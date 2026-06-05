@@ -1,4 +1,5 @@
 export function registerAuthRoutes({
+  announcementGateway,
   app,
   buildGuestUserProfile,
   buildMemberUserProfile,
@@ -28,6 +29,28 @@ export function registerAuthRoutes({
     ]);
 
     return csrfToken;
+  };
+
+  const markActiveAnnouncementsSeen = async (username) => {
+    if (!announcementGateway || !username) {
+      return;
+    }
+
+    const [seenAtDate, seenAtTime] = getUtcTimestampParts();
+    const activeAnnouncements = await announcementGateway.listActiveAnnouncements(
+      seenAtDate,
+    );
+
+    if (activeAnnouncements.length === 0) {
+      return;
+    }
+
+    await announcementGateway.markActiveAnnouncementsSeenByUsername({
+      activeAnnouncements,
+      seenAtDate,
+      seenAtTime,
+      username,
+    });
   };
 
   app.post("/api/auth/login", async (req, res) => {
@@ -75,6 +98,7 @@ export function registerAuthRoutes({
       timestampParts: getUtcTimestampParts(),
       username: user.username,
     });
+    await markActiveAnnouncementsSeen(user.username);
     const csrfToken = setSessionCookies(req, res, user.username);
     const disciplines = await memberAuthGateway.findDisciplinesByUsername(
       user.username,
@@ -129,6 +153,7 @@ export function registerAuthRoutes({
       timestampParts: getUtcTimestampParts(),
       username: user.username,
     });
+    await markActiveAnnouncementsSeen(user.username);
     const csrfToken = setSessionCookies(req, res, user.username);
     const disciplines = await memberAuthGateway.findDisciplinesByUsername(
       user.username,
@@ -191,6 +216,7 @@ export function registerAuthRoutes({
       timestampParts: getUtcTimestampParts(),
       username: user.username,
     });
+    await markActiveAnnouncementsSeen(user.username);
     const csrfToken = setSessionCookies(_req, res, user.username);
     const disciplines = await memberAuthGateway.findDisciplinesByUsername(
       user.username,

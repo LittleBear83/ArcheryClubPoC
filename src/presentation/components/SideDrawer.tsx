@@ -63,6 +63,12 @@ const pages = [
     permission: "manage_roles_permissions",
   },
   {
+    id: "announcements",
+    label: "Announcements",
+    path: "/announcements",
+    permission: "manage_announcements",
+  },
+  {
     id: "reporting",
     label: "Reporting",
     path: "/reporting",

@@ -66,6 +66,27 @@ export function createAnnouncement(
   );
 }
 
+export function updateAnnouncement(
+  actor: unknown,
+  announcementId: number,
+  payload: {
+    activeFromDate: string;
+    activeTillDate: string;
+    severity: AnnouncementSeverity;
+    message: string;
+    escalateSeverity: boolean;
+  },
+) {
+  return fetchApi<{ success: true; announcement: AnnouncementRecord }>(
+    `/api/announcements/${announcementId}`,
+    {
+      method: "PUT",
+      headers: buildActorHeaders(actor, true),
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
 export function listAnnouncementSeenMembers(actor: unknown, announcementId: number) {
   return fetchApi<{ success: true; members?: AnnouncementSeenMember[] }>(
     `/api/announcements/${announcementId}/seen-members`,

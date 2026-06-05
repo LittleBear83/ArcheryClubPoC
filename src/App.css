@@ -3173,6 +3173,8 @@ button:disabled {
   display: flex;
   gap: 10px;
   align-items: flex-start;
+  box-sizing: border-box;
+  min-width: 0;
   padding: 14px 16px;
   border-radius: 16px;
   background: var(--surface-raised);
@@ -3181,6 +3183,7 @@ button:disabled {
 }
 
 .announcements-page-note strong {
+  flex: 0 0 auto;
   display: inline-flex;
   width: 24px;
   height: 24px;
@@ -3189,6 +3192,12 @@ button:disabled {
   border-radius: 999px;
   background: var(--accent);
   color: var(--text-on-accent);
+}
+
+.announcements-page-note span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .announcements-date-grid {
@@ -3213,6 +3222,12 @@ button:disabled {
   text-align: right;
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.announcements-history-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .announcements-history-table-wrapper {
@@ -3255,9 +3270,65 @@ button:disabled {
   gap: 10px;
 }
 
+.announcements-history-mobile-list {
+  display: grid;
+  gap: 14px;
+}
+
+.announcements-history-mobile-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--surface-raised);
+}
+
+.announcements-history-mobile-row {
+  display: grid;
+  grid-template-columns: minmax(0, 112px) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.announcements-history-mobile-row strong,
+.announcements-history-mobile-row span {
+  min-width: 0;
+}
+
+.announcements-history-mobile-row span {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.announcements-history-mobile-row--stacked {
+  grid-template-columns: 1fr;
+}
+
+.announcements-history-mobile-button {
+  width: 100%;
+}
+
 @media (max-width: 640px) {
   .announcements-date-grid {
     grid-template-columns: 1fr;
+  }
+
+  .announcements-page {
+    gap: 18px;
+  }
+
+  .announcements-form {
+    gap: 16px;
+  }
+
+  .announcements-page-note {
+    padding: 12px 14px;
+  }
+
+  .announcements-page-note span {
+    font-size: 0.95rem;
+    line-height: 1.45;
   }
 
   .announcements-history-table th,

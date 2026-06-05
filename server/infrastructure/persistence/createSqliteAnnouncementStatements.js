@@ -28,6 +28,16 @@ export function createSqliteAnnouncementStatements(db) {
       WHERE id = ?
       LIMIT 1
     `),
+    updateAnnouncementById: db.prepare(`
+      UPDATE announcements
+      SET
+        active_from_date = ?,
+        active_till_date = ?,
+        severity = ?,
+        message = ?,
+        escalate_severity = ?
+      WHERE id = ?
+    `),
     listAnnouncements: db.prepare(`
       SELECT
         announcements.id,

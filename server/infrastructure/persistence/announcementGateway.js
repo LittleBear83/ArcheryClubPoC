@@ -80,6 +80,20 @@ function createSqliteAnnouncementGateway(statements) {
         statements.findAnnouncementById.get(announcementId),
       );
     },
+    async updateAnnouncement(announcementId, payload) {
+      statements.updateAnnouncementById.run(
+        payload.activeFromDate,
+        payload.activeTillDate,
+        payload.severity,
+        payload.message,
+        payload.escalateSeverity ? 1 : 0,
+        announcementId,
+      );
+
+      return normalizeAnnouncementRow(
+        statements.findAnnouncementById.get(announcementId),
+      );
+    },
   };
 }
 
@@ -242,6 +256,40 @@ function createPostgresAnnouncementGateway({ pool }) {
           LIMIT 1
         `,
         [announcementId],
+      );
+
+      return normalizeAnnouncementRow(result.rows[0] ?? null);
+    },
+    async updateAnnouncement(announcementId, payload) {
+      const result = await pool.query(
+        `
+          UPDATE announcements
+          SET
+            active_from_date = $1,
+            active_till_date = $2,
+            severity = $3,
+            message = $4,
+            escalate_severity = $5
+          WHERE id = $6
+          RETURNING
+            id,
+            active_from_date,
+            active_till_date,
+            severity,
+            message,
+            escalate_severity,
+            created_by_username,
+            created_at_date,
+            created_at_time
+        `,
+        [
+          payload.activeFromDate,
+          payload.activeTillDate,
+          payload.severity,
+          payload.message,
+          payload.escalateSeverity ? 1 : 0,
+          announcementId,
+        ],
       );
 
       return normalizeAnnouncementRow(result.rows[0] ?? null);

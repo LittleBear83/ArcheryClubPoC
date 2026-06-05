@@ -214,4 +214,85 @@ export function registerAnnouncementRoutes({
       announcement: buildAnnouncementResponse(announcement, 0),
     });
   });
+
+  app.put("/api/announcements/:id", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_ANNOUNCEMENTS)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to amend announcements.",
+      });
+      return;
+    }
+
+    const announcementId = Number.parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(announcementId)) {
+      res.status(400).json({
+        success: false,
+        message: "Announcement id is invalid.",
+      });
+      return;
+    }
+
+    const existingAnnouncement = await announcementGateway.findAnnouncementById(
+      announcementId,
+    );
+
+    if (!existingAnnouncement) {
+      res.status(404).json({
+        success: false,
+        message: "Announcement not found.",
+      });
+      return;
+    }
+
+    const payload = normalizeAnnouncementPayload(req.body);
+
+    if (!isIsoDate(payload.activeFromDate) || !isIsoDate(payload.activeTillDate)) {
+      res.status(400).json({
+        success: false,
+        message: "Active from and active till dates are required.",
+      });
+      return;
+    }
+
+    if (payload.activeTillDate < payload.activeFromDate) {
+      res.status(400).json({
+        success: false,
+        message: "Active till date must be on or after the active from date.",
+      });
+      return;
+    }
+
+    if (!ALLOWED_ANNOUNCEMENT_SEVERITIES.has(payload.severity)) {
+      res.status(400).json({
+        success: false,
+        message: "Choose a valid announcement severity.",
+      });
+      return;
+    }
+
+    if (!payload.message) {
+      res.status(400).json({
+        success: false,
+        message: "Announcement message is required.",
+      });
+      return;
+    }
+
+    const updatedAnnouncement = await announcementGateway.updateAnnouncement(
+      announcementId,
+      payload,
+    );
+
+    res.json({
+      success: true,
+      announcement: buildAnnouncementResponse(
+        updatedAnnouncement,
+        await announcementGateway.countSeenMembersByAnnouncementId(announcementId),
+      ),
+    });
+  });
 }

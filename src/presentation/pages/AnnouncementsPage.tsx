@@ -9,12 +9,14 @@ import {
   createAnnouncement,
   listAnnouncementSeenMembers,
   listAnnouncements,
+  updateAnnouncement,
   type AnnouncementRecord,
   type AnnouncementSeenMember,
   type AnnouncementSeverity,
 } from "../../api/announcementApi";
 import { formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 type AnnouncementsPageProps = {
   currentUserProfile: unknown;
@@ -79,6 +81,7 @@ function getSeverityLabel(severity: AnnouncementSeverity) {
 }
 
 export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps) {
+  const isMobile = useIsMobile();
   const actorUsername =
     (currentUserProfile as { auth?: { username?: string | null } } | null)?.auth
       ?.username ?? "";
@@ -92,6 +95,9 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
   const [message, setMessage] = useState("");
   const [selectedAnnouncement, setSelectedAnnouncement] =
     useState<AnnouncementRecord | null>(null);
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState<number | null>(
+    null,
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: announcementQueryKeys.history(actorUsername),
@@ -113,9 +119,13 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
   );
   const charactersRemaining =
     ANNOUNCEMENT_MESSAGE_MAX_LENGTH - draft.message.length;
+  const isEditing = editingAnnouncementId !== null;
 
-  const createMutation = useMutation({
-    mutationFn: () => createAnnouncement(currentUserProfile, draft),
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      isEditing
+        ? updateAnnouncement(currentUserProfile, editingAnnouncementId, draft)
+        : createAnnouncement(currentUserProfile, draft),
     onMutate: () => {
       setError("");
       setMessage("");
@@ -125,7 +135,12 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
         ...emptyDraft,
         activeFromDate: getTodayIsoDate(),
       });
-      setMessage("Announcement created successfully.");
+      setEditingAnnouncementId(null);
+      setMessage(
+        isEditing
+          ? "Announcement amended successfully."
+          : "Announcement created successfully.",
+      );
       await queryClient.invalidateQueries({
         queryKey: announcementQueryKeys.history(actorUsername),
       });
@@ -149,7 +164,29 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
   };
 
   const handleSubmit = () => {
-    createMutation.mutate();
+    saveMutation.mutate();
+  };
+
+  const handleEdit = (announcement: AnnouncementRecord) => {
+    setDraft({
+      activeFromDate: announcement.activeFromDate,
+      activeTillDate: announcement.activeTillDate,
+      severity: announcement.severity,
+      message: announcement.message,
+      escalateSeverity: announcement.escalateSeverity,
+    });
+    setEditingAnnouncementId(announcement.id);
+    setError("");
+    setMessage("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleCancelEdit = () => {
+    setDraft({
+      ...emptyDraft,
+      activeFromDate: getTodayIsoDate(),
+    });
+    setEditingAnnouncementId(null);
   };
 
   if (!canManageAnnouncements) {
@@ -171,7 +208,10 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
           success={message}
         />
 
-        <SectionPanel className="profile-form" title="New Announcement">
+        <SectionPanel
+          className="profile-form"
+          title={isEditing ? "Amend Announcement" : "New Announcement"}
+        >
           <div className="left-align-form announcements-form">
             <div className="announcements-page-note" role="note">
               <strong>i</strong>
@@ -263,33 +303,97 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
             <Button
               type="button"
               onClick={handleSubmit}
-              disabled={createMutation.isPending}
+              disabled={saveMutation.isPending}
             >
-              {createMutation.isPending ? "Creating..." : "Create announcement"}
+              {saveMutation.isPending
+                ? isEditing
+                  ? "Saving..."
+                  : "Creating..."
+                : isEditing
+                  ? "Save amendments"
+                  : "Create announcement"}
             </Button>
+            {isEditing ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="secondary-button"
+                onClick={handleCancelEdit}
+                disabled={saveMutation.isPending}
+              >
+                Cancel amend
+              </Button>
+            ) : null}
           </div>
         </SectionPanel>
 
         <SectionPanel className="profile-form" title="Announcement History">
-          <div className="announcements-history-table-wrapper">
-            <table className="announcements-history-table">
-              <thead>
-                <tr>
-                  <th>Status</th>
-                  <th>Severity</th>
-                  <th>Active window</th>
-                  <th>Announcement</th>
-                  <th>Seen</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {announcements.length === 0 ? (
+          {announcements.length === 0 ? (
+            <p>No announcements have been created yet.</p>
+          ) : isMobile ? (
+            <div className="announcements-history-mobile-list">
+              {announcements.map((announcement) => (
+                <article
+                  key={announcement.id}
+                  className="announcements-history-mobile-card"
+                >
+                  <div className="announcements-history-mobile-row">
+                    <strong>Status</strong>
+                    <span>{getAnnouncementStatus(announcement)}</span>
+                  </div>
+                  <div className="announcements-history-mobile-row">
+                    <strong>Severity</strong>
+                    <span>{getSeverityLabel(announcement.severity)}</span>
+                  </div>
+                  <div className="announcements-history-mobile-row">
+                    <strong>Active window</strong>
+                    <span>
+                      {formatDate(announcement.activeFromDate)} to{" "}
+                      {formatDate(announcement.activeTillDate)}
+                    </span>
+                  </div>
+                  <div className="announcements-history-mobile-row announcements-history-mobile-row--stacked">
+                    <strong>Announcement</strong>
+                    <span>{announcement.message}</span>
+                  </div>
+                  <div className="announcements-history-mobile-row">
+                    <strong>Seen</strong>
+                    <span>{announcement.seenCount ?? 0}</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="secondary-button announcements-history-mobile-button"
+                    onClick={() => handleEdit(announcement)}
+                  >
+                    Amend
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="secondary-button announcements-history-mobile-button"
+                    onClick={() => setSelectedAnnouncement(announcement)}
+                  >
+                    Seen members
+                  </Button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="announcements-history-table-wrapper">
+              <table className="announcements-history-table">
+                <thead>
                   <tr>
-                    <td colSpan={6}>No announcements have been created yet.</td>
+                    <th>Status</th>
+                    <th>Severity</th>
+                    <th>Active window</th>
+                    <th>Announcement</th>
+                    <th>Seen</th>
+                    <th>Actions</th>
                   </tr>
-                ) : (
-                  announcements.map((announcement) => (
+                </thead>
+                <tbody>
+                  {announcements.map((announcement) => (
                     <tr key={announcement.id}>
                       <td>{getAnnouncementStatus(announcement)}</td>
                       <td>{getSeverityLabel(announcement.severity)}</td>
@@ -302,21 +406,31 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
                       </td>
                       <td>{announcement.seenCount ?? 0}</td>
                       <td>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="secondary-button"
-                          onClick={() => setSelectedAnnouncement(announcement)}
-                        >
-                          Seen members
-                        </Button>
+                        <div className="announcements-history-actions">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="secondary-button"
+                            onClick={() => handleEdit(announcement)}
+                          >
+                            Amend
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="secondary-button"
+                            onClick={() => setSelectedAnnouncement(announcement)}
+                          >
+                            Seen members
+                          </Button>
+                        </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </SectionPanel>
       </div>
 

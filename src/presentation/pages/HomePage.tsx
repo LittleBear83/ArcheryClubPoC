@@ -301,30 +301,54 @@ function getAnnouncementTickerTone(announcement: AnnouncementRecord) {
 
 function getAnnouncementTickerState(announcements: AnnouncementRecord[]) {
   if (announcements.length === 0) {
-    return null;
+    return [];
   }
 
-  const message = announcements
-    .map((announcement) => announcement.message)
-    .join("   |   ");
-  const tone = announcements.reduce<"green" | "yellow" | "red">(
-    (current, announcement) => {
-      const nextTone = getAnnouncementTickerTone(announcement);
+  const groupedAnnouncements = new Map<
+    "green" | "yellow" | "red",
+    AnnouncementRecord[]
+  >();
 
-      if (current === "red" || nextTone === "red") {
-        return "red";
-      }
+  for (const announcement of announcements) {
+    const tone = getAnnouncementTickerTone(announcement);
+    const existingGroup = groupedAnnouncements.get(tone) ?? [];
+    existingGroup.push(announcement);
+    groupedAnnouncements.set(tone, existingGroup);
+  }
 
-      if (current === "yellow" || nextTone === "yellow") {
-        return "yellow";
-      }
+  return (["red", "yellow", "green"] as const)
+    .filter((tone) => groupedAnnouncements.has(tone))
+    .map((tone) => ({
+      tone,
+      message: (groupedAnnouncements.get(tone) ?? [])
+        .map((announcement) => announcement.message)
+        .join("   |   "),
+    }));
+}
 
-      return "green";
-    },
-    "green",
-  );
+function buildAnnouncementTickerClassName({
+  isMobile,
+  tone,
+}: {
+  isMobile: boolean;
+  tone: "green" | "yellow" | "red";
+}) {
+  return [
+    "announcement-ticker",
+    `announcement-ticker--${tone}`,
+    isMobile ? "announcement-ticker--mobile" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
-  return { message, tone };
+function buildAnnouncementTickerTrackClassName(isMobile: boolean) {
+  return [
+    "announcement-ticker-track",
+    isMobile ? "announcement-ticker-track--mobile" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 async function fetchRangeMembers(): Promise<HomeMember[]> {
@@ -513,27 +537,26 @@ export function HomePage({
 
   return (
     <>
-      {announcementTicker ? (
-        <div
-          className={[
-            "announcement-ticker",
-            `announcement-ticker--${announcementTicker.tone}`,
-            isMobile ? "announcement-ticker--mobile" : "",
-          ].filter(Boolean).join(" ")}
-          role="status"
-          aria-live="polite"
-        >
-          <div
-            className={[
-              "announcement-ticker-track",
-              isMobile ? "announcement-ticker-track--mobile" : "",
-            ].filter(Boolean).join(" ")}
-          >
-            <span>{announcementTicker.message}</span>
-            {isMobile ? null : (
-              <span aria-hidden="true">{announcementTicker.message}</span>
-            )}
-          </div>
+      {announcementTicker.length > 0 ? (
+        <div className="announcement-ticker-stack">
+          {announcementTicker.map((tickerRow) => (
+            <div
+              key={`${tickerRow.tone}-${tickerRow.message}`}
+              className={buildAnnouncementTickerClassName({
+                isMobile,
+                tone: tickerRow.tone,
+              })}
+              role="status"
+              aria-live="polite"
+            >
+              <div className={buildAnnouncementTickerTrackClassName(isMobile)}>
+                <span>{tickerRow.message}</span>
+                {isMobile ? null : (
+                  <span aria-hidden="true">{tickerRow.message}</span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       ) : null}
 

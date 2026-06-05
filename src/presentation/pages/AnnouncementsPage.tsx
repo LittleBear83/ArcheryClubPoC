@@ -28,13 +28,19 @@ type AnnouncementDraft = {
   escalateSeverity: boolean;
 };
 
+const ANNOUNCEMENT_MESSAGE_MAX_LENGTH = 256;
+
 const announcementQueryKeys = {
   history: (actorUsername: string) => ["announcements", actorUsername] as const,
   seenMembers: (announcementId: number) => ["announcement-seen-members", announcementId] as const,
 };
 
+function getTodayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 const emptyDraft: AnnouncementDraft = {
-  activeFromDate: "",
+  activeFromDate: getTodayIsoDate(),
   activeTillDate: "",
   severity: "information",
   message: "",
@@ -105,6 +111,8 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
     () => seenMembersQuery.data?.members ?? [],
     [seenMembersQuery.data?.members],
   );
+  const charactersRemaining =
+    ANNOUNCEMENT_MESSAGE_MAX_LENGTH - draft.message.length;
 
   const createMutation = useMutation({
     mutationFn: () => createAnnouncement(currentUserProfile, draft),
@@ -113,7 +121,10 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
       setMessage("");
     },
     onSuccess: async () => {
-      setDraft(emptyDraft);
+      setDraft({
+        ...emptyDraft,
+        activeFromDate: getTodayIsoDate(),
+      });
       setMessage("Announcement created successfully.");
       await queryClient.invalidateQueries({
         queryKey: announcementQueryKeys.history(actorUsername),
@@ -165,7 +176,8 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
             <div className="announcements-page-note" role="note">
               <strong>i</strong>
               <span>
-                This will show a message to all users when they next log in.
+                this will show teh message to all users when the next log in
+                between the active dates
               </span>
             </div>
 
@@ -204,8 +216,10 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
               </select>
             </label>
 
-            <div className="radio-group">
-              <span>Increase severity as the active till date gets closer</span>
+            <div className="radio-group announcements-radio-group">
+              <span className="announcements-radio-label">
+                Increase severity as the active till date gets closer
+              </span>
               <div className="radio-options">
                 <label>
                   <input
@@ -232,9 +246,18 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
               Announcement
               <textarea
                 value={draft.message}
-                onChange={(event) => handleDraftChange("message", event.target.value)}
+                maxLength={ANNOUNCEMENT_MESSAGE_MAX_LENGTH}
+                onChange={(event) =>
+                  handleDraftChange(
+                    "message",
+                    event.target.value.slice(0, ANNOUNCEMENT_MESSAGE_MAX_LENGTH),
+                  )
+                }
                 placeholder="Type the message that members should see."
               />
+              <span className="announcements-character-count">
+                {charactersRemaining} characters left
+              </span>
             </label>
 
             <Button

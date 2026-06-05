@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
@@ -364,48 +364,17 @@ export function EventCalendarPage({
   const { data: events = [] } = useQuery({
     queryKey: eventQueryKeys.list(actorUsername),
     queryFn: () => fetchEvents(actorUsername),
-    refetchInterval: 60000,
   });
 
   const { data: coachingSessions = [] } = useQuery({
     queryKey: ["coaching-sessions", actorUsername],
     queryFn: () => fetchCoachingSessions(actorUsername),
-    refetchInterval: 60000,
   });
 
   const { data: beginnersLessons = [] } = useQuery({
     queryKey: ["beginners-course-calendar"],
     queryFn: fetchBeginnersCourseLessons,
-    refetchInterval: 60000,
   });
-
-  useEffect(() => {
-    const refresh = () => {
-      void queryClient.invalidateQueries({
-        queryKey: eventQueryKeys.list(actorUsername),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["coaching-sessions", actorUsername],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["beginners-course-calendar"],
-      });
-    };
-
-    window.addEventListener("event-data-updated", refresh);
-    window.addEventListener("coaching-data-updated", refresh);
-    window.addEventListener("beginners-course-data-updated", refresh);
-    window.addEventListener("have-a-go-session-data-updated", refresh);
-    window.addEventListener("member-bookings-updated", refresh);
-
-    return () => {
-      window.removeEventListener("event-data-updated", refresh);
-      window.removeEventListener("coaching-data-updated", refresh);
-      window.removeEventListener("beginners-course-data-updated", refresh);
-      window.removeEventListener("have-a-go-session-data-updated", refresh);
-      window.removeEventListener("member-bookings-updated", refresh);
-    };
-  }, [actorUsername, queryClient]);
 
   const addEventMutation = useMutation({
     mutationFn: async (eventDates: string[]) => {
@@ -467,7 +436,6 @@ export function EventCalendarPage({
           ? `${result.createdEvents.length} event${result.createdEvents.length === 1 ? "" : "s"} saved. ${result.failures.length} could not be created.`
           : `${result.createdEvents.length} event${result.createdEvents.length === 1 ? "" : "s"} saved successfully.`,
       );
-      window.dispatchEvent(new Event("event-data-updated"));
     },
     onError: (error: Error) => {
       setEventFormError(error.message);
@@ -700,7 +668,6 @@ export function EventCalendarPage({
         queryKey: eventQueryKeys.list(actorUsername),
       });
       setBookingMessage(`${event.title} approved successfully.`);
-      window.dispatchEvent(new Event("event-data-updated"));
     },
     onError: (error: Error) => {
       setBookingMessage(error.message);
@@ -722,8 +689,6 @@ export function EventCalendarPage({
         `Booked onto ${event.title} on ${formatDate(selectedDate ?? "")} at ${formatClockTime(event.startTime)}.`,
       );
       onBookingsChanged?.();
-      window.dispatchEvent(new Event("member-bookings-updated"));
-      window.dispatchEvent(new Event("event-data-updated"));
     },
     onError: (error: Error) => {
       setBookingMessage(error.message);
@@ -746,8 +711,6 @@ export function EventCalendarPage({
       });
       setBookingMessage(`You have left ${event.title} on ${formatDate(selectedDate ?? "")}.`);
       onBookingsChanged?.();
-      window.dispatchEvent(new Event("member-bookings-updated"));
-      window.dispatchEvent(new Event("event-data-updated"));
     },
     onError: (error: Error) => {
       setBookingMessage(error.message);
@@ -875,7 +838,6 @@ export function EventCalendarPage({
           ? `${result.createdSessions.length} coaching session${result.createdSessions.length === 1 ? "" : "s"} saved. ${result.failures.length} could not be created.`
           : `${result.createdSessions.length} coaching session${result.createdSessions.length === 1 ? "" : "s"} saved successfully.`,
       );
-      window.dispatchEvent(new Event("coaching-data-updated"));
     },
     onError: (error: Error) => {
       setCoachingFormError(error.message);
@@ -895,7 +857,6 @@ export function EventCalendarPage({
       setCancelConfirmationOpen(false);
       setCancelConfirmationText("");
       setSelectedEventId((current) => (current === event.id ? null : current));
-      window.dispatchEvent(new Event("event-data-updated"));
       onBookingsChanged?.();
     },
     onError: (error: Error) => {
@@ -2573,9 +2534,6 @@ export function EventCalendarPage({
                       successMessage: (session, message) =>
                         message ??
                         `${session?.topic ?? selectedCoachingSessionDetail.topic} approved successfully.`,
-                      afterSuccess: () => {
-                        window.dispatchEvent(new Event("coaching-data-updated"));
-                      },
                     })
                   }
                   variant="secondary"
@@ -2597,8 +2555,6 @@ export function EventCalendarPage({
                       afterSuccess: () => {
                         setSelectedCoachingSessionId(null);
                         onBookingsChanged?.();
-                        window.dispatchEvent(new Event("member-bookings-updated"));
-                        window.dispatchEvent(new Event("coaching-data-updated"));
                       },
                     })
                   }
@@ -2618,8 +2574,6 @@ export function EventCalendarPage({
                         `Withdrawn from ${session?.topic ?? selectedCoachingSessionDetail.topic} on ${formatDate(session?.date ?? selectedCoachingSessionDetail.date)}.`,
                       afterSuccess: () => {
                         onBookingsChanged?.();
-                        window.dispatchEvent(new Event("member-bookings-updated"));
-                        window.dispatchEvent(new Event("coaching-data-updated"));
                       },
                     })
                   }
@@ -2644,8 +2598,6 @@ export function EventCalendarPage({
                         `Booked onto ${session?.topic ?? selectedCoachingSessionDetail.topic} on ${formatDate(session?.date ?? selectedCoachingSessionDetail.date)}.`,
                       afterSuccess: () => {
                         onBookingsChanged?.();
-                        window.dispatchEvent(new Event("member-bookings-updated"));
-                        window.dispatchEvent(new Event("coaching-data-updated"));
                       },
                     })
                   }

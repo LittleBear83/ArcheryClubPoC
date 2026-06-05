@@ -7,9 +7,13 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { formatMemberDisplayName } from "../../utils/userProfile";
 import { listGuestInviterMembers } from "../../api/authApi";
 import { listRangeMembers } from "../../api/memberApi";
+import {
+  connectPublicServerEvents,
+  disconnectPublicServerEvents,
+  subscribeToPublicServerEvent,
+} from "../../lib/publicServerEvents";
 
 const SIMULATED_RFID_TAG = "7673CF3D";
-const RFID_LOGIN_POLL_INTERVAL_MS = 1500;
 const ENABLE_RFID_SIMULATOR =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_RFID_SIMULATOR === "true";
 
@@ -38,7 +42,6 @@ function getMemberDisplayName(member: RangeMember | ClubMember | null) {
 
 export function LoginPage({
   onGuestLogin,
-  onLatestRfidLogin,
   onLogin,
   onRfidLogin,
   initialMessage = "",
@@ -58,8 +61,7 @@ export function LoginPage({
     useState(false);
   const [error, setError] = useState(initialMessage);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const latestRfidLoginInFlightRef = useRef(false);
-  const latestRfidLoginUnavailableRef = useRef(false);
+  const latestRfidSequenceRef = useRef(0);
 
   const guestInviterOptionsQuery = useQuery({
     queryKey: ["guest-inviter-options"],
@@ -117,29 +119,28 @@ export function LoginPage({
   const loginBannerMessage = error || "";
 
   useEffect(() => {
-    const attemptLatestRfidLogin = async () => {
+    connectPublicServerEvents();
+
+    const unsubscribe = subscribeToPublicServerEvent("rfid.scan", async (scan) => {
+      const latestScan = scan as {
+        sequence?: number;
+        rfidTag?: string;
+        scanType?: string;
+      } | null;
+
       if (
         isSubmitting ||
-        latestRfidLoginInFlightRef.current ||
-        latestRfidLoginUnavailableRef.current
+        !latestScan?.rfidTag ||
+        latestScan.scanType === "payment-card" ||
+        (latestScan.sequence ?? 0) <= latestRfidSequenceRef.current
       ) {
         return;
       }
 
-      latestRfidLoginInFlightRef.current = true;
+      latestRfidSequenceRef.current = latestScan.sequence ?? 0;
 
       try {
-        const loginResult = await onLatestRfidLogin();
-
-        if (loginResult?.unavailable) {
-          latestRfidLoginUnavailableRef.current = true;
-          return;
-        }
-
-        if (loginResult?.pending) {
-          return;
-        }
-
+        const loginResult = await onRfidLogin(latestScan.rfidTag);
         if (!loginResult?.success) {
           setError(loginResult?.message ?? "Unable to log in with RFID.");
           return;
@@ -148,30 +149,14 @@ export function LoginPage({
         setError("");
       } catch {
         setError("RFID service is unavailable. Make sure the local auth server is running.");
-      } finally {
-        latestRfidLoginInFlightRef.current = false;
       }
-    };
-
-    const intervalId = window.setInterval(() => {
-      if (latestRfidLoginUnavailableRef.current) {
-        window.clearInterval(intervalId);
-        return;
-      }
-
-      try {
-        void attemptLatestRfidLogin();
-      } catch {
-        setIsSubmitting(false);
-      }
-    }, RFID_LOGIN_POLL_INTERVAL_MS);
-
-    void attemptLatestRfidLogin();
+    });
 
     return () => {
-      window.clearInterval(intervalId);
+      unsubscribe();
+      disconnectPublicServerEvents();
     };
-  }, [isSubmitting, onLatestRfidLogin]);
+  }, [isSubmitting, onRfidLogin]);
 
   const filteredAllMembers = useMemo(() => {
     const normalizedSearch = memberSearchSurname.trim().toLowerCase();

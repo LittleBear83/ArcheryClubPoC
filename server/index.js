@@ -102,7 +102,6 @@ const MUTATING_API_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const CSRF_EXCLUDED_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/rfid",
-  "/api/auth/rfid/latest-login",
   "/api/auth/guest-login",
 ]);
 const AUDIT_EXCLUDED_PATHS = new Set([
@@ -110,7 +109,6 @@ const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/rfid",
   "/api/auth/logout",
   "/api/auth/guest-login",
-  "/api/auth/rfid/latest-scan",
 ]);
 
 if (!SESSION_SECRET) {
@@ -486,6 +484,7 @@ const announcementGateway = createAnnouncementGateway({
   updateAnnouncementById: sqliteAnnouncementStatements?.updateAnnouncementById,
 });
 const serverEventBus = createServerEventBus();
+const publicServerEventBus = createServerEventBus();
 
 let cachedAssignableRoleKeys = [];
 let cachedKnownRoleKeys = new Set();
@@ -1658,6 +1657,23 @@ function registerRfidScan(scan, source = "reader") {
   latestRfidScan.source = normalizedScan.source;
   latestRfidScan.scanType = normalizedScan.scanType;
   latestRfidScan.cardBrand = normalizedScan.cardBrand;
+
+  serverEventBus.broadcastToAll("rfid.scan", {
+    sequence: latestRfidScan.sequence,
+    rfidTag: latestRfidScan.rfidTag,
+    scannedAt: latestRfidScan.scannedAt,
+    source: latestRfidScan.source,
+    scanType: latestRfidScan.scanType,
+    cardBrand: latestRfidScan.cardBrand,
+  });
+  publicServerEventBus.broadcastToAll("rfid.scan", {
+    sequence: latestRfidScan.sequence,
+    rfidTag: latestRfidScan.rfidTag,
+    scannedAt: latestRfidScan.scannedAt,
+    source: latestRfidScan.source,
+    scanType: latestRfidScan.scanType,
+    cardBrand: latestRfidScan.cardBrand,
+  });
 }
 
 function startRfidReaderMonitor() {
@@ -3372,9 +3388,9 @@ registerAuthRoutes({
   getSessionUsername,
   getUtcTimestampParts,
   hashPassword,
-  latestRfidScan,
   memberAuthGateway,
   rfidReaderStatus,
+  serverEventBus,
   syncMemberStatusWithFees: (...args) =>
     memberPersistenceService.syncMemberStatusWithFees(...args),
   clearCsrfCookie: csrfProtection.clearCookie,
@@ -3410,6 +3426,7 @@ registerAdminMemberRoutes({
   sanitizeLoanBowReturn,
   saveLoanBowRecord,
   saveMemberProfile: (...args) => memberPersistenceService.saveMemberProfile(...args),
+  serverEventBus,
   TOURNAMENT_TYPE_OPTIONS,
   verifyPassword,
 });
@@ -3433,6 +3450,7 @@ registerEquipmentRoutes({
   PERMISSIONS,
   sanitizeCupboardLabel,
   sanitizeEquipmentCreatePayload,
+  serverEventBus,
   validateCaseAssignment,
 });
 
@@ -3451,8 +3469,68 @@ registerSseRoutes({
   app,
   getActorUser,
   getPermissionsForRole,
+  publicServerEventBus,
   serverEventBus,
 });
+
+function broadcastCalendarUpdated(scope = "calendar") {
+  serverEventBus.broadcastToAll("calendar.updated", {
+    changedAt: new Date().toISOString(),
+    scope,
+  });
+}
+
+function broadcastApprovalsUpdated(scope = "approvals") {
+  serverEventBus.broadcastToAnyPermission([
+    PERMISSIONS.APPROVE_EVENTS,
+    PERMISSIONS.APPROVE_COACHING_SESSIONS,
+    PERMISSIONS.APPROVE_BEGINNERS_COURSES,
+    PERMISSIONS.APPROVE_HAVE_A_GO_SESSIONS,
+  ], "approvals.updated", {
+    changedAt: new Date().toISOString(),
+    scope,
+  });
+}
+
+function broadcastBeginnersUpdated(courseType = "beginners", scope = "beginners") {
+  serverEventBus.broadcastToAll("beginners.updated", {
+    changedAt: new Date().toISOString(),
+    courseType,
+    scope,
+  });
+}
+
+function broadcastMembersUpdated(scope = "members", username = null) {
+  const payload = {
+    changedAt: new Date().toISOString(),
+    scope,
+    username,
+  };
+
+  serverEventBus.broadcastToAnyPermission([
+    PERMISSIONS.MANAGE_MEMBERS,
+    PERMISSIONS.SIGN_OFF_DISTANCES,
+    PERMISSIONS.MANAGE_COMMITTEE_ROLES,
+    "manage_loan_bows",
+  ], "members.updated", payload);
+
+  if (username) {
+    serverEventBus.broadcastToUsers([username], "members.updated", payload);
+  }
+}
+
+function broadcastEquipmentUpdated(scope = "equipment") {
+  serverEventBus.broadcastToAnyPermission([
+    PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT,
+    PERMISSIONS.ASSIGN_EQUIPMENT,
+    PERMISSIONS.RETURN_EQUIPMENT,
+    PERMISSIONS.UPDATE_EQUIPMENT_STORAGE,
+    PERMISSIONS.MANAGE_EQUIPMENT_STORAGE_LOCATIONS,
+  ], "equipment.updated", {
+    changedAt: new Date().toISOString(),
+    scope,
+  });
+}
 
 app.get("/api/beginners-courses/dashboard", async (req, res) => {
   const actor = getActorUser(req);
@@ -3564,6 +3642,9 @@ app.post("/api/beginners-courses", async (req, res) => {
     ),
     startTime: sanitized.value.startTime,
   });
+  broadcastBeginnersUpdated(courseType, "beginners.create");
+  broadcastApprovalsUpdated("beginners.create");
+  broadcastCalendarUpdated("beginners.create");
 
   res.status(201).json({
     success: true,
@@ -3626,6 +3707,9 @@ app.post("/api/beginners-courses/:id/approve", async (req, res) => {
     courseId: course.id,
     rejectionReason: null,
   });
+  broadcastBeginnersUpdated(courseType, "beginners.approve");
+  broadcastApprovalsUpdated("beginners.approve");
+  broadcastCalendarUpdated("beginners.approve");
 
   res.json({
     success: true,
@@ -3699,6 +3783,9 @@ app.post("/api/beginners-courses/:id/reject", async (req, res) => {
     courseId: course.id,
     rejectionReason,
   });
+  broadcastBeginnersUpdated(courseType, "beginners.reject");
+  broadcastApprovalsUpdated("beginners.reject");
+  broadcastCalendarUpdated("beginners.reject");
 
   res.json({
     success: true,
@@ -3778,6 +3865,9 @@ app.delete("/api/beginners-courses/:id", async (req, res) => {
     courseId: course.id,
     reason: cancellationReason,
   });
+  broadcastBeginnersUpdated(courseType, "beginners.cancel");
+  broadcastApprovalsUpdated("beginners.cancel");
+  broadcastCalendarUpdated("beginners.cancel");
 
   res.json({
     success: true,
@@ -3878,6 +3968,8 @@ app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
     participant: sanitized.value,
     username,
   });
+  broadcastBeginnersUpdated(courseType, "beginners.participant-create");
+  broadcastMembersUpdated("beginners.participant-create", username);
 
   res.status(201).json({
     success: true,
@@ -3931,6 +4023,8 @@ app.post("/api/beginners-course-participants/:id/reset-password", async (req, re
     passwordHash: hashPassword(password),
     username: participant.username,
   });
+  broadcastBeginnersUpdated(courseType, "beginners.password-reset");
+  broadcastMembersUpdated("beginners.password-reset", participant.username);
 
   res.json({
     success: true,
@@ -3987,6 +4081,8 @@ app.put("/api/beginners-course-participants/:id", async (req, res) => {
     participant: sanitized.value,
     participantId: participant.id,
   });
+  broadcastBeginnersUpdated(courseType, "beginners.participant-update");
+  broadcastMembersUpdated("beginners.participant-update", participant.username);
 
   res.json({
     success: true,
@@ -4080,6 +4176,8 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
 
   await beginnersCourseWriteGateway.markParticipantConverted(participant.id);
   const courseType = normalizeCourseType(course.course_type);
+  broadcastBeginnersUpdated(courseType, "beginners.participant-convert");
+  broadcastMembersUpdated("beginners.participant-convert", participant.username);
 
   res.json({
     success: true,
@@ -4253,6 +4351,8 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
     });
     return;
   }
+  broadcastBeginnersUpdated(courseType, "beginners.case-assign");
+  broadcastEquipmentUpdated("beginners.case-assign");
 
   res.json({
     success: true,
@@ -4318,6 +4418,7 @@ app.post("/api/beginners-course-lessons/:id/coaches", async (req, res) => {
     coachUsernames,
     lessonId: lesson.id,
   });
+  broadcastBeginnersUpdated(courseType, "beginners.lesson-coaches");
 
   res.json({
     success: true,
@@ -4465,6 +4566,7 @@ registerTournamentRoutes({
   path,
   PERMISSIONS,
   sanitizeFileNameSegment,
+  serverEventBus,
   toUtcDateString,
   tournamentGateway,
   TOURNAMENT_TYPE_OPTIONS,
@@ -4486,6 +4588,7 @@ registerScheduleRoutes({
   normalizeVenue,
   PERMISSIONS,
   scheduleGateway,
+  serverEventBus,
 });
 
 registerMemberActivityRoutes({

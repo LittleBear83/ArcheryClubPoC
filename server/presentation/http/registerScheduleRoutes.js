@@ -14,7 +14,34 @@ export function registerScheduleRoutes({
   normalizeVenue,
   PERMISSIONS,
   scheduleGateway,
+  serverEventBus,
 }) {
+  const APPROVAL_PERMISSION_KEYS = [
+    PERMISSIONS.APPROVE_EVENTS,
+    PERMISSIONS.APPROVE_COACHING_SESSIONS,
+    PERMISSIONS.APPROVE_BEGINNERS_COURSES,
+    PERMISSIONS.APPROVE_HAVE_A_GO_SESSIONS,
+  ];
+
+  const broadcastScheduleUpdates = ({
+    includeApprovals = false,
+    scope = "schedule",
+  } = {}) => {
+    const changedAt = new Date().toISOString();
+
+    serverEventBus.broadcastToAll("calendar.updated", {
+      changedAt,
+      scope,
+    });
+
+    if (includeApprovals) {
+      serverEventBus.broadcastToAnyPermission(APPROVAL_PERMISSION_KEYS, "approvals.updated", {
+        changedAt,
+        scope,
+      });
+    }
+  };
+
   app.get("/api/events", async (req, res) => {
     const actor = getActorUser(req);
     const bookingsByEventId = await buildEventBookingsMap();
@@ -156,6 +183,11 @@ export function registerScheduleRoutes({
         : "Event submitted for approval.",
       event: buildClubEvent(event, [], actor),
     });
+
+    broadcastScheduleUpdates({
+      includeApprovals: true,
+      scope: "events",
+    });
   });
 
   app.post("/api/events/:id/approve", async (req, res) => {
@@ -199,6 +231,11 @@ export function registerScheduleRoutes({
       success: true,
       message: "Event approved successfully.",
       event: buildClubEvent(approvedEvent, bookings, actor),
+    });
+
+    broadcastScheduleUpdates({
+      includeApprovals: true,
+      scope: "events",
     });
   });
 
@@ -249,6 +286,11 @@ export function registerScheduleRoutes({
       success: true,
       message: "Event request rejected.",
       event: buildClubEvent(rejectedEvent, bookings, actor),
+    });
+
+    broadcastScheduleUpdates({
+      includeApprovals: true,
+      scope: "events",
     });
   });
 
@@ -333,6 +375,10 @@ export function registerScheduleRoutes({
       success: true,
       event: buildClubEvent(event, bookings, actor),
     });
+
+    broadcastScheduleUpdates({
+      scope: "event-bookings",
+    });
   });
 
   app.delete("/api/events/:id/booking", async (req, res) => {
@@ -376,6 +422,10 @@ export function registerScheduleRoutes({
       success: true,
       event: buildClubEvent(event, bookings, actor),
     });
+
+    broadcastScheduleUpdates({
+      scope: "event-bookings",
+    });
   });
 
   app.delete("/api/events/:id", async (req, res) => {
@@ -404,6 +454,11 @@ export function registerScheduleRoutes({
     res.json({
       success: true,
       message: "Event cancelled successfully.",
+    });
+
+    broadcastScheduleUpdates({
+      includeApprovals: true,
+      scope: "events",
     });
   });
 
@@ -533,6 +588,11 @@ export function registerScheduleRoutes({
         : "Coaching session submitted for approval.",
       session: buildCoachingSession(session, [], actor),
     });
+
+    broadcastScheduleUpdates({
+      includeApprovals: true,
+      scope: "coaching",
+    });
   });
 
   app.post("/api/coaching-sessions/:id/approve", async (req, res) => {
@@ -580,6 +640,11 @@ export function registerScheduleRoutes({
       success: true,
       message: "Coaching session approved successfully.",
       session: buildCoachingSession(approvedSession, bookings, actor),
+    });
+
+    broadcastScheduleUpdates({
+      includeApprovals: true,
+      scope: "coaching",
     });
   });
 
@@ -634,6 +699,11 @@ export function registerScheduleRoutes({
       success: true,
       message: "Coaching session request rejected.",
       session: buildCoachingSession(rejectedSession, bookings, actor),
+    });
+
+    broadcastScheduleUpdates({
+      includeApprovals: true,
+      scope: "coaching",
     });
   });
 
@@ -721,6 +791,10 @@ export function registerScheduleRoutes({
       success: true,
       session: buildCoachingSession(session, bookings, actor),
     });
+
+    broadcastScheduleUpdates({
+      scope: "coaching-bookings",
+    });
   });
 
   app.delete("/api/coaching-sessions/:id/booking", async (req, res) => {
@@ -765,6 +839,10 @@ export function registerScheduleRoutes({
       success: true,
       session: buildCoachingSession(session, bookings, actor),
     });
+
+    broadcastScheduleUpdates({
+      scope: "coaching-bookings",
+    });
   });
 
   app.delete("/api/coaching-sessions/:id", async (req, res) => {
@@ -805,6 +883,11 @@ export function registerScheduleRoutes({
       success: true,
       message: "Coaching session cancelled successfully.",
       sessionId: session.id,
+    });
+
+    broadcastScheduleUpdates({
+      includeApprovals: true,
+      scope: "coaching",
     });
   });
 }

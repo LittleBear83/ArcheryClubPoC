@@ -83,6 +83,23 @@ export function createServerEventBus() {
         data,
       );
     },
+    broadcastToAnyPermission(permissionKeys, eventName, data = {}) {
+      const normalizedPermissionKeys = new Set(
+        Array.isArray(permissionKeys)
+          ? permissionKeys.filter((permissionKey) => typeof permissionKey === "string")
+          : [],
+      );
+
+      if (normalizedPermissionKeys.size === 0) {
+        return;
+      }
+
+      broadcastToMatcher(
+        (client) => client.permissions.some((permission) => normalizedPermissionKeys.has(permission)),
+        eventName,
+        data,
+      );
+    },
     broadcastToUsers(usernames, eventName, data = {}) {
       const usernameSet = new Set(
         Array.isArray(usernames)

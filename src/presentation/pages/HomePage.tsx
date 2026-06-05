@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
 import { SideDrawer } from "../components/SideDrawer";
@@ -453,21 +453,18 @@ export function HomePage({
   const { data: rangeMembers = [] } = useQuery({
     queryKey: homeQueryKeys.rangeMembers(),
     queryFn: fetchRangeMembers,
-    refetchInterval: activePage === "home" ? 60000 : false,
   });
 
   const { data: homeActivity } = useQuery({
     queryKey: homeQueryKeys.activity(actorUsername),
     queryFn: () => fetchHomeActivity(actorUsername),
     enabled: Boolean(actorUsername),
-    refetchInterval: activePage === "home" ? 60000 : false,
   });
 
   const { data: adminTournamentWarnings = [] } = useQuery({
     queryKey: homeQueryKeys.adminWarnings(actorUsername),
     queryFn: () => fetchAdminTournamentWarnings(actorUsername),
     enabled: canManageTournaments && Boolean(actorUsername),
-    refetchInterval: canManageTournaments ? 60000 : false,
   });
   const { data: activeAnnouncements = [] } = useQuery({
     queryKey: homeQueryKeys.activeAnnouncements(actorUsername),
@@ -487,47 +484,6 @@ export function HomePage({
     () => getAnnouncementTickerState(activeAnnouncements),
     [activeAnnouncements],
   );
-
-  useEffect(() => {
-    // Event-driven invalidation keeps summary panels current after child pages
-    // mutate bookings, sessions, tournaments, or beginner-course data.
-    const refreshAll = () => {
-      void queryClient.invalidateQueries({
-        queryKey: homeQueryKeys.rangeMembers(),
-      });
-      if (actorUsername) {
-        void queryClient.invalidateQueries({
-          queryKey: homeQueryKeys.activity(actorUsername),
-        });
-      }
-      if (canManageTournaments && actorUsername) {
-        void queryClient.invalidateQueries({
-          queryKey: homeQueryKeys.adminWarnings(actorUsername),
-        });
-      }
-      if (actorUsername) {
-        void queryClient.invalidateQueries({
-          queryKey: homeQueryKeys.activeAnnouncements(actorUsername),
-        });
-      }
-    };
-
-    window.addEventListener("member-bookings-updated", refreshAll);
-    window.addEventListener("member-session-updated", refreshAll);
-    window.addEventListener("tournament-data-updated", refreshAll);
-    window.addEventListener("beginners-course-data-updated", refreshAll);
-
-    return () => {
-      window.removeEventListener("member-bookings-updated", refreshAll);
-      window.removeEventListener("member-session-updated", refreshAll);
-      window.removeEventListener("tournament-data-updated", refreshAll);
-      window.removeEventListener("beginners-course-data-updated", refreshAll);
-    };
-  }, [
-    actorUsername,
-    canManageTournaments,
-    queryClient,
-  ]);
 
   const handleNavigate = (pageId) => {
     const target = pageIdToPath[pageId] || "/";

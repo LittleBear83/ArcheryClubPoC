@@ -3,18 +3,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import lawnmower from "./assets/lawnmower.svg";
+import { subscribeToServerEvent } from "./lib/serverEvents";
 import { Button } from "./presentation/components/Button";
 import { HomePage } from "./presentation/pages/HomePage";
 import { LoginPage } from "./presentation/pages/LoginPage";
 import { Modal } from "./presentation/components/Modal";
 import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
+import { useSseFallbackDiagnostics } from "./presentation/state/useSseFallbackDiagnostics";
+import { useServerEventDiagnostics } from "./presentation/state/useServerEventDiagnostics";
 import { useServerEvents } from "./presentation/state/useServerEvents";
 import {
   getCurrentSession,
   loginAsGuest,
   loginWithCredentials,
-  loginWithLatestRfidScan,
   loginWithRfid,
   logoutSession,
 } from "./api/authApi";
@@ -31,6 +33,52 @@ const DEFAULT_PAYMENT_CARD_MESSAGE =
   "Thank you for your $5000 donation for the children of Namibia, this will go a long way to the PPE equipment they sorely need, your complementary Parker Pen will be dispatched in the next 3-5 business weeks.";
 const PAYMENT_CARD_WARNING_MESSAGE =
   "No Monies have been taken, Please ensure not to use any other token or card other than the one that was issued to you";
+const IS_DEV = import.meta.env.DEV;
+
+function formatDiagnosticsTimestamp(value: string | null) {
+  if (!value) {
+    return "No events yet";
+  }
+
+  const parsedDate = new Date(value);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "No events yet";
+  }
+
+  return parsedDate.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function eventTargetsActor({
+  actorUsername,
+  payload,
+}: {
+  actorUsername: string;
+  payload: unknown;
+}) {
+  if (!actorUsername || !payload || typeof payload !== "object") {
+    return false;
+  }
+
+  const eventPayload = payload as {
+    username?: unknown;
+    usernames?: unknown;
+  };
+
+  if (typeof eventPayload.username === "string" && eventPayload.username === actorUsername) {
+    return true;
+  }
+
+  if (Array.isArray(eventPayload.usernames)) {
+    return eventPayload.usernames.includes(actorUsername);
+  }
+
+  return false;
+}
 
 function safeLocalStorageGet(key: string) {
   if (typeof window === "undefined") {
@@ -126,6 +174,55 @@ function PaymentCardModal({
   );
 }
 
+function ServerEventsDiagnosticsBadge() {
+  const diagnostics = useServerEventDiagnostics();
+  const fallbackDiagnostics = useSseFallbackDiagnostics();
+  const stateLabel = diagnostics.connectionState.toUpperCase();
+  const lastEventLabel = diagnostics.lastEventName ?? "None";
+  const lastEventTime = formatDiagnosticsTimestamp(diagnostics.lastEventAt);
+  const fallbackLabel = fallbackDiagnostics.isFallbackActive ? "ACTIVE" : "Standby";
+  const fallbackSources = fallbackDiagnostics.activeSources.length > 0
+    ? fallbackDiagnostics.activeSources.join(", ")
+    : "None";
+
+  return (
+    <aside
+      className={`server-events-diagnostics server-events-diagnostics--${diagnostics.connectionState}`}
+      aria-live="polite"
+    >
+      <p className="server-events-diagnostics-title">SSE diagnostics</p>
+      <p className="server-events-diagnostics-row">
+        <strong>{stateLabel}</strong>
+        <span>{diagnostics.eventCount} events</span>
+      </p>
+      <p className="server-events-diagnostics-row">
+        <span>Last</span>
+        <span>{lastEventLabel}</span>
+      </p>
+      <p className="server-events-diagnostics-row">
+        <span>Seen at</span>
+        <span>{lastEventTime}</span>
+      </p>
+      <p className="server-events-diagnostics-row">
+        <span>Reconnects</span>
+        <span>{Math.max(diagnostics.connectCount - 1, 0)}</span>
+      </p>
+      <p className="server-events-diagnostics-row">
+        <span>Errors</span>
+        <span>{diagnostics.errorCount}</span>
+      </p>
+      <p className="server-events-diagnostics-row">
+        <span>Fallback</span>
+        <span>{fallbackLabel}</span>
+      </p>
+      <p className="server-events-diagnostics-row server-events-diagnostics-row--stacked">
+        <span>Sources</span>
+        <span>{fallbackSources}</span>
+      </p>
+    </aside>
+  );
+}
+
 function App({ dependencies }: { dependencies: AppDependencies }) {
   // The app keeps a local session snapshot for fast reloads, then verifies it
   // against the server and refreshes the canonical member profile after login.
@@ -147,6 +244,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     message: DEFAULT_PAYMENT_CARD_MESSAGE,
   });
   const authenticatedUsername = currentUserProfile?.auth?.username ?? "";
+  const showServerEventDiagnostics = IS_DEV && isAuthenticated;
 
   useServerEvents({
     actorUsername: authenticatedUsername,
@@ -262,48 +360,12 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         ? error.message
         : "RFID service is unavailable. Make sure the local auth server is running.";
 
-      if (
-        message.includes("/api/auth/rfid/latest-login") ||
-        message.includes("Cannot POST /api/auth/rfid/latest-login")
-      ) {
-        return {
-          success: false,
-          pending: true,
-          unavailable: true,
-        };
-      }
-
       return {
         success: false,
         message,
       };
     }
   }, []);
-
-  const handleLatestRfidLogin = async () => {
-    try {
-      const result = await loginWithLatestRfidScan();
-
-      if (!result.userProfile) {
-        return { success: false, pending: true };
-      }
-
-      const storedUserProfile = normalizeUserProfile(result.userProfile);
-      persistAuthenticatedUser(storedUserProfile);
-
-      return {
-        success: true,
-        username: storedUserProfile.auth.username,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: error instanceof Error
-          ? error.message
-          : "RFID service is unavailable. Make sure the local auth server is running.",
-      };
-    }
-  };
 
   const handleGuestLogin = async ({
     firstName,
@@ -489,6 +551,58 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   }, [handleLogout, handleRfidLogin, isAuthenticated]);
 
   useEffect(() => {
+    if (!isAuthenticated || !authenticatedUsername) {
+      return undefined;
+    }
+
+    let isActive = true;
+    let isRefreshing = false;
+
+    const refreshCurrentSessionProfile = async () => {
+      if (!isActive || isRefreshing) {
+        return;
+      }
+
+      isRefreshing = true;
+
+      try {
+        const result = await getCurrentSession();
+
+        if (!isActive) {
+          return;
+        }
+
+        persistAuthenticatedUser(result.userProfile);
+      } catch {
+        return;
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    const unsubscribeMembers = subscribeToServerEvent("members.updated", (payload) => {
+      if (!eventTargetsActor({ actorUsername: authenticatedUsername, payload })) {
+        return;
+      }
+
+      void refreshCurrentSessionProfile();
+    });
+    const unsubscribeRoles = subscribeToServerEvent("roles.updated", (payload) => {
+      if (!eventTargetsActor({ actorUsername: authenticatedUsername, payload })) {
+        return;
+      }
+
+      void refreshCurrentSessionProfile();
+    });
+
+    return () => {
+      isActive = false;
+      unsubscribeMembers();
+      unsubscribeRoles();
+    };
+  }, [authenticatedUsername, isAuthenticated]);
+
+  useEffect(() => {
     if (!isAuthenticated) {
       return undefined;
     }
@@ -536,7 +650,6 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       <>
         <LoginPage
           onGuestLogin={handleGuestLogin}
-          onLatestRfidLogin={handleLatestRfidLogin}
           onLogin={handleLogin}
           onRfidLogin={handleRfidLogin}
           initialMessage={loginMessage}
@@ -580,6 +693,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         onClose={handlePaymentCardModalClose}
         title="Demo Only"
       />
+      {showServerEventDiagnostics ? <ServerEventsDiagnosticsBadge /> : null}
     </>
   );
 }

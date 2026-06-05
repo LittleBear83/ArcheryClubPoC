@@ -9,11 +9,19 @@ export function registerTournamentRoutes({
   path,
   PERMISSIONS,
   sanitizeFileNameSegment,
+  serverEventBus,
   toUtcDateString,
   tournamentGateway,
   TOURNAMENT_TYPE_OPTIONS,
   writeFileSync,
 }) {
+  const broadcastTournamentsUpdated = (scope = "tournaments") => {
+    serverEventBus?.broadcastToAll("tournaments.updated", {
+      changedAt: new Date().toISOString(),
+      scope,
+    });
+  };
+
   app.get("/api/tournaments", async (req, res) => {
     const actor = getActorUser(req);
     const { registrationsByTournamentId, scoresByTournamentId } =
@@ -104,6 +112,7 @@ export function registerTournamentRoutes({
       timestampParts: getUtcTimestampParts(),
       tournamentType,
     });
+    broadcastTournamentsUpdated("tournaments.create");
 
     res.status(201).json({
       success: true,
@@ -194,6 +203,7 @@ export function registerTournamentRoutes({
       tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
       tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
     ]);
+    broadcastTournamentsUpdated("tournaments.update");
 
     res.json({
       success: true,
@@ -228,6 +238,7 @@ export function registerTournamentRoutes({
     }
 
     await tournamentGateway.deleteTournamentCascade(tournament.id);
+    broadcastTournamentsUpdated("tournaments.delete");
 
     res.json({
       success: true,
@@ -300,6 +311,7 @@ export function registerTournamentRoutes({
       tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
       tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
     ]);
+    broadcastTournamentsUpdated("tournaments.register");
 
     res.json({
       success: true,
@@ -363,6 +375,7 @@ export function registerTournamentRoutes({
       tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
       tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
     ]);
+    broadcastTournamentsUpdated("tournaments.withdraw");
 
     res.json({
       success: true,
@@ -448,6 +461,7 @@ export function registerTournamentRoutes({
     const updatedScores = await tournamentGateway.listTournamentScoresByTournamentId(
       tournament.id,
     );
+    broadcastTournamentsUpdated("tournaments.score");
 
     res.json({
       success: true,

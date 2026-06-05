@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hasPermission } from "../../../utils/userProfile";
 import { subscribeToRfidScans } from "../../../utils/rfidScanHub";
+import { subscribeToServerEvent } from "../../../lib/serverEvents";
+import { useSseFallbackPolling } from "../../state/useSseFallbackPolling";
 import type { LoanBowReturnPayload } from "../../../domain/entities/MemberProfile";
 
 type LoadProfileOptions = {
@@ -222,13 +224,23 @@ export function useProfilePageState({
     };
 
     refreshOptions();
-    window.addEventListener("profile-data-updated", refreshOptions);
+    const unsubscribeMembers = subscribeToServerEvent("members.updated", refreshOptions);
+    const unsubscribeRoles = subscribeToServerEvent("roles.updated", refreshOptions);
 
     return () => {
       abortController.abort();
-      window.removeEventListener("profile-data-updated", refreshOptions);
+      unsubscribeMembers();
+      unsubscribeRoles();
     };
   }, [canSelectMembers, isGuest, loadProfileOptions]);
+
+  useSseFallbackPolling({
+    callback: () => {
+      void loadProfileOptions();
+    },
+    enabled: canSelectMembers && !isGuest,
+    source: "profile-options",
+  });
 
   useEffect(() => {
     if (!activeUsername) {
@@ -244,15 +256,29 @@ export function useProfilePageState({
     };
 
     refreshProfile();
-    window.addEventListener("profile-data-updated", refreshProfile);
-    window.addEventListener("loan-bow-data-updated", refreshProfile);
+    const unsubscribeMembers = subscribeToServerEvent("members.updated", refreshProfile);
+    const unsubscribeRoles = subscribeToServerEvent("roles.updated", refreshProfile);
 
     return () => {
       abortController.abort();
-      window.removeEventListener("profile-data-updated", refreshProfile);
-      window.removeEventListener("loan-bow-data-updated", refreshProfile);
+      unsubscribeMembers();
+      unsubscribeRoles();
     };
   }, [activeUsername, loadProfile]);
+
+  useSseFallbackPolling({
+    callback: () => {
+      if (!activeUsername) {
+        return;
+      }
+
+      void loadProfile(activeUsername, {
+        isBackgroundRefresh: hasLoadedProfileRef.current,
+      });
+    },
+    enabled: Boolean(activeUsername),
+    source: "profile-page",
+  });
 
   useEffect(() => {
     if (!isCardModalOpen || !canManageMembers || !editableProfile?.username) {
@@ -312,8 +338,6 @@ export function useProfilePageState({
         ) {
           onCurrentUserProfileUpdate(result.userProfile);
         }
-
-        window.dispatchEvent(new Event("profile-data-updated"));
       } catch (assignError) {
         if (isActive) {
           setCardIssueError(assignError.message);
@@ -438,8 +462,6 @@ export function useProfilePageState({
       if (isSelfProfile && onCurrentUserProfileUpdate) {
         onCurrentUserProfileUpdate(result.userProfile);
       }
-
-      window.dispatchEvent(new Event("profile-data-updated"));
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -470,7 +492,6 @@ export function useProfilePageState({
       }));
       setMessage(`Loan bow return saved for ${result.member.fullName}.`);
       setIsReturnModalOpen(false);
-      window.dispatchEvent(new Event("loan-bow-data-updated"));
     } catch (saveError) {
       setReturnError(saveError.message);
     } finally {
@@ -617,7 +638,6 @@ export function useProfilePageState({
       setEditableProfile(result.editableProfile);
       setMessage(result.message ?? "Distance signed off successfully.");
       setIsDistanceSignOffModalOpen(false);
-      window.dispatchEvent(new Event("profile-data-updated"));
     } catch (signOffError) {
       setDistanceSignOffError(signOffError.message);
     } finally {

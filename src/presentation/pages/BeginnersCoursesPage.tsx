@@ -302,7 +302,6 @@ const BEGINNERS_COPY = {
   noPermission: "You do not have permission to manage beginners courses.",
   loading: "Loading beginners course setup...",
   queryKey: "beginners-courses-dashboard",
-  eventName: "beginners-course-data-updated",
   createCourse: createBeginnersCourse,
   getDashboard: getBeginnersCoursesDashboard,
 };
@@ -354,7 +353,6 @@ const HAVE_A_GO_COPY = {
   noPermission: "You do not have permission to manage Have a Go sessions.",
   loading: "Loading Have a Go session setup...",
   queryKey: "have-a-go-sessions-dashboard",
-  eventName: "have-a-go-session-data-updated",
   createCourse: createHaveAGoSession,
   getDashboard: getHaveAGoSessionsDashboard,
 };
@@ -456,7 +454,6 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     await queryClient.invalidateQueries({
       queryKey: [copy.queryKey, actorUsername],
     });
-    window.dispatchEvent(new Event(copy.eventName));
   };
 
   const mutation = useMutation({
@@ -542,14 +539,12 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       ),
     );
     setMessage(copy.equipmentUpdated);
-    window.dispatchEvent(new Event("equipment-data-updated"));
     await refreshDashboard();
   };
 
   const convertBeginnerToMember = async (beginner: CourseBeginner) => {
     await mutation.mutateAsync(() => convertBeginnerToMemberApi(currentUserProfile, beginner.id));
     setMessage(`${formatMemberDisplayName(beginner)} converted to a full member.`);
-    window.dispatchEvent(new Event("profile-data-updated"));
     await refreshDashboard();
   };
 

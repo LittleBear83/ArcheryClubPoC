@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MemberProfileForm } from "../components/MemberProfileForm";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
@@ -80,18 +80,6 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
     [defaultRole, editableProfile, roleOptions],
   );
 
-  useEffect(() => {
-    const refresh = () => {
-      void queryClient.invalidateQueries({ queryKey: ["profile-options", actorUsername] });
-    };
-
-    window.addEventListener("profile-data-updated", refresh);
-
-    return () => {
-      window.removeEventListener("profile-data-updated", refresh);
-    };
-  }, [actorUsername, queryClient]);
-
   const handleChange = (field) => (event) => {
     const value = event.target.value;
     setEditableProfile((current) => ({ ...current, [field]: value }));
@@ -138,7 +126,6 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
         userType: defaultRole,
       });
       await queryClient.invalidateQueries({ queryKey: ["profile-options", actorUsername] });
-      window.dispatchEvent(new Event("profile-data-updated"));
     },
     onError: (createError: Error) => {
       setError(createError.message);

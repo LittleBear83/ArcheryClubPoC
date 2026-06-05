@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { LabeledSelect } from "../components/LabeledSelect";
@@ -44,21 +44,6 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
   const memberOptions = memberOptionsQuery.data?.members ?? [];
   const effectiveSelectedUsername =
     selectedUsername || memberOptions[0]?.username || "";
-
-  useEffect(() => {
-    const refresh = () => {
-      void queryClient.invalidateQueries({ queryKey: ["loan-bow-options", actorUsername] });
-      void queryClient.invalidateQueries({ queryKey: ["loan-bow-profile", effectiveSelectedUsername, actorUsername] });
-    };
-
-    window.addEventListener("profile-data-updated", refresh);
-    window.addEventListener("loan-bow-data-updated", refresh);
-
-    return () => {
-      window.removeEventListener("profile-data-updated", refresh);
-      window.removeEventListener("loan-bow-data-updated", refresh);
-    };
-  }, [actorUsername, effectiveSelectedUsername, queryClient]);
 
   const loanBowQuery = useQuery({
     queryKey: ["loan-bow-profile", effectiveSelectedUsername, actorUsername],
@@ -112,7 +97,6 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
       );
       await queryClient.invalidateQueries({ queryKey: ["loan-bow-options", actorUsername] });
       setMessage(`Loan bow details saved for ${result.member.fullName}.`);
-      window.dispatchEvent(new Event("loan-bow-data-updated"));
     },
     onError: (saveError: Error) => {
       setError(saveError.message);
@@ -143,7 +127,6 @@ export function LoanBowRegisterPage({ currentUserProfile }) {
       );
       setMessage(`Loan bow return saved for ${result.member.fullName}.`);
       setIsReturnModalOpen(false);
-      window.dispatchEvent(new Event("loan-bow-data-updated"));
     },
     onError: (saveError: Error) => {
       setReturnError(saveError.message);

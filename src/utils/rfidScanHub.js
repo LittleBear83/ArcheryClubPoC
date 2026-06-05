@@ -1,68 +1,25 @@
-import { getLatestRfidScan } from "../api/authApi";
-
-const RFID_POLL_INTERVAL_MS = 1500;
+import { subscribeToServerEvent } from "../lib/serverEvents";
 
 const subscribers = new Set();
-let intervalId = null;
-let isPolling = false;
+let unsubscribeServerEvent = null;
 let lastSequence = 0;
-let hasVisibilityListener = false;
-
-async function pollLatestScan() {
-  // A single polling loop fans scan updates out to all subscribers, preventing
-  // each component from creating its own RFID API interval.
-  if (
-    isPolling ||
-    subscribers.size === 0 ||
-    (typeof document !== "undefined" && document.hidden)
-  ) {
-    return;
-  }
-
-  isPolling = true;
-
-  try {
-    const result = await getLatestRfidScan();
-
-    if (!result.scan?.rfidTag) {
-      return;
-    }
-
-    if (result.scan.sequence <= lastSequence) {
-      return;
-    }
-
-    lastSequence = result.scan.sequence;
-
-    for (const subscriber of subscribers) {
-      subscriber(result.scan);
-    }
-  } catch {
-    return;
-  } finally {
-    isPolling = false;
-  }
-}
-
-function handleVisibilityChange() {
-  if (!document.hidden) {
-    pollLatestScan();
-  }
-}
 
 function startPolling() {
-  if (intervalId || subscribers.size === 0) {
+  if (unsubscribeServerEvent || subscribers.size === 0) {
     return;
   }
 
-  intervalId = window.setInterval(pollLatestScan, RFID_POLL_INTERVAL_MS);
+  unsubscribeServerEvent = subscribeToServerEvent("rfid.scan", (scan) => {
+    if (!scan?.rfidTag || scan.sequence <= lastSequence) {
+      return;
+    }
 
-  if (!hasVisibilityListener) {
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    hasVisibilityListener = true;
-  }
+    lastSequence = scan.sequence;
 
-  pollLatestScan();
+    for (const subscriber of subscribers) {
+      subscriber(scan);
+    }
+  });
 }
 
 function stopPolling() {
@@ -70,14 +27,9 @@ function stopPolling() {
     return;
   }
 
-  if (intervalId) {
-    window.clearInterval(intervalId);
-    intervalId = null;
-  }
-
-  if (hasVisibilityListener) {
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
-    hasVisibilityListener = false;
+  if (unsubscribeServerEvent) {
+    unsubscribeServerEvent();
+    unsubscribeServerEvent = null;
   }
 }
 

@@ -12,9 +12,9 @@ export function registerAuthRoutes({
   getSessionUsername,
   getUtcTimestampParts,
   hashPassword,
-  latestRfidScan,
   memberAuthGateway,
   rfidReaderStatus,
+  serverEventBus,
   syncMemberStatusWithFees,
   verifyPassword,
 }) {
@@ -50,6 +50,13 @@ export function registerAuthRoutes({
       seenAtDate,
       seenAtTime,
       username,
+    });
+  };
+
+  const broadcastRangeMembersUpdated = (scope = "range-members") => {
+    serverEventBus?.broadcastToAll("range-members.updated", {
+      changedAt: new Date().toISOString(),
+      scope,
     });
   };
 
@@ -99,6 +106,7 @@ export function registerAuthRoutes({
       username: user.username,
     });
     await markActiveAnnouncementsSeen(user.username);
+    broadcastRangeMembersUpdated("auth.login");
     const csrfToken = setSessionCookies(req, res, user.username);
     const disciplines = await memberAuthGateway.findDisciplinesByUsername(
       user.username,
@@ -154,70 +162,8 @@ export function registerAuthRoutes({
       username: user.username,
     });
     await markActiveAnnouncementsSeen(user.username);
+    broadcastRangeMembersUpdated("auth.rfid-login");
     const csrfToken = setSessionCookies(req, res, user.username);
-    const disciplines = await memberAuthGateway.findDisciplinesByUsername(
-      user.username,
-    );
-
-    res.json({
-      success: true,
-      csrfToken,
-      userProfile: buildMemberUserProfile(
-        user,
-        disciplines.map((discipline) => discipline.discipline),
-      ),
-    });
-  });
-
-  app.post("/api/auth/rfid/latest-login", async (_req, res) => {
-    const hasUndeliveredScan =
-      latestRfidScan.sequence > latestRfidScan.deliveredSequence;
-
-    if (
-      !hasUndeliveredScan ||
-      !latestRfidScan.rfidTag ||
-      latestRfidScan.scanType === "payment-card"
-    ) {
-      res.json({ success: true, userProfile: null });
-      return;
-    }
-
-    latestRfidScan.deliveredSequence = latestRfidScan.sequence;
-
-    const user =
-      (await syncMemberStatusWithFees(
-        await memberAuthGateway.findUserByRfid(latestRfidScan.rfidTag),
-      )) ??
-      (await syncMemberStatusWithFees(
-        await memberAuthGateway.findUserByRfid(
-          getDeactivatedRfidTag(latestRfidScan.rfidTag),
-        ),
-      ));
-
-    if (!user) {
-      res.status(401).json({
-        success: false,
-        message: "RFID tag not recognised.",
-      });
-      return;
-    }
-
-    if (!user.active_member) {
-      res.status(403).json({
-        success: false,
-        message:
-          "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
-      });
-      return;
-    }
-
-    await memberAuthGateway.recordLoginEvent({
-      method: "rfid",
-      timestampParts: getUtcTimestampParts(),
-      username: user.username,
-    });
-    await markActiveAnnouncementsSeen(user.username);
-    const csrfToken = setSessionCookies(_req, res, user.username);
     const disciplines = await memberAuthGateway.findDisciplinesByUsername(
       user.username,
     );
@@ -297,37 +243,6 @@ export function registerAuthRoutes({
     });
   });
 
-  app.get("/api/auth/rfid/latest-scan", (req, res) => {
-    if (!getSessionUsername(req)) {
-      res.status(401).json({
-        success: false,
-        message: "An authenticated member is required.",
-      });
-      return;
-    }
-
-    const hasUndeliveredScan =
-      latestRfidScan.sequence > latestRfidScan.deliveredSequence;
-
-    if (hasUndeliveredScan) {
-      latestRfidScan.deliveredSequence = latestRfidScan.sequence;
-    }
-
-    res.json({
-      success: true,
-      scan: hasUndeliveredScan
-        ? {
-            sequence: latestRfidScan.sequence,
-            rfidTag: latestRfidScan.rfidTag,
-            scannedAt: latestRfidScan.scannedAt,
-            source: latestRfidScan.source,
-            scanType: latestRfidScan.scanType,
-            cardBrand: latestRfidScan.cardBrand,
-          }
-        : null,
-    });
-  });
-
   app.post("/api/auth/guest-login", async (req, res) => {
     const { firstName, surname, archeryGbMembershipNumber, invitedByUsername } =
       req.body ?? {};
@@ -377,6 +292,7 @@ export function registerAuthRoutes({
       surname: surname.trim(),
       timestampParts: getUtcTimestampParts(),
     });
+    broadcastRangeMembersUpdated("auth.guest-login");
 
     res.json({
       success: true,

@@ -58,7 +58,14 @@ function buildInitialSchemaSql() {
       escalate_severity INTEGER NOT NULL DEFAULT 0,
       created_by_username TEXT NOT NULL REFERENCES users(username),
       created_at_date TEXT NOT NULL,
-      created_at_time TEXT NOT NULL
+      created_at_time TEXT NOT NULL,
+      amended_by_username TEXT REFERENCES users(username),
+      amended_at_date TEXT,
+      amended_at_time TEXT,
+      deleted_by_username TEXT REFERENCES users(username),
+      deleted_at_date TEXT,
+      deleted_at_time TEXT,
+      is_deleted INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS announcement_seen_members (
@@ -816,6 +823,35 @@ export async function runPostgresMigrations({
     for (const statement of buildUserReferenceSyncStatements()) {
       await client.query(statement.sql, statement.values);
     }
+
+    await client.query(`
+      ALTER TABLE announcements
+      ADD COLUMN IF NOT EXISTS amended_by_username TEXT REFERENCES users(username)
+    `);
+    await client.query(`
+      ALTER TABLE announcements
+      ADD COLUMN IF NOT EXISTS amended_at_date TEXT
+    `);
+    await client.query(`
+      ALTER TABLE announcements
+      ADD COLUMN IF NOT EXISTS amended_at_time TEXT
+    `);
+    await client.query(`
+      ALTER TABLE announcements
+      ADD COLUMN IF NOT EXISTS deleted_by_username TEXT REFERENCES users(username)
+    `);
+    await client.query(`
+      ALTER TABLE announcements
+      ADD COLUMN IF NOT EXISTS deleted_at_date TEXT
+    `);
+    await client.query(`
+      ALTER TABLE announcements
+      ADD COLUMN IF NOT EXISTS deleted_at_time TEXT
+    `);
+    await client.query(`
+      ALTER TABLE announcements
+      ADD COLUMN IF NOT EXISTS is_deleted INTEGER NOT NULL DEFAULT 0
+    `);
 
     await client.query("COMMIT");
   } catch (error) {

@@ -3253,6 +3253,12 @@ button:disabled {
   white-space: pre-wrap;
 }
 
+.announcements-history-table td {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .announcements-seen-modal {
   display: grid;
   gap: 16px;

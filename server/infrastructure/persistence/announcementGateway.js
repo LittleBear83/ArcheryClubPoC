@@ -7,6 +7,7 @@ function normalizeAnnouncementRow(row) {
     ...row,
     id: Number(row.id ?? 0),
     escalate_severity: Number(row.escalate_severity ?? 0),
+    is_deleted: Number(row.is_deleted ?? 0),
   };
 }
 
@@ -87,6 +88,21 @@ function createSqliteAnnouncementGateway(statements) {
         payload.severity,
         payload.message,
         payload.escalateSeverity ? 1 : 0,
+        payload.amendedByUsername ?? null,
+        payload.amendedAtDate ?? null,
+        payload.amendedAtTime ?? null,
+        announcementId,
+      );
+
+      return normalizeAnnouncementRow(
+        statements.findAnnouncementById.get(announcementId),
+      );
+    },
+    async softDeleteAnnouncement(announcementId, payload) {
+      statements.softDeleteAnnouncementById.run(
+        payload.deletedByUsername,
+        payload.deletedAtDate,
+        payload.deletedAtTime,
         announcementId,
       );
 
@@ -122,7 +138,14 @@ function createPostgresAnnouncementGateway({ pool }) {
             escalate_severity,
             created_by_username,
             created_at_date,
-            created_at_time
+            created_at_time,
+            amended_by_username,
+            amended_at_date,
+            amended_at_time,
+            deleted_by_username,
+            deleted_at_date,
+            deleted_at_time,
+            is_deleted
         `,
         [
           payload.activeFromDate,
@@ -150,10 +173,18 @@ function createPostgresAnnouncementGateway({ pool }) {
             escalate_severity,
             created_by_username,
             created_at_date,
-            created_at_time
+            created_at_time,
+            amended_by_username,
+            amended_at_date,
+            amended_at_time,
+            deleted_by_username,
+            deleted_at_date,
+            deleted_at_time,
+            is_deleted
           FROM announcements
           WHERE active_from_date <= $1
             AND active_till_date >= $1
+            AND is_deleted = 0
           ORDER BY active_from_date DESC, created_at_time DESC, id DESC
         `,
         [today],
@@ -174,10 +205,23 @@ function createPostgresAnnouncementGateway({ pool }) {
             announcements.created_by_username,
             announcements.created_at_date,
             announcements.created_at_time,
-            users.first_name AS created_by_first_name,
-            users.surname AS created_by_surname
+            announcements.amended_by_username,
+            announcements.amended_at_date,
+            announcements.amended_at_time,
+            announcements.deleted_by_username,
+            announcements.deleted_at_date,
+            announcements.deleted_at_time,
+            announcements.is_deleted,
+            created_by_user.first_name AS created_by_first_name,
+            created_by_user.surname AS created_by_surname,
+            amended_by_user.first_name AS amended_by_first_name,
+            amended_by_user.surname AS amended_by_surname,
+            deleted_by_user.first_name AS deleted_by_first_name,
+            deleted_by_user.surname AS deleted_by_surname
           FROM announcements
-          LEFT JOIN users ON users.username = announcements.created_by_username
+          LEFT JOIN users AS created_by_user ON created_by_user.username = announcements.created_by_username
+          LEFT JOIN users AS amended_by_user ON amended_by_user.username = announcements.amended_by_username
+          LEFT JOIN users AS deleted_by_user ON deleted_by_user.username = announcements.deleted_by_username
           ORDER BY announcements.active_from_date DESC, announcements.created_at_time DESC, announcements.id DESC
         `,
       );
@@ -250,7 +294,14 @@ function createPostgresAnnouncementGateway({ pool }) {
             escalate_severity,
             created_by_username,
             created_at_date,
-            created_at_time
+            created_at_time,
+            amended_by_username,
+            amended_at_date,
+            amended_at_time,
+            deleted_by_username,
+            deleted_at_date,
+            deleted_at_time,
+            is_deleted
           FROM announcements
           WHERE id = $1
           LIMIT 1
@@ -269,8 +320,15 @@ function createPostgresAnnouncementGateway({ pool }) {
             active_till_date = $2,
             severity = $3,
             message = $4,
-            escalate_severity = $5
-          WHERE id = $6
+            escalate_severity = $5,
+            amended_by_username = $6,
+            amended_at_date = $7,
+            amended_at_time = $8,
+            deleted_by_username = NULL,
+            deleted_at_date = NULL,
+            deleted_at_time = NULL,
+            is_deleted = 0
+          WHERE id = $9
           RETURNING
             id,
             active_from_date,
@@ -280,7 +338,14 @@ function createPostgresAnnouncementGateway({ pool }) {
             escalate_severity,
             created_by_username,
             created_at_date,
-            created_at_time
+            created_at_time,
+            amended_by_username,
+            amended_at_date,
+            amended_at_time,
+            deleted_by_username,
+            deleted_at_date,
+            deleted_at_time,
+            is_deleted
         `,
         [
           payload.activeFromDate,
@@ -288,6 +353,47 @@ function createPostgresAnnouncementGateway({ pool }) {
           payload.severity,
           payload.message,
           payload.escalateSeverity ? 1 : 0,
+          payload.amendedByUsername ?? null,
+          payload.amendedAtDate ?? null,
+          payload.amendedAtTime ?? null,
+          announcementId,
+        ],
+      );
+
+      return normalizeAnnouncementRow(result.rows[0] ?? null);
+    },
+    async softDeleteAnnouncement(announcementId, payload) {
+      const result = await pool.query(
+        `
+          UPDATE announcements
+          SET
+            deleted_by_username = $1,
+            deleted_at_date = $2,
+            deleted_at_time = $3,
+            is_deleted = 1
+          WHERE id = $4
+          RETURNING
+            id,
+            active_from_date,
+            active_till_date,
+            severity,
+            message,
+            escalate_severity,
+            created_by_username,
+            created_at_date,
+            created_at_time,
+            amended_by_username,
+            amended_at_date,
+            amended_at_time,
+            deleted_by_username,
+            deleted_at_date,
+            deleted_at_time,
+            is_deleted
+        `,
+        [
+          payload.deletedByUsername,
+          payload.deletedAtDate,
+          payload.deletedAtTime,
           announcementId,
         ],
       );

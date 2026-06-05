@@ -7,6 +7,7 @@ import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import {
   createAnnouncement,
+  deleteAnnouncement,
   listAnnouncementSeenMembers,
   listAnnouncements,
   updateAnnouncement,
@@ -56,6 +57,10 @@ const severityOptions: Array<{ value: AnnouncementSeverity; label: string }> = [
 ];
 
 function getAnnouncementStatus(announcement: AnnouncementRecord) {
+  if (announcement.isDeleted) {
+    return "Deleted";
+  }
+
   const today = new Date().toISOString().slice(0, 10);
 
   if (announcement.activeFromDate > today) {
@@ -67,6 +72,18 @@ function getAnnouncementStatus(announcement: AnnouncementRecord) {
   }
 
   return "Active";
+}
+
+function formatAuditStamp(name?: string, username?: string, date?: string, time?: string) {
+  if (!username) {
+    return "Not recorded";
+  }
+
+  const displayName = name || username;
+  const datePart = date ? ` on ${formatDate(date)}` : "";
+  const timePart = time ? ` at ${time}` : "";
+
+  return `${displayName} (${username})${datePart}${timePart}`;
 }
 
 function getSeverityLabel(severity: AnnouncementSeverity) {
@@ -187,6 +204,44 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
       activeFromDate: getTodayIsoDate(),
     });
     setEditingAnnouncementId(null);
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: (announcementId: number) =>
+      deleteAnnouncement(currentUserProfile, announcementId),
+    onMutate: () => {
+      setError("");
+      setMessage("");
+    },
+    onSuccess: async () => {
+      setMessage("Announcement deleted successfully.");
+      setEditingAnnouncementId(null);
+      setDraft({
+        ...emptyDraft,
+        activeFromDate: getTodayIsoDate(),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: announcementQueryKeys.history(actorUsername),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["active-announcements", actorUsername],
+      });
+    },
+    onError: (mutationError: Error) => {
+      setError(mutationError.message);
+    },
+  });
+
+  const handleDelete = (announcement: AnnouncementRecord) => {
+    const confirmed = window.confirm(
+      "Delete this announcement? It will stop being shown to users but remain in history.",
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    deleteMutation.mutate(announcement.id);
   };
 
   if (!canManageAnnouncements) {
@@ -360,14 +415,59 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
                     <strong>Seen</strong>
                     <span>{announcement.seenCount ?? 0}</span>
                   </div>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="secondary-button announcements-history-mobile-button"
-                    onClick={() => handleEdit(announcement)}
-                  >
-                    Amend
-                  </Button>
+                  <div className="announcements-history-mobile-row announcements-history-mobile-row--stacked">
+                    <strong>Created by</strong>
+                    <span>
+                      {formatAuditStamp(
+                        announcement.createdByName,
+                        announcement.createdByUsername,
+                        announcement.createdAtDate,
+                        announcement.createdAtTime,
+                      )}
+                    </span>
+                  </div>
+                  <div className="announcements-history-mobile-row announcements-history-mobile-row--stacked">
+                    <strong>Amended by</strong>
+                    <span>
+                      {formatAuditStamp(
+                        announcement.amendedByName,
+                        announcement.amendedByUsername,
+                        announcement.amendedAtDate,
+                        announcement.amendedAtTime,
+                      )}
+                    </span>
+                  </div>
+                  <div className="announcements-history-mobile-row announcements-history-mobile-row--stacked">
+                    <strong>Deleted by</strong>
+                    <span>
+                      {formatAuditStamp(
+                        announcement.deletedByName,
+                        announcement.deletedByUsername,
+                        announcement.deletedAtDate,
+                        announcement.deletedAtTime,
+                      )}
+                    </span>
+                  </div>
+                  {!announcement.isDeleted ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="secondary-button announcements-history-mobile-button"
+                      onClick={() => handleEdit(announcement)}
+                    >
+                      Amend
+                    </Button>
+                  ) : null}
+                  {!announcement.isDeleted ? (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      className="announcements-history-mobile-button"
+                      onClick={() => handleDelete(announcement)}
+                    >
+                      Delete message
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="secondary"
@@ -389,6 +489,9 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
                     <th>Active window</th>
                     <th>Announcement</th>
                     <th>Seen</th>
+                    <th>Created by</th>
+                    <th>Amended by</th>
+                    <th>Deleted by</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -406,15 +509,50 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
                       </td>
                       <td>{announcement.seenCount ?? 0}</td>
                       <td>
+                        {formatAuditStamp(
+                          announcement.createdByName,
+                          announcement.createdByUsername,
+                          announcement.createdAtDate,
+                          announcement.createdAtTime,
+                        )}
+                      </td>
+                      <td>
+                        {formatAuditStamp(
+                          announcement.amendedByName,
+                          announcement.amendedByUsername,
+                          announcement.amendedAtDate,
+                          announcement.amendedAtTime,
+                        )}
+                      </td>
+                      <td>
+                        {formatAuditStamp(
+                          announcement.deletedByName,
+                          announcement.deletedByUsername,
+                          announcement.deletedAtDate,
+                          announcement.deletedAtTime,
+                        )}
+                      </td>
+                      <td>
                         <div className="announcements-history-actions">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            className="secondary-button"
-                            onClick={() => handleEdit(announcement)}
-                          >
-                            Amend
-                          </Button>
+                          {!announcement.isDeleted ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="secondary-button"
+                              onClick={() => handleEdit(announcement)}
+                            >
+                              Amend
+                            </Button>
+                          ) : null}
+                          {!announcement.isDeleted ? (
+                            <Button
+                              type="button"
+                              variant="danger"
+                              onClick={() => handleDelete(announcement)}
+                            >
+                              Delete message
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             variant="secondary"

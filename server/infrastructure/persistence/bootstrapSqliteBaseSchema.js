@@ -214,6 +214,36 @@ export function bootstrapSqliteBaseSchema({
     )
   `);
 
+  const announcementColumns = db.prepare(`PRAGMA table_info(announcements)`).all();
+
+  if (!announcementColumns.some((column) => column.name === "amended_by_username")) {
+    db.exec(`ALTER TABLE announcements ADD COLUMN amended_by_username TEXT`);
+  }
+
+  if (!announcementColumns.some((column) => column.name === "amended_at_date")) {
+    db.exec(`ALTER TABLE announcements ADD COLUMN amended_at_date TEXT`);
+  }
+
+  if (!announcementColumns.some((column) => column.name === "amended_at_time")) {
+    db.exec(`ALTER TABLE announcements ADD COLUMN amended_at_time TEXT`);
+  }
+
+  if (!announcementColumns.some((column) => column.name === "deleted_by_username")) {
+    db.exec(`ALTER TABLE announcements ADD COLUMN deleted_by_username TEXT`);
+  }
+
+  if (!announcementColumns.some((column) => column.name === "deleted_at_date")) {
+    db.exec(`ALTER TABLE announcements ADD COLUMN deleted_at_date TEXT`);
+  }
+
+  if (!announcementColumns.some((column) => column.name === "deleted_at_time")) {
+    db.exec(`ALTER TABLE announcements ADD COLUMN deleted_at_time TEXT`);
+  }
+
+  if (!announcementColumns.some((column) => column.name === "is_deleted")) {
+    db.exec(`ALTER TABLE announcements ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0`);
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS announcement_seen_members (
       announcement_id INTEGER NOT NULL,

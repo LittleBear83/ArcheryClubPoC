@@ -16,6 +16,15 @@ export type AnnouncementRecord = {
   createdByName?: string;
   createdAtDate: string;
   createdAtTime: string;
+  amendedByUsername?: string;
+  amendedByName?: string;
+  amendedAtDate?: string;
+  amendedAtTime?: string;
+  deletedByUsername?: string;
+  deletedByName?: string;
+  deletedAtDate?: string;
+  deletedAtTime?: string;
+  isDeleted?: boolean;
   seenCount?: number;
 };
 
@@ -93,6 +102,16 @@ export function listAnnouncementSeenMembers(actor: unknown, announcementId: numb
     {
       headers: buildActorHeaders(actor),
       cache: "no-store",
+    },
+  );
+}
+
+export function deleteAnnouncement(actor: unknown, announcementId: number) {
+  return fetchApi<{ success: true; announcement: AnnouncementRecord }>(
+    `/api/announcements/${announcementId}`,
+    {
+      method: "DELETE",
+      headers: buildActorHeaders(actor),
     },
   );
 }

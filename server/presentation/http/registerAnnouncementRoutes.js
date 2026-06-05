@@ -22,6 +22,27 @@ function buildAnnouncementResponse(announcement, seenCount = 0) {
       .trim(),
     createdAtDate: announcement.created_at_date,
     createdAtTime: announcement.created_at_time,
+    amendedByUsername: announcement.amended_by_username ?? "",
+    amendedByName: [
+      announcement.amended_by_first_name,
+      announcement.amended_by_surname,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim(),
+    amendedAtDate: announcement.amended_at_date ?? "",
+    amendedAtTime: announcement.amended_at_time ?? "",
+    deletedByUsername: announcement.deleted_by_username ?? "",
+    deletedByName: [
+      announcement.deleted_by_first_name,
+      announcement.deleted_by_surname,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim(),
+    deletedAtDate: announcement.deleted_at_date ?? "",
+    deletedAtTime: announcement.deleted_at_time ?? "",
+    isDeleted: Boolean(announcement.is_deleted),
     seenCount,
   };
 }
@@ -282,15 +303,70 @@ export function registerAnnouncementRoutes({
       return;
     }
 
-    const updatedAnnouncement = await announcementGateway.updateAnnouncement(
-      announcementId,
-      payload,
-    );
+    const [amendedAtDate, amendedAtTime] = getUtcTimestampParts();
+    const updatedAnnouncement = await announcementGateway.updateAnnouncement(announcementId, {
+      ...payload,
+      amendedAtDate,
+      amendedAtTime,
+      amendedByUsername: actor.username,
+    });
 
     res.json({
       success: true,
       announcement: buildAnnouncementResponse(
         updatedAnnouncement,
+        await announcementGateway.countSeenMembersByAnnouncementId(announcementId),
+      ),
+    });
+  });
+
+  app.delete("/api/announcements/:id", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_ANNOUNCEMENTS)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to delete announcements.",
+      });
+      return;
+    }
+
+    const announcementId = Number.parseInt(req.params.id, 10);
+
+    if (!Number.isInteger(announcementId)) {
+      res.status(400).json({
+        success: false,
+        message: "Announcement id is invalid.",
+      });
+      return;
+    }
+
+    const existingAnnouncement = await announcementGateway.findAnnouncementById(
+      announcementId,
+    );
+
+    if (!existingAnnouncement) {
+      res.status(404).json({
+        success: false,
+        message: "Announcement not found.",
+      });
+      return;
+    }
+
+    const [deletedAtDate, deletedAtTime] = getUtcTimestampParts();
+    const deletedAnnouncement = await announcementGateway.softDeleteAnnouncement(
+      announcementId,
+      {
+        deletedAtDate,
+        deletedAtTime,
+        deletedByUsername: actor.username,
+      },
+    );
+
+    res.json({
+      success: true,
+      announcement: buildAnnouncementResponse(
+        deletedAnnouncement,
         await announcementGateway.countSeenMembersByAnnouncementId(announcementId),
       ),
     });

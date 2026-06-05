@@ -479,7 +479,9 @@ const announcementGateway = createAnnouncementGateway({
   listSeenMembersByAnnouncementId:
     sqliteAnnouncementStatements?.listSeenMembersByAnnouncementId,
   markAnnouncementSeen: sqliteAnnouncementStatements?.markAnnouncementSeen,
+  softDeleteAnnouncementById: sqliteAnnouncementStatements?.softDeleteAnnouncementById,
   pool: db.pool,
+  updateAnnouncementById: sqliteAnnouncementStatements?.updateAnnouncementById,
 });
 
 let cachedAssignableRoleKeys = [];

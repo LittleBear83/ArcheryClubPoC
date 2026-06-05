@@ -13,6 +13,7 @@ import {
   createMemberPersistenceService,
   getDeactivatedRfidTag,
 } from "./domain/services/memberPersistenceService.js";
+import { createServerEventBus } from "./domain/services/serverEventBus.js";
 import { createCsrfProtection } from "./security/csrf.js";
 import { createRateLimiter } from "./security/rateLimit.js";
 import {
@@ -70,6 +71,7 @@ import { registerAdminMemberRoutes } from "./presentation/http/registerAdminMemb
 import { registerAnnouncementRoutes } from "./presentation/http/registerAnnouncementRoutes.js";
 import { registerAuthRoutes } from "./presentation/http/registerAuthRoutes.js";
 import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRoutes.js";
+import { registerSseRoutes } from "./presentation/http/registerSseRoutes.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
@@ -483,6 +485,7 @@ const announcementGateway = createAnnouncementGateway({
   pool: db.pool,
   updateAnnouncementById: sqliteAnnouncementStatements?.updateAnnouncementById,
 });
+const serverEventBus = createServerEventBus();
 
 let cachedAssignableRoleKeys = [];
 let cachedKnownRoleKeys = new Set();
@@ -3440,7 +3443,15 @@ registerAnnouncementRoutes({
   getActorUser,
   getUtcTimestampParts,
   PERMISSIONS,
+  serverEventBus,
   toUtcDateString,
+});
+
+registerSseRoutes({
+  app,
+  getActorUser,
+  getPermissionsForRole,
+  serverEventBus,
 });
 
 app.get("/api/beginners-courses/dashboard", async (req, res) => {

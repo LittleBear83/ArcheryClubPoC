@@ -473,7 +473,6 @@ export function HomePage({
     queryKey: homeQueryKeys.activeAnnouncements(actorUsername),
     queryFn: () => fetchActiveAnnouncements(currentUserProfile),
     enabled: Boolean(actorUsername),
-    refetchInterval: 60000,
   });
 
   const signedUpEvents = homeActivity?.signedUpEvents ?? [];

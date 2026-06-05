@@ -9,6 +9,7 @@ import { LoginPage } from "./presentation/pages/LoginPage";
 import { Modal } from "./presentation/components/Modal";
 import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
+import { useServerEvents } from "./presentation/state/useServerEvents";
 import {
   getCurrentSession,
   loginAsGuest,
@@ -144,6 +145,12 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     open: false,
     cardBrand: "",
     message: DEFAULT_PAYMENT_CARD_MESSAGE,
+  });
+  const authenticatedUsername = currentUserProfile?.auth?.username ?? "";
+
+  useServerEvents({
+    actorUsername: authenticatedUsername,
+    enabled: isAuthenticated,
   });
 
   const handlePaymentCardModalClose = () => {

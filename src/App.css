@@ -6708,29 +6708,47 @@ button:disabled {
 
 .outdoor-table-checkbox-groups {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 1rem;
 }
 
 .outdoor-table-checkbox-card {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 1rem;
-  padding: 1rem;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 1.1rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.03)),
+    rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  grid-column: span 4;
+}
+
+.outdoor-table-checkbox-card--wide {
+  grid-column: span 12;
 }
 
 .outdoor-table-checkbox-card h3 {
-  margin: 0 0 0.85rem;
+  margin: 0;
+}
+
+.outdoor-table-card-copy {
+  margin: 0.45rem 0 1rem;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.94rem;
 }
 
 .outdoor-table-checkbox-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 0.75rem;
 }
 
 .outdoor-table-checkbox-grid--compact {
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+}
+
+.outdoor-table-checkbox-grid--achievements {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .outdoor-table-checkbox {
@@ -6740,8 +6758,99 @@ button:disabled {
   font-size: 0.95rem;
 }
 
+.outdoor-table-checkbox--tile {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.85rem;
+  padding: 0.8rem 0.9rem;
+  background: rgba(0, 0, 0, 0.12);
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    transform 120ms ease;
+}
+
+.outdoor-table-checkbox--tile:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateY(-1px);
+}
+
 .outdoor-table-checkbox input {
   width: auto;
+}
+
+.outdoor-table-252-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.9rem;
+}
+
+.outdoor-table-252-card {
+  border: 1px solid rgba(103, 177, 255, 0.24);
+  border-radius: 1rem;
+  padding: 0.95rem;
+  background: linear-gradient(180deg, rgba(21, 60, 105, 0.28), rgba(13, 33, 58, 0.2));
+}
+
+.outdoor-table-252-card-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.outdoor-table-252-card-header h4,
+.outdoor-table-252-card-header p {
+  margin: 0;
+}
+
+.outdoor-table-252-card-header p {
+  margin-top: 0.25rem;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.9rem;
+}
+
+.outdoor-table-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.outdoor-table-status-pill.is-complete {
+  background: rgba(120, 214, 153, 0.2);
+  color: #d8ffe5;
+}
+
+.outdoor-table-status-pill.is-pending {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.outdoor-table-252-signoffs {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.outdoor-table-252-signoff-row {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.outdoor-table-252-signoff-row span {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.outdoor-table-252-signoff-row input {
+  min-width: 0;
 }
 
 .outdoor-table-form-actions {
@@ -6912,6 +7021,13 @@ button:disabled {
   background: #256db0;
 }
 
+.outdoor-table-mark-count {
+  display: inline-block;
+  min-width: 2.3rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 .outdoor-table-mark--clout.is-active {
   background: #c71d42;
 }
@@ -6941,12 +7057,23 @@ button:disabled {
 }
 
 @media (max-width: 960px) {
+  .outdoor-table-checkbox-card,
+  .outdoor-table-checkbox-card--wide {
+    grid-column: 1 / -1;
+  }
+
   .outdoor-table-title-cell {
     font-size: 1.5rem;
     min-width: 340px;
   }
 
   .outdoor-table-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .outdoor-table-252-signoff-row {
     grid-template-columns: 1fr;
   }
 }

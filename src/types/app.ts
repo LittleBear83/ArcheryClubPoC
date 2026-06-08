@@ -140,6 +140,13 @@ export type OutdoorTableEntry = {
   award25260: boolean;
   award25280: boolean;
   award252100: boolean;
+  award25220SignOffDates: string[];
+  award25230SignOffDates: string[];
+  award25240SignOffDates: string[];
+  award25250SignOffDates: string[];
+  award25260SignOffDates: string[];
+  award25280SignOffDates: string[];
+  award252100SignOffDates: string[];
   cloutWhite20: boolean;
   cloutWhite30: boolean;
   cloutWhite40: boolean;

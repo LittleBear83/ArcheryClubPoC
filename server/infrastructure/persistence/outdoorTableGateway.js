@@ -1,3 +1,33 @@
+function normalizeAward252SignOffDates(value) {
+  let parsedValue = value;
+
+  if (typeof value === "string") {
+    if (!value.trim()) {
+      return ["", "", ""];
+    }
+
+    try {
+      parsedValue = JSON.parse(value);
+    } catch {
+      return ["", "", ""];
+    }
+  }
+
+  if (!Array.isArray(parsedValue)) {
+    return ["", "", ""];
+  }
+
+  const normalizedDates = parsedValue.slice(0, 3).map((entry) =>
+    typeof entry === "string" && /^\d{4}-\d{2}-\d{2}$/.test(entry) ? entry : "",
+  );
+
+  while (normalizedDates.length < 3) {
+    normalizedDates.push("");
+  }
+
+  return normalizedDates;
+}
+
 function normalizeOutdoorTableRow(row) {
   if (!row) {
     return null;
@@ -29,6 +59,13 @@ function normalizeOutdoorTableRow(row) {
     award25260: Boolean(row.award_252_60),
     award25280: Boolean(row.award_252_80),
     award252100: Boolean(row.award_252_100),
+    award25220SignOffDates: normalizeAward252SignOffDates(row.award_252_20_sign_off_dates),
+    award25230SignOffDates: normalizeAward252SignOffDates(row.award_252_30_sign_off_dates),
+    award25240SignOffDates: normalizeAward252SignOffDates(row.award_252_40_sign_off_dates),
+    award25250SignOffDates: normalizeAward252SignOffDates(row.award_252_50_sign_off_dates),
+    award25260SignOffDates: normalizeAward252SignOffDates(row.award_252_60_sign_off_dates),
+    award25280SignOffDates: normalizeAward252SignOffDates(row.award_252_80_sign_off_dates),
+    award252100SignOffDates: normalizeAward252SignOffDates(row.award_252_100_sign_off_dates),
     cloutWhite20: Boolean(row.clout_white_20),
     cloutWhite30: Boolean(row.clout_white_30),
     cloutWhite40: Boolean(row.clout_white_40),
@@ -104,6 +141,13 @@ function createSqliteOutdoorTableGateway(db) {
       award_252_60,
       award_252_80,
       award_252_100,
+      award_252_20_sign_off_dates,
+      award_252_30_sign_off_dates,
+      award_252_40_sign_off_dates,
+      award_252_50_sign_off_dates,
+      award_252_60_sign_off_dates,
+      award_252_80_sign_off_dates,
+      award_252_100_sign_off_dates,
       clout_white_20,
       clout_white_30,
       clout_white_40,
@@ -117,7 +161,7 @@ function createSqliteOutdoorTableGateway(db) {
       updated_at_time,
       updated_by_username
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const updateStatement = db.prepare(`
     UPDATE outdoor_table_entries
@@ -142,6 +186,13 @@ function createSqliteOutdoorTableGateway(db) {
       award_252_60 = ?,
       award_252_80 = ?,
       award_252_100 = ?,
+      award_252_20_sign_off_dates = ?,
+      award_252_30_sign_off_dates = ?,
+      award_252_40_sign_off_dates = ?,
+      award_252_50_sign_off_dates = ?,
+      award_252_60_sign_off_dates = ?,
+      award_252_80_sign_off_dates = ?,
+      award_252_100_sign_off_dates = ?,
       clout_white_20 = ?,
       clout_white_30 = ?,
       clout_white_40 = ?,
@@ -181,6 +232,13 @@ function createSqliteOutdoorTableGateway(db) {
       payload.award25260 ? 1 : 0,
       payload.award25280 ? 1 : 0,
       payload.award252100 ? 1 : 0,
+      JSON.stringify(payload.award25220SignOffDates ?? ["", "", ""]),
+      JSON.stringify(payload.award25230SignOffDates ?? ["", "", ""]),
+      JSON.stringify(payload.award25240SignOffDates ?? ["", "", ""]),
+      JSON.stringify(payload.award25250SignOffDates ?? ["", "", ""]),
+      JSON.stringify(payload.award25260SignOffDates ?? ["", "", ""]),
+      JSON.stringify(payload.award25280SignOffDates ?? ["", "", ""]),
+      JSON.stringify(payload.award252100SignOffDates ?? ["", "", ""]),
       payload.cloutWhite20 ? 1 : 0,
       payload.cloutWhite30 ? 1 : 0,
       payload.cloutWhite40 ? 1 : 0,
@@ -269,6 +327,13 @@ function createPostgresOutdoorTableGateway(pool) {
       payload.award25260,
       payload.award25280,
       payload.award252100,
+      payload.award25220SignOffDates ?? ["", "", ""],
+      payload.award25230SignOffDates ?? ["", "", ""],
+      payload.award25240SignOffDates ?? ["", "", ""],
+      payload.award25250SignOffDates ?? ["", "", ""],
+      payload.award25260SignOffDates ?? ["", "", ""],
+      payload.award25280SignOffDates ?? ["", "", ""],
+      payload.award252100SignOffDates ?? ["", "", ""],
       payload.cloutWhite20,
       payload.cloutWhite30,
       payload.cloutWhite40,
@@ -304,6 +369,13 @@ function createPostgresOutdoorTableGateway(pool) {
             award_252_60,
             award_252_80,
             award_252_100,
+            award_252_20_sign_off_dates,
+            award_252_30_sign_off_dates,
+            award_252_40_sign_off_dates,
+            award_252_50_sign_off_dates,
+            award_252_60_sign_off_dates,
+            award_252_80_sign_off_dates,
+            award_252_100_sign_off_dates,
             clout_white_20,
             clout_white_30,
             clout_white_40,
@@ -320,7 +392,7 @@ function createPostgresOutdoorTableGateway(pool) {
           VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
             $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30,
-            $31, $32
+            $31, $32, $33, $34, $35, $36, $37, $38, $39
           )
           RETURNING id
         `,
@@ -429,17 +501,24 @@ function createPostgresOutdoorTableGateway(pool) {
             award_252_60 = $18,
             award_252_80 = $19,
             award_252_100 = $20,
-            clout_white_20 = $21,
-            clout_white_30 = $22,
-            clout_white_40 = $23,
-            clout_white_50 = $24,
-            clout_white_60 = $25,
-            clout_white_70_80 = $26,
-            clout_white_90_100 = $27,
-            updated_at_date = $28,
-            updated_at_time = $29,
-            updated_by_username = $30
-          WHERE id = $31
+            award_252_20_sign_off_dates = $21,
+            award_252_30_sign_off_dates = $22,
+            award_252_40_sign_off_dates = $23,
+            award_252_50_sign_off_dates = $24,
+            award_252_60_sign_off_dates = $25,
+            award_252_80_sign_off_dates = $26,
+            award_252_100_sign_off_dates = $27,
+            clout_white_20 = $28,
+            clout_white_30 = $29,
+            clout_white_40 = $30,
+            clout_white_50 = $31,
+            clout_white_60 = $32,
+            clout_white_70_80 = $33,
+            clout_white_90_100 = $34,
+            updated_at_date = $35,
+            updated_at_time = $36,
+            updated_by_username = $37
+          WHERE id = $38
         `,
         [
           ...toStatementValues(payload),

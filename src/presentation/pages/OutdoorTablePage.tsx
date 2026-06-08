@@ -35,13 +35,6 @@ type BooleanFieldKey = keyof Pick<
   | "masterBowman"
   | "grandMasterBowman"
   | "eliteMasterBowman"
-  | "award25220"
-  | "award25230"
-  | "award25240"
-  | "award25250"
-  | "award25260"
-  | "award25280"
-  | "award252100"
   | "cloutWhite20"
   | "cloutWhite30"
   | "cloutWhite40"
@@ -50,9 +43,30 @@ type BooleanFieldKey = keyof Pick<
   | "cloutWhite7080"
   | "cloutWhite90100"
 >;
+type Award252FieldKey = keyof Pick<
+  OutdoorTableEntryPayload,
+  | "award25220"
+  | "award25230"
+  | "award25240"
+  | "award25250"
+  | "award25260"
+  | "award25280"
+  | "award252100"
+>;
+type Award252SignOffFieldKey = keyof Pick<
+  OutdoorTableEntryPayload,
+  | "award25220SignOffDates"
+  | "award25230SignOffDates"
+  | "award25240SignOffDates"
+  | "award25250SignOffDates"
+  | "award25260SignOffDates"
+  | "award25280SignOffDates"
+  | "award252100SignOffDates"
+>;
 
 const CURRENT_YEAR = new Date().getFullYear();
 const BOW_OPTIONS = ["Rec", "Comp", "B/bow", "L/bow", "Flat"] as const;
+const EMPTY_SIGN_OFF_DATES = ["", "", ""];
 const ACHIEVEMENT_COLUMNS: Array<{
   key: BooleanFieldKey;
   label: string;
@@ -68,14 +82,18 @@ const ACHIEVEMENT_COLUMNS: Array<{
   { key: "grandMasterBowman", label: "Grand Master Bowman", tone: "master" },
   { key: "eliteMasterBowman", label: "Elite Master Bowman", tone: "master" },
 ];
-const AWARD_252_COLUMNS: Array<{ key: BooleanFieldKey; label: string }> = [
-  { key: "award25220", label: "20" },
-  { key: "award25230", label: "30" },
-  { key: "award25240", label: "40" },
-  { key: "award25250", label: "50" },
-  { key: "award25260", label: "60" },
-  { key: "award25280", label: "80" },
-  { key: "award252100", label: "100" },
+const AWARD_252_COLUMNS: Array<{
+  awardKey: Award252FieldKey;
+  label: string;
+  signOffKey: Award252SignOffFieldKey;
+}> = [
+  { awardKey: "award25220", label: "20y", signOffKey: "award25220SignOffDates" },
+  { awardKey: "award25230", label: "30y", signOffKey: "award25230SignOffDates" },
+  { awardKey: "award25240", label: "40y", signOffKey: "award25240SignOffDates" },
+  { awardKey: "award25250", label: "50y", signOffKey: "award25250SignOffDates" },
+  { awardKey: "award25260", label: "60y", signOffKey: "award25260SignOffDates" },
+  { awardKey: "award25280", label: "80y", signOffKey: "award25280SignOffDates" },
+  { awardKey: "award252100", label: "100y", signOffKey: "award252100SignOffDates" },
 ];
 const CLOUT_COLUMNS: Array<{ key: BooleanFieldKey; label: string }> = [
   { key: "cloutWhite20", label: "20" },
@@ -86,6 +104,44 @@ const CLOUT_COLUMNS: Array<{ key: BooleanFieldKey; label: string }> = [
   { key: "cloutWhite7080", label: "70/80" },
   { key: "cloutWhite90100", label: "90/100" },
 ];
+
+function buildEmptyAwardSignOffDates() {
+  return [...EMPTY_SIGN_OFF_DATES];
+}
+
+function normalizeAwardSignOffDates(value: string[] | null | undefined) {
+  const normalizedDates = Array.isArray(value)
+    ? value.slice(0, 3).map((entry) => (typeof entry === "string" ? entry : ""))
+    : [];
+
+  while (normalizedDates.length < 3) {
+    normalizedDates.push("");
+  }
+
+  return normalizedDates;
+}
+
+function countCompletedSignOffs(signOffDates: string[]) {
+  return normalizeAwardSignOffDates(signOffDates).filter(Boolean).length;
+}
+
+function getCompleted252Count(
+  entry: Pick<OutdoorTableEntryPayload, Award252FieldKey | Award252SignOffFieldKey>,
+) {
+  return AWARD_252_COLUMNS.reduce(
+    (total, column) =>
+      total + (isAward252Complete(entry, column.awardKey, column.signOffKey) ? 1 : 0),
+    0,
+  );
+}
+
+function isAward252Complete(
+  entry: Pick<OutdoorTableEntryPayload, Award252FieldKey | Award252SignOffFieldKey>,
+  awardKey: Award252FieldKey,
+  signOffKey: Award252SignOffFieldKey,
+) {
+  return entry[awardKey] || countCompletedSignOffs(entry[signOffKey]) >= 3;
+}
 
 function buildEmptyDraft(seasonYear: number): OutdoorTableDraft {
   return {
@@ -111,6 +167,13 @@ function buildEmptyDraft(seasonYear: number): OutdoorTableDraft {
     award25260: false,
     award25280: false,
     award252100: false,
+    award25220SignOffDates: buildEmptyAwardSignOffDates(),
+    award25230SignOffDates: buildEmptyAwardSignOffDates(),
+    award25240SignOffDates: buildEmptyAwardSignOffDates(),
+    award25250SignOffDates: buildEmptyAwardSignOffDates(),
+    award25260SignOffDates: buildEmptyAwardSignOffDates(),
+    award25280SignOffDates: buildEmptyAwardSignOffDates(),
+    award252100SignOffDates: buildEmptyAwardSignOffDates(),
     cloutWhite20: false,
     cloutWhite30: false,
     cloutWhite40: false,
@@ -145,6 +208,13 @@ function buildDraftFromEntry(entry: OutdoorTableEntry): OutdoorTableDraft {
     award25260: entry.award25260,
     award25280: entry.award25280,
     award252100: entry.award252100,
+    award25220SignOffDates: normalizeAwardSignOffDates(entry.award25220SignOffDates),
+    award25230SignOffDates: normalizeAwardSignOffDates(entry.award25230SignOffDates),
+    award25240SignOffDates: normalizeAwardSignOffDates(entry.award25240SignOffDates),
+    award25250SignOffDates: normalizeAwardSignOffDates(entry.award25250SignOffDates),
+    award25260SignOffDates: normalizeAwardSignOffDates(entry.award25260SignOffDates),
+    award25280SignOffDates: normalizeAwardSignOffDates(entry.award25280SignOffDates),
+    award252100SignOffDates: normalizeAwardSignOffDates(entry.award252100SignOffDates),
     cloutWhite20: entry.cloutWhite20,
     cloutWhite30: entry.cloutWhite30,
     cloutWhite40: entry.cloutWhite40,
@@ -156,6 +226,14 @@ function buildDraftFromEntry(entry: OutdoorTableEntry): OutdoorTableDraft {
 }
 
 function toPayload(draft: OutdoorTableDraft): OutdoorTableEntryPayload {
+  const award25220SignOffDates = normalizeAwardSignOffDates(draft.award25220SignOffDates);
+  const award25230SignOffDates = normalizeAwardSignOffDates(draft.award25230SignOffDates);
+  const award25240SignOffDates = normalizeAwardSignOffDates(draft.award25240SignOffDates);
+  const award25250SignOffDates = normalizeAwardSignOffDates(draft.award25250SignOffDates);
+  const award25260SignOffDates = normalizeAwardSignOffDates(draft.award25260SignOffDates);
+  const award25280SignOffDates = normalizeAwardSignOffDates(draft.award25280SignOffDates);
+  const award252100SignOffDates = normalizeAwardSignOffDates(draft.award252100SignOffDates);
+
   return {
     seasonYear: draft.seasonYear,
     archerUsername: draft.archerUsername,
@@ -170,13 +248,20 @@ function toPayload(draft: OutdoorTableDraft): OutdoorTableEntryPayload {
     masterBowman: draft.masterBowman,
     grandMasterBowman: draft.grandMasterBowman,
     eliteMasterBowman: draft.eliteMasterBowman,
-    award25220: draft.award25220,
-    award25230: draft.award25230,
-    award25240: draft.award25240,
-    award25250: draft.award25250,
-    award25260: draft.award25260,
-    award25280: draft.award25280,
-    award252100: draft.award252100,
+    award25220: countCompletedSignOffs(award25220SignOffDates) >= 3,
+    award25230: countCompletedSignOffs(award25230SignOffDates) >= 3,
+    award25240: countCompletedSignOffs(award25240SignOffDates) >= 3,
+    award25250: countCompletedSignOffs(award25250SignOffDates) >= 3,
+    award25260: countCompletedSignOffs(award25260SignOffDates) >= 3,
+    award25280: countCompletedSignOffs(award25280SignOffDates) >= 3,
+    award252100: countCompletedSignOffs(award252100SignOffDates) >= 3,
+    award25220SignOffDates,
+    award25230SignOffDates,
+    award25240SignOffDates,
+    award25250SignOffDates,
+    award25260SignOffDates,
+    award25280SignOffDates,
+    award252100SignOffDates,
     cloutWhite20: draft.cloutWhite20,
     cloutWhite30: draft.cloutWhite30,
     cloutWhite40: draft.cloutWhite40,
@@ -336,6 +421,29 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
     }));
   };
 
+  const handleAward252SignOffDateChange =
+    (field: Award252SignOffFieldKey, index: number) =>
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const nextValue = event.target.value;
+
+      setDraft((currentDraft) => {
+        const nextDates = normalizeAwardSignOffDates(currentDraft[field]);
+        nextDates[index] = nextValue;
+        const linkedAward =
+          AWARD_252_COLUMNS.find((column) => column.signOffKey === field)?.awardKey ?? null;
+        const nextDraft: OutdoorTableDraft = {
+          ...currentDraft,
+          [field]: nextDates,
+        };
+
+        if (linkedAward) {
+          nextDraft[linkedAward] = countCompletedSignOffs(nextDates) >= 3;
+        }
+
+        return nextDraft;
+      });
+    };
+
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void persistMutation.mutateAsync();
@@ -445,9 +553,12 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
             <div className="outdoor-table-checkbox-groups">
               <section className="outdoor-table-checkbox-card">
                 <h3>Previous Achievements</h3>
-                <div className="outdoor-table-checkbox-grid">
+                <p className="outdoor-table-card-copy">
+                  Tick the classifications the archer had already achieved before this season.
+                </p>
+                <div className="outdoor-table-checkbox-grid outdoor-table-checkbox-grid--achievements">
                   {ACHIEVEMENT_COLUMNS.map((column) => (
-                    <label key={column.key} className="outdoor-table-checkbox">
+                    <label key={column.key} className="outdoor-table-checkbox outdoor-table-checkbox--tile">
                       <input
                         type="checkbox"
                         checked={draft[column.key]}
@@ -459,27 +570,63 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                 </div>
               </section>
 
-              <section className="outdoor-table-checkbox-card">
-                <h3>252</h3>
-                <div className="outdoor-table-checkbox-grid outdoor-table-checkbox-grid--compact">
+              <section className="outdoor-table-checkbox-card outdoor-table-checkbox-card--wide">
+                <h3>252 Progress</h3>
+                <p className="outdoor-table-card-copy">
+                  Each distance needs three qualifying rounds of 252 or more before the award is complete.
+                </p>
+                <div className="outdoor-table-252-grid">
                   {AWARD_252_COLUMNS.map((column) => (
-                    <label key={column.key} className="outdoor-table-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={draft[column.key]}
-                        onChange={handleBooleanChange(column.key)}
-                      />
-                      <span>{column.label}</span>
-                    </label>
+                    <article key={column.awardKey} className="outdoor-table-252-card">
+                      <div className="outdoor-table-252-card-header">
+                        <div>
+                          <h4>{column.label}</h4>
+                          <p>
+                            {countCompletedSignOffs(draft[column.signOffKey])}/3 qualifying rounds
+                          </p>
+                        </div>
+                        <span
+                          className={`outdoor-table-status-pill ${
+                            isAward252Complete(draft, column.awardKey, column.signOffKey)
+                              ? "is-complete"
+                              : "is-pending"
+                          }`}
+                        >
+                          {isAward252Complete(draft, column.awardKey, column.signOffKey)
+                            ? "Awarded"
+                            : "In progress"}
+                        </span>
+                      </div>
+                      <div className="outdoor-table-252-signoffs">
+                        {normalizeAwardSignOffDates(draft[column.signOffKey]).map(
+                          (signOffDate, index) => (
+                            <label
+                              key={`${column.signOffKey}-${index}`}
+                              className="outdoor-table-252-signoff-row"
+                            >
+                              <span>Round {index + 1}</span>
+                              <input
+                                type="date"
+                                value={signOffDate}
+                                onChange={handleAward252SignOffDateChange(column.signOffKey, index)}
+                              />
+                            </label>
+                          ),
+                        )}
+                      </div>
+                    </article>
                   ))}
                 </div>
               </section>
 
               <section className="outdoor-table-checkbox-card">
-                <h3>Clout White Award</h3>
+                <h3>Sight Marks Agreed</h3>
+                <p className="outdoor-table-card-copy">
+                  Record the distances where sight marks have been agreed.
+                </p>
                 <div className="outdoor-table-checkbox-grid outdoor-table-checkbox-grid--compact">
                   {CLOUT_COLUMNS.map((column) => (
-                    <label key={column.key} className="outdoor-table-checkbox">
+                    <label key={column.key} className="outdoor-table-checkbox outdoor-table-checkbox--tile">
                       <input
                         type="checkbox"
                         checked={draft[column.key]}
@@ -548,7 +695,7 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                     className="outdoor-table-group-cell outdoor-table-group-cell--clout"
                     colSpan={CLOUT_COLUMNS.length}
                   >
-                    Clout White Award
+                    Sight Marks Agreed
                   </th>
                 </tr>
                 <tr>
@@ -565,7 +712,10 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                     </th>
                   ))}
                   {AWARD_252_COLUMNS.map((column) => (
-                    <th key={column.key} className="outdoor-table-head outdoor-table-head--distance">
+                    <th
+                      key={column.awardKey}
+                      className="outdoor-table-head outdoor-table-head--distance"
+                    >
                       {column.label}
                     </th>
                   ))}
@@ -605,11 +755,17 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                     ))}
                     {AWARD_252_COLUMNS.map((column) => (
                       <td
-                        key={column.key}
+                        key={column.awardKey}
                         className={`outdoor-table-mark outdoor-table-mark--252 ${
-                          entry[column.key] ? "is-active" : ""
+                          isAward252Complete(entry, column.awardKey, column.signOffKey)
+                            ? "is-active"
+                            : ""
                         }`}
-                      />
+                      >
+                        <span className="outdoor-table-mark-count">
+                          {countCompletedSignOffs(entry[column.signOffKey])}/3
+                        </span>
+                      </td>
                     ))}
                     {CLOUT_COLUMNS.map((column) => (
                       <td
@@ -634,11 +790,12 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
               </h3>
               <p>Handicap: {entry.handicap ?? "Not set"}</p>
               <p>
-                Previous achievements: {getActiveCount(entry, ACHIEVEMENT_COLUMNS.map((column) => column.key))}
+                Previous achievements:{" "}
+                {getActiveCount(entry, ACHIEVEMENT_COLUMNS.map((column) => column.key))}
               </p>
-              <p>252 badges: {getActiveCount(entry, AWARD_252_COLUMNS.map((column) => column.key))}</p>
+              <p>252 badges: {getCompleted252Count(entry)}</p>
               <p>
-                Clout white awards: {getActiveCount(entry, CLOUT_COLUMNS.map((column) => column.key))}
+                Sight marks agreed: {getActiveCount(entry, CLOUT_COLUMNS.map((column) => column.key))}
               </p>
             </article>
           ))}

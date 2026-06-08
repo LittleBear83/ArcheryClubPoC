@@ -400,6 +400,13 @@ export function bootstrapSqliteBaseSchema({
       award_252_60 INTEGER NOT NULL DEFAULT 0,
       award_252_80 INTEGER NOT NULL DEFAULT 0,
       award_252_100 INTEGER NOT NULL DEFAULT 0,
+      award_252_20_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]',
+      award_252_30_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]',
+      award_252_40_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]',
+      award_252_50_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]',
+      award_252_60_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]',
+      award_252_80_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]',
+      award_252_100_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]',
       clout_white_20 INTEGER NOT NULL DEFAULT 0,
       clout_white_30 INTEGER NOT NULL DEFAULT 0,
       clout_white_40 INTEGER NOT NULL DEFAULT 0,
@@ -417,6 +424,50 @@ export function bootstrapSqliteBaseSchema({
       FOREIGN KEY (updated_by_username) REFERENCES users(username)
     )
   `);
+
+  const outdoorTableColumns = db.prepare(`PRAGMA table_info(outdoor_table_entries)`).all();
+
+  if (!outdoorTableColumns.some((column) => column.name === "award_252_20_sign_off_dates")) {
+    db.exec(
+      `ALTER TABLE outdoor_table_entries ADD COLUMN award_252_20_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]'`,
+    );
+  }
+
+  if (!outdoorTableColumns.some((column) => column.name === "award_252_30_sign_off_dates")) {
+    db.exec(
+      `ALTER TABLE outdoor_table_entries ADD COLUMN award_252_30_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]'`,
+    );
+  }
+
+  if (!outdoorTableColumns.some((column) => column.name === "award_252_40_sign_off_dates")) {
+    db.exec(
+      `ALTER TABLE outdoor_table_entries ADD COLUMN award_252_40_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]'`,
+    );
+  }
+
+  if (!outdoorTableColumns.some((column) => column.name === "award_252_50_sign_off_dates")) {
+    db.exec(
+      `ALTER TABLE outdoor_table_entries ADD COLUMN award_252_50_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]'`,
+    );
+  }
+
+  if (!outdoorTableColumns.some((column) => column.name === "award_252_60_sign_off_dates")) {
+    db.exec(
+      `ALTER TABLE outdoor_table_entries ADD COLUMN award_252_60_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]'`,
+    );
+  }
+
+  if (!outdoorTableColumns.some((column) => column.name === "award_252_80_sign_off_dates")) {
+    db.exec(
+      `ALTER TABLE outdoor_table_entries ADD COLUMN award_252_80_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]'`,
+    );
+  }
+
+  if (!outdoorTableColumns.some((column) => column.name === "award_252_100_sign_off_dates")) {
+    db.exec(
+      `ALTER TABLE outdoor_table_entries ADD COLUMN award_252_100_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]'`,
+    );
+  }
 
   db.exec(COACHING_SESSIONS_TABLE_SQL);
   db.exec(COACHING_SESSION_BOOKINGS_TABLE_SQL);

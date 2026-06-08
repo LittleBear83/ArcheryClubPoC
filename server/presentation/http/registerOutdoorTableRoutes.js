@@ -1,5 +1,5 @@
 const BOW_TYPE_OPTIONS = new Set(["Rec", "Comp", "B/bow", "L/bow", "Flat"]);
-const BOOLEAN_FIELD_KEYS = [
+const STANDARD_BOOLEAN_FIELD_KEYS = [
   "archer3rd",
   "archer2nd",
   "archer1st",
@@ -23,6 +23,15 @@ const BOOLEAN_FIELD_KEYS = [
   "cloutWhite60",
   "cloutWhite7080",
   "cloutWhite90100",
+];
+const AWARD_252_FIELD_MAPPINGS = [
+  { awardKey: "award25220", signOffKey: "award25220SignOffDates" },
+  { awardKey: "award25230", signOffKey: "award25230SignOffDates" },
+  { awardKey: "award25240", signOffKey: "award25240SignOffDates" },
+  { awardKey: "award25250", signOffKey: "award25250SignOffDates" },
+  { awardKey: "award25260", signOffKey: "award25260SignOffDates" },
+  { awardKey: "award25280", signOffKey: "award25280SignOffDates" },
+  { awardKey: "award252100", signOffKey: "award252100SignOffDates" },
 ];
 const INVALID_HANDICAP = Symbol("invalid-handicap");
 
@@ -76,6 +85,44 @@ function normalizeBoolean(value) {
   return null;
 }
 
+function normalizeSignOffDates(value) {
+  if (value == null) {
+    return ["", "", ""];
+  }
+
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const normalizedDates = value.slice(0, 3).map((entry) => {
+    if (entry == null || entry === "") {
+      return "";
+    }
+
+    if (typeof entry !== "string") {
+      return null;
+    }
+
+    const trimmedEntry = entry.trim();
+
+    if (!trimmedEntry) {
+      return "";
+    }
+
+    return /^\d{4}-\d{2}-\d{2}$/.test(trimmedEntry) ? trimmedEntry : null;
+  });
+
+  if (normalizedDates.some((entry) => entry === null)) {
+    return null;
+  }
+
+  while (normalizedDates.length < 3) {
+    normalizedDates.push("");
+  }
+
+  return normalizedDates;
+}
+
 function buildOutdoorTablePayload(body) {
   const seasonYear = normalizeSeasonYear(body?.seasonYear);
   const archerUsername = normalizeText(body?.archerUsername, {
@@ -105,7 +152,7 @@ function buildOutdoorTablePayload(body) {
     handicap,
   };
 
-  for (const fieldKey of BOOLEAN_FIELD_KEYS) {
+  for (const fieldKey of STANDARD_BOOLEAN_FIELD_KEYS) {
     const normalizedValue = normalizeBoolean(body?.[fieldKey]);
 
     if (normalizedValue === null) {
@@ -113,6 +160,20 @@ function buildOutdoorTablePayload(body) {
     }
 
     payload[fieldKey] = normalizedValue;
+  }
+
+  for (const { awardKey, signOffKey } of AWARD_252_FIELD_MAPPINGS) {
+    const legacyAwardValue = normalizeBoolean(body?.[awardKey]);
+    const signOffDates = normalizeSignOffDates(body?.[signOffKey]);
+
+    if (legacyAwardValue === null || signOffDates === null) {
+      return null;
+    }
+
+    const completedRounds = signOffDates.filter(Boolean).length;
+
+    payload[awardKey] = legacyAwardValue || completedRounds >= 3;
+    payload[signOffKey] = signOffDates;
   }
 
   return payload;

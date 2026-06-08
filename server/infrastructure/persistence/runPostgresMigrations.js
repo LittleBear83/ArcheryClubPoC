@@ -176,6 +176,13 @@ function buildInitialSchemaSql() {
       award_252_60 BOOLEAN NOT NULL DEFAULT FALSE,
       award_252_80 BOOLEAN NOT NULL DEFAULT FALSE,
       award_252_100 BOOLEAN NOT NULL DEFAULT FALSE,
+      award_252_20_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb,
+      award_252_30_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb,
+      award_252_40_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb,
+      award_252_50_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb,
+      award_252_60_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb,
+      award_252_80_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb,
+      award_252_100_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb,
       clout_white_20 BOOLEAN NOT NULL DEFAULT FALSE,
       clout_white_30 BOOLEAN NOT NULL DEFAULT FALSE,
       clout_white_40 BOOLEAN NOT NULL DEFAULT FALSE,
@@ -930,6 +937,34 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE lost_arrows
       ADD COLUMN IF NOT EXISTS found_seen_at_time TEXT
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS award_252_20_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS award_252_30_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS award_252_40_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS award_252_50_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS award_252_60_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS award_252_80_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS award_252_100_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb
     `);
 
     await client.query("COMMIT");

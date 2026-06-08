@@ -622,7 +622,8 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
               <section className="outdoor-table-checkbox-card">
                 <h3>Sight Marks Agreed</h3>
                 <p className="outdoor-table-card-copy">
-                  Record the distances where sight marks have been agreed.
+                  This now comes from the member profile distance sign-offs for the matching bow style.
+                  Update it on the profile page and it will appear here automatically.
                 </p>
                 <div className="outdoor-table-checkbox-grid outdoor-table-checkbox-grid--compact">
                   {CLOUT_COLUMNS.map((column) => (
@@ -630,7 +631,8 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                       <input
                         type="checkbox"
                         checked={draft[column.key]}
-                        onChange={handleBooleanChange(column.key)}
+                        disabled
+                        readOnly
                       />
                       <span>{column.label}</span>
                     </label>

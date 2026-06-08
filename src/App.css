@@ -6723,6 +6723,10 @@ button:disabled {
   grid-column: span 4;
 }
 
+.outdoor-table-checkbox-card:first-child {
+  grid-column: span 8;
+}
+
 .outdoor-table-checkbox-card--wide {
   grid-column: span 12;
 }
@@ -6749,8 +6753,6 @@ button:disabled {
 
 .outdoor-table-checkbox-grid--achievements {
   grid-template-columns: repeat(9, minmax(110px, 1fr));
-  overflow-x: auto;
-  padding-bottom: 0.25rem;
 }
 
 .outdoor-table-checkbox {

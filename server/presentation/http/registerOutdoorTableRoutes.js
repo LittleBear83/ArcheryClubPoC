@@ -33,6 +33,13 @@ const AWARD_252_FIELD_MAPPINGS = [
   { awardKey: "award25280", signOffKey: "award25280SignOffDates" },
   { awardKey: "award252100", signOffKey: "award252100SignOffDates" },
 ];
+const BOW_TYPE_TO_DISCIPLINE = {
+  Rec: "Recurve Bow",
+  Comp: "Compound Bow",
+  "B/bow": "Bare Bow",
+  "L/bow": "Long Bow",
+  Flat: "Flat Bow",
+};
 const INVALID_HANDICAP = Symbol("invalid-handicap");
 
 function normalizeText(value, { maxLength = 64, required = false } = {}) {
@@ -185,10 +192,49 @@ export function registerOutdoorTableRoutes({
   getActorUser,
   getUtcTimestampParts,
   memberAuthGateway,
+  memberDistanceSignOffRepository,
   outdoorTableGateway,
   PERMISSIONS,
   serverEventBus,
 }) {
+  async function applySightMarksFromProfile(entry) {
+    if (!entry) {
+      return entry;
+    }
+
+    const discipline = BOW_TYPE_TO_DISCIPLINE[entry.bowType];
+
+    if (!discipline) {
+      return entry;
+    }
+
+    const [disciplineGroup] = await memberDistanceSignOffRepository.listByDiscipline(
+      entry.archerUsername,
+      [discipline],
+    );
+    const hasSignedOffDistance = (distanceYards) =>
+      Boolean(
+        disciplineGroup?.distances?.find(
+          (distance) => distance.distanceYards === distanceYards,
+        )?.signOff,
+      );
+
+    return {
+      ...entry,
+      cloutWhite20: hasSignedOffDistance(20),
+      cloutWhite30: hasSignedOffDistance(30),
+      cloutWhite40: hasSignedOffDistance(40),
+      cloutWhite50: hasSignedOffDistance(50),
+      cloutWhite60: hasSignedOffDistance(60),
+      cloutWhite7080: hasSignedOffDistance(80),
+      cloutWhite90100: hasSignedOffDistance(100),
+    };
+  }
+
+  async function applySightMarksFromProfiles(entries) {
+    return Promise.all(entries.map((entry) => applySightMarksFromProfile(entry)));
+  }
+
   function broadcastOutdoorTableUpdated(scope = "outdoor-table") {
     serverEventBus?.broadcastToAll("outdoor-table.updated", {
       changedAt: new Date().toISOString(),
@@ -222,10 +268,11 @@ export function registerOutdoorTableRoutes({
     const requestedYear = normalizeSeasonYear(req.query?.year);
     const currentYear = new Date().getUTCFullYear();
     const seasonYear = requestedYear ?? currentYear;
-    const [rows, availableYearsRaw] = await Promise.all([
+    const [rowsRaw, availableYearsRaw] = await Promise.all([
       outdoorTableGateway.listEntriesByYear(seasonYear),
       outdoorTableGateway.listAvailableYears(),
     ]);
+    const rows = await applySightMarksFromProfiles(rowsRaw);
     const availableYears = Array.from(
       new Set([seasonYear, currentYear, ...availableYearsRaw]),
     ).sort((left, right) => right - left);
@@ -276,14 +323,14 @@ export function registerOutdoorTableRoutes({
     }
 
     const [createdAtDate, createdAtTime] = getUtcTimestampParts();
-    const entry = await outdoorTableGateway.createEntry({
+    const entry = await applySightMarksFromProfile(await outdoorTableGateway.createEntry({
       ...payload,
       createdAtDate,
       createdAtTime,
       updatedAtDate: createdAtDate,
       updatedAtTime: createdAtTime,
       updatedByUsername: actor.username,
-    });
+    }));
 
     broadcastOutdoorTableUpdated("outdoor-table.create");
 
@@ -345,13 +392,13 @@ export function registerOutdoorTableRoutes({
     }
 
     const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
-    const entry = await outdoorTableGateway.updateEntry({
+    const entry = await applySightMarksFromProfile(await outdoorTableGateway.updateEntry({
       ...payload,
       id: entryId,
       updatedAtDate,
       updatedAtTime,
       updatedByUsername: actor.username,
-    });
+    }));
 
     broadcastOutdoorTableUpdated("outdoor-table.update");
 

@@ -3502,6 +3502,7 @@ registerOutdoorTableRoutes({
   getActorUser,
   getUtcTimestampParts,
   memberAuthGateway,
+  memberDistanceSignOffRepository,
   outdoorTableGateway,
   PERMISSIONS,
   serverEventBus,

@@ -17,6 +17,7 @@ export function RecordsDesktopView({
   isModalOpen,
   missingFields,
   roundOptions,
+  scoreStatusOptions,
   submitMessage,
   updateField,
 }: RecordsPageState) {
@@ -49,7 +50,7 @@ export function RecordsDesktopView({
               className="records-page-button"
               onClick={handleOpenModal}
             >
-              submit new score
+              submit new scores
             </Button>
           </div>
         </div>
@@ -84,22 +85,30 @@ export function RecordsDesktopView({
       <Modal
         open={isModalOpen}
         onClose={handleCloseModal}
-        title="Submit New Score"
+        title="Submit New Scores"
         contentClassName="records-modal"
       >
         <form className="records-form" onSubmit={handleSubmit} noValidate>
           <div className="records-form-grid">
-            <label className={isFieldMissing("where") ? "records-field records-field--invalid" : "records-field"}>
-              Where
-              <select
-                ref={assignFieldRef("where")}
-                value={form.where}
-                onChange={(event) => updateField("where", event.target.value)}
-              >
-                <option value="">Select location</option>
-                <option value="indoor">Indoor</option>
-                <option value="outdoor">Outdoor</option>
-              </select>
+            <label className={isFieldMissing("location") ? "records-field records-field--invalid" : "records-field"}>
+              Location
+              <input
+                ref={assignFieldRef("location")}
+                type="text"
+                value={form.location}
+                onChange={(event) => updateField("location", event.target.value)}
+                placeholder="Selby"
+              />
+            </label>
+
+            <label className={isFieldMissing("dateShoot") ? "records-field records-field--invalid" : "records-field"}>
+              Date Shoot
+              <input
+                ref={assignFieldRef("dateShoot")}
+                type="date"
+                value={form.dateShoot}
+                onChange={(event) => updateField("dateShoot", event.target.value)}
+              />
             </label>
 
             <label className={isFieldMissing("round") ? "records-field records-field--invalid" : "records-field"}>
@@ -108,11 +117,8 @@ export function RecordsDesktopView({
                 ref={assignFieldRef("round")}
                 value={form.round}
                 onChange={(event) => updateField("round", event.target.value)}
-                disabled={!form.where}
               >
-                <option value="">
-                  {form.where ? "Select round" : "Choose where first"}
-                </option>
+                <option value="">Select round</option>
                 {roundOptions.map((round) => (
                   <option key={round} value={round}>
                     {round}
@@ -142,22 +148,43 @@ export function RecordsDesktopView({
                 ))}
               </select>
             </label>
+
+            <label
+              className={
+                isFieldMissing("scoreStatus")
+                  ? "records-field records-field--invalid"
+                  : "records-field"
+              }
+            >
+              Score Status
+              <select
+                ref={assignFieldRef("scoreStatus")}
+                value={form.scoreStatus}
+                onChange={(event) => updateField("scoreStatus", event.target.value)}
+              >
+                <option value="">Select score status</option>
+                {scoreStatusOptions.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           <div className="records-score-table-wrap">
             <table className="records-score-table">
               <thead>
                 <tr>
-                  <th scope="col">Hits</th>
-                  <th scope="col">Misses</th>
                   <th scope="col">Score</th>
+                  <th scope="col">Hits</th>
                   <th scope="col">Golds</th>
                   <th scope="col">X&apos;s</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  {(["hits", "misses", "score", "golds", "xs"] as const).map((fieldKey) => (
+                  {(["score", "hits", "golds", "xs"] as const).map((fieldKey) => (
                     <td key={fieldKey}>
                       <input
                         ref={assignFieldRef(fieldKey)}

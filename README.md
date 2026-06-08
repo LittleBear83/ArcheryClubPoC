@@ -1,31 +1,43 @@
 # ArcheryClubPoC
 
-ArcheryClubPoC is a proof-of-concept web application for an archery club. It combines a React frontend with a small Express and SQLite backend to explore how club members, guests, events, and range usage could be managed in a single internal system.
+ArcheryClubPoC is a proof-of-concept web application for Selby Archers. It
+combines a React frontend with an Express backend to explore how club members,
+guests, bookings, coaching, tournaments, equipment, and beginner workflows can
+be managed in one internal portal.
 
-The project is aimed at validating the workflow and user experience rather than being a finished production platform. It currently focuses on member login, guest sign-in, calendar-based club information, and simple range usage reporting.
+The project is still positioned as a proof of concept, but the current codebase
+is much broader than a simple login-and-calendar demo.
 
-## What This Project Does
+## Current Feature Surface
 
-The app currently includes:
+The application currently includes:
 
-- Member login using username/password.
-- Simulated RFID login support for members.
-- Guest sign-in recording.
-- A home page showing signed-up events and members recently active at the range.
-- An event and competition calendar with:
-  recurring range-closure rules,
-  event types such as competition, social event, and range closed,
-  booking conflict checks for duplicate date/time slots,
-  a split view with calendar on the left and date summary on the right.
-- A coaching calendar for planned sessions.
-- A range usage dashboard showing usage by hour, weekday, and date range.
-- Supporting club pages such as feedback, ideas, and lost and found.
+- member login with username/password
+- RFID-based sign-in and session handoff flows
+- guest sign-in
+- cookie-backed authenticated sessions
+- a home dashboard with announcements, range members, bookings, reminders, and
+  beginner/coach dashboards
+- announcements management
+- event and coaching scheduling with approvals and bookings
+- tournament setup, registration, score submission, and competitor export
+- member profile administration and RFID assignment
+- role and permission management
+- committee role administration and org chart display
+- equipment inventory, assignment, storage, returns, and decommissioning
+- loan bow management
+- beginners course administration
+- Have a Go session administration
+- range usage and attendance reporting
+- mobile-specific layouts for larger feature areas
+- server-sent events for near-real-time refresh, with fallback polling in
+  selected views
 
 ## Tech Stack
 
-- Frontend: React, React Router, Vite
-- Backend: Express
-- Database: SQLite via `better-sqlite3`
+- Frontend: React 19, React Router, React Query, Vite, TypeScript
+- Backend: Express 5
+- Database: SQLite by default, PostgreSQL supported in code
 - Tooling: ESLint
 
 ## Project Structure
@@ -34,30 +46,32 @@ The app currently includes:
   Frontend application code.
 - `src/bootstrap/`
   Frontend composition root and provider wiring.
-- `src/application/`
-  Frontend use cases that coordinate domain behaviour.
+- `src/application/usecases/`
+  Frontend use cases for richer CRUD and workflow areas.
 - `src/domain/`
   Frontend entities and repository contracts.
 - `src/data/`
-  Frontend repository implementations and data sources.
+  Frontend repository implementations.
+- `src/lib/`
+  Shared infrastructure such as the API client, query client, and SSE helpers.
 - `src/presentation/pages/`
-  Main screens such as home, event calendar, coaching calendar, and range usage.
+  Main screens and page-specific feature folders.
 - `src/presentation/components/`
-  Shared UI pieces such as the calendar, modal, and side drawer.
+  Shared UI components.
+- `src/presentation/state/`
+  Shared page state, realtime diagnostics, and SSE fallback hooks.
 - `server/`
-  Backend entrypoint and delivery layer.
+  Backend composition root, routes, and infrastructure.
 - `server/bootstrap/`
-  Backend startup and framework composition.
+  Backend startup and persistence bootstrap.
 - `server/config/`
   Runtime and environment-derived configuration.
 - `server/domain/`
-  Backend domain constants and business concepts shared across features.
+  Backend constants and shared services.
 - `server/infrastructure/`
-  Backend persistence and framework-facing infrastructure.
-- `server/data/auth.sqlite`
-  Local SQLite database file used by the backend.
+  Persistence, migrations, and infrastructure helpers.
 - `docs/DeveloperGuide.md`
-  Developer-facing architecture and implementation guide for extending the application.
+  Main developer-facing guide to the current application.
 
 ## Running Locally
 
@@ -67,83 +81,97 @@ The app currently includes:
 npm ci
 ```
 
-2. Start the frontend and backend together:
+2. Start frontend and backend together:
 
 ```bash
 npm run dev:full
 ```
 
-3. Open the app in your browser using the Vite development URL shown in the terminal.
+3. Open the Vite development URL shown in the terminal.
 
-The backend runs from `server/index.js` and the frontend runs through Vite.
-During development, `npm run dev:full` starts both with `concurrently`.
-
-## Available Scripts
+Useful alternatives:
 
 - `npm run dev`
   Starts the Vite client only.
 - `npm run dev:server`
   Starts the Express server only.
-- `npm run dev:full`
-  Starts both the Express server and the Vite client.
-- `npm run build`
-  Builds the frontend for production.
 - `npm run preview`
-  Serves the built frontend through Vite preview.
+  Serves the built frontend only, not the backend.
 - `npm run start`
-  Starts the Express server.
+  Starts the Express server and serves the built frontend when `dist/` exists.
+
+## Available Scripts
+
+- `npm run dev`
+- `npm run dev:server`
+- `npm run dev:full`
+- `npm run build`
+- `npm run preview`
+- `npm run start`
 - `npm run lint`
-  Runs ESLint across the project.
 - `npm run typecheck`
-  Runs the TypeScript compiler without emitting files.
 - `npm run migrate:postgres`
-  Runs the SQLite-to-PostgreSQL migration script.
 - `npm test`
-  Runs the project test suite.
 
-## Database Notes
+## Database And Runtime Notes
 
-The backend creates the SQLite database automatically if it does not already exist. It also seeds a small set of example users for testing the proof of concept.
-
-Live mode uses `server/data/auth.live.sqlite` by default and seeds baseline
-live accounts including `Cfleetham` and `tstark`. On SQLite live mode those
-baseline accounts are upserted on startup so an existing live database can pick
-them up. You can override the database path with `DATABASE_PATH`.
-
-The runtime now understands two database engines:
+The backend currently supports two database engines:
 
 - `sqlite`
-  Default for local development. Uses `DATABASE_PATH` or the built-in
-  `server/data/*.sqlite` paths.
+  Default for local development.
 - `postgres`
-  Intended for the next production migration step. Set either `DATABASE_URL`
-  or `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. When
-  running on Cloud Run with Cloud SQL, `INSTANCE_CONNECTION_NAME` can be used
-  to connect through the `/cloudsql/...` Unix socket path.
+  Implemented for migration and runtime validation work, but still part of the
+  active rollout.
 
-PostgreSQL runtime configuration and persistence support now exist in the
-codebase, but rollout is still an active migration effort. Treat SQLite as the
-default working runtime unless you are explicitly validating the PostgreSQL path
-described in `docs/PostgresMigrationPlan.md`.
+SQLite notes:
 
-RFID simulation is hidden in production builds by default. To deliberately
-enable it for a non-live test build, set `VITE_ENABLE_RFID_SIMULATOR=true`
-before building the client.
+- the local database is created automatically if needed
+- non-live mode defaults to `server/data/auth.sqlite`
+- live mode defaults to `server/data/auth.live.sqlite`
+- you can override the path with `DATABASE_PATH`
 
-Current backend data includes:
+PostgreSQL notes:
 
-- users
-- user types
-- user disciplines
-- member login events
-- guest login events
+- set `DATABASE_URL`, or set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and
+  `DB_PASSWORD`
+- `INSTANCE_CONNECTION_NAME` can be used for Cloud SQL socket connections
+
+Other important runtime notes:
+
+- `ARCHERY_APP_MODE` or `APP_ENV` controls development versus live mode
+- live mode requires `SESSION_SECRET`
+- Express timeouts are configurable through
+  `HEADERS_TIMEOUT_MS`, `KEEP_ALIVE_TIMEOUT_MS`, and `REQUEST_TIMEOUT_MS`
+- exports are written under `server/data/exports`
+
+## Realtime And Auth Notes
+
+Current runtime behavior includes:
+
+- `HttpOnly` cookie-backed sessions
+- CSRF protection for mutating APIs, excluding session-creation routes
+- auth and API rate limiting
+- authenticated SSE at `/api/events`
+- public pre-login SSE at `/api/public-events`
+- frontend fallback polling when SSE is unavailable in selected areas
+
+## Related Documentation
+
+- `docs/DeveloperGuide.md`
+  Main architecture and onboarding guide.
+- `docs/SSEImplementationTodo.md`
+  Current SSE rollout status and remaining hardening work.
+- `docs/PostgresMigrationPlan.md`
+  PostgreSQL migration details.
+- `docs/ProductionSecurity.md`
+  Security and deployment guidance.
+- `docs/NewMemberPortalGuide.md`
+  Member-facing usage guide.
 
 ## Current Status
 
-This repository is a working proof of concept for club operations, not a complete production-ready system. The current implementation is strongest as a demo and foundation for future work such as:
-
-- stronger authentication and authorization
-- persistent event management APIs
-- real booking workflows
-- richer reporting
-- deployment and environment configuration
+This repository is a working internal proof of concept with real workflow
+coverage across auth, scheduling, equipment, and beginner operations. It is not
+yet a finished production platform, and the biggest active platform-level work
+items remain PostgreSQL rollout, deployed-runtime hardening, and continued
+modularization of some large backend areas such as the beginners-course logic.

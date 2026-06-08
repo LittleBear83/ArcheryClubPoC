@@ -1,5 +1,10 @@
 import { useMemo, useRef, useState } from "react";
-import { DISCIPLINE_OPTIONS, INITIAL_FORM, ROUND_OPTIONS } from "./recordsConstants";
+import {
+  CLUB_RECORD_ROUNDS,
+  DISCIPLINE_OPTIONS,
+  INITIAL_FORM,
+  SCORE_STATUS_OPTIONS,
+} from "./recordsConstants";
 import type { FieldKey } from "./recordsConstants";
 
 export function useRecordsPageState() {
@@ -11,21 +16,16 @@ export function useRecordsPageState() {
     {},
   );
 
-  const roundOptions = useMemo(() => {
-    if (form.where !== "indoor" && form.where !== "outdoor") {
-      return [];
-    }
-
-    return ROUND_OPTIONS[form.where];
-  }, [form.where]);
+  const roundOptions = useMemo(() => CLUB_RECORD_ROUNDS, []);
 
   const requiredFieldOrder: FieldKey[] = [
-    "where",
+    "location",
+    "dateShoot",
     "round",
     "discipline",
-    "hits",
-    "misses",
+    "scoreStatus",
     "score",
+    "hits",
     "golds",
     "xs",
   ];
@@ -53,17 +53,10 @@ export function useRecordsPageState() {
 
   const updateField = (fieldKey: FieldKey, value: string) => {
     setForm((current) => {
-      const nextForm =
-        fieldKey === "where"
-          ? {
-              ...current,
-              where: value,
-              round: "",
-            }
-          : {
-              ...current,
-              [fieldKey]: value,
-            };
+      const nextForm = {
+        ...current,
+        [fieldKey]: value,
+      };
 
       setMissingFields(validateForm(nextForm));
       return nextForm;
@@ -80,7 +73,7 @@ export function useRecordsPageState() {
       return;
     }
 
-    setSubmitMessage("The recored has been submitted to Golden Records.");
+    setSubmitMessage("The record has been submitted to Golden Records.");
     handleCloseModal();
   };
 
@@ -98,6 +91,7 @@ export function useRecordsPageState() {
     isModalOpen,
     missingFields,
     roundOptions,
+    scoreStatusOptions: SCORE_STATUS_OPTIONS,
     submitMessage,
     updateField,
   };

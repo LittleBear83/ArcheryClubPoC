@@ -25,6 +25,7 @@ import { ReportingPage } from "./ReportingPage";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { GeneralInfoPage } from "./GeneralInfoPage";
 import { RecordsPage } from "./RecordsPage";
+import { OutdoorTablePage } from "./OutdoorTablePage";
 import { AnnouncementsPage } from "./AnnouncementsPage";
 import { formatDate } from "../../utils/dateTime";
 import {
@@ -165,6 +166,7 @@ const pageTitleMap = {
   "ideas-form": "Ideas Form",
   tournaments: "Tournaments",
   records: "Records",
+  "outdoor-table": "Outdoor Table",
   "tournament-setup": "Tournament Setup",
   "committee-org-chart": "Committee Org Chart",
   "committee-admin": "Committee Admin",
@@ -189,6 +191,7 @@ const pathToPageId = {
   "/ideas-form": "ideas-form",
   "/tournaments": "tournaments",
   "/records": "records",
+  "/outdoor-table": "outdoor-table",
   "/tournament-setup": "tournament-setup",
   "/committee-org-chart": "committee-org-chart",
   "/committee-admin": "committee-admin",
@@ -793,6 +796,10 @@ export function HomePage({
               }
             />
             <Route path="/records" element={<RecordsPage />} />
+            <Route
+              path="/outdoor-table"
+              element={<OutdoorTablePage currentUserProfile={currentUserProfile} />}
+            />
             <Route
               path="/tournament-setup"
               element={

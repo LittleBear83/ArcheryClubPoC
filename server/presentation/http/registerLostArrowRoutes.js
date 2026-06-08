@@ -292,9 +292,21 @@ export function registerLostArrowRoutes({
       return;
     }
 
+    const notices = await lostArrowGateway.listFoundLostArrowsForUser(actor.username);
+
+    if (notices.length > 0) {
+      const [seenAtDate, seenAtTime] = getUtcTimestampParts();
+
+      await lostArrowGateway.markFoundLostArrowsSeenForUser({
+        seenAtDate,
+        seenAtTime,
+        username: actor.username,
+      });
+    }
+
     res.json({
       success: true,
-      notices: await lostArrowGateway.listFoundLostArrowsForUser(actor.username),
+      notices,
     });
   });
 }

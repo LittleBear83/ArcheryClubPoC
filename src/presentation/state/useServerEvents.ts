@@ -131,6 +131,15 @@ export function useServerEvents({
     });
   };
 
+  const invalidateOutdoorTableQueries = () => {
+    void queryClient.invalidateQueries({
+      queryKey: ["outdoor-table"],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["outdoor-table-members", actorUsername],
+    });
+  };
+
   useSseFallbackPolling({
     callback: () => {
       invalidateAnnouncementQueries();
@@ -144,6 +153,7 @@ export function useServerEvents({
       invalidateTournamentQueries();
       invalidateRangeMemberQueries();
       invalidateLostArrowQueries();
+      invalidateOutdoorTableQueries();
     },
     enabled: canUseServerEvents,
     source: "authenticated-shell",
@@ -201,6 +211,10 @@ export function useServerEvents({
       "lost-found.updated",
       invalidateLostArrowQueries,
     );
+    const unsubscribeOutdoorTable = subscribeToServerEvent(
+      "outdoor-table.updated",
+      invalidateOutdoorTableQueries,
+    );
 
     return () => {
       unsubscribeAnnouncements();
@@ -214,6 +228,7 @@ export function useServerEvents({
       unsubscribeTournaments();
       unsubscribeRangeMembers();
       unsubscribeLostArrows();
+      unsubscribeOutdoorTable();
       disconnectServerEvents();
     };
   }, [actorUsername, canUseServerEvents, queryClient]);

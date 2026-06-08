@@ -146,10 +146,50 @@ function buildInitialSchemaSql() {
       other_details TEXT,
       date_found TEXT,
       found_by_username TEXT REFERENCES users(username),
+      found_seen_at_date TEXT,
+      found_seen_at_time TEXT,
       created_at_date TEXT NOT NULL,
       created_at_time TEXT NOT NULL,
       archer_user_id BIGINT REFERENCES users(id),
       found_by_user_id BIGINT REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS outdoor_table_entries (
+      id BIGSERIAL PRIMARY KEY,
+      season_year INTEGER NOT NULL,
+      archer_username TEXT NOT NULL REFERENCES users(username),
+      bow_type TEXT NOT NULL,
+      handicap INTEGER,
+      archer_3rd BOOLEAN NOT NULL DEFAULT FALSE,
+      archer_2nd BOOLEAN NOT NULL DEFAULT FALSE,
+      archer_1st BOOLEAN NOT NULL DEFAULT FALSE,
+      bowman_3rd BOOLEAN NOT NULL DEFAULT FALSE,
+      bowman_2nd BOOLEAN NOT NULL DEFAULT FALSE,
+      bowman_1st BOOLEAN NOT NULL DEFAULT FALSE,
+      master_bowman BOOLEAN NOT NULL DEFAULT FALSE,
+      grand_master_bowman BOOLEAN NOT NULL DEFAULT FALSE,
+      elite_master_bowman BOOLEAN NOT NULL DEFAULT FALSE,
+      award_252_20 BOOLEAN NOT NULL DEFAULT FALSE,
+      award_252_30 BOOLEAN NOT NULL DEFAULT FALSE,
+      award_252_40 BOOLEAN NOT NULL DEFAULT FALSE,
+      award_252_50 BOOLEAN NOT NULL DEFAULT FALSE,
+      award_252_60 BOOLEAN NOT NULL DEFAULT FALSE,
+      award_252_80 BOOLEAN NOT NULL DEFAULT FALSE,
+      award_252_100 BOOLEAN NOT NULL DEFAULT FALSE,
+      clout_white_20 BOOLEAN NOT NULL DEFAULT FALSE,
+      clout_white_30 BOOLEAN NOT NULL DEFAULT FALSE,
+      clout_white_40 BOOLEAN NOT NULL DEFAULT FALSE,
+      clout_white_50 BOOLEAN NOT NULL DEFAULT FALSE,
+      clout_white_60 BOOLEAN NOT NULL DEFAULT FALSE,
+      clout_white_70_80 BOOLEAN NOT NULL DEFAULT FALSE,
+      clout_white_90_100 BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      updated_at_date TEXT,
+      updated_at_time TEXT,
+      updated_by_username TEXT REFERENCES users(username),
+      updated_by_user_id BIGINT REFERENCES users(id),
+      UNIQUE (season_year, archer_username, bow_type)
     );
 
     CREATE TABLE IF NOT EXISTS login_events (
@@ -882,6 +922,14 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE announcements
       ADD COLUMN IF NOT EXISTS is_deleted INTEGER NOT NULL DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE lost_arrows
+      ADD COLUMN IF NOT EXISTS found_seen_at_date TEXT
+    `);
+    await client.query(`
+      ALTER TABLE lost_arrows
+      ADD COLUMN IF NOT EXISTS found_seen_at_time TEXT
     `);
 
     await client.query("COMMIT");

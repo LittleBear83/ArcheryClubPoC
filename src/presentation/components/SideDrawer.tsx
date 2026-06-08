@@ -30,6 +30,12 @@ const pages = [
     path: "/records",
     disabledForRoles: ["beginner"],
   },
+  {
+    id: "outdoor-table",
+    label: "Outdoor Table",
+    path: "/outdoor-table",
+    disabledForRoles: ["beginner"],
+  },
   { id: "feedback-form", label: "Feedback Form", path: "/feedback-form" },
   { id: "ideas-form", label: "Ideas Form", path: "/ideas-form" },
   {

@@ -57,6 +57,7 @@ import { createEquipmentGateway } from "./infrastructure/persistence/equipmentGa
 import { createMemberAuthGateway } from "./infrastructure/persistence/memberAuthGateway.js";
 import { createMemberProfileGateway } from "./infrastructure/persistence/memberProfileGateway.js";
 import { createLostArrowGateway } from "./infrastructure/persistence/lostArrowGateway.js";
+import { createOutdoorTableGateway } from "./infrastructure/persistence/outdoorTableGateway.js";
 import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
 import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
 import { createTournamentGateway } from "./infrastructure/persistence/tournamentGateway.js";
@@ -73,6 +74,7 @@ import { registerAnnouncementRoutes } from "./presentation/http/registerAnnounce
 import { registerAuthRoutes } from "./presentation/http/registerAuthRoutes.js";
 import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRoutes.js";
 import { registerLostArrowRoutes } from "./presentation/http/registerLostArrowRoutes.js";
+import { registerOutdoorTableRoutes } from "./presentation/http/registerOutdoorTableRoutes.js";
 import { registerSseRoutes } from "./presentation/http/registerSseRoutes.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
@@ -819,6 +821,12 @@ const memberProfileGateway = createMemberProfileGateway({
 });
 
 const lostArrowGateway = createLostArrowGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
+});
+
+const outdoorTableGateway = createOutdoorTableGateway({
   databaseEngine: serverRuntime.databaseEngine,
   db,
   pool: db.pool,
@@ -3486,6 +3494,16 @@ registerLostArrowRoutes({
   getUtcTimestampParts,
   lostArrowGateway,
   memberAuthGateway,
+  serverEventBus,
+});
+registerOutdoorTableRoutes({
+  app,
+  actorHasPermission,
+  getActorUser,
+  getUtcTimestampParts,
+  memberAuthGateway,
+  outdoorTableGateway,
+  PERMISSIONS,
   serverEventBus,
 });
 

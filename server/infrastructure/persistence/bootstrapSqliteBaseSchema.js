@@ -358,10 +358,63 @@ export function bootstrapSqliteBaseSchema({
       other_details TEXT,
       date_found TEXT,
       found_by_username TEXT,
+      found_seen_at_date TEXT,
+      found_seen_at_time TEXT,
       created_at_date TEXT NOT NULL,
       created_at_time TEXT NOT NULL,
       FOREIGN KEY (archer_username) REFERENCES users(username),
       FOREIGN KEY (found_by_username) REFERENCES users(username)
+    )
+  `);
+
+  const lostArrowColumns = db.prepare(`PRAGMA table_info(lost_arrows)`).all();
+
+  if (!lostArrowColumns.some((column) => column.name === "found_seen_at_date")) {
+    db.exec(`ALTER TABLE lost_arrows ADD COLUMN found_seen_at_date TEXT`);
+  }
+
+  if (!lostArrowColumns.some((column) => column.name === "found_seen_at_time")) {
+    db.exec(`ALTER TABLE lost_arrows ADD COLUMN found_seen_at_time TEXT`);
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS outdoor_table_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      season_year INTEGER NOT NULL,
+      archer_username TEXT NOT NULL,
+      bow_type TEXT NOT NULL,
+      handicap INTEGER,
+      archer_3rd INTEGER NOT NULL DEFAULT 0,
+      archer_2nd INTEGER NOT NULL DEFAULT 0,
+      archer_1st INTEGER NOT NULL DEFAULT 0,
+      bowman_3rd INTEGER NOT NULL DEFAULT 0,
+      bowman_2nd INTEGER NOT NULL DEFAULT 0,
+      bowman_1st INTEGER NOT NULL DEFAULT 0,
+      master_bowman INTEGER NOT NULL DEFAULT 0,
+      grand_master_bowman INTEGER NOT NULL DEFAULT 0,
+      elite_master_bowman INTEGER NOT NULL DEFAULT 0,
+      award_252_20 INTEGER NOT NULL DEFAULT 0,
+      award_252_30 INTEGER NOT NULL DEFAULT 0,
+      award_252_40 INTEGER NOT NULL DEFAULT 0,
+      award_252_50 INTEGER NOT NULL DEFAULT 0,
+      award_252_60 INTEGER NOT NULL DEFAULT 0,
+      award_252_80 INTEGER NOT NULL DEFAULT 0,
+      award_252_100 INTEGER NOT NULL DEFAULT 0,
+      clout_white_20 INTEGER NOT NULL DEFAULT 0,
+      clout_white_30 INTEGER NOT NULL DEFAULT 0,
+      clout_white_40 INTEGER NOT NULL DEFAULT 0,
+      clout_white_50 INTEGER NOT NULL DEFAULT 0,
+      clout_white_60 INTEGER NOT NULL DEFAULT 0,
+      clout_white_70_80 INTEGER NOT NULL DEFAULT 0,
+      clout_white_90_100 INTEGER NOT NULL DEFAULT 0,
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      updated_at_date TEXT,
+      updated_at_time TEXT,
+      updated_by_username TEXT,
+      UNIQUE (season_year, archer_username, bow_type),
+      FOREIGN KEY (archer_username) REFERENCES users(username),
+      FOREIGN KEY (updated_by_username) REFERENCES users(username)
     )
   `);
 

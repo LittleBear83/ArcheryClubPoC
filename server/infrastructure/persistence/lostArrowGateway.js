@@ -65,6 +65,7 @@ function createSqliteLostArrowGateway(db) {
     LEFT JOIN users AS finders ON finders.username = lost_arrows.found_by_username
     WHERE LOWER(lost_arrows.archer_username) = LOWER(?)
       AND lost_arrows.date_found IS NOT NULL
+      AND lost_arrows.found_seen_at_date IS NULL
     ORDER BY lost_arrows.date_found DESC, lost_arrows.id DESC
   `);
   const findLostArrowByIdStatement = db.prepare(`
@@ -84,6 +85,15 @@ function createSqliteLostArrowGateway(db) {
       date_found = ?,
       found_by_username = ?
     WHERE id = ?
+  `);
+  const markFoundLostArrowsSeenForUserStatement = db.prepare(`
+    UPDATE lost_arrows
+    SET
+      found_seen_at_date = ?,
+      found_seen_at_time = ?
+    WHERE LOWER(archer_username) = LOWER(?)
+      AND date_found IS NOT NULL
+      AND found_seen_at_date IS NULL
   `);
 
   return {
@@ -120,6 +130,17 @@ function createSqliteLostArrowGateway(db) {
     async markLostArrowFound({ dateFound, foundByUsername, id }) {
       markLostArrowFoundStatement.run(dateFound, foundByUsername, id);
       return normalizeLostArrowRow(findLostArrowByIdStatement.get(id));
+    },
+    async markFoundLostArrowsSeenForUser({
+      seenAtDate,
+      seenAtTime,
+      username,
+    }) {
+      markFoundLostArrowsSeenForUserStatement.run(
+        seenAtDate,
+        seenAtTime,
+        username,
+      );
     },
   };
 }
@@ -196,6 +217,7 @@ function createPostgresLostArrowGateway(pool) {
           LEFT JOIN users AS finders ON finders.username = lost_arrows.found_by_username
           WHERE LOWER(lost_arrows.archer_username) = LOWER($1)
             AND lost_arrows.date_found IS NOT NULL
+            AND lost_arrows.found_seen_at_date IS NULL
           ORDER BY lost_arrows.date_found DESC, lost_arrows.id DESC
         `,
         [username],
@@ -231,6 +253,20 @@ function createPostgresLostArrowGateway(pool) {
       );
 
       return this.findLostArrowById(id);
+    },
+    async markFoundLostArrowsSeenForUser({ seenAtDate, seenAtTime, username }) {
+      await pool.query(
+        `
+          UPDATE lost_arrows
+          SET
+            found_seen_at_date = $1,
+            found_seen_at_time = $2
+          WHERE LOWER(archer_username) = LOWER($3)
+            AND date_found IS NOT NULL
+            AND found_seen_at_date IS NULL
+        `,
+        [seenAtDate, seenAtTime, username],
+      );
     },
   };
 }

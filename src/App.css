@@ -6672,3 +6672,281 @@ button:disabled {
     padding: 10px 12px;
   }
 }
+
+.outdoor-table-page {
+  gap: 1.5rem;
+}
+
+.outdoor-table-toolbar-panel,
+.outdoor-table-form-panel,
+.outdoor-table-sheet-panel {
+  width: 100%;
+}
+
+.outdoor-table-toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.outdoor-table-toolbar-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.outdoor-table-form {
+  gap: 1.25rem;
+}
+
+.outdoor-table-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+}
+
+.outdoor-table-checkbox-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.outdoor-table-checkbox-card {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.outdoor-table-checkbox-card h3 {
+  margin: 0 0 0.85rem;
+}
+
+.outdoor-table-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.outdoor-table-checkbox-grid--compact {
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+}
+
+.outdoor-table-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.95rem;
+}
+
+.outdoor-table-checkbox input {
+  width: auto;
+}
+
+.outdoor-table-form-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.outdoor-table-delete-button {
+  background: #7d231b;
+  color: #fff5f4;
+}
+
+.outdoor-table-sheet-copy p {
+  margin: 0 0 0.85rem;
+}
+
+.outdoor-table-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.outdoor-table-matrix {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: #f4f0df;
+  color: #1a1a1a;
+}
+
+.outdoor-table-matrix th,
+.outdoor-table-matrix td {
+  border: 2px solid #3f3f3f;
+  text-align: center;
+  padding: 0.25rem;
+  min-width: 42px;
+  height: 38px;
+}
+
+.outdoor-table-title-cell {
+  background: #d7c308;
+  color: #141200;
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  min-width: 480px;
+}
+
+.outdoor-table-legend-cell {
+  background: #d6d6d6;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.outdoor-table-group-cell {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.outdoor-table-group-cell--252 {
+  background: #2f78bf;
+  color: #f5fbff;
+}
+
+.outdoor-table-group-cell--clout {
+  background: #be1336;
+  color: #fff5f7;
+}
+
+.outdoor-table-head {
+  font-weight: 700;
+  background: #ffffff;
+}
+
+.outdoor-table-head--name {
+  min-width: 150px;
+  background: #efefef;
+}
+
+.outdoor-table-head--bow {
+  min-width: 88px;
+  background: #d7c308;
+}
+
+.outdoor-table-head--handicap {
+  min-width: 86px;
+  background: #3d6d3f;
+  color: #ebffe8;
+}
+
+.outdoor-table-head--vertical {
+  min-width: 44px;
+  height: 156px;
+  vertical-align: bottom;
+}
+
+.outdoor-table-head--vertical span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  display: inline-block;
+  line-height: 1.1;
+}
+
+.outdoor-table-head--archer {
+  background: #2f78bf;
+  color: #f5fbff;
+}
+
+.outdoor-table-head--bowman {
+  background: #be3151;
+  color: #fff6f8;
+}
+
+.outdoor-table-head--master {
+  background: #e0b653;
+  color: #221400;
+}
+
+.outdoor-table-head--distance {
+  min-width: 48px;
+}
+
+.outdoor-table-row {
+  background: #fbfbfb;
+}
+
+.outdoor-table-row:hover {
+  background: #eef6ff;
+}
+
+.outdoor-table-row.is-selected {
+  outline: 3px solid #c9ab00;
+  outline-offset: -3px;
+}
+
+.outdoor-table-row td:first-child,
+.outdoor-table-row td:nth-child(2) {
+  text-align: left;
+  padding-inline: 0.6rem;
+}
+
+.outdoor-table-row td {
+  cursor: default;
+}
+
+.outdoor-table-mark {
+  background: #fdfdfd;
+}
+
+.outdoor-table-mark.is-active {
+  box-shadow: inset 0 0 0 999px rgba(0, 0, 0, 0.04);
+}
+
+.outdoor-table-mark--archer.is-active {
+  background: #2f78bf;
+}
+
+.outdoor-table-mark--bowman.is-active {
+  background: #be3151;
+}
+
+.outdoor-table-mark--master.is-active {
+  background: #d4a642;
+}
+
+.outdoor-table-mark--252.is-active {
+  background: #256db0;
+}
+
+.outdoor-table-mark--clout.is-active {
+  background: #c71d42;
+}
+
+.outdoor-table-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.outdoor-table-summary-card {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.outdoor-table-summary-card h3,
+.outdoor-table-summary-card p {
+  margin: 0;
+}
+
+.outdoor-table-summary-card p + p,
+.outdoor-table-summary-card h3 + p {
+  margin-top: 0.45rem;
+}
+
+@media (max-width: 960px) {
+  .outdoor-table-title-cell {
+    font-size: 1.5rem;
+    min-width: 340px;
+  }
+
+  .outdoor-table-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}

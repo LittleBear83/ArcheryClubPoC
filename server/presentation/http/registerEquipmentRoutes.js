@@ -17,10 +17,26 @@ export function registerEquipmentRoutes({
   PERMISSIONS,
   sanitizeCupboardLabel,
   sanitizeEquipmentCreatePayload,
+  serverEventBus,
   validateCaseAssignment,
 }) {
+  const EQUIPMENT_PERMISSION_KEYS = [
+    PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT,
+    PERMISSIONS.ASSIGN_EQUIPMENT,
+    PERMISSIONS.RETURN_EQUIPMENT,
+    PERMISSIONS.UPDATE_EQUIPMENT_STORAGE,
+    PERMISSIONS.MANAGE_EQUIPMENT_STORAGE_LOCATIONS,
+  ];
+
   // Equipment routes combine storage, assignment, and loan state so a case and
   // its contents move together through the club inventory workflow.
+  const broadcastEquipmentUpdated = (scope = "equipment") => {
+    serverEventBus?.broadcastToAnyPermission(EQUIPMENT_PERMISSION_KEYS, "equipment.updated", {
+      changedAt: new Date().toISOString(),
+      scope,
+    });
+  };
+
   const getStorageLocationOptions = async () => {
     const labels = (await equipmentGateway.listEquipmentStorageLocations()).map((row) => row.label);
 
@@ -150,6 +166,7 @@ export function registerEquipmentRoutes({
       const createdItem = await equipmentGateway.findEquipmentItemByIdWithRelations(
         result.lastInsertRowid,
       );
+      broadcastEquipmentUpdated("equipment.create");
 
       res.status(201).json({
         success: true,
@@ -243,6 +260,7 @@ export function registerEquipmentRoutes({
       decommissionedAtTime: time,
       decommissionReason: reason,
     });
+    broadcastEquipmentUpdated("equipment.decommission");
 
     const maps = await buildEquipmentMaps();
     res.json({
@@ -442,6 +460,7 @@ export function registerEquipmentRoutes({
     }
 
     const maps = await buildEquipmentMaps();
+    broadcastEquipmentUpdated("equipment.assign");
     res.json({
       success: true,
       item: buildEquipmentItemResponse(
@@ -577,6 +596,7 @@ export function registerEquipmentRoutes({
     }
 
     const maps = await buildEquipmentMaps();
+    broadcastEquipmentUpdated("equipment.return");
     res.json({
       success: true,
       item: buildEquipmentItemResponse(
@@ -652,6 +672,7 @@ export function registerEquipmentRoutes({
       storageAtDate: date,
       storageAtTime: time,
     });
+    broadcastEquipmentUpdated("equipment.storage");
 
     const maps = await buildEquipmentMaps();
     res.json({
@@ -710,6 +731,7 @@ export function registerEquipmentRoutes({
       return;
     }
 
+    broadcastEquipmentUpdated("equipment.storage-location.create");
     res.status(201).json({
       success: true,
       cupboardOptions: await getStorageLocationOptions(),
@@ -761,6 +783,7 @@ export function registerEquipmentRoutes({
     }
 
     await equipmentGateway.deleteEquipmentStorageLocation(label);
+    broadcastEquipmentUpdated("equipment.storage-location.delete");
 
     res.json({
       success: true,

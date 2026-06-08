@@ -77,6 +77,7 @@ export function registerAnnouncementRoutes({
   getActorUser,
   getUtcTimestampParts,
   PERMISSIONS,
+  serverEventBus,
   toUtcDateString,
 }) {
   app.get("/api/announcements/active", async (req, res) => {
@@ -234,6 +235,12 @@ export function registerAnnouncementRoutes({
       success: true,
       announcement: buildAnnouncementResponse(announcement, 0),
     });
+
+    serverEventBus.broadcastToAll("announcements.updated", {
+      action: "created",
+      announcementId: announcement.id,
+      changedAt: new Date().toISOString(),
+    });
   });
 
   app.put("/api/announcements/:id", async (req, res) => {
@@ -318,6 +325,12 @@ export function registerAnnouncementRoutes({
         await announcementGateway.countSeenMembersByAnnouncementId(announcementId),
       ),
     });
+
+    serverEventBus.broadcastToAll("announcements.updated", {
+      action: "updated",
+      announcementId,
+      changedAt: new Date().toISOString(),
+    });
   });
 
   app.delete("/api/announcements/:id", async (req, res) => {
@@ -369,6 +382,12 @@ export function registerAnnouncementRoutes({
         deletedAnnouncement,
         await announcementGateway.countSeenMembersByAnnouncementId(announcementId),
       ),
+    });
+
+    serverEventBus.broadcastToAll("announcements.updated", {
+      action: "deleted",
+      announcementId,
+      changedAt: new Date().toISOString(),
     });
   });
 }

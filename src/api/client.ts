@@ -35,7 +35,6 @@ const MUTATING_API_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const CSRF_EXCLUDED_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/rfid",
-  "/api/auth/rfid/latest-login",
   "/api/auth/guest-login",
 ]);
 const SERVICE_UNAVAILABLE_STATUSES = new Set([502, 503, 504]);

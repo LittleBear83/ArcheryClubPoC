@@ -249,18 +249,6 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     });
   }, [actorUsername, queryClient]);
 
-  useEffect(() => {
-    const refresh = () => {
-      void refreshDashboard();
-    };
-
-    window.addEventListener("equipment-data-updated", refresh);
-
-    return () => {
-      window.removeEventListener("equipment-data-updated", refresh);
-    };
-  }, [refreshDashboard]);
-
   const addEquipmentMutation = useMutation({
     mutationFn: () =>
       equipmentCrud.addEquipmentItemUseCase.execute({

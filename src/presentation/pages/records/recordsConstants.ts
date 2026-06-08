@@ -31,18 +31,26 @@ export const DISCIPLINE_OPTIONS = [
   "Traditional",
 ];
 
+export const SCORE_STATUS_OPTIONS = [
+  "Practice",
+  "Club Event",
+  "Club Competition",
+  "Open Competition",
+] as const;
+
 export const CLUB_RECORD_ROUNDS = [
   ...ROUND_OPTIONS.indoor,
   ...ROUND_OPTIONS.outdoor,
 ];
 
 export const INITIAL_FORM = {
-  where: "",
+  location: "",
+  dateShoot: "",
   round: "",
   discipline: "",
-  hits: "",
-  misses: "",
+  scoreStatus: "",
   score: "",
+  hits: "",
   golds: "",
   xs: "",
 };

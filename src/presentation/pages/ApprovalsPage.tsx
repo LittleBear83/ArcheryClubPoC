@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { Modal } from "../components/Modal";
@@ -286,34 +286,7 @@ export function ApprovalsPage({ currentUserProfile }) {
       };
     },
     enabled: canApproveAnything,
-    refetchInterval: 60000,
   });
-
-  useEffect(() => {
-    if (!canApproveAnything) {
-      return undefined;
-    }
-
-    const refresh = () => {
-      void queryClient.invalidateQueries({
-        queryKey: approvalsQueryKeys.list(actorUsername),
-      });
-    };
-
-    window.addEventListener("event-data-updated", refresh);
-    window.addEventListener("coaching-data-updated", refresh);
-    window.addEventListener("beginners-course-data-updated", refresh);
-    window.addEventListener("have-a-go-session-data-updated", refresh);
-    window.addEventListener("profile-data-updated", refresh);
-
-    return () => {
-      window.removeEventListener("event-data-updated", refresh);
-      window.removeEventListener("coaching-data-updated", refresh);
-      window.removeEventListener("beginners-course-data-updated", refresh);
-      window.removeEventListener("have-a-go-session-data-updated", refresh);
-      window.removeEventListener("profile-data-updated", refresh);
-    };
-  }, [actorUsername, canApproveAnything, queryClient]);
 
   const allEvents = useMemo(
     () => approvalsQuery.data?.events ?? [],
@@ -373,7 +346,6 @@ export function ApprovalsPage({ currentUserProfile }) {
       courseType?: CourseApprovalType;
       id: string | number;
       successMessage: string;
-      eventName: string;
       processingValue: string;
     }) => {
       setProcessingKey(processingValue);
@@ -392,14 +364,13 @@ export function ApprovalsPage({ currentUserProfile }) {
       } else {
         await rejectBeginnersCourse(currentUser, id, body?.rejectionReason ?? "", courseType);
       }
-      return { successMessage, eventName };
+      return { successMessage };
     },
-    onSuccess: async ({ successMessage, eventName }) => {
+    onSuccess: async ({ successMessage }) => {
       await queryClient.invalidateQueries({
         queryKey: approvalsQueryKeys.list(actorUsername),
       });
       setMessage(successMessage);
-      window.dispatchEvent(new Event(eventName));
     },
     onError: (approvalError: Error) => {
       setError(approvalError.message);
@@ -474,7 +445,6 @@ export function ApprovalsPage({ currentUserProfile }) {
                             action: "approve-event",
                             id: event.id,
                             successMessage: `${event.title} approved successfully.`,
-                            eventName: "event-data-updated",
                             processingValue: `event:approve:${event.id}`,
                           }),
                       },
@@ -545,7 +515,6 @@ export function ApprovalsPage({ currentUserProfile }) {
                             action: "approve-session",
                             id: session.id,
                             successMessage: `${session.topic} approved successfully.`,
-                            eventName: "coaching-data-updated",
                             processingValue: `session:approve:${session.id}`,
                           }),
                       },
@@ -622,7 +591,6 @@ export function ApprovalsPage({ currentUserProfile }) {
                             courseType: "beginners",
                             id: course.id,
                             successMessage: "Beginners course approved.",
-                            eventName: "beginners-course-data-updated",
                             processingValue: `beginners:approve:${course.id}`,
                           }),
                       },
@@ -696,7 +664,6 @@ export function ApprovalsPage({ currentUserProfile }) {
                             courseType: "have-a-go",
                             id: session.id,
                             successMessage: "Have a Go session approved.",
-                            eventName: "have-a-go-session-data-updated",
                             processingValue: `have-a-go:approve:${session.id}`,
                           }),
                       },
@@ -754,7 +721,6 @@ export function ApprovalsPage({ currentUserProfile }) {
                   rejectionReason: eventRejectReason,
                 },
                 successMessage: `${rejectingEvent.title} rejected.`,
-                eventName: "event-data-updated",
                 processingValue: `event:reject:${rejectingEvent.id}`,
               }).then(() => {
                 setRejectingEvent(null);
@@ -824,7 +790,6 @@ export function ApprovalsPage({ currentUserProfile }) {
                   rejectionReason: sessionRejectReason,
                 },
                 successMessage: `${rejectingSession.topic} rejected.`,
-                eventName: "coaching-data-updated",
                 processingValue: `session:reject:${rejectingSession.id}`,
               }).then(() => {
                 setRejectingSession(null);
@@ -902,10 +867,6 @@ export function ApprovalsPage({ currentUserProfile }) {
                   rejectingCourse.courseType === "have-a-go"
                     ? "Have a Go session rejected."
                     : "Beginners course rejected.",
-                eventName:
-                  rejectingCourse.courseType === "have-a-go"
-                    ? "have-a-go-session-data-updated"
-                    : "beginners-course-data-updated",
                 processingValue: `${rejectingCourse.courseType}:reject:${rejectingCourse.course.id}`,
               }).then(() => {
                 setRejectingCourse(null);

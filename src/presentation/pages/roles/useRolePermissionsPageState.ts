@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { hasPermission } from "../../../utils/userProfile";
 import {
@@ -102,20 +102,6 @@ export function useRolePermissionsPageState({
 
     return "";
   }, [isCreating, isSaving, selectedRole]);
-
-  useEffect(() => {
-    const refresh = () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["roles", actorUsername],
-      });
-    };
-
-    window.addEventListener("profile-data-updated", refresh);
-
-    return () => {
-      window.removeEventListener("profile-data-updated", refresh);
-    };
-  }, [actorUsername, queryClient]);
 
   const formValues = useMemo(
     () =>
@@ -225,7 +211,6 @@ export function useRolePermissionsPageState({
       setIsCreating(false);
       setIsFormDirty(false);
       setSelectedRoleKey(result.roleKey);
-      window.dispatchEvent(new Event("profile-data-updated"));
       await refreshCurrentUserProfile();
       await queryClient.invalidateQueries({
         queryKey: ["roles", actorUsername],
@@ -265,7 +250,6 @@ export function useRolePermissionsPageState({
       setIsDeleteModalOpen(false);
       setSelectedRoleKey("");
       setIsFormDirty(false);
-      window.dispatchEvent(new Event("profile-data-updated"));
       await refreshCurrentUserProfile();
       await queryClient.invalidateQueries({
         queryKey: ["roles", actorUsername],

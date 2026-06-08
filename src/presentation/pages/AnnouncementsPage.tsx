@@ -411,10 +411,6 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
                     <strong>Announcement</strong>
                     <span>{announcement.message}</span>
                   </div>
-                  <div className="announcements-history-mobile-row">
-                    <strong>Seen</strong>
-                    <span>{announcement.seenCount ?? 0}</span>
-                  </div>
                   <div className="announcements-history-mobile-row announcements-history-mobile-row--stacked">
                     <strong>Created by</strong>
                     <span>
@@ -474,7 +470,7 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
                     className="secondary-button announcements-history-mobile-button"
                     onClick={() => setSelectedAnnouncement(announcement)}
                   >
-                    Seen members
+                    Seen by
                   </Button>
                 </article>
               ))}
@@ -488,7 +484,6 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
                     <th>Severity</th>
                     <th>Active window</th>
                     <th>Announcement</th>
-                    <th>Seen</th>
                     <th>Created by</th>
                     <th>Amended by</th>
                     <th>Deleted by</th>
@@ -507,7 +502,6 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
                       <td className="announcements-history-message-cell">
                         {announcement.message}
                       </td>
-                      <td>{announcement.seenCount ?? 0}</td>
                       <td>
                         {formatAuditStamp(
                           announcement.createdByName,
@@ -555,13 +549,13 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
                           ) : null}
                           <Button
                             type="button"
-                            variant="secondary"
-                            className="secondary-button"
-                            onClick={() => setSelectedAnnouncement(announcement)}
-                          >
-                            Seen members
-                          </Button>
-                        </div>
+                          variant="secondary"
+                          className="secondary-button"
+                          onClick={() => setSelectedAnnouncement(announcement)}
+                        >
+                          Seen by
+                        </Button>
+                      </div>
                       </td>
                     </tr>
                   ))}

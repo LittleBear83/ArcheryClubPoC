@@ -21,11 +21,72 @@ export function registerAdminMemberRoutes({
   sanitizeLoanBowReturn,
   saveLoanBowRecord,
   saveMemberProfile,
+  serverEventBus,
   TOURNAMENT_TYPE_OPTIONS,
   verifyPassword,
   buildMemberUserProfile,
   memberDistanceSignOffRepository,
 }) {
+  const MEMBER_UPDATE_PERMISSION_KEYS = [
+    PERMISSIONS.MANAGE_MEMBERS,
+    PERMISSIONS.SIGN_OFF_DISTANCES,
+    PERMISSIONS.MANAGE_COMMITTEE_ROLES,
+    "manage_loan_bows",
+  ];
+  const ROLE_UPDATE_PERMISSION_KEYS = [
+    PERMISSIONS.MANAGE_ROLES_PERMISSIONS,
+    PERMISSIONS.MANAGE_MEMBERS,
+    PERMISSIONS.SIGN_OFF_DISTANCES,
+    PERMISSIONS.MANAGE_COMMITTEE_ROLES,
+    "manage_loan_bows",
+  ];
+
+  async function listUsernamesByRoleKey(roleKey) {
+    return (await memberDirectoryGateway.listAllUsers())
+      .filter((user) => user.user_type === roleKey)
+      .map((user) => user.username)
+      .filter((username) => typeof username === "string" && username.length > 0);
+  }
+
+  function broadcastRolesUpdated(scope = "roles", usernames = []) {
+    serverEventBus?.broadcastToAnyPermission(ROLE_UPDATE_PERMISSION_KEYS, "roles.updated", {
+      changedAt: new Date().toISOString(),
+      scope,
+      usernames,
+    });
+
+    if (usernames.length > 0) {
+      serverEventBus?.broadcastToUsers(usernames, "roles.updated", {
+        changedAt: new Date().toISOString(),
+        scope,
+        usernames,
+      });
+    }
+  }
+
+  function broadcastCommitteeUpdated(scope = "committee") {
+    serverEventBus?.broadcastToAll("committee.updated", {
+      changedAt: new Date().toISOString(),
+      scope,
+    });
+  }
+
+  function broadcastMembersUpdated(scope = "members", username = null) {
+    serverEventBus?.broadcastToAnyPermission(MEMBER_UPDATE_PERMISSION_KEYS, "members.updated", {
+      changedAt: new Date().toISOString(),
+      scope,
+      username,
+    });
+
+    if (username) {
+      serverEventBus?.broadcastToUsers([username], "members.updated", {
+        changedAt: new Date().toISOString(),
+        scope,
+        username,
+      });
+    }
+  }
+
   async function buildEditableProfileWithDistanceSignOffs(
     user,
     disciplines,
@@ -198,6 +259,7 @@ export function registerAdminMemberRoutes({
       title,
     });
     await refreshRoleAccessSnapshot();
+    broadcastRolesUpdated("roles.create");
 
     res.status(201).json({
       success: true,
@@ -258,12 +320,14 @@ export function registerAdminMemberRoutes({
       ),
     ];
 
+    const affectedUsernames = await listUsernamesByRoleKey(roleKey);
     const updatedRole = await roleCommitteeGateway.updateRole({
       permissions: normalizedPermissions,
       roleKey,
       title,
     });
     await refreshRoleAccessSnapshot();
+    broadcastRolesUpdated("roles.update", affectedUsernames);
 
     res.json({
       success: true,
@@ -319,8 +383,10 @@ export function registerAdminMemberRoutes({
       return;
     }
 
+    const affectedUsernames = await listUsernamesByRoleKey(roleKey);
     const deleteResult = await roleCommitteeGateway.deleteRole(roleKey, "general");
     await refreshRoleAccessSnapshot();
+    broadcastRolesUpdated("roles.delete", affectedUsernames);
 
     res.json({
       success: true,
@@ -532,6 +598,7 @@ export function registerAdminMemberRoutes({
     const createdRole = (await roleCommitteeGateway.listCommitteeRoles())
       .map(buildCommitteeRole)
       .find((entry) => entry.roleKey === roleKey);
+    broadcastCommitteeUpdated("committee.create");
 
     res.status(201).json({
       success: true,
@@ -597,6 +664,7 @@ export function registerAdminMemberRoutes({
     const updatedRole = (await roleCommitteeGateway.listCommitteeRoles())
       .map(buildCommitteeRole)
       .find((entry) => entry.id === role.id);
+    broadcastCommitteeUpdated("committee.update");
 
     res.json({
       success: true,
@@ -629,6 +697,7 @@ export function registerAdminMemberRoutes({
     }
 
     await roleCommitteeGateway.deleteCommitteeRoleById(role.id);
+    broadcastCommitteeUpdated("committee.delete");
 
     res.json({
       success: true,
@@ -750,6 +819,8 @@ export function registerAdminMemberRoutes({
       return;
     }
 
+    broadcastMembersUpdated("members.create", username);
+
     res.status(201).json({
       success: true,
       ...result,
@@ -839,6 +910,8 @@ export function registerAdminMemberRoutes({
       res.status(result.status).json(result);
       return;
     }
+
+    broadcastMembersUpdated("members.update", existingUser.username);
 
     res.json({
       success: true,
@@ -930,6 +1003,7 @@ export function registerAdminMemberRoutes({
       signedOffAtDate,
       signedOffAtTime,
     });
+    broadcastMembersUpdated("members.distance-signoff", member.username);
 
     const loanBow = await findMemberLoanBow(member.username);
 
@@ -1005,6 +1079,8 @@ export function registerAdminMemberRoutes({
       res.status(result.status).json(result);
       return;
     }
+
+    broadcastMembersUpdated("members.assign-rfid", existingUser.username);
 
     res.json({
       success: true,
@@ -1123,6 +1199,7 @@ export function registerAdminMemberRoutes({
     const loanBow = sanitizeLoanBow(req.body?.loanBow);
 
     await saveLoanBowRecord(user.username, loanBow);
+    broadcastMembersUpdated("members.loan-bow-save", user.username);
 
     res.json({
       success: true,
@@ -1179,6 +1256,7 @@ export function registerAdminMemberRoutes({
     }
 
     await saveLoanBowRecord(user.username, returnResult.loanBow);
+    broadcastMembersUpdated("members.loan-bow-return", user.username);
 
     res.json({
       success: true,

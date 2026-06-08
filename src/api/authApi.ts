@@ -3,13 +3,6 @@ import type { UserProfile } from "../types/app";
 
 type CredentialLoginDeviceType = "desktop" | "mobile";
 
-export type RfidScan = {
-  sequence: number;
-  rfidTag?: string;
-  scanType?: string;
-  cardBrand?: string;
-};
-
 export type RfidReaderStatus = {
   success: true;
   checked: boolean;
@@ -38,15 +31,6 @@ export async function loginWithRfid(rfidTag: string) {
     },
     body: JSON.stringify({ rfidTag }),
   });
-}
-
-export async function loginWithLatestRfidScan() {
-  return fetchApi<{ success: true; userProfile: UserProfile | null }>(
-    "/api/auth/rfid/latest-login",
-    {
-      method: "POST",
-    },
-  );
 }
 
 export async function getRfidReaderStatus() {
@@ -78,12 +62,6 @@ export async function logoutSession() {
 
 export async function getCurrentSession() {
   return fetchApi<{ success: true; userProfile: UserProfile }>("/api/auth/session", {
-    cache: "no-store",
-  });
-}
-
-export async function getLatestRfidScan() {
-  return fetchApi<{ success: true; scan?: RfidScan }>("/api/auth/rfid/latest-scan", {
     cache: "no-store",
   });
 }

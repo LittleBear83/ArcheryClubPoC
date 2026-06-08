@@ -96,15 +96,6 @@ function registerAuthTestRoutes(app, getSessionUsername, overrides = {}) {
     getSessionUsername,
     getUtcTimestampParts: () => ["2026-04-21", "10:00:00"],
     hashPassword: overrides.hashPassword ?? ((password) => `hashed-${password}`),
-    latestRfidScan: overrides.latestRfidScan ?? {
-      cardBrand: null,
-      deliveredSequence: 0,
-      rfidTag: null,
-      scanType: null,
-      scannedAt: null,
-      sequence: 0,
-      source: null,
-    },
     memberAuthGateway,
     rfidReaderStatus: overrides.rfidReaderStatus ?? {
       checked: true,
@@ -323,24 +314,6 @@ function createCsrfHeaders(csrf, { includeSession = true } = {}) {
     [csrf.headerName]: token,
   };
 }
-
-test("auth routes reject unauthenticated access to secured RFID scan APIs", async () => {
-  const app = express();
-  registerAuthTestRoutes(app, () => null);
-  const { baseUrl, server } = await startTestServer(app);
-
-  try {
-    const latestScanResponse = await requestJson(
-      baseUrl,
-      "/api/auth/rfid/latest-scan",
-    );
-
-    assert.equal(latestScanResponse.status, 401);
-    assert.equal(latestScanResponse.body.success, false);
-  } finally {
-    server.close();
-  }
-});
 
 test("guest inviter members are available before login", async () => {
   const app = express();

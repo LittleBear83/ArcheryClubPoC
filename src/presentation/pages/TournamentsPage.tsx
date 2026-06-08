@@ -5,6 +5,8 @@ import { DatePicker } from "../components/DatePicker";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
+import { subscribeToServerEvent } from "../../lib/serverEvents";
+import { useSseFallbackPolling } from "../state/useSseFallbackPolling";
 import { TournamentsDesktopView } from "./tournaments/TournamentsDesktopView";
 import { TournamentsMobileView } from "./tournaments/TournamentsMobileView";
 import type { TournamentRecord } from "./tournaments/tournamentViewTypes";
@@ -232,6 +234,20 @@ export function TournamentsPage({
     loadTournaments();
   }, [currentUserProfile?.auth?.username, loadTournaments]);
 
+  useEffect(() => {
+    return subscribeToServerEvent("tournaments.updated", () => {
+      void loadTournaments();
+    });
+  }, [loadTournaments]);
+
+  useSseFallbackPolling({
+    callback: () => {
+      void loadTournaments();
+    },
+    enabled: Boolean(actorUsername),
+    source: "tournaments-page",
+  });
+
   const selectedTournament = useMemo(
     () =>
       tournaments.find((tournament) => tournament.id === selectedTournamentId) ??
@@ -346,7 +362,6 @@ export function TournamentsPage({
       setMessage("Tournament created successfully.");
       setIsCreateModalOpen(false);
       resetCreateForm();
-      window.dispatchEvent(new Event("tournament-data-updated"));
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -374,7 +389,6 @@ export function TournamentsPage({
 
       updateTournamentInState(result.tournament);
       setMessage("Tournament updated successfully.");
-      window.dispatchEvent(new Event("tournament-data-updated"));
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -418,7 +432,6 @@ export function TournamentsPage({
       resetTournamentForm();
       setMessage(result.message ?? "Tournament deleted successfully.");
       onTournamentActivity?.();
-      window.dispatchEvent(new Event("tournament-data-updated"));
     } catch (deleteError) {
       setError(deleteError.message);
     } finally {
@@ -444,7 +457,6 @@ export function TournamentsPage({
       updateTournamentInState(result.tournament);
       setMessage(`Registered for ${result.tournament.name}.`);
       onTournamentActivity?.();
-      window.dispatchEvent(new Event("tournament-data-updated"));
     } catch (registerError) {
       setError(registerError.message);
     } finally {
@@ -470,7 +482,6 @@ export function TournamentsPage({
       updateTournamentInState(result.tournament);
       setMessage(`Withdrawn from ${result.tournament.name}.`);
       onTournamentActivity?.();
-      window.dispatchEvent(new Event("tournament-data-updated"));
     } catch (withdrawError) {
       setError(withdrawError.message);
     } finally {
@@ -499,7 +510,6 @@ export function TournamentsPage({
       updateTournamentInState(result.tournament);
       setMessage(`Score saved for ${result.tournament.name}.`);
       onTournamentActivity?.();
-      window.dispatchEvent(new Event("tournament-data-updated"));
     } catch (submitError) {
       setError(submitError.message);
     } finally {

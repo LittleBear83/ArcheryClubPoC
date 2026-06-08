@@ -303,11 +303,26 @@ export function registerOutdoorTableRoutes({
     }
 
     const archer = await memberAuthGateway.findUserByUsername(payload.archerUsername);
+    const archerDisciplines = await memberAuthGateway.findDisciplinesByUsername(
+      payload.archerUsername,
+    );
+    const requiredDiscipline = BOW_TYPE_TO_DISCIPLINE[payload.bowType];
 
     if (!archer) {
       res.status(404).json({
         success: false,
         message: "The selected archer could not be found.",
+      });
+      return;
+    }
+
+    if (
+      requiredDiscipline &&
+      !archerDisciplines.some((entry) => entry.discipline === requiredDiscipline)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: `This member does not have ${requiredDiscipline} on their profile, so ${payload.bowType} cannot be submitted.`,
       });
       return;
     }
@@ -369,11 +384,26 @@ export function registerOutdoorTableRoutes({
     }
 
     const archer = await memberAuthGateway.findUserByUsername(payload.archerUsername);
+    const archerDisciplines = await memberAuthGateway.findDisciplinesByUsername(
+      payload.archerUsername,
+    );
+    const requiredDiscipline = BOW_TYPE_TO_DISCIPLINE[payload.bowType];
 
     if (!archer) {
       res.status(404).json({
         success: false,
         message: "The selected archer could not be found.",
+      });
+      return;
+    }
+
+    if (
+      requiredDiscipline &&
+      !archerDisciplines.some((entry) => entry.discipline === requiredDiscipline)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: `This member does not have ${requiredDiscipline} on their profile, so ${payload.bowType} cannot be submitted.`,
       });
       return;
     }

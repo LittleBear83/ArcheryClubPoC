@@ -4,6 +4,24 @@ import { subscribeToRfidScans } from "../../../utils/rfidScanHub";
 import { subscribeToServerEvent } from "../../../lib/serverEvents";
 import { useSseFallbackPolling } from "../../state/useSseFallbackPolling";
 import type { LoanBowReturnPayload } from "../../../domain/entities/MemberProfile";
+import {
+  createOutdoorTableEntry,
+  listOutdoorTableDashboard,
+  updateOutdoorTableEntry,
+} from "../../../api/outdoorTableApi";
+import type { OutdoorTableEntry } from "../../../types/app";
+import {
+  BOW_TYPE_DISCIPLINE_MAPPINGS,
+  CURRENT_OUTDOOR_SEASON_YEAR,
+  OUTDOOR_252_COLUMNS,
+  countCompletedSignOffs,
+  buildEmptyOutdoorTableDraft,
+  buildOutdoorTableDraftFromEntry,
+  toOutdoorTablePayload,
+  type Outdoor252SignOffFieldKey,
+  type OutdoorBooleanFieldKey,
+  type ProfileOutdoorTableDraft,
+} from "./outdoorTableProfileUtils";
 
 type LoadProfileOptions = {
   signal?: AbortSignal;
@@ -47,6 +65,15 @@ export function useProfilePageState({
   });
   const [distanceSignOffError, setDistanceSignOffError] = useState("");
   const [isSavingDistanceSignOff, setIsSavingDistanceSignOff] = useState(false);
+  const [outdoorTableEntries, setOutdoorTableEntries] = useState<OutdoorTableEntry[]>([]);
+  const [outdoorTableDraftsByBowType, setOutdoorTableDraftsByBowType] = useState<
+    Record<string, ProfileOutdoorTableDraft>
+  >({});
+  const [outdoorTableError, setOutdoorTableError] = useState("");
+  const [isLoadingOutdoorTable, setIsLoadingOutdoorTable] = useState(false);
+  const [isSavingOutdoorTableByBowType, setIsSavingOutdoorTableByBowType] = useState<
+    Record<string, boolean>
+  >({});
 
   const canManageMembers = hasPermission(
     currentUserProfile,
@@ -104,6 +131,10 @@ export function useProfilePageState({
       .filter((distance) => !distance.signOff)
       .map((distance) => distance.distanceYards) ?? [];
   }, [distanceSignOffForm.discipline, editableProfile?.distanceSignOffs]);
+  const outdoorTableBowEntries = useMemo(
+    () => Object.values(outdoorTableDraftsByBowType),
+    [outdoorTableDraftsByBowType],
+  );
   const submitLabel = isSaving
     ? "Saving profile..."
     : isRefreshingProfile
@@ -128,6 +159,11 @@ export function useProfilePageState({
     setIsDistanceSignOffModalOpen(false);
     setDistanceSignOffError("");
     setIsSavingDistanceSignOff(false);
+    setOutdoorTableEntries([]);
+    setOutdoorTableDraftsByBowType({});
+    setOutdoorTableError("");
+    setIsLoadingOutdoorTable(false);
+    setIsSavingOutdoorTableByBowType({});
   }, [currentUserProfile?.auth?.username]);
 
   useEffect(() => {
@@ -213,6 +249,43 @@ export function useProfilePageState({
     [actorUsername, canSelectMembers, isGuest, memberProfileCrud],
   );
 
+  const loadOutdoorTableEntries = useCallback(
+    async (username, signal?: AbortSignal) => {
+      if (isGuest || !username) {
+        setOutdoorTableEntries([]);
+        setIsLoadingOutdoorTable(false);
+        return;
+      }
+
+      setIsLoadingOutdoorTable(true);
+      setOutdoorTableError("");
+
+      try {
+        const result = await listOutdoorTableDashboard(
+          currentUserProfile,
+          CURRENT_OUTDOOR_SEASON_YEAR,
+        );
+
+        if (signal?.aborted) {
+          return;
+        }
+
+        setOutdoorTableEntries(
+          (result.rows ?? []).filter((entry) => entry.archerUsername === username),
+        );
+      } catch (loadError) {
+        if (!signal?.aborted) {
+          setOutdoorTableError(loadError.message);
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setIsLoadingOutdoorTable(false);
+        }
+      }
+    },
+    [currentUserProfile, isGuest],
+  );
+
   useEffect(() => {
     if (!canSelectMembers || isGuest) {
       return undefined;
@@ -236,7 +309,7 @@ export function useProfilePageState({
 
   useSseFallbackPolling({
     callback: () => {
-      void loadProfileOptions();
+      void loadProfileOptions(undefined);
     },
     enabled: canSelectMembers && !isGuest,
     source: "profile-options",
@@ -266,6 +339,30 @@ export function useProfilePageState({
     };
   }, [activeUsername, loadProfile]);
 
+  useEffect(() => {
+    if (!activeUsername) {
+      return undefined;
+    }
+
+    const abortController = new AbortController();
+    const refreshOutdoorTable = () => {
+      void loadOutdoorTableEntries(activeUsername, abortController.signal);
+    };
+
+    refreshOutdoorTable();
+    const unsubscribeOutdoorTable = subscribeToServerEvent(
+      "outdoor-table.updated",
+      refreshOutdoorTable,
+    );
+    const unsubscribeMembers = subscribeToServerEvent("members.updated", refreshOutdoorTable);
+
+    return () => {
+      abortController.abort();
+      unsubscribeOutdoorTable();
+      unsubscribeMembers();
+    };
+  }, [activeUsername, loadOutdoorTableEntries]);
+
   useSseFallbackPolling({
     callback: () => {
       if (!activeUsername) {
@@ -279,6 +376,46 @@ export function useProfilePageState({
     enabled: Boolean(activeUsername),
     source: "profile-page",
   });
+
+  useSseFallbackPolling({
+    callback: () => {
+      if (!activeUsername) {
+        return;
+      }
+
+      void loadOutdoorTableEntries(activeUsername, undefined);
+    },
+    enabled: Boolean(activeUsername),
+    source: "profile-outdoor-table",
+  });
+
+  useEffect(() => {
+    if (!editableProfile?.username) {
+      setOutdoorTableDraftsByBowType({});
+      return;
+    }
+
+    const rowsByBowType = new Map(
+      outdoorTableEntries.map((entry) => [entry.bowType, entry]),
+    );
+    const nextDrafts = BOW_TYPE_DISCIPLINE_MAPPINGS.filter((mapping) =>
+      editableProfile.disciplines.includes(mapping.discipline),
+    ).reduce<Record<string, ProfileOutdoorTableDraft>>((drafts, mapping) => {
+      const existingEntry = rowsByBowType.get(mapping.bowType);
+
+      drafts[mapping.bowType] = existingEntry
+        ? buildOutdoorTableDraftFromEntry(existingEntry, mapping.discipline)
+        : buildEmptyOutdoorTableDraft(
+            editableProfile.username,
+            mapping.bowType,
+            mapping.discipline,
+          );
+
+      return drafts;
+    }, {});
+
+    setOutdoorTableDraftsByBowType(nextDrafts);
+  }, [editableProfile?.disciplines, editableProfile?.username, outdoorTableEntries]);
 
   useEffect(() => {
     if (!isCardModalOpen || !canManageMembers || !editableProfile?.username) {
@@ -645,6 +782,120 @@ export function useProfilePageState({
     }
   };
 
+  const handleOutdoorTableBooleanChange = (
+    bowType: string,
+    field: OutdoorBooleanFieldKey,
+  ) => {
+    setOutdoorTableDraftsByBowType((current) => {
+      const existingDraft = current[bowType];
+
+      if (!existingDraft) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [bowType]: {
+          ...existingDraft,
+          [field]: !existingDraft[field],
+        },
+      };
+    });
+  };
+
+  const handleOutdoorTableHandicapChange = (bowType: string, value: string) => {
+    setOutdoorTableDraftsByBowType((current) => {
+      const existingDraft = current[bowType];
+
+      if (!existingDraft) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [bowType]: {
+          ...existingDraft,
+          handicapText: value,
+          handicap:
+            value.trim() === "" ? null : Number.parseInt(value, 10),
+        },
+      };
+    });
+  };
+
+  const handleOutdoorTableAward252SignOffDateChange = (
+    bowType: string,
+    field: Outdoor252SignOffFieldKey,
+    index: number,
+    value: string,
+  ) => {
+    setOutdoorTableDraftsByBowType((current) => {
+      const existingDraft = current[bowType];
+
+      if (!existingDraft) {
+        return current;
+      }
+
+      const nextDates = [...existingDraft[field]];
+      nextDates[index] = value;
+      const linkedAward =
+        OUTDOOR_252_COLUMNS.find((column) => column.signOffKey === field)?.awardKey ?? null;
+      const nextDraft: ProfileOutdoorTableDraft = {
+        ...existingDraft,
+        [field]: nextDates,
+      };
+
+      if (linkedAward) {
+        nextDraft[linkedAward] = countCompletedSignOffs(nextDates) >= 3;
+      }
+
+      return {
+        ...current,
+        [bowType]: nextDraft,
+      };
+    });
+  };
+
+  const handleSaveOutdoorTableEntry = async (bowType: string) => {
+    const draft = outdoorTableDraftsByBowType[bowType];
+
+    if (!draft) {
+      return;
+    }
+
+    setIsSavingOutdoorTableByBowType((current) => ({
+      ...current,
+      [bowType]: true,
+    }));
+    setOutdoorTableError("");
+    setError("");
+    setMessage("");
+
+    try {
+      const payload = toOutdoorTablePayload(draft);
+      const result =
+        draft.id === null
+          ? await createOutdoorTableEntry(currentUserProfile, payload)
+          : await updateOutdoorTableEntry(currentUserProfile, draft.id, payload);
+
+      setOutdoorTableEntries((current) => {
+        const nextEntries = current.filter((entry) => entry.bowType !== bowType);
+        nextEntries.push(result.entry);
+        return nextEntries.sort((left, right) => left.bowType.localeCompare(right.bowType));
+      });
+      setMessage(
+        `${draft.discipline} outdoor progress saved for ${editableProfile?.firstName} ${editableProfile?.surname}.`,
+      );
+    } catch (saveError) {
+      setOutdoorTableError(saveError.message);
+    } finally {
+      setIsSavingOutdoorTableByBowType((current) => ({
+        ...current,
+        [bowType]: false,
+      }));
+    }
+  };
+
   return {
     canEditCurrentProfile,
     canManageMemberDisciplines,
@@ -674,8 +925,12 @@ export function useProfilePageState({
     handleDistanceSignOffChange,
     handleOpenCardModal,
     handleOpenDistanceSignOffModal,
+    handleOutdoorTableAward252SignOffDateChange,
+    handleOutdoorTableBooleanChange,
+    handleOutdoorTableHandicapChange,
     handleReturnLoanBow,
     handleSave,
+    handleSaveOutdoorTableEntry,
     handleSelectMember,
     handleSignOffDistance,
     isCardModalOpen,
@@ -687,13 +942,17 @@ export function useProfilePageState({
     isReturnModalOpen,
     isSaving,
     isSavingDistanceSignOff,
+    isSavingOutdoorTableByBowType,
     isSavingReturn,
     memberOptions,
     message,
+    outdoorTableBowEntries,
+    outdoorTableError,
     returnError,
     roleOptions,
     selectedUsername,
     submitLabel,
     toggleDiscipline,
+    isLoadingOutdoorTable,
   };
 }

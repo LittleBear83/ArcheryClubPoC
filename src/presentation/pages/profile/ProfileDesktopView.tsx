@@ -1,6 +1,7 @@
 import { Button } from "../../components/Button";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { MemberProfileForm } from "../../components/MemberProfileForm";
+import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
 import { formatDate, formatDateTime } from "../../../utils/dateTime";
@@ -29,13 +30,21 @@ export function ProfileDesktopView({
   handleChange,
   handleOpenCardModal,
   handleOpenDistanceSignOffModal,
+  handleOutdoorTableAward252SignOffDateChange,
+  handleOutdoorTableBooleanChange,
+  handleOutdoorTableHandicapChange,
   handleSave,
+  handleSaveOutdoorTableEntry,
   handleSelectMember,
   isInitialLoading,
+  isLoadingOutdoorTable,
   isRefreshingProfile,
   isSaving,
+  isSavingOutdoorTableByBowType,
   memberOptions,
   message,
+  outdoorTableBowEntries,
+  outdoorTableError,
   roleOptions,
   selectedUsername,
   submitLabel,
@@ -114,6 +123,21 @@ export function ProfileDesktopView({
       ) : null}
 
       {editableProfile ? (
+        <ProfileOutdoorAchievementsSection
+          canManageMembers={canManageMembers}
+          entries={outdoorTableBowEntries}
+          error={outdoorTableError}
+          isLoading={isLoadingOutdoorTable}
+          isSavingByBowType={isSavingOutdoorTableByBowType}
+          onAward252SignOffDateChange={handleOutdoorTableAward252SignOffDateChange}
+          onBooleanChange={handleOutdoorTableBooleanChange}
+          onHandicapChange={handleOutdoorTableHandicapChange}
+          onSave={handleSaveOutdoorTableEntry}
+          seasonYear={new Date().getFullYear()}
+        />
+      ) : null}
+
+      {editableProfile ? (
         <SectionPanel className="profile-form" title="Distance Sign Offs">
           <div className="profile-distance-signoff-header">
             <p>
@@ -125,7 +149,7 @@ export function ProfileDesktopView({
               <Button
                 type="button"
                 className="secondary-button"
-                onClick={handleOpenDistanceSignOffModal}
+                onClick={() => handleOpenDistanceSignOffModal()}
                 disabled={isInitialLoading || isRefreshingProfile || isSaving}
                 variant="secondary"
               >

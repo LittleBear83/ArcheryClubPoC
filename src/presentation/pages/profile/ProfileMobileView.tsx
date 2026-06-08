@@ -5,8 +5,10 @@ import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
 import { MobileCardList } from "../../components/mobile/MobileCardList";
 import { MobileEmptyState } from "../../components/mobile/MobileEmptyState";
+import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { MobileSectionHeader } from "../../components/mobile/MobileSectionHeader";
 import { formatDate, formatDateTime } from "../../../utils/dateTime";
+import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
 import {
   formatMemberDisplayName,
   formatMemberDisplayUsername,
@@ -39,13 +41,21 @@ export function ProfileMobileView({
   handleChange,
   handleOpenCardModal,
   handleOpenDistanceSignOffModal,
+  handleOutdoorTableAward252SignOffDateChange,
+  handleOutdoorTableBooleanChange,
+  handleOutdoorTableHandicapChange,
   handleSave,
+  handleSaveOutdoorTableEntry,
   handleSelectMember,
   isInitialLoading,
+  isLoadingOutdoorTable,
   isRefreshingProfile,
   isSaving,
+  isSavingOutdoorTableByBowType,
   memberOptions,
   message,
+  outdoorTableBowEntries,
+  outdoorTableError,
   roleOptions,
   selectedUsername,
   submitLabel,
@@ -125,6 +135,21 @@ export function ProfileMobileView({
       ) : null}
 
       {editableProfile ? (
+        <ProfileOutdoorAchievementsSection
+          canManageMembers={canManageMembers}
+          entries={outdoorTableBowEntries}
+          error={outdoorTableError}
+          isLoading={isLoadingOutdoorTable}
+          isSavingByBowType={isSavingOutdoorTableByBowType}
+          onAward252SignOffDateChange={handleOutdoorTableAward252SignOffDateChange}
+          onBooleanChange={handleOutdoorTableBooleanChange}
+          onHandicapChange={handleOutdoorTableHandicapChange}
+          onSave={handleSaveOutdoorTableEntry}
+          seasonYear={new Date().getFullYear()}
+        />
+      ) : null}
+
+      {editableProfile ? (
         <section className="profile-form">
           <MobileSectionHeader
             title="Distance Sign Offs"
@@ -133,7 +158,7 @@ export function ProfileMobileView({
               canSignOffSelectedMember && hasUnsignedDistances ? (
                 <Button
                   type="button"
-                  onClick={handleOpenDistanceSignOffModal}
+                  onClick={() => handleOpenDistanceSignOffModal()}
                   disabled={isInitialLoading || isRefreshingProfile || isSaving}
                   variant="secondary"
                   fullWidth

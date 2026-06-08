@@ -6702,7 +6702,7 @@ button:disabled {
 
 .outdoor-table-form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: 120px minmax(240px, 1.7fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr);
   gap: 1rem;
 }
 
@@ -6748,7 +6748,7 @@ button:disabled {
 }
 
 .outdoor-table-checkbox-grid--achievements {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(9, minmax(0, 1fr));
 }
 
 .outdoor-table-checkbox {
@@ -7057,9 +7057,17 @@ button:disabled {
 }
 
 @media (max-width: 960px) {
+  .outdoor-table-form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .outdoor-table-checkbox-card,
   .outdoor-table-checkbox-card--wide {
     grid-column: 1 / -1;
+  }
+
+  .outdoor-table-checkbox-grid--achievements {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .outdoor-table-title-cell {
@@ -7073,6 +7081,11 @@ button:disabled {
 }
 
 @media (max-width: 640px) {
+  .outdoor-table-form-grid,
+  .outdoor-table-checkbox-grid--achievements {
+    grid-template-columns: 1fr;
+  }
+
   .outdoor-table-252-signoff-row {
     grid-template-columns: 1fr;
   }

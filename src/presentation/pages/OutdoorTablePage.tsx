@@ -2,6 +2,9 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
+import { MobileCardList } from "../components/mobile/MobileCardList";
+import { MobileKeyValueList } from "../components/mobile/MobileKeyValueList";
+import { useIsMobile } from "../hooks/useIsMobile";
 import { listOutdoorTableDashboard } from "../../api/outdoorTableApi";
 import type { UserProfile } from "../../types/app";
 import { hasPermission } from "../../utils/userProfile";
@@ -30,6 +33,7 @@ const CLOUT_COLUMNS = [
 export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) {
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const canManageOutdoorTable = hasPermission(currentUserProfile, "manage_members");
+  const isMobile = useIsMobile();
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
 
   const dashboardQuery = useQuery({
@@ -52,6 +56,22 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
     if (Number.isInteger(nextYear)) {
       setSelectedYear(nextYear);
     }
+  };
+
+  const getAchievementSummary = (entry: (typeof rows)[number]) => {
+    const completedLabels = OUTDOOR_ACHIEVEMENT_COLUMNS.filter((column) => entry[column.key]).map(
+      (column) => column.label,
+    );
+
+    return completedLabels.length > 0 ? completedLabels.join(", ") : "None recorded";
+  };
+
+  const getSightMarksSummary = (entry: (typeof rows)[number]) => {
+    const completedLabels = CLOUT_COLUMNS.filter((column) => entry[column.key]).map(
+      (column) => `${column.label}y`,
+    );
+
+    return completedLabels.length > 0 ? completedLabels.join(", ") : "None agreed";
   };
 
   return (
@@ -97,6 +117,56 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
 
         {rows.length === 0 ? (
           <p>No outdoor table rows have been added for {selectedYear} yet.</p>
+        ) : isMobile ? (
+          <MobileCardList className="outdoor-table-mobile-list">
+            {rows.map((entry) => (
+              <article key={entry.id} className="outdoor-table-mobile-card">
+                <div className="outdoor-table-mobile-card-header">
+                  <div>
+                    <h3>{entry.archerName || `${entry.archerFirstName} ${entry.archerSurname}`.trim()}</h3>
+                    <p>{entry.bowType}</p>
+                  </div>
+                  <span className="outdoor-table-mobile-handicap">
+                    HC {entry.handicap ?? "-"}
+                  </span>
+                </div>
+
+                <MobileKeyValueList
+                  items={[
+                    { label: "Surname", value: entry.archerSurname || "-" },
+                    { label: "First name", value: entry.archerFirstName || "-" },
+                    { label: "Previous", value: getAchievementSummary(entry) },
+                    { label: "Sight marks", value: getSightMarksSummary(entry) },
+                  ]}
+                />
+
+                <div className="outdoor-table-mobile-252-block">
+                  <h4>252 Progress</h4>
+                  <div className="outdoor-table-mobile-252-grid">
+                    {OUTDOOR_252_COLUMNS.map((column) => {
+                      const isComplete = isAward252Complete(
+                        entry,
+                        column.awardKey,
+                        column.signOffKey,
+                      );
+
+                      return (
+                        <div
+                          key={`${entry.id}-${column.awardKey}`}
+                          className={`outdoor-table-mobile-252-chip ${
+                            isComplete ? "is-complete" : "is-pending"
+                          }`}
+                        >
+                          <strong>{column.label}</strong>
+                          <span>{countCompletedSignOffs(entry[column.signOffKey])}/3</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </MobileCardList>
         ) : (
           <div className="outdoor-table-scroll">
             <table className="outdoor-table-matrix">

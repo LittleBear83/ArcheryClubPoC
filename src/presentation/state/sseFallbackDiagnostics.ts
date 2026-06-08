@@ -7,6 +7,10 @@ type DiagnosticsListener = () => void;
 
 const listeners = new Set<DiagnosticsListener>();
 const activeSources = new Set<string>();
+let snapshot: FallbackDiagnostics = {
+  activeSources: [],
+  isFallbackActive: false,
+};
 
 function emitChange() {
   for (const listener of listeners) {
@@ -21,17 +25,23 @@ function buildSnapshot(): FallbackDiagnostics {
   };
 }
 
+function refreshSnapshot() {
+  snapshot = buildSnapshot();
+}
+
 export function markSseFallbackSourceActive(source: string, isActive: boolean) {
   const hadSource = activeSources.has(source);
 
   if (isActive && !hadSource) {
     activeSources.add(source);
+    refreshSnapshot();
     emitChange();
     return;
   }
 
   if (!isActive && hadSource) {
     activeSources.delete(source);
+    refreshSnapshot();
     emitChange();
   }
 }
@@ -41,7 +51,7 @@ export function clearSseFallbackSource(source: string) {
 }
 
 export function getSseFallbackDiagnostics() {
-  return buildSnapshot();
+  return snapshot;
 }
 
 export function subscribeToSseFallbackDiagnostics(listener: DiagnosticsListener) {

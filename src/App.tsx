@@ -177,6 +177,7 @@ function PaymentCardModal({
 function ServerEventsDiagnosticsBadge() {
   const diagnostics = useServerEventDiagnostics();
   const fallbackDiagnostics = useSseFallbackDiagnostics();
+  const [isExpanded, setIsExpanded] = useState(false);
   const stateLabel = diagnostics.connectionState.toUpperCase();
   const lastEventLabel = diagnostics.lastEventName ?? "None";
   const lastEventTime = formatDiagnosticsTimestamp(diagnostics.lastEventAt);
@@ -187,38 +188,57 @@ function ServerEventsDiagnosticsBadge() {
 
   return (
     <aside
-      className={`server-events-diagnostics server-events-diagnostics--${diagnostics.connectionState}`}
+      className={[
+        "server-events-diagnostics",
+        `server-events-diagnostics--${diagnostics.connectionState}`,
+        isExpanded ? "server-events-diagnostics--expanded" : "server-events-diagnostics--collapsed",
+      ].join(" ")}
       aria-live="polite"
     >
-      <p className="server-events-diagnostics-title">SSE diagnostics</p>
-      <p className="server-events-diagnostics-row">
-        <strong>{stateLabel}</strong>
-        <span>{diagnostics.eventCount} events</span>
-      </p>
-      <p className="server-events-diagnostics-row">
-        <span>Last</span>
-        <span>{lastEventLabel}</span>
-      </p>
-      <p className="server-events-diagnostics-row">
-        <span>Seen at</span>
-        <span>{lastEventTime}</span>
-      </p>
-      <p className="server-events-diagnostics-row">
-        <span>Reconnects</span>
-        <span>{Math.max(diagnostics.connectCount - 1, 0)}</span>
-      </p>
-      <p className="server-events-diagnostics-row">
-        <span>Errors</span>
-        <span>{diagnostics.errorCount}</span>
-      </p>
-      <p className="server-events-diagnostics-row">
-        <span>Fallback</span>
-        <span>{fallbackLabel}</span>
-      </p>
-      <p className="server-events-diagnostics-row server-events-diagnostics-row--stacked">
-        <span>Sources</span>
-        <span>{fallbackSources}</span>
-      </p>
+      <button
+        type="button"
+        className="server-events-diagnostics-toggle"
+        onClick={() => setIsExpanded((current) => !current)}
+        aria-expanded={isExpanded}
+        aria-label={isExpanded ? "Collapse SSE diagnostics" : "Expand SSE diagnostics"}
+      >
+        <span className="server-events-diagnostics-toggle-dot" />
+        <span className="server-events-diagnostics-toggle-label">SSE</span>
+      </button>
+
+      {isExpanded ? (
+        <div className="server-events-diagnostics-panel">
+          <p className="server-events-diagnostics-title">SSE diagnostics</p>
+          <p className="server-events-diagnostics-row">
+            <strong>{stateLabel}</strong>
+            <span>{diagnostics.eventCount} events</span>
+          </p>
+          <p className="server-events-diagnostics-row">
+            <span>Last</span>
+            <span>{lastEventLabel}</span>
+          </p>
+          <p className="server-events-diagnostics-row">
+            <span>Seen at</span>
+            <span>{lastEventTime}</span>
+          </p>
+          <p className="server-events-diagnostics-row">
+            <span>Reconnects</span>
+            <span>{Math.max(diagnostics.connectCount - 1, 0)}</span>
+          </p>
+          <p className="server-events-diagnostics-row">
+            <span>Errors</span>
+            <span>{diagnostics.errorCount}</span>
+          </p>
+          <p className="server-events-diagnostics-row">
+            <span>Fallback</span>
+            <span>{fallbackLabel}</span>
+          </p>
+          <p className="server-events-diagnostics-row server-events-diagnostics-row--stacked">
+            <span>Sources</span>
+            <span>{fallbackSources}</span>
+          </p>
+        </div>
+      ) : null}
     </aside>
   );
 }

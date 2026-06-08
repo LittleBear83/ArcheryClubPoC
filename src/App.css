@@ -6748,7 +6748,9 @@ button:disabled {
 }
 
 .outdoor-table-checkbox-grid--achievements {
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(9, minmax(110px, 1fr));
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
 }
 
 .outdoor-table-checkbox {
@@ -6767,6 +6769,11 @@ button:disabled {
     border-color 120ms ease,
     background 120ms ease,
     transform 120ms ease;
+}
+
+.outdoor-table-checkbox-grid--achievements .outdoor-table-checkbox--tile {
+  min-height: 72px;
+  justify-content: center;
 }
 
 .outdoor-table-checkbox--tile:hover {

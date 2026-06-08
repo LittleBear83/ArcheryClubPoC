@@ -1682,9 +1682,35 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.profile-outdoor-card-heading {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.profile-outdoor-card-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .profile-outdoor-card-header h3,
 .profile-outdoor-card-header p {
   margin: 0;
+}
+
+.profile-outdoor-collapse-button {
+  min-height: 0;
+  padding: 2px 4px;
+  border-radius: 10px;
+  color: var(--text-h);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.profile-outdoor-collapse-button:hover {
+  background: var(--surface-hover);
 }
 
 .profile-outdoor-card-header p {
@@ -1709,6 +1735,16 @@ button:disabled {
   gap: 10px;
 }
 
+.profile-outdoor-achievement-field {
+  display: grid;
+  gap: 6px;
+}
+
+.profile-outdoor-achievement-field span {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
 .profile-outdoor-252-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -1718,6 +1754,25 @@ button:disabled {
 .profile-outdoor-card-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .profile-outdoor-card {
+    padding: 16px;
+  }
+
+  .profile-outdoor-card-header {
+    display: grid;
+  }
+
+  .profile-outdoor-handicap {
+    width: 100%;
+  }
+
+  .profile-outdoor-achievement-grid,
+  .profile-outdoor-252-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .role-permissions-panel {

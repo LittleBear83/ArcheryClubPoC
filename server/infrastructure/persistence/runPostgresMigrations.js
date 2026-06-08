@@ -169,6 +169,15 @@ function buildInitialSchemaSql() {
       master_bowman BOOLEAN NOT NULL DEFAULT FALSE,
       grand_master_bowman BOOLEAN NOT NULL DEFAULT FALSE,
       elite_master_bowman BOOLEAN NOT NULL DEFAULT FALSE,
+      archer_3rd_date TEXT NOT NULL DEFAULT '',
+      archer_2nd_date TEXT NOT NULL DEFAULT '',
+      archer_1st_date TEXT NOT NULL DEFAULT '',
+      bowman_3rd_date TEXT NOT NULL DEFAULT '',
+      bowman_2nd_date TEXT NOT NULL DEFAULT '',
+      bowman_1st_date TEXT NOT NULL DEFAULT '',
+      master_bowman_date TEXT NOT NULL DEFAULT '',
+      grand_master_bowman_date TEXT NOT NULL DEFAULT '',
+      elite_master_bowman_date TEXT NOT NULL DEFAULT '',
       award_252_20 BOOLEAN NOT NULL DEFAULT FALSE,
       award_252_30 BOOLEAN NOT NULL DEFAULT FALSE,
       award_252_40 BOOLEAN NOT NULL DEFAULT FALSE,
@@ -965,6 +974,42 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE outdoor_table_entries
       ADD COLUMN IF NOT EXISTS award_252_100_sign_off_dates JSONB NOT NULL DEFAULT '["","",""]'::jsonb
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS archer_3rd_date TEXT NOT NULL DEFAULT ''
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS archer_2nd_date TEXT NOT NULL DEFAULT ''
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS archer_1st_date TEXT NOT NULL DEFAULT ''
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS bowman_3rd_date TEXT NOT NULL DEFAULT ''
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS bowman_2nd_date TEXT NOT NULL DEFAULT ''
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS bowman_1st_date TEXT NOT NULL DEFAULT ''
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS master_bowman_date TEXT NOT NULL DEFAULT ''
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS grand_master_bowman_date TEXT NOT NULL DEFAULT ''
+    `);
+    await client.query(`
+      ALTER TABLE outdoor_table_entries
+      ADD COLUMN IF NOT EXISTS elite_master_bowman_date TEXT NOT NULL DEFAULT ''
     `);
 
     await client.query("COMMIT");

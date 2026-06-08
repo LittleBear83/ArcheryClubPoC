@@ -13,6 +13,18 @@ export type OutdoorBooleanFieldKey = keyof Pick<
   | "grandMasterBowman"
   | "eliteMasterBowman"
 >;
+export type OutdoorAchievementDateFieldKey = keyof Pick<
+  OutdoorTableEntryPayload,
+  | "archer3rdDate"
+  | "archer2ndDate"
+  | "archer1stDate"
+  | "bowman3rdDate"
+  | "bowman2ndDate"
+  | "bowman1stDate"
+  | "masterBowmanDate"
+  | "grandMasterBowmanDate"
+  | "eliteMasterBowmanDate"
+>;
 export type Outdoor252FieldKey = keyof Pick<
   OutdoorTableEntryPayload,
   | "award25220"
@@ -53,17 +65,26 @@ export const BOW_TYPE_DISCIPLINE_MAPPINGS = [
 ] as const;
 export const OUTDOOR_ACHIEVEMENT_COLUMNS: Array<{
   key: OutdoorBooleanFieldKey;
+  dateKey: OutdoorAchievementDateFieldKey;
   label: string;
 }> = [
-  { key: "archer3rd", label: "Archer 3rd" },
-  { key: "archer2nd", label: "Archer 2nd" },
-  { key: "archer1st", label: "Archer 1st" },
-  { key: "bowman3rd", label: "Bowman 3rd" },
-  { key: "bowman2nd", label: "Bowman 2nd" },
-  { key: "bowman1st", label: "Bowman 1st" },
-  { key: "masterBowman", label: "Master Bowman" },
-  { key: "grandMasterBowman", label: "Grand Master Bowman" },
-  { key: "eliteMasterBowman", label: "Elite Master Bowman" },
+  { key: "archer3rd", dateKey: "archer3rdDate", label: "Archer 3rd" },
+  { key: "archer2nd", dateKey: "archer2ndDate", label: "Archer 2nd" },
+  { key: "archer1st", dateKey: "archer1stDate", label: "Archer 1st" },
+  { key: "bowman3rd", dateKey: "bowman3rdDate", label: "Bowman 3rd" },
+  { key: "bowman2nd", dateKey: "bowman2ndDate", label: "Bowman 2nd" },
+  { key: "bowman1st", dateKey: "bowman1stDate", label: "Bowman 1st" },
+  { key: "masterBowman", dateKey: "masterBowmanDate", label: "Master Bowman" },
+  {
+    key: "grandMasterBowman",
+    dateKey: "grandMasterBowmanDate",
+    label: "Grand Master Bowman",
+  },
+  {
+    key: "eliteMasterBowman",
+    dateKey: "eliteMasterBowmanDate",
+    label: "Elite Master Bowman",
+  },
 ];
 export const OUTDOOR_252_COLUMNS: Array<{
   awardKey: Outdoor252FieldKey;
@@ -126,6 +147,15 @@ export function buildEmptyOutdoorTableDraft(
     masterBowman: false,
     grandMasterBowman: false,
     eliteMasterBowman: false,
+    archer3rdDate: "",
+    archer2ndDate: "",
+    archer1stDate: "",
+    bowman3rdDate: "",
+    bowman2ndDate: "",
+    bowman1stDate: "",
+    masterBowmanDate: "",
+    grandMasterBowmanDate: "",
+    eliteMasterBowmanDate: "",
     award25220: false,
     award25230: false,
     award25240: false,
@@ -194,6 +224,15 @@ export function toOutdoorTablePayload(
     masterBowman: draft.masterBowman,
     grandMasterBowman: draft.grandMasterBowman,
     eliteMasterBowman: draft.eliteMasterBowman,
+    archer3rdDate: draft.archer3rdDate,
+    archer2ndDate: draft.archer2ndDate,
+    archer1stDate: draft.archer1stDate,
+    bowman3rdDate: draft.bowman3rdDate,
+    bowman2ndDate: draft.bowman2ndDate,
+    bowman1stDate: draft.bowman1stDate,
+    masterBowmanDate: draft.masterBowmanDate,
+    grandMasterBowmanDate: draft.grandMasterBowmanDate,
+    eliteMasterBowmanDate: draft.eliteMasterBowmanDate,
     award25220: countCompletedSignOffs(award25220SignOffDates) >= 3,
     award25230: countCompletedSignOffs(award25230SignOffDates) >= 3,
     award25240: countCompletedSignOffs(award25240SignOffDates) >= 3,

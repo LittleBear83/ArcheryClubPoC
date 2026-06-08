@@ -31,7 +31,7 @@ export function ProfileDesktopView({
   handleOpenCardModal,
   handleOpenDistanceSignOffModal,
   handleOutdoorTableAward252SignOffDateChange,
-  handleOutdoorTableBooleanChange,
+  handleOutdoorTableAchievementDateChange,
   handleOutdoorTableHandicapChange,
   handleSave,
   handleSaveOutdoorTableEntry,
@@ -119,21 +119,6 @@ export function ProfileDesktopView({
           canEditDisciplines={canManageMemberDisciplines}
           onSubmit={handleSave}
           submitLabel={submitLabel}
-        />
-      ) : null}
-
-      {editableProfile ? (
-        <ProfileOutdoorAchievementsSection
-          canManageMembers={canManageMembers}
-          entries={outdoorTableBowEntries}
-          error={outdoorTableError}
-          isLoading={isLoadingOutdoorTable}
-          isSavingByBowType={isSavingOutdoorTableByBowType}
-          onAward252SignOffDateChange={handleOutdoorTableAward252SignOffDateChange}
-          onBooleanChange={handleOutdoorTableBooleanChange}
-          onHandicapChange={handleOutdoorTableHandicapChange}
-          onSave={handleSaveOutdoorTableEntry}
-          seasonYear={new Date().getFullYear()}
         />
       ) : null}
 
@@ -266,6 +251,20 @@ export function ProfileDesktopView({
             </table>
           </div>
         </SectionPanel>
+      ) : null}
+
+      {editableProfile ? (
+        <ProfileOutdoorAchievementsSection
+          canManageMembers={canManageMembers}
+          entries={outdoorTableBowEntries}
+          error={outdoorTableError}
+          isLoading={isLoadingOutdoorTable}
+          isSavingByBowType={isSavingOutdoorTableByBowType}
+          onAward252SignOffDateChange={handleOutdoorTableAward252SignOffDateChange}
+          onAchievementDateChange={handleOutdoorTableAchievementDateChange}
+          onHandicapChange={handleOutdoorTableHandicapChange}
+          onSave={handleSaveOutdoorTableEntry}
+        />
       ) : null}
     </div>
   );

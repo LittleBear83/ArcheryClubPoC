@@ -393,6 +393,15 @@ export function bootstrapSqliteBaseSchema({
       master_bowman INTEGER NOT NULL DEFAULT 0,
       grand_master_bowman INTEGER NOT NULL DEFAULT 0,
       elite_master_bowman INTEGER NOT NULL DEFAULT 0,
+      archer_3rd_date TEXT NOT NULL DEFAULT '',
+      archer_2nd_date TEXT NOT NULL DEFAULT '',
+      archer_1st_date TEXT NOT NULL DEFAULT '',
+      bowman_3rd_date TEXT NOT NULL DEFAULT '',
+      bowman_2nd_date TEXT NOT NULL DEFAULT '',
+      bowman_1st_date TEXT NOT NULL DEFAULT '',
+      master_bowman_date TEXT NOT NULL DEFAULT '',
+      grand_master_bowman_date TEXT NOT NULL DEFAULT '',
+      elite_master_bowman_date TEXT NOT NULL DEFAULT '',
       award_252_20 INTEGER NOT NULL DEFAULT 0,
       award_252_30 INTEGER NOT NULL DEFAULT 0,
       award_252_40 INTEGER NOT NULL DEFAULT 0,
@@ -467,6 +476,34 @@ export function bootstrapSqliteBaseSchema({
     db.exec(
       `ALTER TABLE outdoor_table_entries ADD COLUMN award_252_100_sign_off_dates TEXT NOT NULL DEFAULT '["","",""]'`,
     );
+  }
+
+  if (!outdoorTableColumns.some((column) => column.name === "archer_3rd_date")) {
+    db.exec(`ALTER TABLE outdoor_table_entries ADD COLUMN archer_3rd_date TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!outdoorTableColumns.some((column) => column.name === "archer_2nd_date")) {
+    db.exec(`ALTER TABLE outdoor_table_entries ADD COLUMN archer_2nd_date TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!outdoorTableColumns.some((column) => column.name === "archer_1st_date")) {
+    db.exec(`ALTER TABLE outdoor_table_entries ADD COLUMN archer_1st_date TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!outdoorTableColumns.some((column) => column.name === "bowman_3rd_date")) {
+    db.exec(`ALTER TABLE outdoor_table_entries ADD COLUMN bowman_3rd_date TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!outdoorTableColumns.some((column) => column.name === "bowman_2nd_date")) {
+    db.exec(`ALTER TABLE outdoor_table_entries ADD COLUMN bowman_2nd_date TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!outdoorTableColumns.some((column) => column.name === "bowman_1st_date")) {
+    db.exec(`ALTER TABLE outdoor_table_entries ADD COLUMN bowman_1st_date TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!outdoorTableColumns.some((column) => column.name === "master_bowman_date")) {
+    db.exec(`ALTER TABLE outdoor_table_entries ADD COLUMN master_bowman_date TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!outdoorTableColumns.some((column) => column.name === "grand_master_bowman_date")) {
+    db.exec(`ALTER TABLE outdoor_table_entries ADD COLUMN grand_master_bowman_date TEXT NOT NULL DEFAULT ''`);
+  }
+  if (!outdoorTableColumns.some((column) => column.name === "elite_master_bowman_date")) {
+    db.exec(`ALTER TABLE outdoor_table_entries ADD COLUMN elite_master_bowman_date TEXT NOT NULL DEFAULT ''`);
   }
 
   db.exec(COACHING_SESSIONS_TABLE_SQL);

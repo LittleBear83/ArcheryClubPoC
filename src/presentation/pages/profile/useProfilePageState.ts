@@ -18,8 +18,8 @@ import {
   buildEmptyOutdoorTableDraft,
   buildOutdoorTableDraftFromEntry,
   toOutdoorTablePayload,
+  type OutdoorAchievementDateFieldKey,
   type Outdoor252SignOffFieldKey,
-  type OutdoorBooleanFieldKey,
   type ProfileOutdoorTableDraft,
 } from "./outdoorTableProfileUtils";
 
@@ -782,9 +782,10 @@ export function useProfilePageState({
     }
   };
 
-  const handleOutdoorTableBooleanChange = (
+  const handleOutdoorTableAchievementDateChange = (
     bowType: string,
-    field: OutdoorBooleanFieldKey,
+    field: OutdoorAchievementDateFieldKey,
+    value: string,
   ) => {
     setOutdoorTableDraftsByBowType((current) => {
       const existingDraft = current[bowType];
@@ -797,7 +798,20 @@ export function useProfilePageState({
         ...current,
         [bowType]: {
           ...existingDraft,
-          [field]: !existingDraft[field],
+          [field]: value,
+          ...(field === "archer3rdDate" ? { archer3rd: Boolean(value) } : {}),
+          ...(field === "archer2ndDate" ? { archer2nd: Boolean(value) } : {}),
+          ...(field === "archer1stDate" ? { archer1st: Boolean(value) } : {}),
+          ...(field === "bowman3rdDate" ? { bowman3rd: Boolean(value) } : {}),
+          ...(field === "bowman2ndDate" ? { bowman2nd: Boolean(value) } : {}),
+          ...(field === "bowman1stDate" ? { bowman1st: Boolean(value) } : {}),
+          ...(field === "masterBowmanDate" ? { masterBowman: Boolean(value) } : {}),
+          ...(field === "grandMasterBowmanDate"
+            ? { grandMasterBowman: Boolean(value) }
+            : {}),
+          ...(field === "eliteMasterBowmanDate"
+            ? { eliteMasterBowman: Boolean(value) }
+            : {}),
         },
       };
     });
@@ -926,7 +940,7 @@ export function useProfilePageState({
     handleOpenCardModal,
     handleOpenDistanceSignOffModal,
     handleOutdoorTableAward252SignOffDateChange,
-    handleOutdoorTableBooleanChange,
+    handleOutdoorTableAchievementDateChange,
     handleOutdoorTableHandicapChange,
     handleReturnLoanBow,
     handleSave,

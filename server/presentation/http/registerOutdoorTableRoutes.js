@@ -33,6 +33,17 @@ const AWARD_252_FIELD_MAPPINGS = [
   { awardKey: "award25280", signOffKey: "award25280SignOffDates" },
   { awardKey: "award252100", signOffKey: "award252100SignOffDates" },
 ];
+const ACHIEVEMENT_DATE_FIELD_MAPPINGS = [
+  { awardKey: "archer3rd", dateKey: "archer3rdDate" },
+  { awardKey: "archer2nd", dateKey: "archer2ndDate" },
+  { awardKey: "archer1st", dateKey: "archer1stDate" },
+  { awardKey: "bowman3rd", dateKey: "bowman3rdDate" },
+  { awardKey: "bowman2nd", dateKey: "bowman2ndDate" },
+  { awardKey: "bowman1st", dateKey: "bowman1stDate" },
+  { awardKey: "masterBowman", dateKey: "masterBowmanDate" },
+  { awardKey: "grandMasterBowman", dateKey: "grandMasterBowmanDate" },
+  { awardKey: "eliteMasterBowman", dateKey: "eliteMasterBowmanDate" },
+];
 const BOW_TYPE_TO_DISCIPLINE = {
   Rec: "Recurve Bow",
   Comp: "Compound Bow",
@@ -130,6 +141,24 @@ function normalizeSignOffDates(value) {
   return normalizedDates;
 }
 
+function normalizeOptionalDate(value) {
+  if (value == null || value === "") {
+    return "";
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmedValue) ? trimmedValue : null;
+}
+
 function buildOutdoorTablePayload(body) {
   const seasonYear = normalizeSeasonYear(body?.seasonYear);
   const archerUsername = normalizeText(body?.archerUsername, {
@@ -167,6 +196,18 @@ function buildOutdoorTablePayload(body) {
     }
 
     payload[fieldKey] = normalizedValue;
+  }
+
+  for (const { awardKey, dateKey } of ACHIEVEMENT_DATE_FIELD_MAPPINGS) {
+    const legacyAwardValue = normalizeBoolean(body?.[awardKey]);
+    const dateValue = normalizeOptionalDate(body?.[dateKey]);
+
+    if (legacyAwardValue === null || dateValue === null) {
+      return null;
+    }
+
+    payload[awardKey] = legacyAwardValue || Boolean(dateValue);
+    payload[dateKey] = dateValue;
   }
 
   for (const { awardKey, signOffKey } of AWARD_252_FIELD_MAPPINGS) {

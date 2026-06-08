@@ -133,6 +133,15 @@ export type OutdoorTableEntry = {
   masterBowman: boolean;
   grandMasterBowman: boolean;
   eliteMasterBowman: boolean;
+  archer3rdDate: string;
+  archer2ndDate: string;
+  archer1stDate: string;
+  bowman3rdDate: string;
+  bowman2ndDate: string;
+  bowman1stDate: string;
+  masterBowmanDate: string;
+  grandMasterBowmanDate: string;
+  eliteMasterBowmanDate: string;
   award25220: boolean;
   award25230: boolean;
   award25240: boolean;

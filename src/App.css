@@ -723,7 +723,16 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: var(--membership-ticker-text);
 }
 
+.lost-arrow-ticker {
+  width: 100%;
+  overflow: hidden;
+  border-bottom: 1px solid var(--panel-border-strong);
+  background: linear-gradient(90deg, #062f45 0%, #0a5373 48%, #062f45 100%);
+  color: #e8f8ff;
+}
+
 .membership-reminder-ticker-track,
+.lost-arrow-ticker-track,
 .admin-warning-ticker-track,
 .announcement-ticker-track {
   display: inline-flex;
@@ -740,24 +749,28 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   white-space: pre-line;
 }
 
+.lost-arrow-ticker-track,
 .admin-warning-ticker-track,
 .announcement-ticker-track {
   white-space: nowrap;
 }
 
 .membership-reminder-ticker-track span,
+.lost-arrow-ticker-track span,
 .admin-warning-ticker-track span,
 .announcement-ticker-track span {
   display: block;
 }
 
 .membership-reminder-ticker--mobile,
+.lost-arrow-ticker--mobile,
 .admin-warning-ticker--mobile,
 .announcement-ticker--mobile {
   overflow: visible;
 }
 
 .membership-reminder-ticker-track--mobile,
+.lost-arrow-ticker-track--mobile,
 .admin-warning-ticker-track--mobile,
 .announcement-ticker-track--mobile {
   display: block;
@@ -6252,9 +6265,139 @@ button:disabled {
   gap: 12px;
 }
 
+.lost-arrow-page {
+  display: grid;
+  gap: 20px;
+}
+
+.lost-arrow-form,
+.lost-arrow-found-form {
+  display: grid;
+  gap: 16px;
+}
+
+.lost-arrow-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 14px;
+}
+
+.lost-arrow-form-grid label,
+.lost-arrow-found-form label,
+.lost-arrow-form .custom-date-picker,
+.lost-arrow-found-form .custom-date-picker {
+  display: grid;
+  gap: 8px;
+}
+
+.lost-arrow-form input,
+.lost-arrow-form select,
+.lost-arrow-form textarea,
+.lost-arrow-found-form input,
+.lost-arrow-found-form select,
+.lost-arrow-found-form textarea {
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 12px 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 12px;
+  background: var(--input-bg);
+  color: var(--input-text);
+  font: inherit;
+}
+
+.lost-arrow-form textarea,
+.lost-arrow-found-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.lost-arrow-form select option,
+.lost-arrow-found-form select option {
+  color: var(--input-option-text);
+  background: var(--input-option-bg);
+}
+
+.lost-arrow-form input:focus,
+.lost-arrow-form select:focus,
+.lost-arrow-form textarea:focus,
+.lost-arrow-found-form input:focus,
+.lost-arrow-found-form select:focus,
+.lost-arrow-found-form textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.lost-arrow-form-grid-span {
+  grid-column: 1 / -1;
+}
+
+.lost-arrow-helper-text,
+.lost-arrow-table-subcopy,
+.lost-arrow-found-summary {
+  color: var(--muted);
+}
+
+.lost-arrow-helper-text {
+  font-size: 0.84rem;
+}
+
+.lost-arrow-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.lost-arrow-table-wrap {
+  overflow-x: auto;
+}
+
+.lost-arrow-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+.lost-arrow-table th,
+.lost-arrow-table td {
+  padding: 12px 10px;
+  border: 1px solid var(--panel-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.lost-arrow-table th {
+  background: var(--surface-deep);
+  color: var(--text-h);
+}
+
+.lost-arrow-table-subcopy {
+  font-size: 0.84rem;
+}
+
+.lost-arrow-mobile-list {
+  gap: 12px;
+}
+
+.lost-arrow-mobile-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--surface-deep);
+}
+
+.lost-arrow-mobile-card h4,
+.lost-arrow-mobile-card p {
+  margin: 0;
+}
+
 .calendar-table-wrap,
 .committee-roles-table-wrap,
 .equipment-inventory-table-wrap,
+.lost-arrow-table-wrap,
 .records-records-table-wrap,
 .records-score-table-wrap,
 .reporting-table-wrap {
@@ -6303,6 +6446,11 @@ button:disabled {
     min-width: 0;
   }
 
+  .lost-arrow-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
   .records-records-table th,
   .records-records-table td,
   .records-score-table th,
@@ -6338,6 +6486,7 @@ button:disabled {
   .role-permissions-actions,
   .records-page-actions,
   .records-form-actions,
+  .lost-arrow-actions,
   .role-delete-modal-actions,
   .loan-bow-return-actions,
   .event-modal-actions,
@@ -6360,6 +6509,7 @@ button:disabled {
   .role-permissions-actions .app-button,
   .records-page-actions .app-button,
   .records-form-actions .app-button,
+  .lost-arrow-actions .app-button,
   .role-delete-modal-actions .app-button,
   .loan-bow-return-actions .app-button,
   .event-modal-actions .app-button,

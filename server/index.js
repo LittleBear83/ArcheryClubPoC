@@ -56,6 +56,7 @@ import { createAnnouncementGateway } from "./infrastructure/persistence/announce
 import { createEquipmentGateway } from "./infrastructure/persistence/equipmentGateway.js";
 import { createMemberAuthGateway } from "./infrastructure/persistence/memberAuthGateway.js";
 import { createMemberProfileGateway } from "./infrastructure/persistence/memberProfileGateway.js";
+import { createLostArrowGateway } from "./infrastructure/persistence/lostArrowGateway.js";
 import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
 import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
 import { createTournamentGateway } from "./infrastructure/persistence/tournamentGateway.js";
@@ -71,6 +72,7 @@ import { registerAdminMemberRoutes } from "./presentation/http/registerAdminMemb
 import { registerAnnouncementRoutes } from "./presentation/http/registerAnnouncementRoutes.js";
 import { registerAuthRoutes } from "./presentation/http/registerAuthRoutes.js";
 import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRoutes.js";
+import { registerLostArrowRoutes } from "./presentation/http/registerLostArrowRoutes.js";
 import { registerSseRoutes } from "./presentation/http/registerSseRoutes.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
@@ -814,6 +816,12 @@ const memberProfileGateway = createMemberProfileGateway({
   upsertLoanBowByUsername,
   upsertUser,
   upsertUserType,
+});
+
+const lostArrowGateway = createLostArrowGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
 });
 
 const memberDirectoryGateway = {
@@ -3470,6 +3478,14 @@ registerSseRoutes({
   getActorUser,
   getPermissionsForRole,
   publicServerEventBus,
+  serverEventBus,
+});
+registerLostArrowRoutes({
+  app,
+  getActorUser,
+  getUtcTimestampParts,
+  lostArrowGateway,
+  memberAuthGateway,
   serverEventBus,
 });
 

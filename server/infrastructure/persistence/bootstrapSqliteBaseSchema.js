@@ -340,6 +340,31 @@ export function bootstrapSqliteBaseSchema({
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lost_arrows (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      archer_username TEXT NOT NULL,
+      date_lost TEXT NOT NULL,
+      arrow_material TEXT NOT NULL CHECK (
+        arrow_material IN ('aluminium', 'carbon')
+      ),
+      arrow_colour TEXT NOT NULL,
+      arrow_identifier TEXT NOT NULL,
+      fletching_colour_1 TEXT NOT NULL,
+      fletching_colour_2 TEXT NOT NULL,
+      nock_colour TEXT NOT NULL,
+      target_distance TEXT NOT NULL,
+      lane_number INTEGER NOT NULL CHECK (lane_number BETWEEN 1 AND 11),
+      other_details TEXT,
+      date_found TEXT,
+      found_by_username TEXT,
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      FOREIGN KEY (archer_username) REFERENCES users(username),
+      FOREIGN KEY (found_by_username) REFERENCES users(username)
+    )
+  `);
+
   db.exec(COACHING_SESSIONS_TABLE_SQL);
   db.exec(COACHING_SESSION_BOOKINGS_TABLE_SQL);
   db.exec(CLUB_EVENTS_TABLE_SQL);

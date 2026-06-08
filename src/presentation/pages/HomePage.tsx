@@ -40,8 +40,9 @@ import {
   type AnnouncementRecord,
 } from "../../api/announcementApi";
 import { listTournaments } from "../../api/tournamentApi";
+import { listMyLostArrowNotices } from "../../api/lostArrowApi";
 import { useTheme } from "../../theme/useTheme";
-import type { HomeMember, UserProfile } from "../../types/app";
+import type { HomeMember, LostArrowRecord, UserProfile } from "../../types/app";
 import type { AppDependencies } from "../../bootstrap/createAppDependencies";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
@@ -133,6 +134,7 @@ type BeginnerCoachAssignment = {
   coordinatorName: string;
   beginnerCount: number;
 };
+type LostArrowNotice = LostArrowRecord;
 
 const homeQueryKeys = {
   rangeMembers: () => ["range-members"] as const,
@@ -141,6 +143,8 @@ const homeQueryKeys = {
     ["admin-tournament-warnings", username] as const,
   activeAnnouncements: (username: string) =>
     ["active-announcements", username] as const,
+  lostArrowNotices: (username: string) =>
+    ["my-lost-arrow-notices", username] as const,
 };
 
 const TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS = 2;
@@ -250,6 +254,13 @@ function getHomeTickerMessage(currentUserProfile, beginnerDashboard) {
   }
 
   return "";
+}
+
+function getLostArrowNoticeMessages(notices: LostArrowNotice[]) {
+  return notices.map((notice) => {
+    const foundBy = notice.foundByName || notice.foundByUsername || "another member";
+    return `${notice.arrowColour} ${notice.arrowMaterial} arrow (${notice.arrowIdentifier}) found by ${foundBy} on ${formatDate(notice.dateFound || notice.dateLost)}`;
+  });
 }
 
 function getAnnouncementSeverityLevel(severity: AnnouncementRecord["severity"]) {
@@ -428,6 +439,12 @@ async function fetchActiveAnnouncements(actor: UserProfile | null) {
   return result.announcements ?? [];
 }
 
+async function fetchLostArrowNotices(actor: UserProfile | null) {
+  const result = await listMyLostArrowNotices(actor);
+
+  return result.notices ?? [];
+}
+
 export function HomePage({
   currentUserProfile,
   onCurrentUserProfileUpdate,
@@ -471,6 +488,11 @@ export function HomePage({
     queryFn: () => fetchActiveAnnouncements(currentUserProfile),
     enabled: Boolean(actorUsername),
   });
+  const { data: lostArrowNotices = [] } = useQuery({
+    queryKey: homeQueryKeys.lostArrowNotices(actorUsername),
+    queryFn: () => fetchLostArrowNotices(currentUserProfile),
+    enabled: Boolean(actorUsername),
+  });
 
   const signedUpEvents = homeActivity?.signedUpEvents ?? [];
   const tournamentReminders = homeActivity?.tournamentReminders ?? [];
@@ -483,6 +505,10 @@ export function HomePage({
   const announcementTicker = useMemo(
     () => getAnnouncementTickerState(activeAnnouncements),
     [activeAnnouncements],
+  );
+  const lostArrowNoticeMessages = useMemo(
+    () => getLostArrowNoticeMessages(lostArrowNotices),
+    [lostArrowNotices],
   );
 
   const handleNavigate = (pageId) => {
@@ -531,6 +557,29 @@ export function HomePage({
             ].filter(Boolean).join(" ")}
           >
             <span>{homeTickerMessage}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {lostArrowNoticeMessages.length > 0 ? (
+        <div
+          className={[
+            "lost-arrow-ticker",
+            isMobile ? "lost-arrow-ticker--mobile" : "",
+          ].filter(Boolean).join(" ")}
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className={[
+              "lost-arrow-ticker-track",
+              isMobile ? "lost-arrow-ticker-track--mobile" : "",
+            ].filter(Boolean).join(" ")}
+          >
+            <span>{lostArrowNoticeMessages.join("   |   ")}</span>
+            {isMobile ? null : (
+              <span aria-hidden="true">{lostArrowNoticeMessages.join("   |   ")}</span>
+            )}
           </div>
         </div>
       ) : null}
@@ -778,7 +827,10 @@ export function HomePage({
               }
             />
             <Route path="/feedback-form" element={<FeedbackFormPage />} />
-            <Route path="/lost-and-found" element={<LostAndFoundPage />} />
+            <Route
+              path="/lost-and-found"
+              element={<LostAndFoundPage currentUserProfile={currentUserProfile} />}
+            />
             <Route path="/ideas-form" element={<IdeasFormPage />} />
             <Route path="/general-info" element={<GeneralInfoPage />} />
             <Route

@@ -131,6 +131,27 @@ function buildInitialSchemaSql() {
       user_id BIGINT REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS lost_arrows (
+      id BIGSERIAL PRIMARY KEY,
+      archer_username TEXT NOT NULL REFERENCES users(username),
+      date_lost TEXT NOT NULL,
+      arrow_material TEXT NOT NULL,
+      arrow_colour TEXT NOT NULL,
+      arrow_identifier TEXT NOT NULL,
+      fletching_colour_1 TEXT NOT NULL,
+      fletching_colour_2 TEXT NOT NULL,
+      nock_colour TEXT NOT NULL,
+      target_distance TEXT NOT NULL,
+      lane_number INTEGER NOT NULL,
+      other_details TEXT,
+      date_found TEXT,
+      found_by_username TEXT REFERENCES users(username),
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      archer_user_id BIGINT REFERENCES users(id),
+      found_by_user_id BIGINT REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS login_events (
       id BIGSERIAL PRIMARY KEY,
       username TEXT NOT NULL REFERENCES users(username),
@@ -570,6 +591,16 @@ function buildUserReferenceSyncStatements() {
     {
       tableName: "member_loan_bows",
       references: [{ usernameColumn: "username", userIdColumn: "user_id" }],
+    },
+    {
+      tableName: "lost_arrows",
+      references: [
+        { usernameColumn: "archer_username", userIdColumn: "archer_user_id" },
+        {
+          usernameColumn: "found_by_username",
+          userIdColumn: "found_by_user_id",
+        },
+      ],
     },
     {
       tableName: "login_events",

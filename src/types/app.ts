@@ -93,3 +93,24 @@ export type BeginnersCourseCalendarLesson = {
   isCancelled?: boolean;
   cancellationReason?: string;
 };
+
+export type LostArrowRecord = {
+  id: number;
+  archerUsername: string;
+  archerName: string;
+  dateLost: string;
+  arrowMaterial: "aluminium" | "carbon";
+  arrowColour: string;
+  arrowIdentifier: string;
+  fletchingColour1: string;
+  fletchingColour2: string;
+  nockColour: string;
+  targetDistance: string;
+  laneNumber: number;
+  otherDetails?: string;
+  dateFound?: string;
+  foundByUsername?: string;
+  foundByName?: string;
+  createdAtDate: string;
+  createdAtTime: string;
+};

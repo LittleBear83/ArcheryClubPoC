@@ -119,6 +119,18 @@ export function useServerEvents({
     });
   };
 
+  const invalidateLostArrowQueries = () => {
+    void queryClient.invalidateQueries({
+      queryKey: ["lost-arrows", actorUsername],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["lost-arrow-members", actorUsername],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["my-lost-arrow-notices", actorUsername],
+    });
+  };
+
   useSseFallbackPolling({
     callback: () => {
       invalidateAnnouncementQueries();
@@ -131,6 +143,7 @@ export function useServerEvents({
       invalidateBeginnersQueries();
       invalidateTournamentQueries();
       invalidateRangeMemberQueries();
+      invalidateLostArrowQueries();
     },
     enabled: canUseServerEvents,
     source: "authenticated-shell",
@@ -184,6 +197,10 @@ export function useServerEvents({
       "range-members.updated",
       invalidateRangeMemberQueries,
     );
+    const unsubscribeLostArrows = subscribeToServerEvent(
+      "lost-found.updated",
+      invalidateLostArrowQueries,
+    );
 
     return () => {
       unsubscribeAnnouncements();
@@ -196,6 +213,7 @@ export function useServerEvents({
       unsubscribeBeginners();
       unsubscribeTournaments();
       unsubscribeRangeMembers();
+      unsubscribeLostArrows();
       disconnectServerEvents();
     };
   }, [actorUsername, canUseServerEvents, queryClient]);

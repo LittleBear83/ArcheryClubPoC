@@ -6156,6 +6156,7 @@ button:disabled {
   color: var(--text-soft);
 }
 
+.records-field input,
 .records-field select,
 .records-score-input {
   width: 100%;
@@ -6165,6 +6166,12 @@ button:disabled {
   border-radius: 12px;
   background: var(--input-bg);
   color: var(--input-text);
+  font: inherit;
+}
+
+.records-field input[type="date"] {
+  min-height: var(--control-height);
+  font-size: inherit;
 }
 
 .records-field select option {
@@ -6172,12 +6179,14 @@ button:disabled {
   background: var(--input-option-bg);
 }
 
+.records-field--invalid input,
 .records-field--invalid select,
 .records-score-input--invalid {
   border-color: var(--danger);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--danger) 40%, transparent);
 }
 
+.records-field input:focus,
 .records-field select:focus,
 .records-score-input:focus {
   outline: 2px solid var(--accent);

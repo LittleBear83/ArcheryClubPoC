@@ -103,6 +103,7 @@ export function bootstrapSqliteUserData({
     for (const user of seedUsers) {
       upsertUser.run({
         ...user,
+        emailAddress: user.emailAddress ?? null,
         activeMember: user.activeMember ? 1 : 0,
         coachingVolunteer: user.coachingVolunteer ? 1 : 0,
       });

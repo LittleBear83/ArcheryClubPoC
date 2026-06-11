@@ -921,7 +921,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   text-align: right;
   pointer-events: none;
   text-shadow: var(--banner-title-shadow);
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: nowrap;
 }
 
 .target-arch-banner h1 {
@@ -3517,6 +3519,14 @@ button:disabled {
     line-height: 1.45;
   }
 
+  .announcements-email-actions {
+    flex-wrap: nowrap;
+  }
+
+  .announcements-email-actions .app-button {
+    flex: 1 1 0;
+  }
+
   .announcements-history-table th,
   .announcements-history-table td {
     padding: 10px;
@@ -4661,41 +4671,42 @@ button:disabled {
 
 @media (max-width: 640px) {
   .target-arch-banner {
-    min-height: auto;
-    height: auto;
-    padding: 8px 0 8px;
+    min-height: 112px;
+    height: 112px;
+    padding: 0;
   }
 
   .target-arch-banner .menu-button {
-    top: 10px;
-    left: 12px;
+    top: 8px;
+    left: 10px;
     transform: none;
   }
 
   .target-arch-banner .menu-button-logo {
-    width: 72px;
-    height: 72px;
+    width: 60px;
+    height: 60px;
   }
 
   .target-arch-banner .menu-button-label {
-    font-size: 0.78rem;
+    font-size: 0.74rem;
+  }
+
+  .archery-banner-img {
+    object-position: 82% center;
   }
 
   .target-arch-banner .heading-wrap {
     justify-content: center;
     align-items: flex-end;
-    min-height: 0;
-    padding:
-      104px
-      12px
-      8px
-      12px;
+    min-height: 100%;
+    padding: 28px 84px 12px 78px;
   }
 
   .page-toolbar {
     height: auto;
-    padding: 0 12px 8px;
+    padding: 4px 10px 4px;
     margin-top: 0;
+    z-index: 4;
   }
 
   .page-toolbar-content {
@@ -4720,7 +4731,8 @@ button:disabled {
 
   .target-arch-banner .heading-wrap h1 {
     text-align: center;
-    font-size: clamp(2rem, 1.55rem + 2vw, 2.65rem);
+    font-size: clamp(1.3rem, 1.08rem + 1.05vw, 1.75rem);
+    line-height: 1.02;
   }
 
   .profile-member-select,
@@ -5016,10 +5028,10 @@ button:disabled {
 
   .target-arch-banner .heading-wrap {
     padding:
-      92px
+      22px
+      72px
       10px
-      8px
-      10px;
+      66px;
   }
 
   .target-arch-banner .menu-button {
@@ -5028,16 +5040,16 @@ button:disabled {
   }
 
   .target-arch-banner .menu-button-logo {
-    width: 64px;
-    height: 64px;
+    width: 56px;
+    height: 56px;
   }
 
   .target-arch-banner .heading-wrap h1 {
-    font-size: 1.9rem;
+    font-size: 1.55rem;
   }
 
   .page-toolbar {
-    padding: 0 10px;
+    padding: 0 8px 4px;
   }
 
   .page-shell,

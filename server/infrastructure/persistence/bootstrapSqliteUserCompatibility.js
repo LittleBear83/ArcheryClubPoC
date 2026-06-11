@@ -38,6 +38,7 @@ export function bootstrapSqliteUserCompatibility({ db }) {
           username,
           first_name,
           surname,
+          email_address,
           password,
           rfid_tag,
           active_member,

@@ -10,8 +10,10 @@ import {
   deleteAnnouncement,
   listAnnouncementSeenMembers,
   listAnnouncements,
+  sendAnnouncementEmail,
   updateAnnouncement,
   type AnnouncementRecord,
+  type EmailAudience,
   type AnnouncementSeenMember,
   type AnnouncementSeverity,
 } from "../../api/announcementApi";
@@ -31,7 +33,15 @@ type AnnouncementDraft = {
   escalateSeverity: boolean;
 };
 
+type EmailDraft = {
+  audience: EmailAudience;
+  adhocRecipients: string;
+  title: string;
+  body: string;
+};
+
 const ANNOUNCEMENT_MESSAGE_MAX_LENGTH = 256;
+const EMAIL_TITLE_MAX_LENGTH = 200;
 
 const announcementQueryKeys = {
   history: (actorUsername: string) => ["announcements", actorUsername] as const,
@@ -50,10 +60,24 @@ const emptyDraft: AnnouncementDraft = {
   escalateSeverity: false,
 };
 
+const emptyEmailDraft: EmailDraft = {
+  audience: "all-members",
+  adhocRecipients: "",
+  title: "",
+  body: "",
+};
+
 const severityOptions: Array<{ value: AnnouncementSeverity; label: string }> = [
   { value: "information", label: "Information" },
   { value: "urgent", label: "Urgent" },
   { value: "urgent_important", label: "Urgent and Important" },
+];
+
+const emailAudienceOptions: Array<{ value: EmailAudience; label: string }> = [
+  { value: "all-members", label: "All members" },
+  { value: "all-committee-members", label: "All committee members" },
+  { value: "all-associate-members", label: "All associate members" },
+  { value: "adhoc-list", label: "Ad hoc list" },
 ];
 
 function getAnnouncementStatus(announcement: AnnouncementRecord) {
@@ -106,10 +130,15 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
     currentUserProfile,
     "manage_announcements",
   );
+  const canSendEmail = hasPermission(currentUserProfile, "send_email");
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<AnnouncementDraft>(emptyDraft);
+  const [emailDraft, setEmailDraft] = useState<EmailDraft>(emptyEmailDraft);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [emailSuccess, setEmailSuccess] = useState("");
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] =
     useState<AnnouncementRecord | null>(null);
   const [editingAnnouncementId, setEditingAnnouncementId] = useState<number | null>(
@@ -136,6 +165,8 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
   );
   const charactersRemaining =
     ANNOUNCEMENT_MESSAGE_MAX_LENGTH - draft.message.length;
+  const emailTitleCharactersRemaining =
+    EMAIL_TITLE_MAX_LENGTH - emailDraft.title.length;
   const isEditing = editingAnnouncementId !== null;
 
   const saveMutation = useMutation({
@@ -175,6 +206,16 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
     value: AnnouncementDraft[K],
   ) => {
     setDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  };
+
+  const handleEmailDraftChange = <K extends keyof EmailDraft>(
+    field: K,
+    value: EmailDraft[K],
+  ) => {
+    setEmailDraft((current) => ({
       ...current,
       [field]: value,
     }));
@@ -244,6 +285,45 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
     deleteMutation.mutate(announcement.id);
   };
 
+  const sendEmailMutation = useMutation({
+    mutationFn: () => sendAnnouncementEmail(currentUserProfile, emailDraft),
+    onMutate: () => {
+      setEmailError("");
+      setEmailSuccess("");
+      setError("");
+      setMessage("");
+    },
+    onSuccess: (result) => {
+      setEmailDraft(emptyEmailDraft);
+      setEmailSuccess(result.message ?? "Email sent successfully.");
+      setMessage("");
+    },
+    onError: (mutationError: Error) => {
+      setEmailError(mutationError.message);
+    },
+  });
+
+  const handleOpenEmailModal = () => {
+    setEmailError("");
+    setEmailSuccess("");
+    setIsEmailModalOpen(true);
+  };
+
+  const handleCloseEmailModal = () => {
+    if (sendEmailMutation.isPending) {
+      return;
+    }
+
+    setIsEmailModalOpen(false);
+    setEmailError("");
+    setEmailSuccess("");
+    setEmailDraft(emptyEmailDraft);
+  };
+
+  const handleSendEmail = () => {
+    sendEmailMutation.mutate();
+  };
+
   if (!canManageAnnouncements) {
     return <p>You do not have permission to manage announcements.</p>;
   }
@@ -255,6 +335,14 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
           Create announcements for members and review which members have seen each
           message.
         </p>
+
+        {canSendEmail ? (
+          <div className="announcements-toolbar">
+            <Button type="button" onClick={handleOpenEmailModal}>
+              Send Email
+            </Button>
+          </div>
+        ) : null}
 
         <StatusMessagePanel
           error={error}
@@ -600,6 +688,106 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
             )}
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={isEmailModalOpen}
+        onClose={handleCloseEmailModal}
+        title="Send Email"
+      >
+        <div className="left-align-form announcements-email-modal">
+          <StatusMessagePanel error={emailError} />
+          {emailSuccess ? (
+            <p className="announcements-email-success">{emailSuccess}</p>
+          ) : null}
+
+          <label>
+            Send to
+            <select
+              value={emailDraft.audience}
+              onChange={(event) =>
+                handleEmailDraftChange(
+                  "audience",
+                  event.target.value as EmailAudience,
+                )
+              }
+              disabled={sendEmailMutation.isPending}
+            >
+              {emailAudienceOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {emailDraft.audience === "adhoc-list" ? (
+            <label>
+              Ad hoc recipients
+              <textarea
+                value={emailDraft.adhocRecipients}
+                onChange={(event) =>
+                  handleEmailDraftChange("adhocRecipients", event.target.value)
+                }
+                disabled={sendEmailMutation.isPending}
+                placeholder="Enter one or more email addresses."
+                rows={3}
+              />
+            </label>
+          ) : null}
+
+          <label>
+            Title
+            <input
+              type="text"
+              value={emailDraft.title}
+              maxLength={EMAIL_TITLE_MAX_LENGTH}
+              onChange={(event) =>
+                handleEmailDraftChange(
+                  "title",
+                  event.target.value.slice(0, EMAIL_TITLE_MAX_LENGTH),
+                )
+              }
+              disabled={sendEmailMutation.isPending}
+              placeholder="Enter email title"
+            />
+            <span className="announcements-character-count">
+              {emailTitleCharactersRemaining} characters left
+            </span>
+          </label>
+
+          <label>
+            Body
+            <textarea
+              value={emailDraft.body}
+              onChange={(event) =>
+                handleEmailDraftChange("body", event.target.value)
+              }
+              disabled={sendEmailMutation.isPending}
+              placeholder="Type the email body."
+              rows={8}
+            />
+          </label>
+
+          <div className="announcements-email-actions">
+            <Button
+              type="button"
+              variant="secondary"
+              className="secondary-button"
+              onClick={handleCloseEmailModal}
+              disabled={sendEmailMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSendEmail}
+              disabled={sendEmailMutation.isPending}
+            >
+              {sendEmailMutation.isPending ? "Sending..." : "Send"}
+            </Button>
+          </div>
+        </div>
       </Modal>
     </>
   );

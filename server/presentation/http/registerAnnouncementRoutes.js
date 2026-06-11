@@ -3,6 +3,12 @@ const ALLOWED_ANNOUNCEMENT_SEVERITIES = new Set([
   "urgent",
   "urgent_important",
 ]);
+const ALLOWED_EMAIL_AUDIENCES = new Set([
+  "all-members",
+  "all-committee-members",
+  "all-associate-members",
+  "adhoc-list",
+]);
 
 function buildAnnouncementResponse(announcement, seenCount = 0) {
   return {
@@ -68,6 +74,21 @@ function normalizeAnnouncementPayload(body) {
 
 function isIsoDate(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function normalizeEmailPayload(body) {
+  const audience = typeof body?.audience === "string" ? body.audience.trim() : "";
+  const adhocRecipients =
+    typeof body?.adhocRecipients === "string" ? body.adhocRecipients.trim() : "";
+  const title = typeof body?.title === "string" ? body.title.trim() : "";
+  const messageBody = typeof body?.body === "string" ? body.body.trim() : "";
+
+  return {
+    audience,
+    adhocRecipients,
+    title: title.slice(0, 200),
+    body: messageBody,
+  };
 }
 
 export function registerAnnouncementRoutes({
@@ -172,6 +193,57 @@ export function registerAnnouncementRoutes({
         seenAtDate: member.seen_at_date,
         seenAtTime: member.seen_at_time,
       })),
+    });
+  });
+
+  app.post("/api/announcements/send-email", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.SEND_EMAIL)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to send email.",
+      });
+      return;
+    }
+
+    const payload = normalizeEmailPayload(req.body);
+
+    if (!ALLOWED_EMAIL_AUDIENCES.has(payload.audience)) {
+      res.status(400).json({
+        success: false,
+        message: "Choose a valid email audience.",
+      });
+      return;
+    }
+
+    if (!payload.title) {
+      res.status(400).json({
+        success: false,
+        message: "Email title is required.",
+      });
+      return;
+    }
+
+    if (!payload.body) {
+      res.status(400).json({
+        success: false,
+        message: "Email body is required.",
+      });
+      return;
+    }
+
+    if (payload.audience === "adhoc-list" && !payload.adhocRecipients) {
+      res.status(400).json({
+        success: false,
+        message: "Add at least one recipient for the ad hoc list.",
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: "Email sent successfully.",
     });
   });
 

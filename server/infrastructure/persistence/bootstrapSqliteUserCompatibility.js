@@ -25,6 +25,7 @@ export function bootstrapSqliteUserCompatibility({ db }) {
           username TEXT NOT NULL UNIQUE,
           first_name TEXT NOT NULL,
           surname TEXT NOT NULL,
+          email_address TEXT,
           password TEXT,
           rfid_tag TEXT UNIQUE,
           active_member INTEGER NOT NULL DEFAULT 1,
@@ -47,6 +48,7 @@ export function bootstrapSqliteUserCompatibility({ db }) {
           username,
           first_name,
           surname,
+          NULL,
           password,
           rfid_tag,
           COALESCE(active_member, 1),
@@ -239,6 +241,10 @@ export function bootstrapSqliteUserCompatibility({ db }) {
 
   if (!userColumns.some((column) => column.name === "membership_fees_due")) {
     db.exec(`ALTER TABLE users ADD COLUMN membership_fees_due TEXT`);
+  }
+
+  if (!userColumns.some((column) => column.name === "email_address")) {
+    db.exec(`ALTER TABLE users ADD COLUMN email_address TEXT`);
   }
 
   if (!userColumns.some((column) => column.name === "coaching_volunteer")) {

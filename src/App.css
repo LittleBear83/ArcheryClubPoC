@@ -1888,6 +1888,18 @@ button:disabled {
   gap: 10px;
 }
 
+.role-permissions-checkbox-list .profile-checkbox {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  column-gap: 10px;
+}
+
+.role-permissions-checkbox-list .profile-checkbox span {
+  display: inline;
+}
+
 .role-permissions-matrix {
   border-collapse: separate;
   border-spacing: 12px 0;
@@ -3302,8 +3314,34 @@ button:disabled {
   gap: 24px;
 }
 
+.announcements-toolbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .announcements-form {
   gap: 18px;
+}
+
+.announcements-email-modal {
+  gap: 16px;
+}
+
+.announcements-email-success {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--success) 55%, transparent);
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+  font-weight: 700;
+}
+
+.announcements-email-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .announcements-form .custom-date-picker {
@@ -7197,6 +7235,22 @@ button:disabled {
 .outdoor-table-head {
   font-weight: 700;
   background: #ffffff;
+}
+
+.outdoor-table-sort {
+  width: 100%;
+  min-height: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: inherit;
+}
+
+.outdoor-table-sort:hover {
+  background: transparent;
 }
 
 .outdoor-table-head--name {

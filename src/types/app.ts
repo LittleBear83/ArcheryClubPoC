@@ -9,6 +9,7 @@ export type UserProfile = {
     firstName?: string;
     surname?: string;
     fullName?: string;
+    emailAddress?: string;
     archeryGbMembershipNumber?: string | null;
   };
   membership?: {

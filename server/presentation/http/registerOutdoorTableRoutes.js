@@ -295,6 +295,23 @@ export function registerOutdoorTableRoutes({
     return true;
   }
 
+  function ensureNotSelfSignOff(actor, archerUsername, res) {
+    if (
+      actor?.username &&
+      typeof archerUsername === "string" &&
+      actor.username.toLowerCase() === archerUsername.trim().toLowerCase()
+    ) {
+      res.status(403).json({
+        success: false,
+        message:
+          "Members cannot sign off their own outdoor achievements. Another authorised member must complete the sign-off.",
+      });
+      return false;
+    }
+
+    return true;
+  }
+
   app.get("/api/outdoor-table", async (req, res) => {
     const actor = getActorUser(req);
 
@@ -340,6 +357,10 @@ export function registerOutdoorTableRoutes({
         success: false,
         message: "Complete the outdoor table entry with valid values.",
       });
+      return;
+    }
+
+    if (!ensureNotSelfSignOff(actor, payload.archerUsername, res)) {
       return;
     }
 
@@ -411,6 +432,10 @@ export function registerOutdoorTableRoutes({
         success: false,
         message: "Provide a valid outdoor table row and id.",
       });
+      return;
+    }
+
+    if (!ensureNotSelfSignOff(actor, payload.archerUsername, res)) {
       return;
     }
 

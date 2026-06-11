@@ -29,6 +29,7 @@ export function ProfileMobileView({
   canEditCurrentProfile,
   canManageMemberDisciplines,
   canManageMembers,
+  canManageOutdoorAchievements,
   canSelectMembers,
   canSignOffSelectedMember,
   canSignOffDistances,
@@ -238,6 +239,7 @@ export function ProfileMobileView({
 
       {editableProfile ? (
         <ProfileOutdoorAchievementsSection
+          canManageOutdoorAchievements={canManageOutdoorAchievements}
           canManageMembers={canManageMembers}
           entries={outdoorTableBowEntries}
           error={outdoorTableError}

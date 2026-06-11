@@ -8,6 +8,7 @@ const EMPTY_PROFILE = {
   username: "",
   firstName: "",
   surname: "",
+  emailAddress: "",
   password: "",
   rfidTag: "",
   activeMember: true,

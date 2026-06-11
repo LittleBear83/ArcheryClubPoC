@@ -30,11 +30,25 @@ const CLOUT_COLUMNS = [
   { key: "cloutWhite90100", label: "90/100" },
 ] as const;
 
+type OutdoorTableSortColumn = "archerSurname" | "bowType";
+
+const SORT_INDICATORS: Record<"asc" | "desc", string> = {
+  asc: "▲",
+  desc: "▼",
+};
+
 export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) {
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const canManageOutdoorTable = hasPermission(currentUserProfile, "manage_members");
   const isMobile = useIsMobile();
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
+  const [sortConfig, setSortConfig] = useState<{
+    column: OutdoorTableSortColumn;
+    direction: "asc" | "desc";
+  }>({
+    column: "archerSurname",
+    direction: "asc",
+  });
 
   const dashboardQuery = useQuery({
     queryKey: ["outdoor-table", selectedYear, actorUsername],
@@ -42,7 +56,43 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
     enabled: Boolean(actorUsername),
   });
 
-  const rows = useMemo(() => dashboardQuery.data?.rows ?? [], [dashboardQuery.data?.rows]);
+  const rows = useMemo(() => {
+    const unsortedRows = dashboardQuery.data?.rows ?? [];
+
+    return [...unsortedRows].sort((left, right) => {
+      const leftPrimary = String(left[sortConfig.column] ?? "");
+      const rightPrimary = String(right[sortConfig.column] ?? "");
+      const primaryComparison = leftPrimary.localeCompare(rightPrimary, undefined, {
+        sensitivity: "base",
+      });
+
+      if (primaryComparison !== 0) {
+        return sortConfig.direction === "asc" ? primaryComparison : primaryComparison * -1;
+      }
+
+      const surnameComparison = left.archerSurname.localeCompare(right.archerSurname, undefined, {
+        sensitivity: "base",
+      });
+
+      if (surnameComparison !== 0) {
+        return surnameComparison;
+      }
+
+      const firstNameComparison = left.archerFirstName.localeCompare(
+        right.archerFirstName,
+        undefined,
+        { sensitivity: "base" },
+      );
+
+      if (firstNameComparison !== 0) {
+        return firstNameComparison;
+      }
+
+      return left.bowType.localeCompare(right.bowType, undefined, {
+        sensitivity: "base",
+      });
+    });
+  }, [dashboardQuery.data?.rows, sortConfig]);
   const availableYears = useMemo(() => {
     const years = dashboardQuery.data?.availableYears ?? [];
     return Array.from(new Set([CURRENT_YEAR, selectedYear, ...years])).sort(
@@ -56,6 +106,29 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
     if (Number.isInteger(nextYear)) {
       setSelectedYear(nextYear);
     }
+  };
+
+  const toggleSort = (column: OutdoorTableSortColumn) => {
+    setSortConfig((current) => ({
+      column,
+      direction:
+        current.column === column && current.direction === "asc" ? "desc" : "asc",
+    }));
+  };
+
+  const getSortAria = (column: OutdoorTableSortColumn) => {
+    if (sortConfig.column !== column) {
+      return "none";
+    }
+
+    return sortConfig.direction === "asc" ? "ascending" : "descending";
+  };
+
+  const getSortLabel = (label: string, column: OutdoorTableSortColumn) => {
+    const isActive = sortConfig.column === column;
+    const indicator = isActive ? SORT_INDICATORS[sortConfig.direction] : "";
+
+    return indicator ? `${label} ${indicator}` : label;
   };
 
   const getAchievementSummary = (entry: (typeof rows)[number]) => {
@@ -195,9 +268,31 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                   </th>
                 </tr>
                 <tr>
-                  <th className="outdoor-table-head outdoor-table-head--name">Surname</th>
+                  <th
+                    aria-sort={getSortAria("archerSurname")}
+                    className="outdoor-table-head outdoor-table-head--name"
+                  >
+                    <button
+                      type="button"
+                      className="outdoor-table-sort"
+                      onClick={() => toggleSort("archerSurname")}
+                    >
+                      {getSortLabel("Surname", "archerSurname")}
+                    </button>
+                  </th>
                   <th className="outdoor-table-head outdoor-table-head--name">First Name</th>
-                  <th className="outdoor-table-head outdoor-table-head--bow">Bow</th>
+                  <th
+                    aria-sort={getSortAria("bowType")}
+                    className="outdoor-table-head outdoor-table-head--bow"
+                  >
+                    <button
+                      type="button"
+                      className="outdoor-table-sort"
+                      onClick={() => toggleSort("bowType")}
+                    >
+                      {getSortLabel("Bow", "bowType")}
+                    </button>
+                  </th>
                   <th className="outdoor-table-head outdoor-table-head--handicap">Handicap</th>
                   {OUTDOOR_ACHIEVEMENT_COLUMNS.map((column) => (
                     <th

@@ -105,6 +105,10 @@ export function useProfilePageState({
     canSignOffDistances &&
     Boolean(editableProfile?.username) &&
     editableProfile.username !== actorUsername;
+  const canManageOutdoorAchievements =
+    canManageMembers &&
+    Boolean(editableProfile?.username) &&
+    editableProfile.username !== actorUsername;
   const distanceSignOffDisciplines = useMemo(
     () =>
       editableProfile?.distanceSignOffs
@@ -555,6 +559,7 @@ export function useProfilePageState({
     const requestBody = {
       firstName: editableProfile.firstName,
       surname: editableProfile.surname,
+      emailAddress: editableProfile.emailAddress,
       password: editableProfile.password,
       rfidTag: canManageMembers ? editableProfile.rfidTag : undefined,
       activeMember: editableProfile.activeMember,
@@ -886,6 +891,13 @@ export function useProfilePageState({
     setMessage("");
 
     try {
+      if (!canManageOutdoorAchievements) {
+        setOutdoorTableError(
+          "Members cannot sign off their own outdoor achievements. Another authorised member must complete the sign-off.",
+        );
+        return;
+      }
+
       const payload = toOutdoorTablePayload(draft);
       const result =
         draft.id === null
@@ -914,6 +926,7 @@ export function useProfilePageState({
     canEditCurrentProfile,
     canManageMemberDisciplines,
     canManageMembers,
+    canManageOutdoorAchievements,
     canSelectMembers,
     canSignOffSelectedMember,
     canSignOffDistances,

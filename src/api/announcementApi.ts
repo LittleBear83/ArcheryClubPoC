@@ -35,6 +35,12 @@ export type AnnouncementSeenMember = {
   seenAtTime: string;
 };
 
+export type EmailAudience =
+  | "all-members"
+  | "all-committee-members"
+  | "all-associate-members"
+  | "adhoc-list";
+
 export function listAnnouncements(actor: unknown) {
   return fetchApi<{ success: true; announcements?: AnnouncementRecord[] }>(
     "/api/announcements",
@@ -112,6 +118,25 @@ export function deleteAnnouncement(actor: unknown, announcementId: number) {
     {
       method: "DELETE",
       headers: buildActorHeaders(actor),
+    },
+  );
+}
+
+export function sendAnnouncementEmail(
+  actor: unknown,
+  payload: {
+    audience: EmailAudience;
+    adhocRecipients: string;
+    title: string;
+    body: string;
+  },
+) {
+  return fetchApi<{ success: true; message?: string }>(
+    "/api/announcements/send-email",
+    {
+      method: "POST",
+      headers: buildActorHeaders(actor, true),
+      body: JSON.stringify(payload),
     },
   );
 }

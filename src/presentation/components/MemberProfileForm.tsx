@@ -1,6 +1,20 @@
 import { Button } from "./Button";
 import { DatePicker } from "./DatePicker";
 
+function formatRoleLabel(role) {
+  return String(role ?? "")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function sortRolesAlphabetically(roles) {
+  return [...roles].sort((left, right) =>
+    formatRoleLabel(left).localeCompare(formatRoleLabel(right)),
+  );
+}
+
 export function MemberProfileForm({
   editableProfile,
   handleChange,
@@ -20,6 +34,7 @@ export function MemberProfileForm({
 }) {
   const isProfileLocked = isSaving || !canEditProfile;
   const areDisciplinesLocked = isSaving || !canEditDisciplines;
+  const sortedRoleOptions = sortRolesAlphabetically(roleOptions);
 
   return (
     <form onSubmit={onSubmit} className="left-align-form profile-form">
@@ -41,9 +56,9 @@ export function MemberProfileForm({
             onChange={handleChange("userType")}
             disabled={!isAdmin || isProfileLocked}
           >
-            {roleOptions.map((role) => (
+            {sortedRoleOptions.map((role) => (
               <option key={role} value={role}>
-                {role}
+                {formatRoleLabel(role)}
               </option>
             ))}
           </select>
@@ -66,6 +81,16 @@ export function MemberProfileForm({
             onChange={handleChange("surname")}
             disabled={isProfileLocked}
             required
+          />
+        </label>
+
+        <label>
+          Email address
+          <input
+            type="email"
+            value={editableProfile.emailAddress}
+            onChange={handleChange("emailAddress")}
+            disabled={isProfileLocked}
           />
         </label>
 

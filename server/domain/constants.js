@@ -24,6 +24,7 @@ export const PERMISSIONS = {
   APPROVE_HAVE_A_GO_SESSIONS: "approve_have_a_go_sessions",
   MANAGE_TOURNAMENTS: "manage_tournaments",
   VIEW_REPORTS: "view_reports",
+  SEND_EMAIL: "send_email",
 };
 
 export const DEACTIVATED_RFID_SUFFIX = "-deactivated";
@@ -144,6 +145,11 @@ export const PERMISSION_DEFINITIONS = [
     label: "View Reports",
     description: "View and export member and guest attendance reporting.",
   },
+  {
+    key: PERMISSIONS.SEND_EMAIL,
+    label: "Send Email",
+    description: "Compose and send operational emails to member groups.",
+  },
 ];
 
 export const CURRENT_PERMISSION_KEYS = PERMISSION_DEFINITIONS.map(
@@ -183,6 +189,11 @@ export const SYSTEM_ROLE_DEFINITIONS = [
   {
     roleKey: "have-a-go",
     title: "Have a Go",
+    permissions: [],
+  },
+  {
+    roleKey: "associate-member",
+    title: "Associate Member",
     permissions: [],
   },
 ];

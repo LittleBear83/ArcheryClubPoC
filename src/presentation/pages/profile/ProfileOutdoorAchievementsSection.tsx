@@ -14,6 +14,7 @@ import {
 } from "./outdoorTableProfileUtils";
 
 type ProfileOutdoorAchievementsSectionProps = {
+  canManageOutdoorAchievements: boolean;
   canManageMembers: boolean;
   entries: ProfileOutdoorTableDraft[];
   error: string;
@@ -35,6 +36,7 @@ type ProfileOutdoorAchievementsSectionProps = {
 };
 
 export function ProfileOutdoorAchievementsSection({
+  canManageOutdoorAchievements,
   canManageMembers,
   entries,
   error,
@@ -72,6 +74,9 @@ export function ProfileOutdoorAchievementsSection({
           member profile.
         </p>
         {!canManageMembers ? <p>This section is read-only.</p> : null}
+        {canManageMembers && !canManageOutdoorAchievements ? (
+          <p>Members cannot sign off their own outdoor achievements.</p>
+        ) : null}
         {error ? <p className="profile-error">{error}</p> : null}
       </div>
 
@@ -120,7 +125,10 @@ export function ProfileOutdoorAchievementsSection({
                       max="150"
                       value={entry.handicapText}
                       onChange={(event) => onHandicapChange(entry.bowType, event.target.value)}
-                      disabled={!canManageMembers || Boolean(isSavingByBowType[entry.bowType])}
+                      disabled={
+                        !canManageOutdoorAchievements ||
+                        Boolean(isSavingByBowType[entry.bowType])
+                      }
                     />
                   </label>
                 </div>
@@ -144,7 +152,10 @@ export function ProfileOutdoorAchievementsSection({
                                 event.target.value,
                               )
                             }
-                            disabled={!canManageMembers || Boolean(isSavingByBowType[entry.bowType])}
+                            disabled={
+                              !canManageOutdoorAchievements ||
+                              Boolean(isSavingByBowType[entry.bowType])
+                            }
                           />
                         </label>
                       ))}
@@ -188,15 +199,15 @@ export function ProfileOutdoorAchievementsSection({
                                     type="date"
                                     value={signOffDate}
                                     onChange={(event) =>
-                                      onAward252SignOffDateChange(
-                                        entry.bowType,
-                                        column.signOffKey,
-                                        index,
-                                        event.target.value,
-                                      )
-                                    }
-                                    disabled={
-                                      !canManageMembers ||
+                                    onAward252SignOffDateChange(
+                                      entry.bowType,
+                                      column.signOffKey,
+                                      index,
+                                      event.target.value,
+                                    )
+                                  }
+                                  disabled={
+                                      !canManageOutdoorAchievements ||
                                       Boolean(isSavingByBowType[entry.bowType])
                                     }
                                   />
@@ -210,7 +221,7 @@ export function ProfileOutdoorAchievementsSection({
                   </>
                 ) : null}
 
-                {canManageMembers ? (
+                {canManageOutdoorAchievements ? (
                   <div className="profile-outdoor-card-actions">
                     <Button
                       type="button"

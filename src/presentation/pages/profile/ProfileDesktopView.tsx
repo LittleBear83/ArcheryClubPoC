@@ -17,6 +17,7 @@ export function ProfileDesktopView({
   canEditCurrentProfile,
   canManageMemberDisciplines,
   canManageMembers,
+  canManageOutdoorAchievements,
   canSelectMembers,
   canSignOffSelectedMember,
   canSignOffDistances,
@@ -255,6 +256,7 @@ export function ProfileDesktopView({
 
       {editableProfile ? (
         <ProfileOutdoorAchievementsSection
+          canManageOutdoorAchievements={canManageOutdoorAchievements}
           canManageMembers={canManageMembers}
           entries={outdoorTableBowEntries}
           error={outdoorTableError}

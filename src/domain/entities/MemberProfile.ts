@@ -37,6 +37,7 @@ export type EditableMemberProfile = {
   username: string;
   firstName: string;
   surname: string;
+  emailAddress: string;
   password: string;
   rfidTag: string;
   activeMember: boolean;
@@ -52,6 +53,7 @@ export type MemberProfileFormInput = {
   username?: string;
   firstName: string;
   surname: string;
+  emailAddress?: string;
   password?: string;
   rfidTag?: string;
   activeMember?: boolean;

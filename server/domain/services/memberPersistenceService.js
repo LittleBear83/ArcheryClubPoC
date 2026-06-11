@@ -62,6 +62,7 @@ export function createMemberPersistenceService({
       activeMember,
       coachingVolunteer,
       disciplines,
+      emailAddress,
       existingUser,
       firstName,
       loanBow,
@@ -75,6 +76,7 @@ export function createMemberPersistenceService({
       const trimmedUsername = username?.trim();
       const trimmedFirstName = firstName?.trim();
       const trimmedSurname = surname?.trim();
+      const trimmedEmailAddress = emailAddress?.trim() || "";
       const trimmedPassword = password?.trim();
       const trimmedRfidTag = rfidTag?.trim();
       const normalizedActiveMember = Boolean(activeMember);
@@ -126,6 +128,7 @@ export function createMemberPersistenceService({
         username: normalizedUser.username,
         firstName: trimmedFirstName,
         surname: trimmedSurname,
+        emailAddress: trimmedEmailAddress,
         password: passwordToSave,
         rfidTag: normalizedUser.rfid_tag,
         activeMember: normalizedUser.active_member,

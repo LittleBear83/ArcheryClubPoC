@@ -928,6 +928,7 @@ function buildMemberUserProfile(user, disciplines = [], meta = {}) {
       firstName: user.first_name,
       surname: user.surname,
       fullName: `${user.first_name} ${user.surname}`,
+      emailAddress: user.email_address ?? "",
       archeryGbMembershipNumber: null,
     },
     membership: {
@@ -1031,6 +1032,7 @@ function buildEditableMemberProfile(user, disciplines = [], loanBow = null) {
     username: user.username,
     firstName: user.first_name,
     surname: user.surname,
+    emailAddress: user.email_address ?? "",
     password: "",
     rfidTag: user.rfid_tag ?? "",
     activeMember: Boolean(user.active_member),

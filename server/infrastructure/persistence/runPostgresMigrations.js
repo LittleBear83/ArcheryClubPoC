@@ -10,6 +10,7 @@ function buildInitialSchemaSql() {
       username TEXT NOT NULL UNIQUE,
       first_name TEXT NOT NULL,
       surname TEXT NOT NULL,
+      email_address TEXT,
       password TEXT,
       rfid_tag TEXT UNIQUE,
       active_member INTEGER NOT NULL DEFAULT 1,
@@ -568,16 +569,18 @@ function buildRolePermissionSeedSql({
           username,
           first_name,
           surname,
+          email_address,
           password,
           rfid_tag,
           active_member,
           membership_fees_due,
           coaching_volunteer
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT(username) DO UPDATE SET
           first_name = EXCLUDED.first_name,
           surname = EXCLUDED.surname,
+          email_address = EXCLUDED.email_address,
           password = EXCLUDED.password,
           rfid_tag = EXCLUDED.rfid_tag,
           active_member = EXCLUDED.active_member,
@@ -588,6 +591,7 @@ function buildRolePermissionSeedSql({
         user.username,
         user.firstName,
         user.surname,
+        user.emailAddress ?? null,
         user.password,
         user.rfidTag,
         user.activeMember ? 1 : 0,
@@ -911,6 +915,10 @@ export async function runPostgresMigrations({
       await client.query(statement.sql, statement.values);
     }
 
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS email_address TEXT
+    `);
     await client.query(`
       ALTER TABLE announcements
       ADD COLUMN IF NOT EXISTS amended_by_username TEXT REFERENCES users(username)

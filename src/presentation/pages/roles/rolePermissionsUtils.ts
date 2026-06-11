@@ -55,6 +55,7 @@ function getPermissionGroup(permissionKey: string): PermissionGroupKey {
     case "delete_roles":
     case "manage_equipment_storage_locations":
     case "view_reports":
+    case "send_email":
       return "system-admin";
     default:
       return "system-admin";

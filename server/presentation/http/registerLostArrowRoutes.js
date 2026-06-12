@@ -12,6 +12,10 @@ function normalizeText(value, { maxLength = 256, required = false } = {}) {
   return normalizedValue.slice(0, maxLength);
 }
 
+function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ""));
+}
+
 function buildLostArrowPayload(body) {
   const archerUsername = normalizeText(body?.archerUsername, {
     maxLength: 64,

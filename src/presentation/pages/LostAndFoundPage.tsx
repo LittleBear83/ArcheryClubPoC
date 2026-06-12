@@ -92,6 +92,31 @@ function buildLostArrowSummary(arrow: LostArrowRecord) {
     .join(" | ");
 }
 
+function renderFletchingPreviews(arrow: LostArrowRecord) {
+  const fletchingColours = [
+    arrow.fletchingColour1,
+    arrow.fletchingColour2,
+    arrow.fletchingColour3,
+  ];
+
+  return fletchingColours.map((colour, index) =>
+    colour ? (
+      <ColourPreview
+        key={`${arrow.id}-fletching-${index + 1}-${colour}`}
+        colour={colour}
+        options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
+      />
+    ) : (
+      <span
+        key={`${arrow.id}-fletching-${index + 1}-missing`}
+        className="lost-arrow-colour-preview lost-arrow-colour-preview--placeholder"
+      >
+        Fletching {index + 1}: not recorded
+      </span>
+    ),
+  );
+}
+
 export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) {
   const isMobile = useIsMobile();
   const queryClient = useQueryClient();
@@ -423,20 +448,7 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                     <div className="lost-arrow-fletching-summary">
                       <span>Fletchings:</span>
                       <div className="lost-arrow-fletching-list">
-                        <ColourPreview
-                          colour={arrow.fletchingColour1}
-                          options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
-                        />
-                        <ColourPreview
-                          colour={arrow.fletchingColour2}
-                          options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
-                        />
-                        {arrow.fletchingColour3 ? (
-                          <ColourPreview
-                            colour={arrow.fletchingColour3}
-                            options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
-                          />
-                        ) : null}
+                        {renderFletchingPreviews(arrow)}
                       </div>
                     </div>
                     <div className="lost-arrow-fletching-summary">
@@ -493,20 +505,7 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                       </td>
                       <td>
                         <div className="lost-arrow-fletching-list">
-                          <ColourPreview
-                            colour={arrow.fletchingColour1}
-                            options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
-                          />
-                          <ColourPreview
-                            colour={arrow.fletchingColour2}
-                            options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
-                          />
-                          {arrow.fletchingColour3 ? (
-                            <ColourPreview
-                              colour={arrow.fletchingColour3}
-                              options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
-                            />
-                          ) : null}
+                          {renderFletchingPreviews(arrow)}
                         </div>
                       </td>
                       <td>

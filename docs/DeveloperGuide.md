@@ -388,6 +388,9 @@ Run the backend only:
 npm run dev:server
 ```
 
+This uses Node's watch mode, so backend route and persistence changes restart
+automatically during local development.
+
 Run both together:
 
 ```bash

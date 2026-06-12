@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
+import { ColourDropdown, ColourPreview } from "../components/ColourDropdown";
 import { DatePicker } from "../components/DatePicker";
 import { Modal } from "../components/Modal";
 import { SectionPanel } from "../components/SectionPanel";
@@ -17,6 +18,15 @@ import {
 } from "../../api/lostArrowApi";
 import { formatDate } from "../../utils/dateTime";
 import type { LostArrowRecord, UserProfile } from "../../types/app";
+import {
+  LOST_ARROW_ARROW_COLOUR_OPTIONS,
+  LOST_ARROW_ARROW_COLOUR_VALUE_SET,
+  LOST_ARROW_FLETCHING_COLOUR_OPTIONS,
+  LOST_ARROW_FLETCHING_COLOUR_VALUE_SET,
+  LOST_ARROW_NOCK_COLOUR_OPTIONS,
+  LOST_ARROW_NOCK_COLOUR_VALUE_SET,
+  LOST_ARROW_TARGET_DISTANCE_OPTIONS,
+} from "../../../shared/lostArrowOptions.js";
 
 type LostAndFoundPageProps = {
   currentUserProfile: UserProfile | null;
@@ -41,19 +51,6 @@ type FoundArrowDraft = {
   foundByUsername: string;
 };
 
-const TARGET_DISTANCE_OPTIONS = [
-  "10yrds",
-  "15yrds",
-  "20yrds",
-  "30yrds",
-  "40yrds",
-  "50yrds",
-  "60yrds",
-  "70mtr",
-  "80yrds",
-  "90yrds",
-  "100yrds",
-] as const;
 const LANE_OPTIONS = Array.from({ length: 11 }, (_, index) => String(index + 1));
 
 function getTodayIsoDate() {
@@ -83,10 +80,6 @@ function buildFoundDraft(currentUsername: string): FoundArrowDraft {
   };
 }
 
-function getMemberDisplayName(members: LostArrowMemberOption[], username: string) {
-  return members.find((member) => member.username === username)?.fullName ?? username;
-}
-
 function buildLostArrowSummary(arrow: LostArrowRecord) {
   return [
     `${arrow.arrowColour} ${arrow.arrowMaterial} arrow`,
@@ -96,6 +89,26 @@ function buildLostArrowSummary(arrow: LostArrowRecord) {
   ]
     .filter(Boolean)
     .join(" | ");
+}
+
+function isLostArrowDraftComplete(draft: LostArrowDraft) {
+  return Boolean(
+    draft.archerUsername &&
+      draft.dateLost &&
+      draft.arrowMaterial &&
+      draft.arrowColour &&
+      LOST_ARROW_ARROW_COLOUR_VALUE_SET.has(draft.arrowColour) &&
+      draft.arrowIdentifier &&
+      draft.fletchingColour1 &&
+      LOST_ARROW_FLETCHING_COLOUR_VALUE_SET.has(draft.fletchingColour1) &&
+      draft.fletchingColour2 &&
+      LOST_ARROW_FLETCHING_COLOUR_VALUE_SET.has(draft.fletchingColour2) &&
+      draft.nockColour &&
+      LOST_ARROW_NOCK_COLOUR_VALUE_SET.has(draft.nockColour) &&
+      draft.targetDistance &&
+      LOST_ARROW_TARGET_DISTANCE_OPTIONS.includes(draft.targetDistance) &&
+      draft.laneNumber,
+  );
 }
 
 export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) {
@@ -238,6 +251,13 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!isLostArrowDraftComplete(draft)) {
+      setError("Complete every lost arrow field with a valid value.");
+      setSuccess("");
+      return;
+    }
+
     void createMutation.mutateAsync();
   };
 
@@ -303,15 +323,12 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                 </select>
               </label>
 
-              <label>
-                Arrow Colour
-                <input
-                  value={draft.arrowColour}
-                  onChange={handleDraftChange("arrowColour")}
-                  maxLength={64}
-                  required
-                />
-              </label>
+              <ColourDropdown
+                label="Arrow Colour"
+                options={LOST_ARROW_ARROW_COLOUR_OPTIONS}
+                value={draft.arrowColour}
+                onChange={(value) => handleDraftChange("arrowColour")(value)}
+              />
 
               <label>
                 Arrow Initial or Number
@@ -323,35 +340,26 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                 />
               </label>
 
-              <label>
-                Fletching Colour 1
-                <input
-                  value={draft.fletchingColour1}
-                  onChange={handleDraftChange("fletchingColour1")}
-                  maxLength={64}
-                  required
-                />
-              </label>
+              <ColourDropdown
+                label="Fletching Colour 1"
+                options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
+                value={draft.fletchingColour1}
+                onChange={(value) => handleDraftChange("fletchingColour1")(value)}
+              />
 
-              <label>
-                Fletching Colour 2
-                <input
-                  value={draft.fletchingColour2}
-                  onChange={handleDraftChange("fletchingColour2")}
-                  maxLength={64}
-                  required
-                />
-              </label>
+              <ColourDropdown
+                label="Fletching Colour 2"
+                options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
+                value={draft.fletchingColour2}
+                onChange={(value) => handleDraftChange("fletchingColour2")(value)}
+              />
 
-              <label>
-                Nock Colour
-                <input
-                  value={draft.nockColour}
-                  onChange={handleDraftChange("nockColour")}
-                  maxLength={64}
-                  required
-                />
-              </label>
+              <ColourDropdown
+                label="Nock Colour"
+                options={LOST_ARROW_NOCK_COLOUR_OPTIONS}
+                value={draft.nockColour}
+                onChange={(value) => handleDraftChange("nockColour")(value)}
+              />
 
               <label>
                 Target Distance
@@ -361,7 +369,7 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                   required
                 >
                   <option value="">Select distance</option>
-                  {TARGET_DISTANCE_OPTIONS.map((distance) => (
+                  {LOST_ARROW_TARGET_DISTANCE_OPTIONS.map((distance) => (
                     <option key={distance} value={distance}>
                       {distance}
                     </option>
@@ -422,10 +430,28 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                     <h4>{arrow.archerName}</h4>
                     <p>{buildLostArrowSummary(arrow)}</p>
                     <p>Lost on {formatDate(arrow.dateLost)}</p>
-                    <p>
-                      Fletchings: {arrow.fletchingColour1} / {arrow.fletchingColour2}
-                    </p>
-                    <p>Nock: {arrow.nockColour}</p>
+                    <div className="lost-arrow-fletching-summary">
+                      <span>Fletchings:</span>
+                      <div className="lost-arrow-fletching-list">
+                        <ColourPreview
+                          colour={arrow.fletchingColour1}
+                          options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
+                        />
+                        <ColourPreview
+                          colour={arrow.fletchingColour2}
+                          options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
+                        />
+                      </div>
+                    </div>
+                    <div className="lost-arrow-fletching-summary">
+                      <span>Nock:</span>
+                      <div className="lost-arrow-fletching-list">
+                        <ColourPreview
+                          colour={arrow.nockColour}
+                          options={LOST_ARROW_NOCK_COLOUR_OPTIONS}
+                        />
+                      </div>
+                    </div>
                     {arrow.otherDetails ? <p>Notes: {arrow.otherDetails}</p> : null}
                     <Button
                       type="button"
@@ -470,9 +496,23 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                         </span>
                       </td>
                       <td>
-                        {arrow.fletchingColour1} / {arrow.fletchingColour2}
+                        <div className="lost-arrow-fletching-list">
+                          <ColourPreview
+                            colour={arrow.fletchingColour1}
+                            options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
+                          />
+                          <ColourPreview
+                            colour={arrow.fletchingColour2}
+                            options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
+                          />
+                        </div>
                       </td>
-                      <td>{arrow.nockColour}</td>
+                      <td>
+                        <ColourPreview
+                          colour={arrow.nockColour}
+                          options={LOST_ARROW_NOCK_COLOUR_OPTIONS}
+                        />
+                      </td>
                       <td>{arrow.targetDistance}</td>
                       <td>{arrow.laneNumber}</td>
                       <td>{arrow.otherDetails || "-"}</td>

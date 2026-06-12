@@ -8,7 +8,6 @@ import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { HomeSection } from "./HomeSection";
 import { LostAndFoundPage } from "./LostAndFoundPage";
 import { FeedbackFormPage } from "./FeedbackFormPage";
-import { IdeasFormPage } from "./IdeasFormPage";
 import { EventCalendarPage } from "./EventCalendarPage";
 import { TournamentsPage } from "./TournamentsPage";
 import { RangeUsagePage } from "./RangeUsagePage";
@@ -162,8 +161,7 @@ const pageTitleMap = {
   "have-a-go-sessions": "Have a Go Sessions",
   "event-calendar": "Calendar",
   "range-usage": "Range Usage",
-  "feedback-form": "Feedback Form",
-  "ideas-form": "Ideas Form",
+  "feedback-form": "Feedback & Ideas",
   tournaments: "Tournaments",
   records: "Records",
   "outdoor-table": "Outdoor Table",
@@ -188,7 +186,7 @@ const pathToPageId = {
   "/event-calendar": "event-calendar",
   "/range-usage": "range-usage",
   "/feedback-form": "feedback-form",
-  "/ideas-form": "ideas-form",
+  "/ideas-form": "feedback-form",
   "/tournaments": "tournaments",
   "/records": "records",
   "/outdoor-table": "outdoor-table",
@@ -834,11 +832,11 @@ export function HomePage({
               }
             />
             <Route path="/feedback-form" element={<FeedbackFormPage />} />
+            <Route path="/ideas-form" element={<Navigate to="/feedback-form" replace />} />
             <Route
               path="/lost-and-found"
               element={<LostAndFoundPage currentUserProfile={currentUserProfile} />}
             />
-            <Route path="/ideas-form" element={<IdeasFormPage />} />
             <Route path="/general-info" element={<GeneralInfoPage />} />
             <Route
               path="*"

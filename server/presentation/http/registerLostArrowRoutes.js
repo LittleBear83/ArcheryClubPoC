@@ -1,17 +1,10 @@
-const ARROW_MATERIAL_OPTIONS = new Set(["aluminium", "carbon"]);
-const TARGET_DISTANCE_OPTIONS = new Set([
-  "10yrds",
-  "15yrds",
-  "20yrds",
-  "30yrds",
-  "40yrds",
-  "50yrds",
-  "60yrds",
-  "70mtr",
-  "80yrds",
-  "90yrds",
-  "100yrds",
-]);
+import {
+  LOST_ARROW_ARROW_COLOUR_VALUE_SET,
+  LOST_ARROW_ARROW_MATERIAL_OPTION_SET,
+  LOST_ARROW_FLETCHING_COLOUR_VALUE_SET,
+  LOST_ARROW_NOCK_COLOUR_VALUE_SET,
+  LOST_ARROW_TARGET_DISTANCE_OPTION_SET,
+} from "../../../shared/lostArrowOptions.js";
 
 function normalizeText(value, { maxLength = 256, required = false } = {}) {
   const normalizedValue = typeof value === "string" ? value.trim() : "";
@@ -81,13 +74,17 @@ function buildLostArrowPayload(body) {
     !archerUsername ||
     !dateLost ||
     !isIsoDate(dateLost) ||
-    !ARROW_MATERIAL_OPTIONS.has(arrowMaterial) ||
+    !LOST_ARROW_ARROW_MATERIAL_OPTION_SET.has(arrowMaterial) ||
     !arrowColour ||
+    !LOST_ARROW_ARROW_COLOUR_VALUE_SET.has(arrowColour) ||
     !arrowIdentifier ||
     !fletchingColour1 ||
+    !LOST_ARROW_FLETCHING_COLOUR_VALUE_SET.has(fletchingColour1) ||
     !fletchingColour2 ||
+    !LOST_ARROW_FLETCHING_COLOUR_VALUE_SET.has(fletchingColour2) ||
     !nockColour ||
-    !TARGET_DISTANCE_OPTIONS.has(targetDistance) ||
+    !LOST_ARROW_NOCK_COLOUR_VALUE_SET.has(nockColour) ||
+    !LOST_ARROW_TARGET_DISTANCE_OPTION_SET.has(targetDistance) ||
     laneNumber === null
   ) {
     return null;

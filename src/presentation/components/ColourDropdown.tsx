@@ -33,6 +33,11 @@ function buildSwatchStyle(option?: ColourDropdownOption) {
   };
 }
 
+const dropdownMenuStyle = {
+  backgroundColor: "var(--input-option-bg)",
+  color: "var(--input-option-text)",
+};
+
 export function ColourPreview({ colour, options }: ColourPreviewProps) {
   const option = useMemo(
     () => options.find((entry) => entry.value === colour),
@@ -106,7 +111,12 @@ export function ColourDropdown({
         </button>
       </label>
       {open ? (
-        <div className="lost-arrow-colour-dropdown-menu" role="listbox" aria-label={label}>
+        <div
+          className="lost-arrow-colour-dropdown-menu"
+          role="listbox"
+          aria-label={label}
+          style={dropdownMenuStyle}
+        >
           {options.map((option) => {
             const isSelected = option.value === value;
 
@@ -121,6 +131,7 @@ export function ColourDropdown({
                 }}
                 role="option"
                 aria-selected={isSelected}
+                style={dropdownMenuStyle}
               >
                 <span
                   className="lost-arrow-colour-swatch lost-arrow-colour-swatch--large"

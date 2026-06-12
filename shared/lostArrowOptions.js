@@ -1,4 +1,4 @@
-export const LOST_ARROW_ARROW_MATERIAL_OPTIONS = ["aluminium", "carbon"];
+export const LOST_ARROW_ARROW_MATERIAL_OPTIONS = ["aluminium", "carbon", "wood"];
 
 export const LOST_ARROW_TARGET_DISTANCE_OPTIONS = [
   "10yrds",

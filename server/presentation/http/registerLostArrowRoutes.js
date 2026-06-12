@@ -1,10 +1,6 @@
 import {
-  LOST_ARROW_ARROW_COLOUR_VALUE_SET,
-  LOST_ARROW_ARROW_MATERIAL_OPTION_SET,
-  LOST_ARROW_FLETCHING_COLOUR_VALUE_SET,
-  LOST_ARROW_NOCK_COLOUR_VALUE_SET,
-  LOST_ARROW_TARGET_DISTANCE_OPTION_SET,
-} from "../../../shared/lostArrowOptions.js";
+  getLostArrowFieldValidationErrors,
+} from "../../../shared/lostArrowValidation.js";
 
 function normalizeText(value, { maxLength = 256, required = false } = {}) {
   const normalizedValue = typeof value === "string" ? value.trim() : "";
@@ -14,20 +10,6 @@ function normalizeText(value, { maxLength = 256, required = false } = {}) {
   }
 
   return normalizedValue.slice(0, maxLength);
-}
-
-function normalizeLaneNumber(value) {
-  const laneNumber = Number.parseInt(value, 10);
-
-  if (!Number.isInteger(laneNumber) || laneNumber < 1 || laneNumber > 11) {
-    return null;
-  }
-
-  return laneNumber;
-}
-
-function isIsoDate(value) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? ""));
 }
 
 function buildLostArrowPayload(body) {
@@ -49,7 +31,7 @@ function buildLostArrowPayload(body) {
   });
   const arrowIdentifier = normalizeText(body?.arrowIdentifier, {
     maxLength: 64,
-    required: true,
+    required: false,
   });
   const fletchingColour1 = normalizeText(body?.fletchingColour1, {
     maxLength: 64,
@@ -59,6 +41,10 @@ function buildLostArrowPayload(body) {
     maxLength: 64,
     required: true,
   });
+  const fletchingColour3 = normalizeText(body?.fletchingColour3, {
+    maxLength: 64,
+    required: false,
+  });
   const nockColour = normalizeText(body?.nockColour, {
     maxLength: 64,
     required: true,
@@ -67,41 +53,48 @@ function buildLostArrowPayload(body) {
     maxLength: 32,
     required: true,
   });
-  const laneNumber = normalizeLaneNumber(body?.laneNumber);
+  const laneNumber = normalizeText(body?.laneNumber, {
+    maxLength: 2,
+    required: true,
+  });
   const otherDetails = normalizeText(body?.otherDetails, { maxLength: 256 });
+  const validationErrors = getLostArrowFieldValidationErrors({
+    archerUsername,
+    dateLost,
+    arrowMaterial,
+    arrowColour,
+    arrowIdentifier,
+    fletchingColour1,
+    fletchingColour2,
+    fletchingColour3,
+    nockColour,
+    targetDistance,
+    laneNumber,
+  });
 
-  if (
-    !archerUsername ||
-    !dateLost ||
-    !isIsoDate(dateLost) ||
-    !LOST_ARROW_ARROW_MATERIAL_OPTION_SET.has(arrowMaterial) ||
-    !arrowColour ||
-    !LOST_ARROW_ARROW_COLOUR_VALUE_SET.has(arrowColour) ||
-    !arrowIdentifier ||
-    !fletchingColour1 ||
-    !LOST_ARROW_FLETCHING_COLOUR_VALUE_SET.has(fletchingColour1) ||
-    !fletchingColour2 ||
-    !LOST_ARROW_FLETCHING_COLOUR_VALUE_SET.has(fletchingColour2) ||
-    !nockColour ||
-    !LOST_ARROW_NOCK_COLOUR_VALUE_SET.has(nockColour) ||
-    !LOST_ARROW_TARGET_DISTANCE_OPTION_SET.has(targetDistance) ||
-    laneNumber === null
-  ) {
-    return null;
+  if (validationErrors.length > 0) {
+    return {
+      payload: null,
+      validationErrors,
+    };
   }
 
   return {
-    archerUsername,
-    arrowColour,
-    arrowIdentifier,
-    arrowMaterial,
-    dateLost,
-    fletchingColour1,
-    fletchingColour2,
-    laneNumber,
-    nockColour,
-    otherDetails,
-    targetDistance,
+    payload: {
+      archerUsername,
+      arrowColour,
+      arrowIdentifier,
+      arrowMaterial,
+      dateLost,
+      fletchingColour1,
+      fletchingColour2,
+      fletchingColour3,
+      laneNumber: Number.parseInt(laneNumber, 10),
+      nockColour,
+      otherDetails,
+      targetDistance,
+    },
+    validationErrors: [],
   };
 }
 
@@ -177,12 +170,12 @@ export function registerLostArrowRoutes({
       return;
     }
 
-    const payload = buildLostArrowPayload(req.body);
+    const { payload, validationErrors } = buildLostArrowPayload(req.body);
 
     if (!payload) {
       res.status(400).json({
         success: false,
-        message: "Complete every lost arrow field with a valid value.",
+        message: `Complete these fields: ${validationErrors.join(", ")}.`,
       });
       return;
     }

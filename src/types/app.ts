@@ -100,11 +100,12 @@ export type LostArrowRecord = {
   archerUsername: string;
   archerName: string;
   dateLost: string;
-  arrowMaterial: "aluminium" | "carbon";
+  arrowMaterial: "aluminium" | "carbon" | "wood";
   arrowColour: string;
   arrowIdentifier: string;
   fletchingColour1: string;
   fletchingColour2: string;
+  fletchingColour3: string;
   nockColour: string;
   targetDistance: string;
   laneNumber: number;

@@ -857,7 +857,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .page-heading-group {
   display: grid;
   justify-items: end;
-  width: fit-content;
+  width: min(100%, fit-content);
   max-width: var(--banner-title-width);
   min-width: 0;
 }
@@ -913,7 +913,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .target-arch-banner .heading-wrap h1 {
-  width: auto;
+  width: 100%;
   max-width: 100%;
   margin: 0;
   font-size: var(--banner-title-font-size);
@@ -921,9 +921,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   text-align: right;
   pointer-events: none;
   text-shadow: var(--banner-title-shadow);
-  overflow-wrap: normal;
+  overflow-wrap: anywhere;
   word-break: normal;
-  white-space: nowrap;
+  white-space: normal;
+  text-wrap: balance;
 }
 
 .target-arch-banner h1 {
@@ -4733,6 +4734,9 @@ button:disabled {
     text-align: center;
     font-size: clamp(1.3rem, 1.08rem + 1.05vw, 1.75rem);
     line-height: 1.02;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
   }
 
   .profile-member-select,
@@ -5046,6 +5050,9 @@ button:disabled {
 
   .target-arch-banner .heading-wrap h1 {
     font-size: 1.55rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
   }
 
   .page-toolbar {
@@ -6515,7 +6522,7 @@ button:disabled {
   padding: 6px;
   border: 1px solid var(--panel-border-strong);
   border-radius: 12px;
-  background: #000000;
+  background: var(--input-option-bg);
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
 }
 
@@ -6527,8 +6534,8 @@ button:disabled {
   padding: 8px 10px;
   border: 0;
   border-radius: 10px;
-  background: #000000;
-  color: var(--text);
+  background: var(--input-option-bg);
+  color: var(--input-option-text);
   font: inherit;
   cursor: pointer;
   text-align: left;

@@ -347,12 +347,13 @@ export function bootstrapSqliteBaseSchema({
       archer_username TEXT NOT NULL,
       date_lost TEXT NOT NULL,
       arrow_material TEXT NOT NULL CHECK (
-        arrow_material IN ('aluminium', 'carbon')
+        arrow_material IN ('aluminium', 'carbon', 'wood')
       ),
       arrow_colour TEXT NOT NULL,
       arrow_identifier TEXT NOT NULL,
       fletching_colour_1 TEXT NOT NULL,
       fletching_colour_2 TEXT NOT NULL,
+      fletching_colour_3 TEXT,
       nock_colour TEXT NOT NULL,
       target_distance TEXT NOT NULL,
       lane_number INTEGER NOT NULL CHECK (lane_number BETWEEN 1 AND 11),
@@ -368,7 +369,109 @@ export function bootstrapSqliteBaseSchema({
     )
   `);
 
-  const lostArrowColumns = db.prepare(`PRAGMA table_info(lost_arrows)`).all();
+  let lostArrowColumns = db.prepare(`PRAGMA table_info(lost_arrows)`).all();
+  const lostArrowTableSchema = db
+    .prepare(
+      `
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'lost_arrows'
+      `,
+    )
+    .get();
+
+  const lostArrowsRequiresMigration =
+    !lostArrowColumns.some((column) => column.name === "fletching_colour_3") ||
+    !String(lostArrowTableSchema?.sql ?? "").includes(
+      "arrow_material IN ('aluminium', 'carbon', 'wood')",
+    );
+
+  if (lostArrowsRequiresMigration) {
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+
+      BEGIN TRANSACTION;
+
+      ALTER TABLE lost_arrows RENAME TO lost_arrows_old;
+
+      CREATE TABLE lost_arrows (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        archer_username TEXT NOT NULL,
+        date_lost TEXT NOT NULL,
+        arrow_material TEXT NOT NULL CHECK (
+          arrow_material IN ('aluminium', 'carbon', 'wood')
+        ),
+        arrow_colour TEXT NOT NULL,
+        arrow_identifier TEXT NOT NULL,
+        fletching_colour_1 TEXT NOT NULL,
+        fletching_colour_2 TEXT NOT NULL,
+        fletching_colour_3 TEXT,
+        nock_colour TEXT NOT NULL,
+        target_distance TEXT NOT NULL,
+        lane_number INTEGER NOT NULL CHECK (lane_number BETWEEN 1 AND 11),
+        other_details TEXT,
+        date_found TEXT,
+        found_by_username TEXT,
+        found_seen_at_date TEXT,
+        found_seen_at_time TEXT,
+        created_at_date TEXT NOT NULL,
+        created_at_time TEXT NOT NULL,
+        FOREIGN KEY (archer_username) REFERENCES users(username),
+        FOREIGN KEY (found_by_username) REFERENCES users(username)
+      );
+
+      INSERT INTO lost_arrows (
+        id,
+        archer_username,
+        date_lost,
+        arrow_material,
+        arrow_colour,
+        arrow_identifier,
+        fletching_colour_1,
+        fletching_colour_2,
+        fletching_colour_3,
+        nock_colour,
+        target_distance,
+        lane_number,
+        other_details,
+        date_found,
+        found_by_username,
+        found_seen_at_date,
+        found_seen_at_time,
+        created_at_date,
+        created_at_time
+      )
+      SELECT
+        id,
+        archer_username,
+        date_lost,
+        arrow_material,
+        arrow_colour,
+        arrow_identifier,
+        fletching_colour_1,
+        fletching_colour_2,
+        NULL,
+        nock_colour,
+        target_distance,
+        lane_number,
+        other_details,
+        date_found,
+        found_by_username,
+        found_seen_at_date,
+        found_seen_at_time,
+        created_at_date,
+        created_at_time
+      FROM lost_arrows_old;
+
+      DROP TABLE lost_arrows_old;
+
+      COMMIT;
+
+      PRAGMA foreign_keys = ON;
+    `);
+
+    lostArrowColumns = db.prepare(`PRAGMA table_info(lost_arrows)`).all();
+  }
 
   if (!lostArrowColumns.some((column) => column.name === "found_seen_at_date")) {
     db.exec(`ALTER TABLE lost_arrows ADD COLUMN found_seen_at_date TEXT`);

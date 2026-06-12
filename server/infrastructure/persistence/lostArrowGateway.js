@@ -13,6 +13,7 @@ function normalizeLostArrowRow(row) {
     arrowIdentifier: row.arrow_identifier,
     fletchingColour1: row.fletching_colour_1,
     fletchingColour2: row.fletching_colour_2,
+    fletchingColour3: row.fletching_colour_3 ?? "",
     nockColour: row.nock_colour,
     targetDistance: row.target_distance,
     laneNumber: Number(row.lane_number),
@@ -35,6 +36,7 @@ function createSqliteLostArrowGateway(db) {
       arrow_identifier,
       fletching_colour_1,
       fletching_colour_2,
+      fletching_colour_3,
       nock_colour,
       target_distance,
       lane_number,
@@ -42,7 +44,7 @@ function createSqliteLostArrowGateway(db) {
       created_at_date,
       created_at_time
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const listOpenLostArrowsStatement = db.prepare(`
     SELECT
@@ -106,6 +108,7 @@ function createSqliteLostArrowGateway(db) {
         payload.arrowIdentifier,
         payload.fletchingColour1,
         payload.fletchingColour2,
+        payload.fletchingColour3,
         payload.nockColour,
         payload.targetDistance,
         payload.laneNumber,
@@ -158,6 +161,7 @@ function createPostgresLostArrowGateway(pool) {
             arrow_identifier,
             fletching_colour_1,
             fletching_colour_2,
+            fletching_colour_3,
             nock_colour,
             target_distance,
             lane_number,
@@ -165,7 +169,7 @@ function createPostgresLostArrowGateway(pool) {
             created_at_date,
             created_at_time
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
           RETURNING id
         `,
         [
@@ -176,6 +180,7 @@ function createPostgresLostArrowGateway(pool) {
           payload.arrowIdentifier,
           payload.fletchingColour1,
           payload.fletchingColour2,
+          payload.fletchingColour3,
           payload.nockColour,
           payload.targetDistance,
           payload.laneNumber,

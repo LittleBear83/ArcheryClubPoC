@@ -141,6 +141,7 @@ function buildInitialSchemaSql() {
       arrow_identifier TEXT NOT NULL,
       fletching_colour_1 TEXT NOT NULL,
       fletching_colour_2 TEXT NOT NULL,
+      fletching_colour_3 TEXT,
       nock_colour TEXT NOT NULL,
       target_distance TEXT NOT NULL,
       lane_number INTEGER NOT NULL,
@@ -950,6 +951,10 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE lost_arrows
       ADD COLUMN IF NOT EXISTS found_seen_at_date TEXT
+    `);
+    await client.query(`
+      ALTER TABLE lost_arrows
+      ADD COLUMN IF NOT EXISTS fletching_colour_3 TEXT
     `);
     await client.query(`
       ALTER TABLE lost_arrows

@@ -36,7 +36,7 @@ const pages = [
     path: "/outdoor-table",
     disabledForRoles: ["beginner"],
   },
-  { id: "feedback-form", label: "Feedback & Ideas", path: "/feedback-form" },
+  { id: "feedback-form", label: "Suggestion Box", path: "/feedback-form" },
   {
     id: "lost-and-found",
     label: "Lost and Found",

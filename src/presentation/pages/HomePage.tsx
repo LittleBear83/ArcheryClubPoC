@@ -161,7 +161,7 @@ const pageTitleMap = {
   "have-a-go-sessions": "Have a Go Sessions",
   "event-calendar": "Calendar",
   "range-usage": "Range Usage",
-  "feedback-form": "Feedback & Ideas",
+  "feedback-form": "Suggestion Box",
   tournaments: "Tournaments",
   records: "Records",
   "outdoor-table": "Outdoor Table",

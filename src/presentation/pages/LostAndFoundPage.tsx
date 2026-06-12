@@ -20,13 +20,12 @@ import { formatDate } from "../../utils/dateTime";
 import type { LostArrowRecord, UserProfile } from "../../types/app";
 import {
   LOST_ARROW_ARROW_COLOUR_OPTIONS,
-  LOST_ARROW_ARROW_COLOUR_VALUE_SET,
+  LOST_ARROW_ARROW_MATERIAL_OPTIONS,
   LOST_ARROW_FLETCHING_COLOUR_OPTIONS,
-  LOST_ARROW_FLETCHING_COLOUR_VALUE_SET,
   LOST_ARROW_NOCK_COLOUR_OPTIONS,
-  LOST_ARROW_NOCK_COLOUR_VALUE_SET,
   LOST_ARROW_TARGET_DISTANCE_OPTIONS,
 } from "../../../shared/lostArrowOptions.js";
+import { getLostArrowFieldValidationErrors } from "../../../shared/lostArrowValidation.js";
 
 type LostAndFoundPageProps = {
   currentUserProfile: UserProfile | null;
@@ -35,11 +34,12 @@ type LostAndFoundPageProps = {
 type LostArrowDraft = {
   archerUsername: string;
   dateLost: string;
-  arrowMaterial: "aluminium" | "carbon" | "";
+  arrowMaterial: "aluminium" | "carbon" | "wood" | "";
   arrowColour: string;
   arrowIdentifier: string;
   fletchingColour1: string;
   fletchingColour2: string;
+  fletchingColour3: string;
   nockColour: string;
   targetDistance: string;
   laneNumber: string;
@@ -66,6 +66,7 @@ function buildEmptyDraft(currentUsername: string): LostArrowDraft {
     arrowIdentifier: "",
     fletchingColour1: "",
     fletchingColour2: "",
+    fletchingColour3: "",
     nockColour: "",
     targetDistance: "",
     laneNumber: "",
@@ -89,26 +90,6 @@ function buildLostArrowSummary(arrow: LostArrowRecord) {
   ]
     .filter(Boolean)
     .join(" | ");
-}
-
-function isLostArrowDraftComplete(draft: LostArrowDraft) {
-  return Boolean(
-    draft.archerUsername &&
-      draft.dateLost &&
-      draft.arrowMaterial &&
-      draft.arrowColour &&
-      LOST_ARROW_ARROW_COLOUR_VALUE_SET.has(draft.arrowColour) &&
-      draft.arrowIdentifier &&
-      draft.fletchingColour1 &&
-      LOST_ARROW_FLETCHING_COLOUR_VALUE_SET.has(draft.fletchingColour1) &&
-      draft.fletchingColour2 &&
-      LOST_ARROW_FLETCHING_COLOUR_VALUE_SET.has(draft.fletchingColour2) &&
-      draft.nockColour &&
-      LOST_ARROW_NOCK_COLOUR_VALUE_SET.has(draft.nockColour) &&
-      draft.targetDistance &&
-      LOST_ARROW_TARGET_DISTANCE_OPTIONS.includes(draft.targetDistance) &&
-      draft.laneNumber,
-  );
 }
 
 export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) {
@@ -251,9 +232,10 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const validationErrors = getLostArrowFieldValidationErrors(draft);
 
-    if (!isLostArrowDraftComplete(draft)) {
-      setError("Complete every lost arrow field with a valid value.");
+    if (validationErrors.length > 0) {
+      setError(`Complete these fields: ${validationErrors.join(", ")}.`);
       setSuccess("");
       return;
     }
@@ -284,14 +266,17 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
         />
 
         <SectionPanel className="profile-form" title="Report Lost Arrow">
-          <form className="left-align-form lost-arrow-form" onSubmit={handleSubmit}>
+          <form
+            className="left-align-form lost-arrow-form"
+            onSubmit={handleSubmit}
+            noValidate
+          >
             <div className="lost-arrow-form-grid">
               <label>
                 Name of Archer
                 <select
                   value={draft.archerUsername}
                   onChange={handleDraftChange("archerUsername")}
-                  required
                 >
                   <option value="">Select member</option>
                   {memberOptions.map((member) => (
@@ -307,7 +292,6 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                 value={draft.dateLost}
                 onChange={handleDraftChange("dateLost")}
                 max={getTodayIsoDate()}
-                required
               />
 
               <label>
@@ -315,11 +299,13 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                 <select
                   value={draft.arrowMaterial}
                   onChange={handleDraftChange("arrowMaterial")}
-                  required
                 >
                   <option value="">Select material</option>
-                  <option value="aluminium">Aluminium</option>
-                  <option value="carbon">Carbon</option>
+                  {LOST_ARROW_ARROW_MATERIAL_OPTIONS.map((material) => (
+                    <option key={material} value={material}>
+                      {material.charAt(0).toUpperCase() + material.slice(1)}
+                    </option>
+                  ))}
                 </select>
               </label>
 
@@ -336,7 +322,6 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                   value={draft.arrowIdentifier}
                   onChange={handleDraftChange("arrowIdentifier")}
                   maxLength={64}
-                  required
                 />
               </label>
 
@@ -355,6 +340,13 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
               />
 
               <ColourDropdown
+                label="Fletching Colour 3"
+                options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
+                value={draft.fletchingColour3}
+                onChange={(value) => handleDraftChange("fletchingColour3")(value)}
+              />
+
+              <ColourDropdown
                 label="Nock Colour"
                 options={LOST_ARROW_NOCK_COLOUR_OPTIONS}
                 value={draft.nockColour}
@@ -366,7 +358,6 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                 <select
                   value={draft.targetDistance}
                   onChange={handleDraftChange("targetDistance")}
-                  required
                 >
                   <option value="">Select distance</option>
                   {LOST_ARROW_TARGET_DISTANCE_OPTIONS.map((distance) => (
@@ -382,7 +373,6 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                 <select
                   value={draft.laneNumber}
                   onChange={handleDraftChange("laneNumber")}
-                  required
                 >
                   <option value="">Select lane</option>
                   {LANE_OPTIONS.map((lane) => (
@@ -441,6 +431,12 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                           colour={arrow.fletchingColour2}
                           options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
                         />
+                        {arrow.fletchingColour3 ? (
+                          <ColourPreview
+                            colour={arrow.fletchingColour3}
+                            options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
+                          />
+                        ) : null}
                       </div>
                     </div>
                     <div className="lost-arrow-fletching-summary">
@@ -505,6 +501,12 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                             colour={arrow.fletchingColour2}
                             options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
                           />
+                          {arrow.fletchingColour3 ? (
+                            <ColourPreview
+                              colour={arrow.fletchingColour3}
+                              options={LOST_ARROW_FLETCHING_COLOUR_OPTIONS}
+                            />
+                          ) : null}
                         </div>
                       </td>
                       <td>

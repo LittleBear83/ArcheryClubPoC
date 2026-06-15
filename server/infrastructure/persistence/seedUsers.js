@@ -60,7 +60,6 @@ const seedUsers = [
     disciplines: [
       "Bare Bow",
       "Compound Bow",
-      "Flat Bow",
       "Long Bow",
       "Recurve Bow",
     ],
@@ -75,7 +74,7 @@ const seedUsers = [
     membershipFeesDue: "2026-04-03",
     coachingVolunteer: false,
     userType: "general",
-    disciplines: ["Flat Bow"],
+    disciplines: ["Bare Bow"],
   },
   {
     username: "MMurdock",
@@ -168,11 +167,5 @@ function toSeedUserRecord(user, hashPassword) {
 }
 
 export function getSeedUsers({ hashPassword, isLive }) {
-  const selectedUsers = isLive
-    ? seedUsers.filter((user) =>
-        ["Cfleetham", "tstark"].includes(user.username)
-      )
-    : seedUsers;
-
-  return selectedUsers.map((user) => toSeedUserRecord(user, hashPassword));
+  return seedUsers.map((user) => toSeedUserRecord(user, hashPassword));
 }

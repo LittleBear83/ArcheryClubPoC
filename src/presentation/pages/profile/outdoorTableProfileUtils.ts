@@ -61,7 +61,6 @@ export const BOW_TYPE_DISCIPLINE_MAPPINGS = [
   { bowType: "Comp", discipline: "Compound Bow", label: "Compound" },
   { bowType: "B/bow", discipline: "Bare Bow", label: "Barebow" },
   { bowType: "L/bow", discipline: "Long Bow", label: "Longbow" },
-  { bowType: "Flat", discipline: "Flat Bow", label: "Flatbow" },
 ] as const;
 export const OUTDOOR_ACHIEVEMENT_COLUMNS: Array<{
   key: OutdoorBooleanFieldKey;

@@ -466,7 +466,7 @@ Operational notes:
 
 - local SQLite databases are created and bootstrapped automatically
 - live mode defaults to `server/data/auth.live.sqlite` unless overridden
-- baseline live accounts are seeded in SQLite live mode
+- the current baseline accounts are seeded in SQLite live mode
 - exports are written under `server/data/exports`
 
 ## Security And Reliability

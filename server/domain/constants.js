@@ -200,7 +200,6 @@ export const SYSTEM_ROLE_DEFINITIONS = [
 
 export const ALLOWED_DISCIPLINES = [
   "Long Bow",
-  "Flat Bow",
   "Bare Bow",
   "Recurve Bow",
   "Compound Bow",

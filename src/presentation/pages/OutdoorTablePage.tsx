@@ -2,9 +2,6 @@ import { useMemo, useState, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
-import { MobileCardList } from "../components/mobile/MobileCardList";
-import { MobileKeyValueList } from "../components/mobile/MobileKeyValueList";
-import { useIsMobile } from "../hooks/useIsMobile";
 import { listOutdoorTableDashboard } from "../../api/outdoorTableApi";
 import type { UserProfile } from "../../types/app";
 import { hasPermission } from "../../utils/userProfile";
@@ -33,14 +30,30 @@ const CLOUT_COLUMNS = [
 type OutdoorTableSortColumn = "archerSurname" | "bowType";
 
 const SORT_INDICATORS: Record<"asc" | "desc", string> = {
-  asc: "▲",
-  desc: "▼",
+  asc: "^",
+  desc: "v",
 };
 
-export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) {
+function getAchievementColorClass(columnKey: string) {
+  if (columnKey.startsWith("bowman")) {
+    return "bowman";
+  }
+
+  if (columnKey.toLowerCase().includes("master")) {
+    return "master";
+  }
+
+  return "archer";
+}
+
+export function OutdoorTablePage({
+  currentUserProfile,
+}: OutdoorTablePageProps) {
   const actorUsername = currentUserProfile?.auth?.username ?? "";
-  const canManageOutdoorTable = hasPermission(currentUserProfile, "manage_members");
-  const isMobile = useIsMobile();
+  const canManageOutdoorTable = hasPermission(
+    currentUserProfile,
+    "manage_members",
+  );
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
   const [sortConfig, setSortConfig] = useState<{
     column: OutdoorTableSortColumn;
@@ -62,17 +75,27 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
     return [...unsortedRows].sort((left, right) => {
       const leftPrimary = String(left[sortConfig.column] ?? "");
       const rightPrimary = String(right[sortConfig.column] ?? "");
-      const primaryComparison = leftPrimary.localeCompare(rightPrimary, undefined, {
-        sensitivity: "base",
-      });
+      const primaryComparison = leftPrimary.localeCompare(
+        rightPrimary,
+        undefined,
+        {
+          sensitivity: "base",
+        },
+      );
 
       if (primaryComparison !== 0) {
-        return sortConfig.direction === "asc" ? primaryComparison : primaryComparison * -1;
+        return sortConfig.direction === "asc"
+          ? primaryComparison
+          : primaryComparison * -1;
       }
 
-      const surnameComparison = left.archerSurname.localeCompare(right.archerSurname, undefined, {
-        sensitivity: "base",
-      });
+      const surnameComparison = left.archerSurname.localeCompare(
+        right.archerSurname,
+        undefined,
+        {
+          sensitivity: "base",
+        },
+      );
 
       if (surnameComparison !== 0) {
         return surnameComparison;
@@ -112,7 +135,9 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
     setSortConfig((current) => ({
       column,
       direction:
-        current.column === column && current.direction === "asc" ? "desc" : "asc",
+        current.column === column && current.direction === "asc"
+          ? "desc"
+          : "asc",
     }));
   };
 
@@ -131,27 +156,12 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
     return indicator ? `${label} ${indicator}` : label;
   };
 
-  const getAchievementSummary = (entry: (typeof rows)[number]) => {
-    const completedLabels = OUTDOOR_ACHIEVEMENT_COLUMNS.filter((column) => entry[column.key]).map(
-      (column) => column.label,
-    );
-
-    return completedLabels.length > 0 ? completedLabels.join(", ") : "None recorded";
-  };
-
-  const getSightMarksSummary = (entry: (typeof rows)[number]) => {
-    const completedLabels = CLOUT_COLUMNS.filter((column) => entry[column.key]).map(
-      (column) => `${column.label}y`,
-    );
-
-    return completedLabels.length > 0 ? completedLabels.join(", ") : "None agreed";
-  };
-
   return (
     <div className="profile-page outdoor-table-page">
       <p>
-        Keep the club&apos;s outdoor classification and award table in one place, with a
-        desktop view that matches the paper table layout as closely as possible.
+        Keep the club&apos;s outdoor classification and award table in one
+        place, with a desktop view that matches the paper table layout as
+        closely as possible.
       </p>
 
       <StatusMessagePanel
@@ -190,75 +200,29 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
 
         {rows.length === 0 ? (
           <p>No outdoor table rows have been added for {selectedYear} yet.</p>
-        ) : isMobile ? (
-          <MobileCardList className="outdoor-table-mobile-list">
-            {rows.map((entry) => (
-              <article key={entry.id} className="outdoor-table-mobile-card">
-                <div className="outdoor-table-mobile-card-header">
-                  <div>
-                    <h3>{entry.archerName || `${entry.archerFirstName} ${entry.archerSurname}`.trim()}</h3>
-                    <p>{entry.bowType}</p>
-                  </div>
-                  <span className="outdoor-table-mobile-handicap">
-                    HC {entry.handicap ?? "-"}
-                  </span>
-                </div>
-
-                <MobileKeyValueList
-                  items={[
-                    { label: "Surname", value: entry.archerSurname || "-" },
-                    { label: "First name", value: entry.archerFirstName || "-" },
-                    { label: "Previous", value: getAchievementSummary(entry) },
-                    { label: "Sight marks", value: getSightMarksSummary(entry) },
-                  ]}
-                />
-
-                <div className="outdoor-table-mobile-252-block">
-                  <h4>252 Progress</h4>
-                  <div className="outdoor-table-mobile-252-grid">
-                    {OUTDOOR_252_COLUMNS.map((column) => {
-                      const isComplete = isAward252Complete(
-                        entry,
-                        column.awardKey,
-                        column.signOffKey,
-                      );
-
-                      return (
-                        <div
-                          key={`${entry.id}-${column.awardKey}`}
-                          className={`outdoor-table-mobile-252-chip ${
-                            isComplete ? "is-complete" : "is-pending"
-                          }`}
-                        >
-                          <strong>{column.label}</strong>
-                          <span>{countCompletedSignOffs(entry[column.signOffKey])}/3</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </article>
-            ))}
-          </MobileCardList>
         ) : (
-          <div className="outdoor-table-scroll">
+          <>
+            <p className="outdoor-table-scroll-hint">
+              Scroll sideways to view the full table on smaller screens.
+            </p>
+            <div className="outdoor-table-scroll">
             <table className="outdoor-table-matrix">
               <thead>
                 <tr>
                   <th className="outdoor-table-title-cell" colSpan={3}>
-                    Selby Outdoor Table {selectedYear}
+                    Outdoor Table {selectedYear}
                   </th>
                   <th
                     className="outdoor-table-legend-cell"
                     colSpan={1 + OUTDOOR_ACHIEVEMENT_COLUMNS.length}
                   >
-                    Denotes previous achievements
+                    Previous Achievements
                   </th>
                   <th
                     className="outdoor-table-group-cell outdoor-table-group-cell--252"
                     colSpan={OUTDOOR_252_COLUMNS.length}
                   >
-                    252
+                    252 Round Sign-Offs
                   </th>
                   <th
                     className="outdoor-table-group-cell outdoor-table-group-cell--clout"
@@ -280,7 +244,9 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                       {getSortLabel("Surname", "archerSurname")}
                     </button>
                   </th>
-                  <th className="outdoor-table-head outdoor-table-head--name">First Name</th>
+                  <th className="outdoor-table-head outdoor-table-head--name">
+                    First Name
+                  </th>
                   <th
                     aria-sort={getSortAria("bowType")}
                     className="outdoor-table-head outdoor-table-head--bow"
@@ -293,11 +259,15 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                       {getSortLabel("Bow", "bowType")}
                     </button>
                   </th>
-                  <th className="outdoor-table-head outdoor-table-head--handicap">Handicap</th>
+                  <th className="outdoor-table-head outdoor-table-head--handicap">
+                    Handicap
+                  </th>
                   {OUTDOOR_ACHIEVEMENT_COLUMNS.map((column) => (
                     <th
                       key={column.key}
-                      className="outdoor-table-head outdoor-table-head--vertical outdoor-table-head--archer"
+                      className={`outdoor-table-head outdoor-table-head--vertical outdoor-table-head--${getAchievementColorClass(
+                        column.key,
+                      )}`}
                     >
                       <span>{column.label}</span>
                     </th>
@@ -311,7 +281,10 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                     </th>
                   ))}
                   {CLOUT_COLUMNS.map((column) => (
-                    <th key={column.key} className="outdoor-table-head outdoor-table-head--distance">
+                    <th
+                      key={column.key}
+                      className="outdoor-table-head outdoor-table-head--distance"
+                    >
                       {column.label}
                     </th>
                   ))}
@@ -327,7 +300,9 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                     {OUTDOOR_ACHIEVEMENT_COLUMNS.map((column) => (
                       <td
                         key={column.key}
-                        className={`outdoor-table-mark outdoor-table-mark--archer ${
+                        className={`outdoor-table-mark outdoor-table-mark--${getAchievementColorClass(
+                          column.key,
+                        )} ${
                           entry[column.key] ? "is-active" : ""
                         }`}
                       />
@@ -336,7 +311,11 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                       <td
                         key={column.awardKey}
                         className={`outdoor-table-mark outdoor-table-mark--252 ${
-                          isAward252Complete(entry, column.awardKey, column.signOffKey)
+                          isAward252Complete(
+                            entry,
+                            column.awardKey,
+                            column.signOffKey,
+                          )
                             ? "is-active"
                             : ""
                         }`}
@@ -358,7 +337,8 @@ export function OutdoorTablePage({ currentUserProfile }: OutdoorTablePageProps) 
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          </>
         )}
       </SectionPanel>
     </div>

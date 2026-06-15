@@ -7039,12 +7039,14 @@ button:disabled {
 
 .outdoor-table-page {
   gap: 1.5rem;
+  min-width: 0;
 }
 
 .outdoor-table-toolbar-panel,
 .outdoor-table-form-panel,
 .outdoor-table-sheet-panel {
   width: 100%;
+  min-width: 0;
 }
 
 .outdoor-table-toolbar {
@@ -7241,6 +7243,13 @@ button:disabled {
   margin: 0 0 0.85rem;
 }
 
+.outdoor-table-scroll-hint {
+  display: none;
+  margin: 0 0 0.65rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
 .outdoor-table-mobile-list {
   margin-top: 16px;
 }
@@ -7327,8 +7336,16 @@ button:disabled {
 }
 
 .outdoor-table-scroll {
+  display: block;
+  width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: visible;
   padding-bottom: 0.5rem;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pinch-zoom;
+  scrollbar-gutter: stable both-edges;
 }
 
 .outdoor-table-matrix {
@@ -7531,6 +7548,18 @@ button:disabled {
 }
 
 @media (max-width: 960px) {
+  .outdoor-table-scroll-hint {
+    display: block;
+  }
+
+  .outdoor-table-scroll {
+    overflow-x: scroll;
+  }
+
+  .outdoor-table-matrix {
+    min-width: 1180px;
+  }
+
   .outdoor-table-form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -7549,12 +7578,43 @@ button:disabled {
     min-width: 340px;
   }
 
+  .outdoor-table-matrix th,
+  .outdoor-table-matrix td {
+    min-width: 38px;
+    padding: 0.2rem;
+  }
+
+  .outdoor-table-head--name {
+    min-width: 120px;
+  }
+
+  .outdoor-table-head--bow {
+    min-width: 72px;
+  }
+
+  .outdoor-table-head--handicap {
+    min-width: 72px;
+  }
+
+  .outdoor-table-head--distance {
+    min-width: 42px;
+  }
+
+  .outdoor-table-mark-count {
+    min-width: 2rem;
+    font-size: 0.76rem;
+  }
+
   .outdoor-table-summary-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 640px) {
+  .outdoor-table-matrix {
+    min-width: 1060px;
+  }
+
   .outdoor-table-form-grid,
   .outdoor-table-checkbox-grid--achievements {
     grid-template-columns: 1fr;
@@ -7564,11 +7624,52 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
-  .outdoor-table-mobile-card-header {
-    display: grid;
+  .outdoor-table-title-cell {
+    font-size: 1.2rem;
+    min-width: 260px;
   }
 
-  .outdoor-table-mobile-252-grid {
-    grid-template-columns: 1fr;
+  .outdoor-table-legend-cell,
+  .outdoor-table-group-cell {
+    font-size: 0.8rem;
+  }
+
+  .outdoor-table-matrix th,
+  .outdoor-table-matrix td {
+    min-width: 34px;
+    padding: 0.15rem;
+    height: 34px;
+  }
+
+  .outdoor-table-head--name {
+    min-width: 100px;
+  }
+
+  .outdoor-table-head--bow,
+  .outdoor-table-head--handicap {
+    min-width: 64px;
+  }
+
+  .outdoor-table-head--vertical {
+    min-width: 36px;
+    height: 132px;
+  }
+
+  .outdoor-table-head--vertical span {
+    font-size: 0.82rem;
+  }
+
+  .outdoor-table-head--distance {
+    min-width: 38px;
+  }
+
+  .outdoor-table-row td:first-child,
+  .outdoor-table-row td:nth-child(2) {
+    padding-inline: 0.35rem;
+  }
+
+  .outdoor-table-mark-count {
+    min-width: 1.7rem;
+    font-size: 0.7rem;
   }
 }

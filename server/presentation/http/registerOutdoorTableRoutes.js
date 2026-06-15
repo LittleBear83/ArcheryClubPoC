@@ -1,4 +1,4 @@
-const BOW_TYPE_OPTIONS = new Set(["Rec", "Comp", "B/bow", "L/bow", "Flat"]);
+const BOW_TYPE_OPTIONS = new Set(["Rec", "Comp", "B/bow", "L/bow"]);
 const STANDARD_BOOLEAN_FIELD_KEYS = [
   "archer3rd",
   "archer2nd",
@@ -49,7 +49,6 @@ const BOW_TYPE_TO_DISCIPLINE = {
   Comp: "Compound Bow",
   "B/bow": "Bare Bow",
   "L/bow": "Long Bow",
-  Flat: "Flat Bow",
 };
 const INVALID_HANDICAP = Symbol("invalid-handicap");
 

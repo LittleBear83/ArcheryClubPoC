@@ -29,6 +29,7 @@ export function bootstrapSqliteUserCompatibility({ db }) {
           password TEXT,
           rfid_tag TEXT UNIQUE,
           active_member INTEGER NOT NULL DEFAULT 1,
+          affiliate_member INTEGER NOT NULL DEFAULT 0,
           membership_fees_due TEXT,
           coaching_volunteer INTEGER NOT NULL DEFAULT 0
         )
@@ -237,6 +238,12 @@ export function bootstrapSqliteUserCompatibility({ db }) {
   if (!userColumns.some((column) => column.name === "active_member")) {
     db.exec(
       `ALTER TABLE users ADD COLUMN active_member INTEGER NOT NULL DEFAULT 1`,
+    );
+  }
+
+  if (!userColumns.some((column) => column.name === "affiliate_member")) {
+    db.exec(
+      `ALTER TABLE users ADD COLUMN affiliate_member INTEGER NOT NULL DEFAULT 0`,
     );
   }
 

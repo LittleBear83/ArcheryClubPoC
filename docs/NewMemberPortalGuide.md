@@ -76,7 +76,7 @@ can help members understand busy times and general usage trends.
 Some pages are only shown to members with additional responsibilities, such as
 club officers, committee members, coaches, or administrators. Examples include:
 
-- User Creation
+- Member Creation
 - Roles & Permissions
 - Loan Bow Register
 - Tournament Setup

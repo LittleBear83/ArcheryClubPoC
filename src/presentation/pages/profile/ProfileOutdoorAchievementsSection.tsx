@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/Button";
 import { SectionPanel } from "../../components/SectionPanel";
 import {
@@ -65,6 +65,20 @@ export function ProfileOutdoorAchievementsSection({
       (left, right) => (order.get(left.bowType) ?? 999) - (order.get(right.bowType) ?? 999),
     );
   }, [entries]);
+
+  useEffect(() => {
+    if (!hasMultipleDisciplines) {
+      setCollapsedBowTypes({});
+      return;
+    }
+
+    setCollapsedBowTypes((current) =>
+      entriesByPreferredOrder.reduce<Record<string, boolean>>((next, entry) => {
+        next[entry.bowType] = current[entry.bowType] ?? true;
+        return next;
+      }, {}),
+    );
+  }, [entriesByPreferredOrder, hasMultipleDisciplines]);
 
   return (
     <SectionPanel className="profile-form" title="Outdoor Achievements">

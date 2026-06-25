@@ -149,6 +149,7 @@ export function bootstrapSqliteBaseSchema({
       password TEXT,
       rfid_tag TEXT UNIQUE,
       active_member INTEGER NOT NULL DEFAULT 1,
+      affiliate_member INTEGER NOT NULL DEFAULT 0,
       membership_fees_due TEXT,
       coaching_volunteer INTEGER NOT NULL DEFAULT 0
     )

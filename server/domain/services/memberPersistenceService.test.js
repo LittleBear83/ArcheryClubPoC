@@ -50,6 +50,7 @@ test("saveMemberProfile uses normalized member status before persistence", async
           surname: "Example",
           user_type: "general",
           active_member: 0,
+          affiliate_member: 0,
           membership_fees_due: "2026-04-01",
           coaching_volunteer: 0,
           rfid_tag: "TAG-1-deactivated",
@@ -73,6 +74,7 @@ test("saveMemberProfile uses normalized member status before persistence", async
 
   const result = await memberPersistenceService.saveMemberProfile({
     activeMember: true,
+    affiliateMember: true,
     coachingVolunteer: false,
     disciplines: ["Recurve Bow"],
     existingUser: null,
@@ -87,8 +89,8 @@ test("saveMemberProfile uses normalized member status before persistence", async
   });
 
   assert.equal(capturedPayload.userPayload.activeMember, 0);
+  assert.equal(capturedPayload.userPayload.affiliateMember, 1);
   assert.equal(capturedPayload.userPayload.rfidTag, "TAG-1-deactivated");
   assert.equal(capturedPayload.userPayload.password, "hashed:secret");
   assert.equal(result.success, true);
 });
-

@@ -152,7 +152,7 @@ const TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS = 2;
 const pageTitleMap = {
   home: "Home",
   profile: "Profile",
-  "user-creation": "User Creation",
+  "user-creation": "Member Creation",
   "role-permissions": "Roles & Permissions",
   reporting: "Reporting",
   approvals: "Approvals",

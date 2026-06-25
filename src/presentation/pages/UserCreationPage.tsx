@@ -12,6 +12,7 @@ const EMPTY_PROFILE = {
   password: "",
   rfidTag: "",
   activeMember: true,
+  affiliateMember: false,
   membershipFeesDue: new Date().toISOString().slice(0, 10),
   coachingVolunteer: false,
   userType: "general",
@@ -151,7 +152,7 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
       <StatusMessagePanel
         error={error}
         loading={isLoading && roleOptions.length === 0}
-        loadingLabel="Loading user creation options..."
+        loadingLabel="Loading member creation options..."
         success={message}
       />
 

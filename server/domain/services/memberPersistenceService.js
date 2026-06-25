@@ -60,6 +60,7 @@ export function createMemberPersistenceService({
   return {
     async saveMemberProfile({
       activeMember,
+      affiliateMember,
       coachingVolunteer,
       disciplines,
       emailAddress,
@@ -80,6 +81,7 @@ export function createMemberPersistenceService({
       const trimmedPassword = password?.trim();
       const trimmedRfidTag = rfidTag?.trim();
       const normalizedActiveMember = Boolean(activeMember);
+      const normalizedAffiliateMember = Boolean(affiliateMember);
       const normalizedMembershipFeesDue = membershipFeesDue?.trim() || null;
       const normalizedCoachingVolunteer = Boolean(coachingVolunteer);
       const normalizedDisciplines = sanitizeDisciplines(disciplines);
@@ -117,6 +119,7 @@ export function createMemberPersistenceService({
           username: existingUser?.username ?? trimmedUsername,
           rfid_tag: trimmedRfidTag || null,
           active_member: normalizedActiveMember ? 1 : 0,
+          affiliate_member: normalizedAffiliateMember ? 1 : 0,
           membership_fees_due: normalizedMembershipFeesDue,
           coaching_volunteer: normalizedCoachingVolunteer ? 1 : 0,
         },
@@ -132,6 +135,7 @@ export function createMemberPersistenceService({
         password: passwordToSave,
         rfidTag: normalizedUser.rfid_tag,
         activeMember: normalizedUser.active_member,
+        affiliateMember: normalizedUser.affiliate_member,
         membershipFeesDue: normalizedUser.membership_fees_due,
         coachingVolunteer: normalizedUser.coaching_volunteer,
       };

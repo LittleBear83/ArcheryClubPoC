@@ -6,6 +6,7 @@ function normalizeUserRow(row) {
   return {
     ...row,
     active_member: Number(row.active_member ?? 0),
+    affiliate_member: Number(row.affiliate_member ?? 0),
     coaching_volunteer: Number(row.coaching_volunteer ?? 0),
   };
 }
@@ -29,6 +30,7 @@ function mapUserPayloadToSqliteProfile(user) {
     password: user.password,
     rfidTag: user.rfidTag,
     activeMember: user.activeMember,
+    affiliateMember: user.affiliateMember,
     membershipFeesDue: user.membershipFeesDue,
     coachingVolunteer: user.coachingVolunteer,
   };
@@ -117,6 +119,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.password,
             users.rfid_tag,
             users.active_member,
+            users.affiliate_member,
             users.membership_fees_due,
             users.coaching_volunteer,
             user_types.user_type
@@ -142,6 +145,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.password,
             users.rfid_tag,
             users.active_member,
+            users.affiliate_member,
             users.membership_fees_due,
             users.coaching_volunteer,
             user_types.user_type
@@ -167,6 +171,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.password,
             users.rfid_tag,
             users.active_member,
+            users.affiliate_member,
             users.membership_fees_due,
             users.coaching_volunteer,
             user_types.user_type
@@ -191,6 +196,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.email_address,
             users.rfid_tag,
             users.active_member,
+            users.affiliate_member,
             users.membership_fees_due,
             users.coaching_volunteer,
             user_types.user_type

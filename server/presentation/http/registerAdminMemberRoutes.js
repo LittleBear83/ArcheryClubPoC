@@ -785,6 +785,7 @@ export function registerAdminMemberRoutes({
       password,
       rfidTag,
       activeMember,
+      affiliateMember,
       membershipFeesDue,
       coachingVolunteer,
       userType,
@@ -808,6 +809,7 @@ export function registerAdminMemberRoutes({
       password,
       rfidTag,
       activeMember,
+      affiliateMember,
       membershipFeesDue,
       coachingVolunteer,
       userType,
@@ -879,6 +881,7 @@ export function registerAdminMemberRoutes({
       password,
       rfidTag,
       activeMember,
+      affiliateMember,
       membershipFeesDue,
       coachingVolunteer,
       userType,
@@ -894,6 +897,9 @@ export function registerAdminMemberRoutes({
       password,
       rfidTag: canManageMembers ? rfidTag : existingUser.rfid_tag,
       activeMember: canManageMembers ? activeMember : existingUser.active_member,
+      affiliateMember: canManageMembers
+        ? affiliateMember
+        : existingUser.affiliate_member,
       membershipFeesDue: canManageMembers
         ? membershipFeesDue
         : existingUser.membership_fees_due,
@@ -1072,7 +1078,9 @@ export function registerAdminMemberRoutes({
       password: existingUser.password,
       rfidTag,
       activeMember: existingUser.active_member,
+      affiliateMember: existingUser.affiliate_member,
       membershipFeesDue: existingUser.membership_fees_due,
+      coachingVolunteer: existingUser.coaching_volunteer,
       userType: existingUser.user_type,
       disciplines,
       loanBow,

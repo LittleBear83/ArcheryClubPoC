@@ -9,7 +9,7 @@ const PERMISSION_GROUP_METADATA = {
   "member-setup": {
     title: "Member administration",
     description:
-      "Member records, user creation, profile structure, role assignment, and committee role administration.",
+      "Member records, member creation, profile structure, role assignment, and committee role administration.",
   },
   "events-coaching": {
     title: "Events/Tournaments and Coaching",

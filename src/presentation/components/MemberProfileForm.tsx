@@ -129,6 +129,18 @@ export function MemberProfileForm({
         </label>
 
         <label>
+          Affiliate member
+          <select
+            value={editableProfile.affiliateMember ? "yes" : "no"}
+            onChange={handleBooleanSelectChange("affiliateMember", "yes")}
+            disabled={!isAdmin || isProfileLocked}
+          >
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </label>
+
+        <label>
           Membership fees due
           <DatePicker
             value={editableProfile.membershipFeesDue}

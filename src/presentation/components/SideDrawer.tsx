@@ -57,7 +57,7 @@ const pages = [
   { id: "general-info", label: "General Information", path: "/general-info" },
   {
     id: "user-creation",
-    label: "User Creation",
+    label: "Member Creation",
     path: "/user-creation",
     permission: "manage_members",
   },

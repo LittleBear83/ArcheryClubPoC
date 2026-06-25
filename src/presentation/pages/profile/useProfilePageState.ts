@@ -527,8 +527,8 @@ export function useProfilePageState({
     setEditableProfile((current) => ({ ...current, [field]: value }));
   };
 
-  const handleBooleanSelectChange = (field) => (event) => {
-    const value = event.target.value === "active";
+  const handleBooleanSelectChange = (field, trueValue = "active") => (event) => {
+    const value = event.target.value === trueValue;
     setEditableProfile((current) => ({ ...current, [field]: value }));
   };
 
@@ -563,6 +563,7 @@ export function useProfilePageState({
       password: editableProfile.password,
       rfidTag: canManageMembers ? editableProfile.rfidTag : undefined,
       activeMember: editableProfile.activeMember,
+      affiliateMember: editableProfile.affiliateMember,
       membershipFeesDue: editableProfile.membershipFeesDue,
       coachingVolunteer: editableProfile.coachingVolunteer,
       userType: editableProfile.userType,

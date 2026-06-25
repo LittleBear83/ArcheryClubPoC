@@ -177,6 +177,7 @@ function createSqliteBeginnersCourseWriteGateway({
           password: existingUser.password,
           rfidTag: existingUser.rfid_tag,
           activeMember: existingUser.active_member,
+          affiliateMember: existingUser.affiliate_member,
           membershipFeesDue: existingUser.membership_fees_due,
           coachingVolunteer: existingUser.coaching_volunteer,
         });
@@ -486,9 +487,10 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
                 password = $3,
                 rfid_tag = $4,
                 active_member = $5,
-                membership_fees_due = $6,
-                coaching_volunteer = $7
-              WHERE LOWER(username) = LOWER($8)
+                affiliate_member = $6,
+                membership_fees_due = $7,
+                coaching_volunteer = $8
+              WHERE LOWER(username) = LOWER($9)
             `,
             [
               participant.firstName,
@@ -496,6 +498,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
               existingUser.password,
               existingUser.rfid_tag,
               existingUser.active_member,
+              existingUser.affiliate_member,
               existingUser.membership_fees_due,
               existingUser.coaching_volunteer,
               existingUser.username,

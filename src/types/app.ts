@@ -19,6 +19,7 @@ export type UserProfile = {
   };
   meta?: {
     activeMember?: boolean;
+    affiliateMember?: boolean;
     membershipFeesDue?: string;
     [key: string]: unknown;
   };

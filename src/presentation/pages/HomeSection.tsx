@@ -1,5 +1,71 @@
+import { Button } from "../components/Button";
 import { formatDate } from "../../utils/dateTime";
 import { formatMemberDisplayName, getUserProfileKey } from "../../utils/userProfile";
+
+function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
+  if (!mobileOnSiteFeature?.isMobile) {
+    return null;
+  }
+
+  const {
+    distanceMeters,
+    error,
+    isLocating,
+    isSupported,
+    isWithinGeofence,
+    permissionState,
+    radiusMeters,
+    requestLocation,
+  } = mobileOnSiteFeature;
+  const roundedDistance =
+    typeof distanceMeters === "number" ? Math.round(distanceMeters) : null;
+
+  return (
+    <section className="home-panel">
+      <h3 className="home-panel-title">On-Site Mobile Feature</h3>
+      <div className="home-panel-copy">
+        {!isSupported ? (
+          <p>This browser does not support geolocation on mobile.</p>
+        ) : isWithinGeofence ? (
+          <p>
+            You are on site. Mobile features limited to the club location are
+            enabled.
+          </p>
+        ) : permissionState === "denied" ? (
+          <p>
+            Location access is blocked. Enable location access in your browser
+            settings to unlock on-site mobile features.
+          </p>
+        ) : roundedDistance === null ? (
+          <p>
+            This feature is only available on mobile within {radiusMeters}m of
+            the club. Allow location access to check whether you are on site.
+          </p>
+        ) : (
+          <p>
+            You are currently about {roundedDistance}m from the club. Move
+            within {radiusMeters}m to unlock on-site mobile features.
+          </p>
+        )}
+        {error ? <p className="profile-error">{error}</p> : null}
+      </div>
+      {isSupported ? (
+        <Button
+          type="button"
+          onClick={requestLocation}
+          disabled={isLocating}
+          variant={isWithinGeofence ? "secondary" : "primary"}
+        >
+          {isLocating
+            ? "Checking location..."
+            : roundedDistance === null
+              ? "Enable location"
+              : "Refresh location"}
+        </Button>
+      ) : null}
+    </section>
+  );
+}
 
 function SignedUpEventsList({ events }) {
   return (
@@ -133,6 +199,7 @@ export function HomeSection({
   tournamentReminders,
   beginnerDashboard,
   beginnerCoachAssignments,
+  mobileOnSiteFeature = null,
   hideEventPanels = false,
 }) {
   return (
@@ -144,6 +211,7 @@ export function HomeSection({
       )}
       <BeginnerTodayCard dashboard={beginnerDashboard} />
       <BeginnerCoachAssignmentsCard assignments={beginnerCoachAssignments} />
+      <MobileOnSiteFeatureCard mobileOnSiteFeature={mobileOnSiteFeature} />
     </div>
   );
 }

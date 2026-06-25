@@ -44,6 +44,7 @@ import { listMyLostArrowNotices } from "../../api/lostArrowApi";
 import { useTheme } from "../../theme/useTheme";
 import type { HomeMember, LostArrowRecord, UserProfile } from "../../types/app";
 import type { AppDependencies } from "../../bootstrap/createAppDependencies";
+import { useMobileGeofence } from "../hooks/useMobileGeofence";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
   formatMemberDisplayName,
@@ -148,6 +149,11 @@ const homeQueryKeys = {
 };
 
 const TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS = 2;
+const MOBILE_ON_SITE_FEATURE_TARGET = {
+  latitude: 53.778213317518684,
+  longitude: -1.0966694674728845,
+  radiusMeters: 50,
+} as const;
 
 const pageTitleMap = {
   home: "Home",
@@ -457,6 +463,11 @@ export function HomePage({
 }: HomePageProps) {
   const { theme, themeName, toggleTheme } = useTheme();
   const isMobile = useIsMobile();
+  const mobileOnSiteFeature = useMobileGeofence({
+    targetLatitude: MOBILE_ON_SITE_FEATURE_TARGET.latitude,
+    targetLongitude: MOBILE_ON_SITE_FEATURE_TARGET.longitude,
+    radiusMeters: MOBILE_ON_SITE_FEATURE_TARGET.radiusMeters,
+  });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -754,6 +765,7 @@ export function HomePage({
                   tournamentReminders={tournamentReminders}
                   beginnerDashboard={beginnerDashboard}
                   beginnerCoachAssignments={beginnerCoachAssignments}
+                  mobileOnSiteFeature={mobileOnSiteFeature}
                   hideEventPanels={isBeginnerMember}
                 />
               }

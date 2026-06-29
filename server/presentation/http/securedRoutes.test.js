@@ -149,9 +149,16 @@ function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission)
     }),
     buildUsageWindow: () => ({}),
     getActorUser,
+    getUtcTimestampParts: () => ["2026-04-21", "10:00:00"],
     listTournaments: async () => [],
+    memberAuthGateway: {
+      recordLoginEvent: async () => {},
+    },
     PERMISSIONS: {
       VIEW_REPORTS: "view_reports",
+    },
+    serverEventBus: {
+      broadcastToAll: () => {},
     },
     startOfUtcDay: (date) =>
       new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())),
@@ -467,6 +474,91 @@ test("member activity routes reject unauthenticated range visibility APIs", asyn
     assert.equal(membersResponse.body.success, false);
     assert.equal(dashboardResponse.status, 401);
     assert.equal(dashboardResponse.body.success, false);
+  } finally {
+    server.close();
+  }
+});
+
+test("mobile on-site check-in records a member login event as mobile app usage", async () => {
+  const app = express();
+  app.use(express.json());
+  const recordedLogins = [];
+
+  registerMemberActivityRoutes({
+    activityReportingGateway: {
+      countGuestLoginsInRange: async () => ({ count: 0 }),
+      countMemberLoginsForUserInRange: async () => ({ count: 0 }),
+      countMemberLoginsInRange: async () => ({ count: 0 }),
+      findMemberCoachingBookingsByUserId: async () => [],
+      findMemberEventBookingsByUserId: async () => [],
+      findRecentGuestLogins: async () => [],
+      findRecentRangeMembers: async () => [],
+      guestLoginsByDateInRange: async () => [],
+      guestLoginsByHourInRange: async () => [],
+      guestLoginsByWeekdayInRange: async () => [],
+      listAllUserDisciplines: async () => [],
+      listReportingGuestLogins: async () => [],
+      listReportingMemberLogins: async () => [],
+      memberLoginsByDateForUserInRange: async () => [],
+      memberLoginsByDateInRange: async () => [],
+      memberLoginsByHourForUserInRange: async () => [],
+      memberLoginsByHourInRange: async () => [],
+      memberLoginsByWeekdayForUserInRange: async () => [],
+      memberLoginsByWeekdayInRange: async () => [],
+    },
+    addUtcDays: (date, days) => {
+      const next = new Date(date);
+      next.setUTCDate(next.getUTCDate() + days);
+      return next;
+    },
+    app,
+    actorHasPermission: () => true,
+    buildGuestUserProfile: () => ({}),
+    buildMemberUserProfile: () => ({}),
+    buildPersonalUsageWindow: () => ({}),
+    buildTournament: () => ({}),
+    buildTournamentDataMaps: () => ({
+      registrationsByTournamentId: new Map(),
+      scoresByTournamentId: new Map(),
+    }),
+    buildUsageWindow: () => ({}),
+    getActorUser: () => ({
+      id: 7,
+      username: "mobile-member",
+    }),
+    getUtcTimestampParts: () => ["2026-04-21", "10:00:00"],
+    listTournaments: async () => [],
+    memberAuthGateway: {
+      recordLoginEvent: async (payload) => {
+        recordedLogins.push(payload);
+      },
+    },
+    PERMISSIONS: {
+      VIEW_REPORTS: "view_reports",
+    },
+    serverEventBus: {
+      broadcastToAll: () => {},
+    },
+    startOfUtcDay: (date) =>
+      new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())),
+    toUtcDateString: (date) => date.toISOString().slice(0, 10),
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/range-members/mobile-check-in", {
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(recordedLogins, [
+      {
+        method: "mobile-app",
+        timestampParts: ["2026-04-21", "10:00:00"],
+        username: "mobile-member",
+      },
+    ]);
   } finally {
     server.close();
   }

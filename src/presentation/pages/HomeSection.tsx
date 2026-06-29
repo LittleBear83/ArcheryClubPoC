@@ -10,12 +10,15 @@ function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
   const {
     distanceMeters,
     error,
+    isBookingOnSite,
     isLocating,
     isSupported,
     isWithinGeofence,
+    onBookOnSite,
     permissionState,
     radiusMeters,
     requestLocation,
+    statusMessage,
   } = mobileOnSiteFeature;
   const roundedDistance =
     typeof distanceMeters === "number" ? Math.round(distanceMeters) : null;
@@ -48,20 +51,33 @@ function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
           </p>
         )}
         {error ? <p className="profile-error">{error}</p> : null}
+        {statusMessage ? <p>{statusMessage}</p> : null}
       </div>
       {isSupported ? (
-        <Button
-          type="button"
-          onClick={requestLocation}
-          disabled={isLocating}
-          variant={isWithinGeofence ? "secondary" : "primary"}
-        >
-          {isLocating
-            ? "Checking location..."
-            : roundedDistance === null
-              ? "Enable location"
-              : "Refresh location"}
-        </Button>
+        <>
+          <Button
+            type="button"
+            onClick={requestLocation}
+            disabled={isLocating}
+            variant={isWithinGeofence ? "secondary" : "primary"}
+          >
+            {isLocating
+              ? "Checking location..."
+              : roundedDistance === null
+                ? "Enable location"
+                : "Refresh location"}
+          </Button>
+          {isWithinGeofence ? (
+            <Button
+              type="button"
+              onClick={onBookOnSite}
+              disabled={isBookingOnSite}
+              variant="primary"
+            >
+              {isBookingOnSite ? "Booking on site..." : "Book On Site"}
+            </Button>
+          ) : null}
+        </>
       ) : null}
     </section>
   );

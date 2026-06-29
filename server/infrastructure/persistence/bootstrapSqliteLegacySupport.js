@@ -113,7 +113,7 @@ function migrateCombinedDateTimeColumn({
   return true;
 }
 
-function ensureLoginEventsTableSupportsMobilePassword({ db, loginEventsTableSql }) {
+function ensureLoginEventsTableSupportsCurrentMethods({ db, loginEventsTableSql }) {
   const loginEventsTable = db
     .prepare(
       `
@@ -125,7 +125,10 @@ function ensureLoginEventsTableSupportsMobilePassword({ db, loginEventsTableSql 
     .get();
   const currentSql = String(loginEventsTable?.sql ?? "").toLowerCase();
 
-  if (!currentSql || currentSql.includes("password-mobile")) {
+  if (
+    !currentSql ||
+    (currentSql.includes("password-mobile") && currentSql.includes("mobile-app"))
+  ) {
     return;
   }
 
@@ -193,7 +196,7 @@ export function bootstrapSqliteLegacyDateSupport({
     ],
     tableName: "login_events",
   });
-  ensureLoginEventsTableSupportsMobilePassword({
+  ensureLoginEventsTableSupportsCurrentMethods({
     db,
     loginEventsTableSql,
   });

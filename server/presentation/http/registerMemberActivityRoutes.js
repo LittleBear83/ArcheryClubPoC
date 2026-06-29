@@ -10,8 +10,11 @@ export function registerMemberActivityRoutes({
   buildTournamentDataMaps,
   buildUsageWindow,
   getActorUser,
+  getUtcTimestampParts,
   listTournaments,
+  memberAuthGateway,
   PERMISSIONS,
+  serverEventBus,
   startOfUtcDay,
   toUtcDateString,
 }) {
@@ -32,6 +35,13 @@ export function registerMemberActivityRoutes({
       message: `Date range cannot be longer than ${maxDays} days.`,
     });
     return true;
+  };
+
+  const broadcastRangeMembersUpdated = (scope = "range-members") => {
+    serverEventBus?.broadcastToAll("range-members.updated", {
+      changedAt: new Date().toISOString(),
+      scope,
+    });
   };
 
   app.get("/api/my-coaching-bookings", async (req, res) => {
@@ -232,6 +242,30 @@ export function registerMemberActivityRoutes({
           `${b.personal.surname} ${b.personal.firstName}`,
         );
       }),
+    });
+  });
+
+  app.post("/api/range-members/mobile-check-in", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    await memberAuthGateway.recordLoginEvent({
+      method: "mobile-app",
+      timestampParts: getUtcTimestampParts(),
+      username: actor.username,
+    });
+    broadcastRangeMembersUpdated("range-members.mobile-check-in");
+
+    res.json({
+      success: true,
+      message: "Your on-site mobile check-in has been recorded.",
     });
   });
 

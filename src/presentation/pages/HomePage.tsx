@@ -34,7 +34,10 @@ import {
   listMyEventBookings,
   listMyTournamentReminders,
 } from "../../api/homeApi";
-import { listRangeMembers } from "../../api/memberApi";
+import {
+  bookOnSiteWithMobileApp,
+  listRangeMembers,
+} from "../../api/memberApi";
 import {
   listActiveAnnouncements,
   type AnnouncementRecord,
@@ -522,10 +525,38 @@ export function HomePage({
     () => getLostArrowNoticeMessages(lostArrowNotices),
     [lostArrowNotices],
   );
+  const [mobileOnSiteStatus, setMobileOnSiteStatus] = useState("");
+  const [mobileOnSiteError, setMobileOnSiteError] = useState("");
+  const [isBookingOnSite, setIsBookingOnSite] = useState(false);
 
   const handleNavigate = (pageId) => {
     const target = pageIdToPath[pageId] || "/";
     navigate(target);
+  };
+
+  const handleBookOnSite = async () => {
+    setIsBookingOnSite(true);
+    setMobileOnSiteError("");
+    setMobileOnSiteStatus("");
+
+    try {
+      const result = await bookOnSiteWithMobileApp();
+
+      setMobileOnSiteStatus(
+        result.message ?? "Your on-site mobile check-in has been recorded.",
+      );
+      await queryClient.invalidateQueries({
+        queryKey: homeQueryKeys.rangeMembers(),
+      });
+    } catch (error) {
+      setMobileOnSiteError(
+        error instanceof Error
+          ? error.message
+          : "We could not record your on-site mobile check-in.",
+      );
+    } finally {
+      setIsBookingOnSite(false);
+    }
   };
 
   return (
@@ -765,7 +796,13 @@ export function HomePage({
                   tournamentReminders={tournamentReminders}
                   beginnerDashboard={beginnerDashboard}
                   beginnerCoachAssignments={beginnerCoachAssignments}
-                  mobileOnSiteFeature={mobileOnSiteFeature}
+                  mobileOnSiteFeature={{
+                    ...mobileOnSiteFeature,
+                    error: mobileOnSiteError || mobileOnSiteFeature.error,
+                    isBookingOnSite,
+                    onBookOnSite: handleBookOnSite,
+                    statusMessage: mobileOnSiteStatus,
+                  }}
                   hideEventPanels={isBeginnerMember}
                 />
               }

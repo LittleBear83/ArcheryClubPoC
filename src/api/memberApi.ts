@@ -6,3 +6,12 @@ export async function listRangeMembers() {
     cache: "no-store",
   });
 }
+
+export async function bookOnSiteWithMobileApp() {
+  return fetchApi<{ success: true; message?: string }>(
+    "/api/range-members/mobile-check-in",
+    {
+      method: "POST",
+    },
+  );
+}

@@ -4645,8 +4645,11 @@ registerMemberActivityRoutes({
   buildTournamentDataMaps,
   buildUsageWindow,
   getActorUser,
+  getUtcTimestampParts,
   listTournaments: async () => tournamentGateway.listTournaments(),
+  memberAuthGateway,
   PERMISSIONS,
+  serverEventBus,
   startOfUtcDay,
   toUtcDateString,
 });

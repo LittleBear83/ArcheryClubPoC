@@ -12,7 +12,7 @@ Use it to understand:
 - where realtime updates, auth, and persistence now live
 - which docs are still active versus historical
 
-This guide reflects the codebase as it exists on `2026-06-08`.
+This guide reflects the codebase as it exists on `2026-07-03`.
 
 ## Application Snapshot
 
@@ -25,20 +25,27 @@ Implemented areas include:
 - member login with username/password
 - RFID-based login and session handoff flows
 - guest sign-in
+- automatic inactivity logout and server-session revalidation
 - cookie-backed authenticated sessions
 - announcements with active ticker behaviour
+- announcement seen tracking and audience email sending
 - home dashboards for members, beginners, and coaches
+- mobile-only on-site geofenced check-in
 - event and coaching scheduling with approvals and bookings
 - tournament setup, registration, scoring, and competitor export
 - profile management and member administration
+- RFID assignment, loan bow return, and distance sign-off workflows
 - role and permission administration
 - committee role management and org chart display
 - equipment inventory, storage, assignment, returns, and decommissioning
 - loan bow management
 - beginners course administration
+- beginner password reset, case assignment, and conversion to member workflows
 - Have a Go session administration
 - range activity and attendance reporting
-- records, general information, and other supporting club pages
+- outdoor table viewing, records, lost-and-found, general information, and
+  suggestion-box supporting pages
+- persisted theme switching between the current visual themes
 
 ## Architecture At A Glance
 
@@ -184,6 +191,7 @@ The home screen aggregates:
 - active announcements
 - beginner dashboards for enrolled beginners
 - coaching assignments for coaches
+- mobile-only on-site location-based booking/check-in
 
 Relevant files:
 
@@ -217,6 +225,7 @@ Tournament workflows now include:
 - registration and withdrawal
 - score submission
 - competitor export
+- live bracket display and winner tracking
 
 Relevant files:
 
@@ -279,6 +288,7 @@ Implemented flows include:
 - lesson coach assignment
 - personal beginner dashboard
 - coach lesson assignments
+- attendance registers for lessons and sessions
 
 Relevant files:
 
@@ -307,6 +317,7 @@ The authenticated shell currently routes to these main page areas:
 - `/tournaments`
 - `/tournament-setup`
 - `/records`
+- `/outdoor-table`
 - `/committee-org-chart`
 - `/committee-admin`
 - `/announcements`
@@ -314,6 +325,12 @@ The authenticated shell currently routes to these main page areas:
 - `/feedback-form`
 - `/ideas-form`
 - `/lost-and-found`
+
+Notes:
+
+- `/coaching-calendar` currently redirects to `/event-calendar`
+- `LoanBowRegisterPage.tsx` exists in the codebase but is not currently routed
+  from the authenticated shell
 
 The route-to-page mapping is owned by:
 
@@ -479,6 +496,7 @@ Current security and resilience features include:
 - auth-specific and global API rate limiting
 - security event logging and API error logging
 - configurable server timeouts
+- frontend inactivity timeout logout
 
 Relevant files:
 

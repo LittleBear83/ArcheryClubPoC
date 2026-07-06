@@ -15,20 +15,30 @@ The application currently includes:
 - member login with username/password
 - RFID-based sign-in and session handoff flows
 - guest sign-in
+- automatic inactivity logout and session revalidation
 - cookie-backed authenticated sessions
 - a home dashboard with announcements, range members, bookings, reminders, and
   beginner/coach dashboards
+- mobile on-site geofenced range check-in
+- theme switching
 - announcements management
+- announcement seen-tracking and audience email sending
 - event and coaching scheduling with approvals and bookings
 - tournament setup, registration, score submission, and competitor export
 - member profile administration and RFID assignment
+- member distance sign-offs and loan bow return workflows
 - role and permission management
 - committee role administration and org chart display
 - equipment inventory, assignment, storage, returns, and decommissioning
 - loan bow management
 - beginners course administration
+- beginner participant password reset, case assignment, and conversion to
+  member workflows
 - Have a Go session administration
 - range usage and attendance reporting
+- outdoor table viewing for classifications, 252 awards, and clout marks
+- lost-and-found tracking for arrows
+- records, general information, and suggestion box pages
 - mobile-specific layouts for larger feature areas
 - server-sent events for near-real-time refresh, with fallback polling in
   selected views

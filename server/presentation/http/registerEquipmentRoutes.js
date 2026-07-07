@@ -1,6 +1,7 @@
 export function registerEquipmentRoutes({
   actorHasPermission,
   app,
+  auditChangeLogger,
   buildEquipmentCaseResponse,
   buildEquipmentItemResponse,
   buildEquipmentMaps,
@@ -166,11 +167,31 @@ export function registerEquipmentRoutes({
       const createdItem = await equipmentGateway.findEquipmentItemByIdWithRelations(
         result.lastInsertRowid,
       );
+      const createdItemResponse = buildEquipmentItemResponse(createdItem, maps);
+
+      if (auditChangeLogger) {
+        void auditChangeLogger.recordEntityChange({
+          action: "created",
+          actorUsername: actor.username,
+          after: createdItemResponse,
+          before: null,
+          changedAtDate: date,
+          changedAtTime: time,
+          entityId: createdItem.id,
+          entityLabel: createdItem.item_number ?? createdItem.equipment_type,
+          entityType: "equipment_item",
+          req,
+          statusCode: 201,
+          target: `/api/equipment/items/${createdItem.id}`,
+        }).catch((auditError) => {
+          console.error("Failed to record equipment audit event", auditError);
+        });
+      }
       broadcastEquipmentUpdated("equipment.create");
 
       res.status(201).json({
         success: true,
-        item: buildEquipmentItemResponse(createdItem, maps),
+        item: createdItemResponse,
       });
     } catch (error) {
       if (
@@ -252,6 +273,7 @@ export function registerEquipmentRoutes({
     }
 
     const [date, time] = getUtcTimestampParts();
+    const previousItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
     await equipmentGateway.updateEquipmentItemForDecommission({
       id: item.id,
       locationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
@@ -263,12 +285,29 @@ export function registerEquipmentRoutes({
     broadcastEquipmentUpdated("equipment.decommission");
 
     const maps = await buildEquipmentMaps();
+    const updatedItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
+    const updatedItemResponse = buildEquipmentItemResponse(updatedItem, maps);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "decommissioned",
+        actorUsername: actor.username,
+        after: updatedItemResponse,
+        before: previousItem ? buildEquipmentItemResponse(previousItem, maps) : item,
+        changedAtDate: date,
+        changedAtTime: time,
+        entityId: item.id,
+        entityLabel: item.item_number ?? item.equipment_type,
+        entityType: "equipment_item",
+        req,
+        target: `/api/equipment/items/${item.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record equipment audit event", auditError);
+      });
+    }
     res.json({
       success: true,
-      item: buildEquipmentItemResponse(
-        await equipmentGateway.findEquipmentItemByIdWithRelations(item.id),
-        maps,
-      ),
+      item: updatedItemResponse,
     });
   });
 
@@ -303,6 +342,7 @@ export function registerEquipmentRoutes({
 
     const targetType = req.body?.targetType;
     const [date, time] = getUtcTimestampParts();
+    const previousItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
 
     if (targetType === "case") {
       const caseItem = await equipmentGateway.findEquipmentItemById(req.body?.caseId);
@@ -460,13 +500,30 @@ export function registerEquipmentRoutes({
     }
 
     const maps = await buildEquipmentMaps();
+    const updatedItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
+    const updatedItemResponse = buildEquipmentItemResponse(updatedItem, maps);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "assigned",
+        actorUsername: actor.username,
+        after: updatedItemResponse,
+        before: previousItem ? buildEquipmentItemResponse(previousItem, maps) : item,
+        changedAtDate: date,
+        changedAtTime: time,
+        entityId: item.id,
+        entityLabel: item.item_number ?? item.equipment_type,
+        entityType: "equipment_item",
+        req,
+        target: `/api/equipment/items/${item.id}/assignment`,
+      }).catch((auditError) => {
+        console.error("Failed to record equipment audit event", auditError);
+      });
+    }
     broadcastEquipmentUpdated("equipment.assign");
     res.json({
       success: true,
-      item: buildEquipmentItemResponse(
-        await equipmentGateway.findEquipmentItemByIdWithRelations(item.id),
-        maps,
-      ),
+      item: updatedItemResponse,
     });
   });
 
@@ -523,6 +580,7 @@ export function registerEquipmentRoutes({
     }
 
     const [date, time] = getUtcTimestampParts();
+    const previousItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
 
     if (returnCase) {
       const validationMessage = await validateCaseAssignment(returnCase, item);
@@ -596,13 +654,30 @@ export function registerEquipmentRoutes({
     }
 
     const maps = await buildEquipmentMaps();
+    const updatedItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
+    const updatedItemResponse = buildEquipmentItemResponse(updatedItem, maps);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "returned",
+        actorUsername: actor.username,
+        after: updatedItemResponse,
+        before: previousItem ? buildEquipmentItemResponse(previousItem, maps) : item,
+        changedAtDate: date,
+        changedAtTime: time,
+        entityId: item.id,
+        entityLabel: item.item_number ?? item.equipment_type,
+        entityType: "equipment_item",
+        req,
+        target: `/api/equipment/items/${item.id}/return`,
+      }).catch((auditError) => {
+        console.error("Failed to record equipment audit event", auditError);
+      });
+    }
     broadcastEquipmentUpdated("equipment.return");
     res.json({
       success: true,
-      item: buildEquipmentItemResponse(
-        await equipmentGateway.findEquipmentItemByIdWithRelations(item.id),
-        maps,
-      ),
+      item: updatedItemResponse,
     });
   });
 
@@ -649,6 +724,7 @@ export function registerEquipmentRoutes({
     }
 
     const [date, time] = getUtcTimestampParts();
+    const previousItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
 
     if (isLoanedCaseContent) {
       await equipmentGateway.closeEquipmentLoan({
@@ -672,15 +748,33 @@ export function registerEquipmentRoutes({
       storageAtDate: date,
       storageAtTime: time,
     });
-    broadcastEquipmentUpdated("equipment.storage");
 
     const maps = await buildEquipmentMaps();
+    const updatedItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
+    const updatedItemResponse = buildEquipmentItemResponse(updatedItem, maps);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "storage_updated",
+        actorUsername: actor.username,
+        after: updatedItemResponse,
+        before: previousItem ? buildEquipmentItemResponse(previousItem, maps) : item,
+        changedAtDate: date,
+        changedAtTime: time,
+        entityId: item.id,
+        entityLabel: item.item_number ?? item.equipment_type,
+        entityType: "equipment_item",
+        req,
+        target: `/api/equipment/items/${item.id}/storage`,
+      }).catch((auditError) => {
+        console.error("Failed to record equipment audit event", auditError);
+      });
+    }
+    broadcastEquipmentUpdated("equipment.storage");
+
     res.json({
       success: true,
-      item: buildEquipmentItemResponse(
-        await equipmentGateway.findEquipmentItemByIdWithRelations(item.id),
-        maps,
-      ),
+      item: updatedItemResponse,
     });
   });
 
@@ -732,6 +826,24 @@ export function registerEquipmentRoutes({
     }
 
     broadcastEquipmentUpdated("equipment.storage-location.create");
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: { label },
+        before: null,
+        changedAtDate: date,
+        changedAtTime: time,
+        entityId: label,
+        entityLabel: label,
+        entityType: "equipment_storage_location",
+        req,
+        statusCode: 201,
+        target: `/api/equipment/storage-locations/${encodeURIComponent(label)}`,
+      }).catch((auditError) => {
+        console.error("Failed to record storage location audit event", auditError);
+      });
+    }
     res.status(201).json({
       success: true,
       cupboardOptions: await getStorageLocationOptions(),
@@ -782,7 +894,25 @@ export function registerEquipmentRoutes({
       return;
     }
 
+    const [deletedAtDate, deletedAtTime] = getUtcTimestampParts();
     await equipmentGateway.deleteEquipmentStorageLocation(label);
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "deleted",
+        actorUsername: actor.username,
+        after: null,
+        before: { label },
+        changedAtDate: deletedAtDate,
+        changedAtTime: deletedAtTime,
+        entityId: label,
+        entityLabel: label,
+        entityType: "equipment_storage_location",
+        req,
+        target: `/api/equipment/storage-locations/${encodeURIComponent(label)}`,
+      }).catch((auditError) => {
+        console.error("Failed to record storage location audit event", auditError);
+      });
+    }
     broadcastEquipmentUpdated("equipment.storage-location.delete");
 
     res.json({

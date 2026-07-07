@@ -1,6 +1,7 @@
 export function registerTournamentRoutes({
   actorHasPermission,
   app,
+  auditChangeLogger,
   buildTournament,
   buildTournamentDataMaps,
   exportsDirectory,
@@ -112,6 +113,28 @@ export function registerTournamentRoutes({
       timestampParts: getUtcTimestampParts(),
       tournamentType,
     });
+
+    if (auditChangeLogger) {
+      const [createdAtDate, createdAtTime] = tournament.created_at_date
+        ? [tournament.created_at_date, tournament.created_at_time]
+        : getUtcTimestampParts();
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: tournament,
+        before: null,
+        changedAtDate: createdAtDate,
+        changedAtTime: createdAtTime,
+        entityId: tournament.id,
+        entityLabel: tournament.name,
+        entityType: "tournament",
+        req,
+        statusCode: 201,
+        target: `/api/tournaments/${tournament.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record tournament audit event", auditError);
+      });
+    }
     broadcastTournamentsUpdated("tournaments.create");
 
     res.status(201).json({
@@ -199,6 +222,25 @@ export function registerTournamentRoutes({
       scoreSubmissionStartDate,
       tournamentType,
     });
+
+    if (auditChangeLogger) {
+      const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+      void auditChangeLogger.recordEntityChange({
+        action: "updated",
+        actorUsername: actor.username,
+        after: updatedTournament,
+        before: tournament,
+        changedAtDate: updatedAtDate,
+        changedAtTime: updatedAtTime,
+        entityId: tournament.id,
+        entityLabel: updatedTournament.name,
+        entityType: "tournament",
+        req,
+        target: `/api/tournaments/${tournament.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record tournament audit event", auditError);
+      });
+    }
     const [registrations, scores] = await Promise.all([
       tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
       tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
@@ -237,7 +279,26 @@ export function registerTournamentRoutes({
       return;
     }
 
+    const [deletedAtDate, deletedAtTime] = getUtcTimestampParts();
     await tournamentGateway.deleteTournamentCascade(tournament.id);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "deleted",
+        actorUsername: actor.username,
+        after: null,
+        before: tournament,
+        changedAtDate: deletedAtDate,
+        changedAtTime: deletedAtTime,
+        entityId: tournament.id,
+        entityLabel: tournament.name,
+        entityType: "tournament",
+        req,
+        target: `/api/tournaments/${tournament.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record tournament audit event", auditError);
+      });
+    }
     broadcastTournamentsUpdated("tournaments.delete");
 
     res.json({
@@ -282,11 +343,33 @@ export function registerTournamentRoutes({
     }
 
     try {
+      const [registeredAtDate, registeredAtTime] = getUtcTimestampParts();
       await tournamentGateway.registerForTournament({
-        timestampParts: getUtcTimestampParts(),
+        timestampParts: [registeredAtDate, registeredAtTime],
         tournamentId: tournament.id,
         username: actor.username,
       });
+
+      if (auditChangeLogger) {
+        void auditChangeLogger.recordEntityChange({
+          action: "registered",
+          actorUsername: actor.username,
+          after: {
+            tournamentId: tournament.id,
+            username: actor.username,
+          },
+          before: null,
+          changedAtDate: registeredAtDate,
+          changedAtTime: registeredAtTime,
+          entityId: `${tournament.id}:${actor.username}`,
+          entityLabel: tournament.name,
+          entityType: "tournament_registration",
+          req,
+          target: `/api/tournaments/${tournament.id}/register`,
+        }).catch((auditError) => {
+          console.error("Failed to record tournament registration audit event", auditError);
+        });
+      }
     } catch (error) {
       if (
         error?.message?.includes(
@@ -371,6 +454,28 @@ export function registerTournamentRoutes({
       return;
     }
 
+    if (auditChangeLogger) {
+      const [withdrawnAtDate, withdrawnAtTime] = getUtcTimestampParts();
+      void auditChangeLogger.recordEntityChange({
+        action: "withdrawn",
+        actorUsername: actor.username,
+        after: null,
+        before: {
+          tournamentId: tournament.id,
+          username: actor.username,
+        },
+        changedAtDate: withdrawnAtDate,
+        changedAtTime: withdrawnAtTime,
+        entityId: `${tournament.id}:${actor.username}`,
+        entityLabel: tournament.name,
+        entityType: "tournament_registration",
+        req,
+        target: `/api/tournaments/${tournament.id}/register`,
+      }).catch((auditError) => {
+        console.error("Failed to record tournament withdrawal audit event", auditError);
+      });
+    }
+
     const [registrations, scores] = await Promise.all([
       tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
       tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
@@ -451,16 +556,50 @@ export function registerTournamentRoutes({
       return;
     }
 
+    const [submittedAtDate, submittedAtTime] = getUtcTimestampParts();
     await tournamentGateway.submitTournamentScore({
       roundNumber: builtTournament.currentRoundNumber,
       score: normalizedScore,
-      timestampParts: getUtcTimestampParts(),
+      timestampParts: [submittedAtDate, submittedAtTime],
       tournamentId: tournament.id,
       username: actor.username,
     });
     const updatedScores = await tournamentGateway.listTournamentScoresByTournamentId(
       tournament.id,
     );
+
+    if (auditChangeLogger) {
+      const previousScore = scores.find(
+        (entry) =>
+          entry.member_username === actor.username &&
+          Number(entry.round_number) === Number(builtTournament.currentRoundNumber),
+      );
+      const nextScore = updatedScores.find(
+        (entry) =>
+          entry.member_username === actor.username &&
+          Number(entry.round_number) === Number(builtTournament.currentRoundNumber),
+      );
+      void auditChangeLogger.recordEntityChange({
+        action: "score_submitted",
+        actorUsername: actor.username,
+        after: nextScore ?? {
+          tournamentId: tournament.id,
+          username: actor.username,
+          roundNumber: builtTournament.currentRoundNumber,
+          score: normalizedScore,
+        },
+        before: previousScore ?? null,
+        changedAtDate: submittedAtDate,
+        changedAtTime: submittedAtTime,
+        entityId: `${tournament.id}:${actor.username}:${builtTournament.currentRoundNumber}`,
+        entityLabel: tournament.name,
+        entityType: "tournament_score",
+        req,
+        target: `/api/tournaments/${tournament.id}/score`,
+      }).catch((auditError) => {
+        console.error("Failed to record tournament score audit event", auditError);
+      });
+    }
     broadcastTournamentsUpdated("tournaments.score");
 
     res.json({

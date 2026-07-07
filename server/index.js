@@ -53,6 +53,7 @@ import { createSqliteReportingStatements } from "./infrastructure/persistence/cr
 import { createSqliteRoleCommitteeStatements } from "./infrastructure/persistence/createSqliteRoleCommitteeStatements.js";
 import { createSqliteScheduleTournamentStatements } from "./infrastructure/persistence/createSqliteScheduleTournamentStatements.js";
 import { createAnnouncementGateway } from "./infrastructure/persistence/announcementGateway.js";
+import { createAuditLogGateway } from "./infrastructure/persistence/auditLogGateway.js";
 import { createEquipmentGateway } from "./infrastructure/persistence/equipmentGateway.js";
 import { createMemberAuthGateway } from "./infrastructure/persistence/memberAuthGateway.js";
 import { createMemberProfileGateway } from "./infrastructure/persistence/memberProfileGateway.js";
@@ -67,11 +68,13 @@ import {
   createSecurityEventLogger,
   logServerError,
 } from "./observability/securityEventLogger.js";
+import { createAuditChangeLogger } from "./observability/auditChangeLogger.js";
 import { registerTournamentRoutes } from "./presentation/http/registerTournamentRoutes.js";
 import { registerMemberActivityRoutes } from "./presentation/http/registerMemberActivityRoutes.js";
 import { registerScheduleRoutes } from "./presentation/http/registerScheduleRoutes.js";
 import { registerAdminMemberRoutes } from "./presentation/http/registerAdminMemberRoutes.js";
 import { registerAnnouncementRoutes } from "./presentation/http/registerAnnouncementRoutes.js";
+import { registerAuditRoutes } from "./presentation/http/registerAuditRoutes.js";
 import { registerAuthRoutes } from "./presentation/http/registerAuthRoutes.js";
 import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRoutes.js";
 import { registerLostArrowRoutes } from "./presentation/http/registerLostArrowRoutes.js";
@@ -115,7 +118,13 @@ const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/rfid",
   "/api/auth/logout",
   "/api/auth/guest-login",
+  "/api/range-rules",
+  "/api/lost-arrows",
 ]);
+const AUDIT_EXCLUDED_PATH_PREFIXES = [
+  "/api/outdoor-table/",
+  "/api/lost-arrows/",
+];
 
 if (!SESSION_SECRET) {
   throw new Error("SESSION_SECRET must be set when running in live mode.");
@@ -335,10 +344,13 @@ function createAuditMiddleware(recordAuditEvent) {
   // Mutating API calls are recorded after the response completes so the audit
   // event includes the final status code and request duration.
   return (req, res, next) => {
+    const requestPath = req.originalUrl.split("?")[0];
+
     if (
       !MUTATING_API_METHODS.has(req.method) ||
       !req.path.startsWith("/api/") ||
-      AUDIT_EXCLUDED_PATHS.has(req.path)
+      AUDIT_EXCLUDED_PATHS.has(req.path) ||
+      AUDIT_EXCLUDED_PATH_PREFIXES.some((prefix) => requestPath.startsWith(prefix))
     ) {
       next();
       return;
@@ -353,7 +365,7 @@ function createAuditMiddleware(recordAuditEvent) {
         void recordAuditEvent({
           actorUsername: getSessionUsername(req),
           action: `${req.method} ${req.route?.path ?? req.path}`,
-          target: req.originalUrl.split("?")[0],
+          target: requestPath,
           statusCode: res.statusCode,
           ipAddress: getClientIp(req),
           userAgent: req.get("user-agent") ?? null,
@@ -488,6 +500,11 @@ const announcementGateway = createAnnouncementGateway({
   softDeleteAnnouncementById: sqliteAnnouncementStatements?.softDeleteAnnouncementById,
   pool: db.pool,
   updateAnnouncementById: sqliteAnnouncementStatements?.updateAnnouncementById,
+});
+const auditLogGateway = createAuditLogGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
 });
 const rangeRulesGateway = createRangeRulesGateway({
   databaseEngine: serverRuntime.databaseEngine,
@@ -751,6 +768,9 @@ const recordAuditEvent = serverRuntime.databaseEngine === "sqlite"
         ],
       );
     };
+const auditChangeLogger = createAuditChangeLogger({
+  recordAuditEvent,
+});
 
 const sqliteReportingStatements =
   serverRuntime.databaseEngine === "sqlite"
@@ -1494,6 +1514,101 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
       placesRemaining: Math.max(course.beginner_capacity - beginners.length, 0),
     };
   });
+}
+
+async function findBeginnersCourseAuditSnapshot(courseId, courseType = null) {
+  let resolvedCourseType = courseType ? normalizeCourseType(courseType) : null;
+
+  if (!resolvedCourseType) {
+    const course = await beginnersCourseReadGateway.findCourseById(courseId);
+
+    if (!course) {
+      return null;
+    }
+
+    resolvedCourseType = normalizeCourseType(course.course_type);
+  }
+
+  const course = (await buildBeginnersCourseDashboard(resolvedCourseType)).find(
+    (entry) => String(entry.id) === String(courseId),
+  );
+
+  if (!course) {
+    return null;
+  }
+
+  return {
+    ...course,
+    courseType: resolvedCourseType,
+  };
+}
+
+async function findBeginnersParticipantAuditSnapshot(participantId, courseType = null) {
+  const participant = await beginnersCourseReadGateway.findParticipantById(participantId);
+
+  if (!participant) {
+    return null;
+  }
+
+  const course = await findBeginnersCourseAuditSnapshot(participant.course_id, courseType);
+  const participantEntry =
+    course?.beginners.find((entry) => String(entry.id) === String(participantId)) ?? null;
+
+  if (!participantEntry || !course) {
+    return null;
+  }
+
+  return {
+    ...participantEntry,
+    courseId: course.id,
+    courseType: course.courseType,
+    courseFirstLessonDate: course.firstLessonDate,
+  };
+}
+
+async function findBeginnersLessonAuditSnapshot(lessonId, courseType = null) {
+  const lesson = await beginnersCourseReadGateway.findLessonById(lessonId);
+
+  if (!lesson) {
+    return null;
+  }
+
+  const course = await findBeginnersCourseAuditSnapshot(lesson.course_id, courseType);
+  const lessonEntry =
+    course?.lessons.find((entry) => String(entry.id) === String(lessonId)) ?? null;
+
+  if (!lessonEntry || !course) {
+    return null;
+  }
+
+  return {
+    ...lessonEntry,
+    courseId: course.id,
+    courseType: course.courseType,
+    courseFirstLessonDate: course.firstLessonDate,
+  };
+}
+
+function buildBeginnersCourseAuditLabel(course) {
+  if (!course) {
+    return "Beginners course";
+  }
+
+  return course.courseType === "have-a-go"
+    ? `Have a Go ${course.firstLessonDate}`
+    : `Beginners course ${course.firstLessonDate}`;
+}
+
+function buildBeginnersParticipantAuditLabel(participant) {
+  return participant?.fullName?.trim() || participant?.username || "Beginners participant";
+}
+
+function buildBeginnersLessonAuditLabel(lesson) {
+  if (!lesson) {
+    return "Beginners lesson";
+  }
+
+  return `Lesson ${lesson.lessonNumber} ${lesson.date}`;
 }
 
 async function hasBeginnersCourseCompleted(course) {
@@ -3409,6 +3524,7 @@ async function buildPersonalUsageWindow(username, label, startDate, endDateExclu
 registerAuthRoutes({
   announcementGateway,
   app,
+  auditChangeLogger,
   buildGuestUserProfile,
   buildMemberUserProfile,
   getDeactivatedRfidTag,
@@ -3432,6 +3548,7 @@ registerAdminMemberRoutes({
   actorHasPermission,
   ALLOWED_DISCIPLINES,
   app,
+  auditChangeLogger,
   buildCommitteeRole,
   buildEditableMemberProfile,
   buildLoanBowRecord,
@@ -3461,6 +3578,7 @@ registerAdminMemberRoutes({
 registerEquipmentRoutes({
   actorHasPermission,
   app,
+  auditChangeLogger,
   buildEquipmentCaseResponse,
   buildEquipmentItemResponse,
   buildEquipmentMaps,
@@ -3485,15 +3603,24 @@ registerAnnouncementRoutes({
   actorHasPermission,
   announcementGateway,
   app,
+  auditChangeLogger,
   getActorUser,
   getUtcTimestampParts,
   PERMISSIONS,
   serverEventBus,
   toUtcDateString,
 });
+registerAuditRoutes({
+  actorHasPermission,
+  app,
+  auditLogGateway,
+  getActorUser,
+  PERMISSIONS,
+});
 registerRangeRulesRoutes({
   actorHasPermission,
   app,
+  auditChangeLogger,
   getActorUser,
   getUtcTimestampParts,
   PERMISSIONS,
@@ -3510,6 +3637,7 @@ registerSseRoutes({
 });
 registerLostArrowRoutes({
   app,
+  auditChangeLogger,
   getActorUser,
   getUtcTimestampParts,
   lostArrowGateway,
@@ -3519,6 +3647,7 @@ registerLostArrowRoutes({
 registerOutdoorTableRoutes({
   app,
   actorHasPermission,
+  auditChangeLogger,
   getActorUser,
   getUtcTimestampParts,
   memberAuthGateway,
@@ -3697,6 +3826,26 @@ app.post("/api/beginners-courses", async (req, res) => {
     ),
     startTime: sanitized.value.startTime,
   });
+  const createdCourse = await findBeginnersCourseAuditSnapshot(courseId, courseType);
+
+  if (auditChangeLogger && createdCourse) {
+    void auditChangeLogger.recordEntityChange({
+      action: "created",
+      actorUsername: actor.username,
+      after: createdCourse,
+      before: null,
+      changedAtDate: date,
+      changedAtTime: time,
+      entityId: String(courseId),
+      entityLabel: buildBeginnersCourseAuditLabel(createdCourse),
+      entityType: "beginners_course",
+      req,
+      statusCode: 201,
+      target: `/api/beginners-courses/${courseId}`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners course audit event", auditError);
+    });
+  }
   broadcastBeginnersUpdated(courseType, "beginners.create");
   broadcastApprovalsUpdated("beginners.create");
   broadcastCalendarUpdated("beginners.create");
@@ -3754,6 +3903,7 @@ app.post("/api/beginners-courses/:id/approve", async (req, res) => {
   }
 
   const [date, time] = getUtcTimestampParts();
+  const previousCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
   await beginnersCourseWriteGateway.reviewCourse({
     approvalStatus: "approved",
     approvedAtDate: date,
@@ -3762,6 +3912,25 @@ app.post("/api/beginners-courses/:id/approve", async (req, res) => {
     courseId: course.id,
     rejectionReason: null,
   });
+  const approvedCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
+
+  if (auditChangeLogger && approvedCourse) {
+    void auditChangeLogger.recordEntityChange({
+      action: "approved",
+      actorUsername: actor.username,
+      after: approvedCourse,
+      before: previousCourse,
+      changedAtDate: date,
+      changedAtTime: time,
+      entityId: String(course.id),
+      entityLabel: buildBeginnersCourseAuditLabel(approvedCourse),
+      entityType: "beginners_course",
+      req,
+      target: `/api/beginners-courses/${course.id}/approve`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners course audit event", auditError);
+    });
+  }
   broadcastBeginnersUpdated(courseType, "beginners.approve");
   broadcastApprovalsUpdated("beginners.approve");
   broadcastCalendarUpdated("beginners.approve");
@@ -3830,6 +3999,7 @@ app.post("/api/beginners-courses/:id/reject", async (req, res) => {
   }
 
   const [date, time] = getUtcTimestampParts();
+  const previousCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
   await beginnersCourseWriteGateway.reviewCourse({
     approvalStatus: "rejected",
     approvedAtDate: date,
@@ -3838,6 +4008,25 @@ app.post("/api/beginners-courses/:id/reject", async (req, res) => {
     courseId: course.id,
     rejectionReason,
   });
+  const rejectedCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
+
+  if (auditChangeLogger && rejectedCourse) {
+    void auditChangeLogger.recordEntityChange({
+      action: "rejected",
+      actorUsername: actor.username,
+      after: rejectedCourse,
+      before: previousCourse,
+      changedAtDate: date,
+      changedAtTime: time,
+      entityId: String(course.id),
+      entityLabel: buildBeginnersCourseAuditLabel(rejectedCourse),
+      entityType: "beginners_course",
+      req,
+      target: `/api/beginners-courses/${course.id}/reject`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners course audit event", auditError);
+    });
+  }
   broadcastBeginnersUpdated(courseType, "beginners.reject");
   broadcastApprovalsUpdated("beginners.reject");
   broadcastCalendarUpdated("beginners.reject");
@@ -3913,6 +4102,7 @@ app.delete("/api/beginners-courses/:id", async (req, res) => {
   }
 
   const [date, time] = getUtcTimestampParts();
+  const previousCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
   await beginnersCourseWriteGateway.cancelCourse({
     actorUsername: actor.username,
     cancelledAtDate: date,
@@ -3920,6 +4110,25 @@ app.delete("/api/beginners-courses/:id", async (req, res) => {
     courseId: course.id,
     reason: cancellationReason,
   });
+  const cancelledCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
+
+  if (auditChangeLogger && cancelledCourse) {
+    void auditChangeLogger.recordEntityChange({
+      action: "cancelled",
+      actorUsername: actor.username,
+      after: cancelledCourse,
+      before: previousCourse,
+      changedAtDate: date,
+      changedAtTime: time,
+      entityId: String(course.id),
+      entityLabel: buildBeginnersCourseAuditLabel(cancelledCourse),
+      entityType: "beginners_course",
+      req,
+      target: `/api/beginners-courses/${course.id}`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners course audit event", auditError);
+    });
+  }
   broadcastBeginnersUpdated(courseType, "beginners.cancel");
   broadcastApprovalsUpdated("beginners.cancel");
   broadcastCalendarUpdated("beginners.cancel");
@@ -4025,6 +4234,29 @@ app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
     participant: sanitized.value,
     username,
   });
+  const createdParticipant = await beginnersCourseReadGateway.findParticipantByUsername(username);
+  const createdParticipantSnapshot = createdParticipant
+    ? await findBeginnersParticipantAuditSnapshot(createdParticipant.id, courseType)
+    : null;
+
+  if (auditChangeLogger && createdParticipantSnapshot) {
+    void auditChangeLogger.recordEntityChange({
+      action: "created",
+      actorUsername: actor.username,
+      after: createdParticipantSnapshot,
+      before: null,
+      changedAtDate: date,
+      changedAtTime: time,
+      entityId: String(createdParticipant.id),
+      entityLabel: buildBeginnersParticipantAuditLabel(createdParticipantSnapshot),
+      entityType: "beginners_participant",
+      req,
+      statusCode: 201,
+      target: `/api/beginners-course-participants/${createdParticipant.id}`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners participant audit event", auditError);
+    });
+  }
   broadcastBeginnersUpdated(courseType, "beginners.participant-create");
   broadcastMembersUpdated("beginners.participant-create", username);
 
@@ -4076,10 +4308,35 @@ app.post("/api/beginners-course-participants/:id/reset-password", async (req, re
   }
 
   const password = buildBeginnersPassword();
+  const [resetAtDate, resetAtTime] = getUtcTimestampParts();
   await beginnersCourseWriteGateway.resetParticipantPassword({
     passwordHash: hashPassword(password),
     username: participant.username,
   });
+
+  if (auditChangeLogger) {
+    void auditChangeLogger.recordEntityChange({
+      action: "password_reset",
+      actorUsername: actor.username,
+      after: {
+        passwordReset: true,
+        username: participant.username,
+      },
+      before: {
+        passwordReset: false,
+        username: participant.username,
+      },
+      changedAtDate: resetAtDate,
+      changedAtTime: resetAtTime,
+      entityId: String(participant.id),
+      entityLabel: `${participant.first_name} ${participant.surname}`.trim(),
+      entityType: "beginners_participant_credentials",
+      req,
+      target: `/api/beginners-course-participants/${participant.id}/reset-password`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners participant audit event", auditError);
+    });
+  }
   broadcastBeginnersUpdated(courseType, "beginners.password-reset");
   broadcastMembersUpdated("beginners.password-reset", participant.username);
 
@@ -4132,12 +4389,39 @@ app.put("/api/beginners-course-participants/:id", async (req, res) => {
   const existingUser = await memberDirectoryGateway.findUserByUsername(
     participant.username,
   );
+  const previousParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    courseType,
+  );
 
   await beginnersCourseWriteGateway.updateParticipant({
     existingUser,
     participant: sanitized.value,
     participantId: participant.id,
   });
+  const updatedParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    courseType,
+  );
+  const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+
+  if (auditChangeLogger && updatedParticipant) {
+    void auditChangeLogger.recordEntityChange({
+      action: "updated",
+      actorUsername: actor.username,
+      after: updatedParticipant,
+      before: previousParticipant,
+      changedAtDate: updatedAtDate,
+      changedAtTime: updatedAtTime,
+      entityId: String(participant.id),
+      entityLabel: buildBeginnersParticipantAuditLabel(updatedParticipant),
+      entityType: "beginners_participant",
+      req,
+      target: `/api/beginners-course-participants/${participant.id}`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners participant audit event", auditError);
+    });
+  }
   broadcastBeginnersUpdated(courseType, "beginners.participant-update");
   broadcastMembersUpdated("beginners.participant-update", participant.username);
 
@@ -4232,8 +4516,35 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     }
   }
 
-  await beginnersCourseWriteGateway.markParticipantConverted(participant.id);
   const courseType = normalizeCourseType(course.course_type);
+  const previousParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    courseType,
+  );
+  await beginnersCourseWriteGateway.markParticipantConverted(participant.id);
+  const convertedParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    courseType,
+  );
+  const [convertedAtDate, convertedAtTime] = getUtcTimestampParts();
+
+  if (auditChangeLogger && convertedParticipant) {
+    void auditChangeLogger.recordEntityChange({
+      action: "converted",
+      actorUsername: actor.username,
+      after: convertedParticipant,
+      before: previousParticipant,
+      changedAtDate: convertedAtDate,
+      changedAtTime: convertedAtTime,
+      entityId: String(participant.id),
+      entityLabel: buildBeginnersParticipantAuditLabel(convertedParticipant),
+      entityType: "beginners_participant",
+      req,
+      target: `/api/beginners-course-participants/${participant.id}/convert`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners participant audit event", auditError);
+    });
+  }
   broadcastBeginnersUpdated(courseType, "beginners.participant-convert");
   broadcastMembersUpdated("beginners.participant-convert", participant.username);
 
@@ -4360,6 +4671,10 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
     }
   };
 
+  const previousParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    courseType,
+  );
   try {
     if (currentCase && (!nextCase || currentCase.id !== nextCase.id)) {
       await clearLegacyCaseLoans(currentCase);
@@ -4408,6 +4723,28 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
       message: error instanceof Error ? error.message : "Unable to assign course equipment.",
     });
     return;
+  }
+  const updatedParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    courseType,
+  );
+
+  if (auditChangeLogger && updatedParticipant) {
+    void auditChangeLogger.recordEntityChange({
+      action: "case_assigned",
+      actorUsername: actor.username,
+      after: updatedParticipant,
+      before: previousParticipant,
+      changedAtDate: date,
+      changedAtTime: time,
+      entityId: String(participant.id),
+      entityLabel: buildBeginnersParticipantAuditLabel(updatedParticipant),
+      entityType: "beginners_participant",
+      req,
+      target: `/api/beginners-course-participants/${participant.id}/assign-case`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners participant audit event", auditError);
+    });
   }
   broadcastBeginnersUpdated(courseType, "beginners.case-assign");
   broadcastEquipmentUpdated("beginners.case-assign");
@@ -4469,6 +4806,7 @@ app.post("/api/beginners-course-lessons/:id/coaches", async (req, res) => {
   }
 
   const [date, time] = getUtcTimestampParts();
+  const previousLesson = await findBeginnersLessonAuditSnapshot(lesson.id, courseType);
   await beginnersCourseWriteGateway.replaceLessonCoaches({
     actorUsername: actor.username,
     assignedAtDate: date,
@@ -4476,6 +4814,25 @@ app.post("/api/beginners-course-lessons/:id/coaches", async (req, res) => {
     coachUsernames,
     lessonId: lesson.id,
   });
+  const updatedLesson = await findBeginnersLessonAuditSnapshot(lesson.id, courseType);
+
+  if (auditChangeLogger && updatedLesson) {
+    void auditChangeLogger.recordEntityChange({
+      action: "coaches_assigned",
+      actorUsername: actor.username,
+      after: updatedLesson,
+      before: previousLesson,
+      changedAtDate: date,
+      changedAtTime: time,
+      entityId: String(lesson.id),
+      entityLabel: buildBeginnersLessonAuditLabel(updatedLesson),
+      entityType: "beginners_lesson",
+      req,
+      target: `/api/beginners-course-lessons/${lesson.id}/coaches`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners lesson audit event", auditError);
+    });
+  }
   broadcastBeginnersUpdated(courseType, "beginners.lesson-coaches");
 
   res.json({
@@ -4616,6 +4973,7 @@ app.get("/api/my-beginner-coaching-assignments", async (req, res) => {
 registerTournamentRoutes({
   actorHasPermission,
   app,
+  auditChangeLogger,
   buildTournament,
   buildTournamentDataMaps,
   exportsDirectory: serverRuntime.exportsDirectory,
@@ -4633,6 +4991,7 @@ registerTournamentRoutes({
 registerScheduleRoutes({
   actorHasPermission,
   app,
+  auditChangeLogger,
   buildClubEvent,
   buildCoachingBookingsMap,
   buildCoachingSession,
@@ -4654,6 +5013,7 @@ registerMemberActivityRoutes({
   addUtcDays,
   app,
   actorHasPermission,
+  auditChangeLogger,
   buildGuestUserProfile,
   buildMemberUserProfile,
   buildPersonalUsageWindow,

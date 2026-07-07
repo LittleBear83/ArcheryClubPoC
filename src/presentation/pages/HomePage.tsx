@@ -26,6 +26,7 @@ import { GeneralInfoPage } from "./GeneralInfoPage";
 import { RecordsPage } from "./RecordsPage";
 import { OutdoorTablePage } from "./OutdoorTablePage";
 import { AnnouncementsPage } from "./AnnouncementsPage";
+import { AuditLogPage } from "./AuditLogPage";
 import { RangeRulesAdminPage } from "./RangeRulesAdminPage";
 import { RangeRulesPage } from "./RangeRulesPage";
 import { formatDate } from "../../utils/dateTime";
@@ -166,6 +167,7 @@ const pageTitleMap = {
   "user-creation": "Member Creation",
   "role-permissions": "Roles & Permissions",
   reporting: "Reporting",
+  "audit-log": "Audit Log",
   approvals: "Approvals",
   equipment: "Equipment",
   "beginners-courses": "Beginners Courses",
@@ -192,6 +194,7 @@ const pathToPageId = {
   "/user-creation": "user-creation",
   "/role-permissions": "role-permissions",
   "/reporting": "reporting",
+  "/audit-log": "audit-log",
   "/approvals": "approvals",
   "/equipment": "equipment",
   "/beginners-courses": "beginners-courses",
@@ -719,6 +722,7 @@ export function HomePage({
           "page-shell",
           activePage === "role-permissions" ||
           activePage === "reporting" ||
+          activePage === "audit-log" ||
           activePage === "announcements"
             ? "page-shell--wide"
             : "",
@@ -767,6 +771,10 @@ export function HomePage({
             <Route
               path="/reporting"
               element={<ReportingPage currentUserProfile={currentUserProfile} />}
+            />
+            <Route
+              path="/audit-log"
+              element={<AuditLogPage currentUserProfile={currentUserProfile} />}
             />
             <Route
               path="/approvals"

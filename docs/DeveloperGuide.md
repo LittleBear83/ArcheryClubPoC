@@ -28,6 +28,7 @@ Implemented areas include:
 - automatic inactivity logout and server-session revalidation
 - cookie-backed authenticated sessions
 - announcements with active ticker behaviour
+- audit log viewing with filter and sort controls
 - announcement seen tracking and audience email sending
 - home dashboards for members, beginners, and coaches
 - mobile-only on-site geofenced check-in
@@ -36,6 +37,7 @@ Implemented areas include:
 - profile management and member administration
 - RFID assignment, loan bow return, and distance sign-off workflows
 - role and permission administration
+- audit log review
 - committee role management and org chart display
 - equipment inventory, storage, assignment, returns, and decommissioning
 - loan bow management
@@ -309,6 +311,7 @@ The authenticated shell currently routes to these main page areas:
 - `/role-permissions`
 - `/reporting`
 - `/approvals`
+- `/audit-log`
 - `/equipment`
 - `/beginners-courses`
 - `/have-a-go-sessions`

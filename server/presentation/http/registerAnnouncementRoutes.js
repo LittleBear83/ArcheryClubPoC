@@ -95,6 +95,7 @@ export function registerAnnouncementRoutes({
   actorHasPermission,
   announcementGateway,
   app,
+  auditChangeLogger,
   getActorUser,
   getUtcTimestampParts,
   PERMISSIONS,
@@ -303,6 +304,25 @@ export function registerAnnouncementRoutes({
       createdByUsername: actor.username,
     });
 
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: announcement,
+        before: null,
+        changedAtDate: createdAtDate,
+        changedAtTime: createdAtTime,
+        entityId: announcement.id,
+        entityLabel: announcement.message,
+        entityType: "announcement",
+        req,
+        target: `/api/announcements/${announcement.id}`,
+        statusCode: 201,
+      }).catch((auditError) => {
+        console.error("Failed to record announcement audit event", auditError);
+      });
+    }
+
     res.status(201).json({
       success: true,
       announcement: buildAnnouncementResponse(announcement, 0),
@@ -390,6 +410,24 @@ export function registerAnnouncementRoutes({
       amendedByUsername: actor.username,
     });
 
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "updated",
+        actorUsername: actor.username,
+        after: updatedAnnouncement,
+        before: existingAnnouncement,
+        changedAtDate: amendedAtDate,
+        changedAtTime: amendedAtTime,
+        entityId: announcementId,
+        entityLabel: updatedAnnouncement?.message ?? existingAnnouncement.message,
+        entityType: "announcement",
+        req,
+        target: `/api/announcements/${announcementId}`,
+      }).catch((auditError) => {
+        console.error("Failed to record announcement audit event", auditError);
+      });
+    }
+
     res.json({
       success: true,
       announcement: buildAnnouncementResponse(
@@ -447,6 +485,24 @@ export function registerAnnouncementRoutes({
         deletedByUsername: actor.username,
       },
     );
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "deleted",
+        actorUsername: actor.username,
+        after: deletedAnnouncement,
+        before: existingAnnouncement,
+        changedAtDate: deletedAtDate,
+        changedAtTime: deletedAtTime,
+        entityId: announcementId,
+        entityLabel: existingAnnouncement.message,
+        entityType: "announcement",
+        req,
+        target: `/api/announcements/${announcementId}`,
+      }).catch((auditError) => {
+        console.error("Failed to record announcement audit event", auditError);
+      });
+    }
 
     res.json({
       success: true,

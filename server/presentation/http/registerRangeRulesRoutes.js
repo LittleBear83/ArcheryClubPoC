@@ -43,9 +43,22 @@ function normalizeRangeRulesPayload(body) {
   };
 }
 
+function haveRangeRulesChanged(previousRules, nextRules) {
+  return JSON.stringify({
+    indoorRules: previousRules.indoorRules,
+    outdoorRules: previousRules.outdoorRules,
+    outdoorLaneRules: previousRules.outdoorLaneRules,
+  }) !== JSON.stringify({
+    indoorRules: nextRules.indoorRules,
+    outdoorRules: nextRules.outdoorRules,
+    outdoorLaneRules: nextRules.outdoorLaneRules,
+  });
+}
+
 export function registerRangeRulesRoutes({
   actorHasPermission,
   app,
+  auditChangeLogger,
   getActorUser,
   getUtcTimestampParts,
   PERMISSIONS,
@@ -92,13 +105,40 @@ export function registerRangeRulesRoutes({
       return;
     }
 
-    const timestampParts = getUtcTimestampParts();
+    const existingRangeRules = await rangeRulesGateway.getRangeRules();
+    const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
     const rangeRules = await rangeRulesGateway.updateRangeRules({
       ...payload,
-      updatedAtDate: timestampParts.date,
-      updatedAtTime: timestampParts.time,
+      updatedAtDate,
+      updatedAtTime,
       updatedByUsername: actor.username,
     });
+
+    if (auditChangeLogger && haveRangeRulesChanged(existingRangeRules, rangeRules)) {
+      void auditChangeLogger.recordEntityChange({
+        action: "updated",
+        actorUsername: actor.username,
+        after: {
+          indoorRules: rangeRules.indoorRules,
+          outdoorRules: rangeRules.outdoorRules,
+          outdoorLaneRules: rangeRules.outdoorLaneRules,
+        },
+        before: {
+          indoorRules: existingRangeRules.indoorRules,
+          outdoorRules: existingRangeRules.outdoorRules,
+          outdoorLaneRules: existingRangeRules.outdoorLaneRules,
+        },
+        changedAtDate: updatedAtDate,
+        changedAtTime: updatedAtTime,
+        entityId: "default",
+        entityLabel: "Range rules",
+        entityType: "range_rules",
+        req,
+        target: "/api/range-rules",
+      }).catch((auditError) => {
+        console.error("Failed to record range rules audit event", auditError);
+      });
+    }
 
     serverEventBus?.broadcastToAll("range-rules.updated", {
       changedAt: new Date().toISOString(),

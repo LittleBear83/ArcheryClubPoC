@@ -87,6 +87,12 @@ const pages = [
     permission: "view_reports",
   },
   {
+    id: "audit-log",
+    label: "Audit Log",
+    path: "/audit-log",
+    permission: "view_reports",
+  },
+  {
     id: "approvals",
     label: "Approvals",
     path: "/approvals",

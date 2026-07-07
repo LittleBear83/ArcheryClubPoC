@@ -3,6 +3,7 @@ export function registerMemberActivityRoutes({
   addUtcDays,
   app,
   actorHasPermission,
+  auditChangeLogger,
   buildGuestUserProfile,
   buildMemberUserProfile,
   buildPersonalUsageWindow,
@@ -256,11 +257,37 @@ export function registerMemberActivityRoutes({
       return;
     }
 
+    const timestampParts = getUtcTimestampParts();
+
     await memberAuthGateway.recordLoginEvent({
       method: "mobile-app",
-      timestampParts: getUtcTimestampParts(),
+      timestampParts,
       username: actor.username,
     });
+    const [loggedAtDate, loggedAtTime] = timestampParts;
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: {
+          activityType: "mobile_check_in",
+          method: "mobile-app",
+          username: actor.username,
+        },
+        before: null,
+        changedAtDate: loggedAtDate,
+        changedAtTime: loggedAtTime,
+        entityId: `${actor.username}:${loggedAtDate}:${loggedAtTime}:mobile-app`,
+        entityLabel: `${actor.first_name} ${actor.surname}`.trim() || actor.username,
+        entityType: "member_activity",
+        req,
+        statusCode: 200,
+        target: "/api/range-members/mobile-check-in",
+      }).catch((auditError) => {
+        console.error("Failed to record mobile check-in audit event", auditError);
+      });
+    }
     broadcastRangeMembersUpdated("range-members.mobile-check-in");
 
     res.json({

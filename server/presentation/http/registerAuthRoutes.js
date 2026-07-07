@@ -1,6 +1,7 @@
 export function registerAuthRoutes({
   announcementGateway,
   app,
+  auditChangeLogger,
   buildGuestUserProfile,
   buildMemberUserProfile,
   clearCsrfCookie,
@@ -100,11 +101,38 @@ export function registerAuthRoutes({
       );
     }
 
+    const timestampParts = getUtcTimestampParts();
+    const loginMethod = deviceType === "mobile" ? "password-mobile" : "password";
+
     await memberAuthGateway.recordLoginEvent({
-      method: deviceType === "mobile" ? "password-mobile" : "password",
-      timestampParts: getUtcTimestampParts(),
+      method: loginMethod,
+      timestampParts,
       username: user.username,
     });
+    const [loggedAtDate, loggedAtTime] = timestampParts;
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: user.username,
+        after: {
+          activityType: "login",
+          method: loginMethod,
+          username: user.username,
+        },
+        before: null,
+        changedAtDate: loggedAtDate,
+        changedAtTime: loggedAtTime,
+        entityId: `${user.username}:${loggedAtDate}:${loggedAtTime}:${loginMethod}`,
+        entityLabel: `${user.first_name} ${user.surname}`.trim() || user.username,
+        entityType: "member_activity",
+        req,
+        statusCode: 200,
+        target: "/api/auth/login",
+      }).catch((auditError) => {
+        console.error("Failed to record login audit event", auditError);
+      });
+    }
     await markActiveAnnouncementsSeen(user.username);
     broadcastRangeMembersUpdated("auth.login");
     const csrfToken = setSessionCookies(req, res, user.username);
@@ -156,11 +184,37 @@ export function registerAuthRoutes({
       return;
     }
 
+    const timestampParts = getUtcTimestampParts();
+
     await memberAuthGateway.recordLoginEvent({
       method: "rfid",
-      timestampParts: getUtcTimestampParts(),
+      timestampParts,
       username: user.username,
     });
+    const [loggedAtDate, loggedAtTime] = timestampParts;
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: user.username,
+        after: {
+          activityType: "login",
+          method: "rfid",
+          username: user.username,
+        },
+        before: null,
+        changedAtDate: loggedAtDate,
+        changedAtTime: loggedAtTime,
+        entityId: `${user.username}:${loggedAtDate}:${loggedAtTime}:rfid`,
+        entityLabel: `${user.first_name} ${user.surname}`.trim() || user.username,
+        entityType: "member_activity",
+        req,
+        statusCode: 200,
+        target: "/api/auth/rfid",
+      }).catch((auditError) => {
+        console.error("Failed to record RFID login audit event", auditError);
+      });
+    }
     await markActiveAnnouncementsSeen(user.username);
     broadcastRangeMembersUpdated("auth.rfid-login");
     const csrfToken = setSessionCookies(req, res, user.username);
@@ -284,14 +338,43 @@ export function registerAuthRoutes({
       return;
     }
 
+    const timestampParts = getUtcTimestampParts();
+
     await memberAuthGateway.recordGuestLoginEvent({
       archeryGbMembershipNumber: trimmedMembershipNumber,
       firstName: firstName.trim(),
       invitedByName: `${invitingMember.first_name} ${invitingMember.surname}`,
       invitedByUsername: invitingMember.username,
       surname: surname.trim(),
-      timestampParts: getUtcTimestampParts(),
+      timestampParts,
     });
+    const [loggedAtDate, loggedAtTime] = timestampParts;
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: `guest:${membershipDigits}`,
+        after: {
+          activityType: "guest_login",
+          archeryGbMembershipNumber: trimmedMembershipNumber,
+          firstName: firstName.trim(),
+          surname: surname.trim(),
+          invitedByUsername: invitingMember.username,
+          invitedByName: `${invitingMember.first_name} ${invitingMember.surname}`,
+        },
+        before: null,
+        changedAtDate: loggedAtDate,
+        changedAtTime: loggedAtTime,
+        entityId: `${membershipDigits}:${loggedAtDate}:${loggedAtTime}`,
+        entityLabel: `${firstName.trim()} ${surname.trim()}`.trim(),
+        entityType: "guest_activity",
+        req,
+        statusCode: 200,
+        target: "/api/auth/guest-login",
+      }).catch((auditError) => {
+        console.error("Failed to record guest login audit event", auditError);
+      });
+    }
     broadcastRangeMembersUpdated("auth.guest-login");
 
     res.json({

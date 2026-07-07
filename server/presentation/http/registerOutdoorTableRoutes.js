@@ -229,6 +229,7 @@ function buildOutdoorTablePayload(body) {
 export function registerOutdoorTableRoutes({
   app,
   actorHasPermission,
+  auditChangeLogger,
   getActorUser,
   getUtcTimestampParts,
   memberAuthGateway,
@@ -408,6 +409,25 @@ export function registerOutdoorTableRoutes({
       updatedByUsername: actor.username,
     }));
 
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: entry,
+        before: null,
+        changedAtDate: createdAtDate,
+        changedAtTime: createdAtTime,
+        entityId: entry.id,
+        entityLabel: `${entry.archerUsername} ${entry.bowType} ${entry.seasonYear}`,
+        entityType: "outdoor_table_entry",
+        req,
+        statusCode: 201,
+        target: `/api/outdoor-table/${entry.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record outdoor table audit event", auditError);
+      });
+    }
+
     broadcastOutdoorTableUpdated("outdoor-table.create");
 
     res.status(201).json({
@@ -495,6 +515,24 @@ export function registerOutdoorTableRoutes({
       updatedByUsername: actor.username,
     }));
 
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "updated",
+        actorUsername: actor.username,
+        after: entry,
+        before: existingEntry,
+        changedAtDate: updatedAtDate,
+        changedAtTime: updatedAtTime,
+        entityId: entryId,
+        entityLabel: `${entry.archerUsername} ${entry.bowType} ${entry.seasonYear}`,
+        entityType: "outdoor_table_entry",
+        req,
+        target: `/api/outdoor-table/${entryId}`,
+      }).catch((auditError) => {
+        console.error("Failed to record outdoor table audit event", auditError);
+      });
+    }
+
     broadcastOutdoorTableUpdated("outdoor-table.update");
 
     res.json({
@@ -530,7 +568,26 @@ export function registerOutdoorTableRoutes({
       return;
     }
 
+    const [deletedAtDate, deletedAtTime] = getUtcTimestampParts();
     await outdoorTableGateway.deleteEntry(entryId);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "deleted",
+        actorUsername: actor.username,
+        after: null,
+        before: existingEntry,
+        changedAtDate: deletedAtDate,
+        changedAtTime: deletedAtTime,
+        entityId: entryId,
+        entityLabel: `${existingEntry.archerUsername} ${existingEntry.bowType} ${existingEntry.seasonYear}`,
+        entityType: "outdoor_table_entry",
+        req,
+        target: `/api/outdoor-table/${entryId}`,
+      }).catch((auditError) => {
+        console.error("Failed to record outdoor table audit event", auditError);
+      });
+    }
     broadcastOutdoorTableUpdated("outdoor-table.delete");
 
     res.json({

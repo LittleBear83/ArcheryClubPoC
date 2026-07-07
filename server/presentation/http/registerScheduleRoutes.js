@@ -1,6 +1,7 @@
 export function registerScheduleRoutes({
   actorHasPermission,
   app,
+  auditChangeLogger,
   buildClubEvent,
   buildEventBookingsMap,
   buildCoachingBookingsMap,
@@ -154,17 +155,19 @@ export function registerScheduleRoutes({
       return;
     }
 
+    const [createdAtDate, createdAtTime] = getUtcTimestampParts();
+    const [approvedAtDate, approvedAtTime] = actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
+      ? getUtcTimestampParts()
+      : ["", ""];
     const event = await scheduleGateway.createClubEvent({
       approvalStatus: actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
         ? "approved"
         : "pending",
-      approvedAtParts: actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
-        ? getUtcTimestampParts()
-        : ["", ""],
+      approvedAtParts: [approvedAtDate, approvedAtTime],
       approvedByUsername: actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS)
         ? actor.username
         : null,
-      createdAtParts: getUtcTimestampParts(),
+      createdAtParts: [createdAtDate, createdAtTime],
       date,
       details: trimmedDetails,
       endTime,
@@ -175,6 +178,25 @@ export function registerScheduleRoutes({
       type,
       venue: normalizedVenue,
     });
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: event,
+        before: null,
+        changedAtDate: createdAtDate,
+        changedAtTime: createdAtTime,
+        entityId: event.id,
+        entityLabel: event.title,
+        entityType: "club_event",
+        req,
+        statusCode: 201,
+        target: `/api/events/${event.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record event audit event", auditError);
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -219,13 +241,32 @@ export function registerScheduleRoutes({
       return;
     }
 
+    const [approvedAtDate, approvedAtTime] = getUtcTimestampParts();
     await scheduleGateway.approveClubEvent({
       actorUsername: actor.username,
       eventId: event.id,
-      timestampParts: getUtcTimestampParts(),
+      timestampParts: [approvedAtDate, approvedAtTime],
     });
     const approvedEvent = await scheduleGateway.findClubEventById(event.id);
     const bookings = (await scheduleGateway.listEventBookingsByEventId(event.id)).map(normalizeBookingRow);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "approved",
+        actorUsername: actor.username,
+        after: approvedEvent,
+        before: event,
+        changedAtDate: approvedAtDate,
+        changedAtTime: approvedAtTime,
+        entityId: event.id,
+        entityLabel: event.title,
+        entityType: "club_event",
+        req,
+        target: `/api/events/${event.id}/approve`,
+      }).catch((auditError) => {
+        console.error("Failed to record event audit event", auditError);
+      });
+    }
 
     res.json({
       success: true,
@@ -273,14 +314,33 @@ export function registerScheduleRoutes({
         ? req.body.rejectionReason.trim().slice(0, 280)
         : "";
 
+    const [rejectedAtDate, rejectedAtTime] = getUtcTimestampParts();
     await scheduleGateway.rejectClubEvent({
       actorUsername: actor.username,
       eventId: event.id,
       rejectionReason,
-      timestampParts: getUtcTimestampParts(),
+      timestampParts: [rejectedAtDate, rejectedAtTime],
     });
     const rejectedEvent = await scheduleGateway.findClubEventById(event.id);
     const bookings = (await scheduleGateway.listEventBookingsByEventId(event.id)).map(normalizeBookingRow);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "rejected",
+        actorUsername: actor.username,
+        after: rejectedEvent,
+        before: event,
+        changedAtDate: rejectedAtDate,
+        changedAtTime: rejectedAtTime,
+        entityId: event.id,
+        entityLabel: event.title,
+        entityType: "club_event",
+        req,
+        target: `/api/events/${event.id}/reject`,
+      }).catch((auditError) => {
+        console.error("Failed to record event audit event", auditError);
+      });
+    }
 
     res.json({
       success: true,
@@ -340,11 +400,30 @@ export function registerScheduleRoutes({
     }
 
     try {
+      const [bookedAtDate, bookedAtTime] = getUtcTimestampParts();
       await scheduleGateway.createEventBooking({
         eventId: event.id,
-        timestampParts: getUtcTimestampParts(),
+        timestampParts: [bookedAtDate, bookedAtTime],
         username: actor.username,
       });
+
+      if (auditChangeLogger) {
+        void auditChangeLogger.recordEntityChange({
+          action: "booked",
+          actorUsername: actor.username,
+          after: { eventId: event.id, username: actor.username },
+          before: null,
+          changedAtDate: bookedAtDate,
+          changedAtTime: bookedAtTime,
+          entityId: `${event.id}:${actor.username}`,
+          entityLabel: event.title,
+          entityType: "event_booking",
+          req,
+          target: `/api/events/${event.id}/book`,
+        }).catch((auditError) => {
+          console.error("Failed to record event booking audit event", auditError);
+        });
+      }
     } catch (error) {
       if (
         error?.message?.includes(
@@ -412,6 +491,25 @@ export function registerScheduleRoutes({
       return;
     }
 
+    if (auditChangeLogger) {
+      const [withdrawnAtDate, withdrawnAtTime] = getUtcTimestampParts();
+      void auditChangeLogger.recordEntityChange({
+        action: "withdrawn",
+        actorUsername: actor.username,
+        after: null,
+        before: { eventId: event.id, username: actor.username },
+        changedAtDate: withdrawnAtDate,
+        changedAtTime: withdrawnAtTime,
+        entityId: `${event.id}:${actor.username}`,
+        entityLabel: event.title,
+        entityType: "event_booking",
+        req,
+        target: `/api/events/${event.id}/booking`,
+      }).catch((auditError) => {
+        console.error("Failed to record event booking audit event", auditError);
+      });
+    }
+
     const bookings = (await scheduleGateway.listEventBookingsByEventId(event.id)).map((booking) => ({
       username: booking.member_username,
       fullName: `${booking.first_name} ${booking.surname}`,
@@ -449,7 +547,26 @@ export function registerScheduleRoutes({
       return;
     }
 
+    const [deletedAtDate, deletedAtTime] = getUtcTimestampParts();
     await scheduleGateway.deleteClubEventCascade(event.id);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "deleted",
+        actorUsername: actor.username,
+        after: null,
+        before: event,
+        changedAtDate: deletedAtDate,
+        changedAtTime: deletedAtTime,
+        entityId: event.id,
+        entityLabel: event.title,
+        entityType: "club_event",
+        req,
+        target: `/api/events/${event.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record event audit event", auditError);
+      });
+    }
 
     res.json({
       success: true,
@@ -559,19 +676,21 @@ export function registerScheduleRoutes({
       return;
     }
 
+    const [createdAtDate, createdAtTime] = getUtcTimestampParts();
+    const [approvedAtDate, approvedAtTime] = actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
+      ? getUtcTimestampParts()
+      : ["", ""];
     const session = await scheduleGateway.createCoachingSession({
       approvalStatus: actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
         ? "approved"
         : "pending",
-      approvedAtParts: actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
-        ? getUtcTimestampParts()
-        : ["", ""],
+      approvedAtParts: [approvedAtDate, approvedAtTime],
       approvedByUsername: actorHasPermission(actor, PERMISSIONS.APPROVE_COACHING_SESSIONS)
         ? actor.username
         : null,
       availableSlots: normalizedAvailableSlots,
       coachUsername: actor.username,
-      createdAtParts: getUtcTimestampParts(),
+      createdAtParts: [createdAtDate, createdAtTime],
       date,
       endTime,
       rejectionReason: null,
@@ -580,6 +699,25 @@ export function registerScheduleRoutes({
       topic: trimmedTopic,
       venue: normalizedVenue,
     });
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: session,
+        before: null,
+        changedAtDate: createdAtDate,
+        changedAtTime: createdAtTime,
+        entityId: session.id,
+        entityLabel: session.topic,
+        entityType: "coaching_session",
+        req,
+        statusCode: 201,
+        target: `/api/coaching-sessions/${session.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record coaching session audit event", auditError);
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -627,14 +765,33 @@ export function registerScheduleRoutes({
       return;
     }
 
+    const [approvedAtDate, approvedAtTime] = getUtcTimestampParts();
     await scheduleGateway.approveCoachingSession({
       actorUsername: actor.username,
       sessionId: session.id,
-      timestampParts: getUtcTimestampParts(),
+      timestampParts: [approvedAtDate, approvedAtTime],
     });
     const approvedSession = await scheduleGateway.findCoachingSessionById(session.id);
     const bookings = (await scheduleGateway.listBookingsByCoachingSessionId(session.id))
       .map(normalizeBookingRow);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "approved",
+        actorUsername: actor.username,
+        after: approvedSession,
+        before: session,
+        changedAtDate: approvedAtDate,
+        changedAtTime: approvedAtTime,
+        entityId: session.id,
+        entityLabel: session.topic,
+        entityType: "coaching_session",
+        req,
+        target: `/api/coaching-sessions/${session.id}/approve`,
+      }).catch((auditError) => {
+        console.error("Failed to record coaching session audit event", auditError);
+      });
+    }
 
     res.json({
       success: true,
@@ -685,15 +842,34 @@ export function registerScheduleRoutes({
         ? req.body.rejectionReason.trim().slice(0, 280)
         : "";
 
+    const [rejectedAtDate, rejectedAtTime] = getUtcTimestampParts();
     await scheduleGateway.rejectCoachingSession({
       actorUsername: actor.username,
       rejectionReason,
       sessionId: session.id,
-      timestampParts: getUtcTimestampParts(),
+      timestampParts: [rejectedAtDate, rejectedAtTime],
     });
     const rejectedSession = await scheduleGateway.findCoachingSessionById(session.id);
     const bookings = (await scheduleGateway.listBookingsByCoachingSessionId(session.id))
       .map(normalizeBookingRow);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "rejected",
+        actorUsername: actor.username,
+        after: rejectedSession,
+        before: session,
+        changedAtDate: rejectedAtDate,
+        changedAtTime: rejectedAtTime,
+        entityId: session.id,
+        entityLabel: session.topic,
+        entityType: "coaching_session",
+        req,
+        target: `/api/coaching-sessions/${session.id}/reject`,
+      }).catch((auditError) => {
+        console.error("Failed to record coaching session audit event", auditError);
+      });
+    }
 
     res.json({
       success: true,
@@ -755,11 +931,30 @@ export function registerScheduleRoutes({
         return;
       }
 
+      const [bookedAtDate, bookedAtTime] = getUtcTimestampParts();
       await scheduleGateway.createCoachingSessionBooking({
         sessionId: session.id,
-        timestampParts: getUtcTimestampParts(),
+        timestampParts: [bookedAtDate, bookedAtTime],
         username: actor.username,
       });
+
+      if (auditChangeLogger) {
+        void auditChangeLogger.recordEntityChange({
+          action: "booked",
+          actorUsername: actor.username,
+          after: { sessionId: session.id, username: actor.username },
+          before: null,
+          changedAtDate: bookedAtDate,
+          changedAtTime: bookedAtTime,
+          entityId: `${session.id}:${actor.username}`,
+          entityLabel: session.topic,
+          entityType: "coaching_booking",
+          req,
+          target: `/api/coaching-sessions/${session.id}/book`,
+        }).catch((auditError) => {
+          console.error("Failed to record coaching booking audit event", auditError);
+        });
+      }
     } catch (error) {
       if (
         error?.message?.includes(
@@ -828,6 +1023,25 @@ export function registerScheduleRoutes({
       return;
     }
 
+    if (auditChangeLogger) {
+      const [withdrawnAtDate, withdrawnAtTime] = getUtcTimestampParts();
+      void auditChangeLogger.recordEntityChange({
+        action: "withdrawn",
+        actorUsername: actor.username,
+        after: null,
+        before: { sessionId: session.id, username: actor.username },
+        changedAtDate: withdrawnAtDate,
+        changedAtTime: withdrawnAtTime,
+        entityId: `${session.id}:${actor.username}`,
+        entityLabel: session.topic,
+        entityType: "coaching_booking",
+        req,
+        target: `/api/coaching-sessions/${session.id}/booking`,
+      }).catch((auditError) => {
+        console.error("Failed to record coaching booking audit event", auditError);
+      });
+    }
+
     const bookings = (await scheduleGateway.listBookingsByCoachingSessionId(session.id))
       .map((booking) => ({
         username: booking.member_username,
@@ -877,7 +1091,26 @@ export function registerScheduleRoutes({
       return;
     }
 
+    const [deletedAtDate, deletedAtTime] = getUtcTimestampParts();
     await scheduleGateway.deleteCoachingSessionCascade(session.id);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "deleted",
+        actorUsername: actor.username,
+        after: null,
+        before: session,
+        changedAtDate: deletedAtDate,
+        changedAtTime: deletedAtTime,
+        entityId: session.id,
+        entityLabel: session.topic,
+        entityType: "coaching_session",
+        req,
+        target: `/api/coaching-sessions/${session.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record coaching session audit event", auditError);
+      });
+    }
 
     res.json({
       success: true,

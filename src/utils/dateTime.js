@@ -92,7 +92,21 @@ export function formatDateTime(dateInput) {
 }
 
 export function formatShortDateTime(dateInput) {
-  return formatDateTime(dateInput);
+  if (!dateInput) {
+    return "";
+  }
+
+  const date = parseDateTime(dateInput);
+
+  if (Number.isNaN(date?.getTime())) {
+    return String(dateInput);
+  }
+
+  return [
+    padDatePart(date.getDate()),
+    padDatePart(date.getMonth() + 1),
+    String(date.getFullYear()).slice(-2),
+  ].join("/") + ` ${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
 }
 
 export function formatHourLabel(hour) {

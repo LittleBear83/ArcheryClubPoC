@@ -22,6 +22,7 @@ The application currently includes:
 - mobile on-site geofenced range check-in
 - theme switching
 - announcements management
+- audit log viewing with filter and sort controls
 - announcement seen-tracking and audience email sending
 - event and coaching scheduling with approvals and bookings
 - tournament setup, registration, score submission, and competitor export

@@ -5,7 +5,7 @@ import { getDefaultRangeRulesContent } from "../../../shared/rangeRulesDefaults.
 import { Button } from "../components/Button";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
-import { formatDate } from "../../utils/dateTime";
+import { formatShortDateTime } from "../../utils/dateTime";
 
 const TAB_OPTIONS = [
   { id: "indoor", label: "Indoor Range" },
@@ -39,22 +39,32 @@ export function RangeRulesPage({ currentUserProfile }: RangeRulesPageProps) {
     [data?.rangeRules],
   );
 
-  const activeRules = selectedTab === "indoor"
-    ? rangeRules.indoorRules
-    : rangeRules.outdoorRules;
+  const activeRules =
+    selectedTab === "indoor" ? rangeRules.indoorRules : rangeRules.outdoorRules;
   const activeTitle =
-    selectedTab === "indoor" ? "Indoor Range Guidance" : "Outdoor Range Guidance";
+    selectedTab === "indoor"
+      ? "Indoor Range Guidance"
+      : "Outdoor Range Guidance";
+  const updatedAtLabel =
+    rangeRules.updatedAtDate && rangeRules.updatedAtTime
+      ? formatShortDateTime(
+          `${rangeRules.updatedAtDate}T${rangeRules.updatedAtTime}`,
+        )
+      : "";
 
   return (
     <div className="profile-page range-rules-page">
       <SectionPanel className="profile-form" title="Range Rules">
         <p>
-          Use this page as a quick in-app reference for the club&apos;s core range
-          expectations. Switch between indoor and outdoor guidance using the tabs
-          below.
+          Use this page as a quick in-app reference for the club&apos;s core
+          range expectations. Switch between indoor and outdoor guidance using
+          the tabs below.
         </p>
 
-        <StatusMessagePanel loading={isLoading} loadingLabel="Loading range rules..." />
+        <StatusMessagePanel
+          loading={isLoading}
+          loadingLabel="Loading range rules..."
+        />
 
         <div
           className="range-rules-tabs"
@@ -116,9 +126,8 @@ export function RangeRulesPage({ currentUserProfile }: RangeRulesPageProps) {
 
         {rangeRules.updatedByUsername ? (
           <p className="range-rules-audit">
-            Last updated by {rangeRules.updatedByUsername}
-            {rangeRules.updatedAtDate ? ` on ${formatDate(rangeRules.updatedAtDate)}` : ""}
-            {rangeRules.updatedAtTime ? ` at ${rangeRules.updatedAtTime}` : ""}.
+            Last updated
+            {updatedAtLabel ? ` on ${updatedAtLabel}` : ""}.
           </p>
         ) : null}
       </SectionPanel>

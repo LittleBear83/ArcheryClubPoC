@@ -2,6 +2,7 @@ export function registerAdminMemberRoutes({
   actorHasPermission,
   ALLOWED_DISCIPLINES,
   app,
+  auditChangeLogger,
   buildCommitteeRole,
   buildEditableMemberProfile,
   buildLoanBowRecord,
@@ -258,12 +259,33 @@ export function registerAdminMemberRoutes({
       roleKey,
       title,
     });
+    const createdRolePayload = await buildRoleDefinitionPayload(createdRole);
+    const [createdAtDate, createdAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: createdRolePayload,
+        before: null,
+        changedAtDate: createdAtDate,
+        changedAtTime: createdAtTime,
+        entityId: createdRole.role_key,
+        entityLabel: createdRole.title,
+        entityType: "role",
+        req,
+        statusCode: 201,
+        target: `/api/roles/${createdRole.role_key}`,
+      }).catch((auditError) => {
+        console.error("Failed to record role audit event", auditError);
+      });
+    }
     await refreshRoleAccessSnapshot();
     broadcastRolesUpdated("roles.create");
 
     res.status(201).json({
       success: true,
-      role: await buildRoleDefinitionPayload(createdRole),
+      role: createdRolePayload,
     });
   });
 
@@ -321,17 +343,38 @@ export function registerAdminMemberRoutes({
     ];
 
     const affectedUsernames = await listUsernamesByRoleKey(roleKey);
+    const existingRolePayload = await buildRoleDefinitionPayload(existingRole);
     const updatedRole = await roleCommitteeGateway.updateRole({
       permissions: normalizedPermissions,
       roleKey,
       title,
     });
+    const updatedRolePayload = await buildRoleDefinitionPayload(updatedRole);
+    const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "updated",
+        actorUsername: actor.username,
+        after: updatedRolePayload,
+        before: existingRolePayload,
+        changedAtDate: updatedAtDate,
+        changedAtTime: updatedAtTime,
+        entityId: roleKey,
+        entityLabel: updatedRole.title,
+        entityType: "role",
+        req,
+        target: `/api/roles/${roleKey}`,
+      }).catch((auditError) => {
+        console.error("Failed to record role audit event", auditError);
+      });
+    }
     await refreshRoleAccessSnapshot();
     broadcastRolesUpdated("roles.update", affectedUsernames);
 
     res.json({
       success: true,
-      role: await buildRoleDefinitionPayload(updatedRole),
+      role: updatedRolePayload,
     });
   });
 
@@ -384,7 +427,30 @@ export function registerAdminMemberRoutes({
     }
 
     const affectedUsernames = await listUsernamesByRoleKey(roleKey);
+    const existingRolePayload = await buildRoleDefinitionPayload(existingRole);
+    const [deletedAtDate, deletedAtTime] = getUtcTimestampParts();
     const deleteResult = await roleCommitteeGateway.deleteRole(roleKey, "general");
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "deleted",
+        actorUsername: actor.username,
+        after: {
+          fallbackRoleKey: "general",
+          reassignedUserCount: deleteResult?.reassignedUserCount ?? 0,
+        },
+        before: existingRolePayload,
+        changedAtDate: deletedAtDate,
+        changedAtTime: deletedAtTime,
+        entityId: roleKey,
+        entityLabel: existingRole.title,
+        entityType: "role",
+        req,
+        target: `/api/roles/${roleKey}`,
+      }).catch((auditError) => {
+        console.error("Failed to record role audit event", auditError);
+      });
+    }
     await refreshRoleAccessSnapshot();
     broadcastRolesUpdated("roles.delete", affectedUsernames);
 
@@ -598,6 +664,26 @@ export function registerAdminMemberRoutes({
     const createdRole = (await roleCommitteeGateway.listCommitteeRoles())
       .map(buildCommitteeRole)
       .find((entry) => entry.roleKey === roleKey);
+    const [createdAtDate, createdAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger && createdRole) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: createdRole,
+        before: null,
+        changedAtDate: createdAtDate,
+        changedAtTime: createdAtTime,
+        entityId: createdRole.id,
+        entityLabel: createdRole.title,
+        entityType: "committee_role",
+        req,
+        statusCode: 201,
+        target: `/api/committee-roles/${createdRole.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record committee role audit event", auditError);
+      });
+    }
     broadcastCommitteeUpdated("committee.create");
 
     res.status(201).json({
@@ -651,6 +737,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
+    const existingRolePayload = buildCommitteeRole(role);
     await roleCommitteeGateway.updateCommitteeRoleDetails({
       id: role.id,
       title: payload.title,
@@ -664,6 +751,25 @@ export function registerAdminMemberRoutes({
     const updatedRole = (await roleCommitteeGateway.listCommitteeRoles())
       .map(buildCommitteeRole)
       .find((entry) => entry.id === role.id);
+    const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger && updatedRole) {
+      void auditChangeLogger.recordEntityChange({
+        action: "updated",
+        actorUsername: actor.username,
+        after: updatedRole,
+        before: existingRolePayload,
+        changedAtDate: updatedAtDate,
+        changedAtTime: updatedAtTime,
+        entityId: role.id,
+        entityLabel: updatedRole.title,
+        entityType: "committee_role",
+        req,
+        target: `/api/committee-roles/${role.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record committee role audit event", auditError);
+      });
+    }
     broadcastCommitteeUpdated("committee.update");
 
     res.json({
@@ -696,7 +802,26 @@ export function registerAdminMemberRoutes({
       return;
     }
 
+    const [deletedAtDate, deletedAtTime] = getUtcTimestampParts();
     await roleCommitteeGateway.deleteCommitteeRoleById(role.id);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "deleted",
+        actorUsername: actor.username,
+        after: null,
+        before: buildCommitteeRole(role),
+        changedAtDate: deletedAtDate,
+        changedAtTime: deletedAtTime,
+        entityId: role.id,
+        entityLabel: role.title,
+        entityType: "committee_role",
+        req,
+        target: `/api/committee-roles/${role.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record committee role audit event", auditError);
+      });
+    }
     broadcastCommitteeUpdated("committee.delete");
 
     res.json({
@@ -823,6 +948,38 @@ export function registerAdminMemberRoutes({
       return;
     }
 
+    const [createdAtDate, createdAtTime] = getUtcTimestampParts();
+    const createdUser = await findMemberByUsername(username);
+    const createdDisciplines = await listMemberDisciplines(username);
+    const createdLoanBow = await findMemberLoanBow(username);
+    const createdEditableProfile = createdUser
+      ? await buildEditableProfileWithDistanceSignOffs(
+          createdUser,
+          createdDisciplines,
+          createdLoanBow,
+          true,
+        )
+      : result.editableProfile ?? null;
+
+    if (auditChangeLogger && createdEditableProfile) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: createdEditableProfile,
+        before: null,
+        changedAtDate: createdAtDate,
+        changedAtTime: createdAtTime,
+        entityId: username,
+        entityLabel: `${firstName ?? ""} ${surname ?? ""}`.trim() || String(username),
+        entityType: "member_profile",
+        req,
+        statusCode: 201,
+        target: `/api/user-profiles/${username}`,
+      }).catch((auditError) => {
+        console.error("Failed to record member profile audit event", auditError);
+      });
+    }
+
     broadcastMembersUpdated("members.create", username);
 
     res.status(201).json({
@@ -889,6 +1046,15 @@ export function registerAdminMemberRoutes({
       loanBow,
     } = req.body ?? {};
 
+    const previousDisciplines = await listMemberDisciplines(existingUser.username);
+    const previousLoanBow = await findMemberLoanBow(existingUser.username);
+    const previousEditableProfile = await buildEditableProfileWithDistanceSignOffs(
+      existingUser,
+      previousDisciplines,
+      previousLoanBow,
+      canManageMembers,
+    );
+
     const result = await saveMemberProfile({
       username: existingUser.username,
       firstName,
@@ -921,17 +1087,41 @@ export function registerAdminMemberRoutes({
       return;
     }
 
+    const updatedUser = await findMemberByUsername(existingUser.username);
+    const updatedDisciplines = result.editableProfile?.disciplines ?? [];
+    const updatedLoanBow = await findMemberLoanBow(existingUser.username);
+    const updatedEditableProfile = await buildEditableProfileWithDistanceSignOffs(
+      updatedUser,
+      updatedDisciplines,
+      updatedLoanBow,
+      canManageMembers,
+    );
+    const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "updated",
+        actorUsername: actor.username,
+        after: updatedEditableProfile,
+        before: previousEditableProfile,
+        changedAtDate: updatedAtDate,
+        changedAtTime: updatedAtTime,
+        entityId: existingUser.username,
+        entityLabel: `${updatedUser?.first_name ?? existingUser.first_name} ${updatedUser?.surname ?? existingUser.surname}`.trim(),
+        entityType: "member_profile",
+        req,
+        target: `/api/user-profiles/${existingUser.username}`,
+      }).catch((auditError) => {
+        console.error("Failed to record member profile audit event", auditError);
+      });
+    }
+
     broadcastMembersUpdated("members.update", existingUser.username);
 
     res.json({
       success: true,
       ...result,
-      editableProfile: await buildEditableProfileWithDistanceSignOffs(
-        await findMemberByUsername(existingUser.username),
-        result.editableProfile?.disciplines ?? [],
-        await findMemberLoanBow(existingUser.username),
-        canManageMembers,
-      ),
+      editableProfile: updatedEditableProfile,
     });
   });
 
@@ -1013,6 +1203,33 @@ export function registerAdminMemberRoutes({
       signedOffAtDate,
       signedOffAtTime,
     });
+    const updatedSignOff =
+      (await memberDistanceSignOffRepository
+        .listByUsername(member.username))
+        .find(
+          (entry) =>
+            entry.discipline === discipline &&
+            entry.distanceYards === distanceYards,
+        ) ?? null;
+
+    if (auditChangeLogger && updatedSignOff) {
+      void auditChangeLogger.recordEntityChange({
+        action: "signed_off",
+        actorUsername: actor.username,
+        after: updatedSignOff,
+        before: null,
+        changedAtDate: signedOffAtDate,
+        changedAtTime: signedOffAtTime,
+        entityId: `${member.username}:${discipline}:${distanceYards}`,
+        entityLabel: `${member.username} ${discipline} ${distanceYards}yd`,
+        entityType: "distance_sign_off",
+        req,
+        statusCode: 201,
+        target: `/api/user-profiles/${member.username}/distance-sign-offs`,
+      }).catch((auditError) => {
+        console.error("Failed to record distance sign-off audit event", auditError);
+      });
+    }
     broadcastMembersUpdated("members.distance-signoff", member.username);
 
     const loanBow = await findMemberLoanBow(member.username);
@@ -1020,14 +1237,7 @@ export function registerAdminMemberRoutes({
     res.status(201).json({
       success: true,
       message: `${discipline} ${distanceYards} yds signed off for ${member.first_name} ${member.surname}.`,
-      signOff:
-        (await memberDistanceSignOffRepository
-          .listByUsername(member.username))
-          .find(
-            (entry) =>
-              entry.discipline === discipline &&
-              entry.distanceYards === distanceYards,
-          ) ?? null,
+      signOff: updatedSignOff,
       editableProfile: await buildEditableProfileWithDistanceSignOffs(
         member,
         disciplines,
@@ -1071,6 +1281,12 @@ export function registerAdminMemberRoutes({
 
     const disciplines = await listMemberDisciplines(existingUser.username);
     const loanBow = buildLoanBowRecord(await findMemberLoanBow(existingUser.username));
+    const previousEditableProfile = await buildEditableProfileWithDistanceSignOffs(
+      existingUser,
+      disciplines,
+      await findMemberLoanBow(existingUser.username),
+      true,
+    );
     const result = await saveMemberProfile({
       username: existingUser.username,
       firstName: existingUser.first_name,
@@ -1090,6 +1306,34 @@ export function registerAdminMemberRoutes({
     if (!result.success) {
       res.status(result.status).json(result);
       return;
+    }
+
+    const updatedUser = await findMemberByUsername(existingUser.username);
+    const updatedLoanBow = await findMemberLoanBow(existingUser.username);
+    const updatedEditableProfile = await buildEditableProfileWithDistanceSignOffs(
+      updatedUser,
+      disciplines,
+      updatedLoanBow,
+      true,
+    );
+    const [assignedAtDate, assignedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "rfid_assigned",
+        actorUsername: actor.username,
+        after: updatedEditableProfile,
+        before: previousEditableProfile,
+        changedAtDate: assignedAtDate,
+        changedAtTime: assignedAtTime,
+        entityId: existingUser.username,
+        entityLabel: `${updatedUser?.first_name ?? existingUser.first_name} ${updatedUser?.surname ?? existingUser.surname}`.trim(),
+        entityType: "member_profile",
+        req,
+        target: `/api/user-profiles/${existingUser.username}/assign-rfid`,
+      }).catch((auditError) => {
+        console.error("Failed to record RFID audit event", auditError);
+      });
     }
 
     broadcastMembersUpdated("members.assign-rfid", existingUser.username);
@@ -1209,8 +1453,29 @@ export function registerAdminMemberRoutes({
     }
 
     const loanBow = sanitizeLoanBow(req.body?.loanBow);
+    const previousLoanBow = buildLoanBowRecord(await findMemberLoanBow(user.username));
 
     await saveLoanBowRecord(user.username, loanBow);
+    const updatedLoanBow = buildLoanBowRecord(await findMemberLoanBow(user.username));
+    const [savedAtDate, savedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "updated",
+        actorUsername: actor.username,
+        after: updatedLoanBow,
+        before: previousLoanBow,
+        changedAtDate: savedAtDate,
+        changedAtTime: savedAtTime,
+        entityId: user.username,
+        entityLabel: `${user.first_name} ${user.surname}`.trim(),
+        entityType: "loan_bow_profile",
+        req,
+        target: `/api/loan-bow-profiles/${user.username}`,
+      }).catch((auditError) => {
+        console.error("Failed to record loan bow audit event", auditError);
+      });
+    }
     broadcastMembersUpdated("members.loan-bow-save", user.username);
 
     res.json({
@@ -1220,7 +1485,7 @@ export function registerAdminMemberRoutes({
         fullName: `${user.first_name} ${user.surname}`,
         userType: user.user_type,
       },
-      loanBow: buildLoanBowRecord(await findMemberLoanBow(user.username)),
+      loanBow: updatedLoanBow,
     });
   });
 
@@ -1267,7 +1532,28 @@ export function registerAdminMemberRoutes({
       return;
     }
 
+    const previousLoanBow = existingLoanBow;
     await saveLoanBowRecord(user.username, returnResult.loanBow);
+    const updatedLoanBow = buildLoanBowRecord(await findMemberLoanBow(user.username));
+    const [returnedAtDate, returnedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "returned",
+        actorUsername: actor.username,
+        after: updatedLoanBow,
+        before: previousLoanBow,
+        changedAtDate: returnedAtDate,
+        changedAtTime: returnedAtTime,
+        entityId: user.username,
+        entityLabel: `${user.first_name} ${user.surname}`.trim(),
+        entityType: "loan_bow_profile",
+        req,
+        target: `/api/loan-bow-profiles/${user.username}/return`,
+      }).catch((auditError) => {
+        console.error("Failed to record loan bow audit event", auditError);
+      });
+    }
     broadcastMembersUpdated("members.loan-bow-return", user.username);
 
     res.json({
@@ -1277,7 +1563,7 @@ export function registerAdminMemberRoutes({
         fullName: `${user.first_name} ${user.surname}`,
         userType: user.user_type,
       },
-      loanBow: buildLoanBowRecord(await findMemberLoanBow(user.username)),
+      loanBow: updatedLoanBow,
     });
   });
 }

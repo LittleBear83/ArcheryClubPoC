@@ -124,6 +124,7 @@ function buildLostArrowFoundPayload(body) {
 
 export function registerLostArrowRoutes({
   app,
+  auditChangeLogger,
   getActorUser,
   getUtcTimestampParts,
   lostArrowGateway,
@@ -201,6 +202,25 @@ export function registerLostArrowRoutes({
       createdAtTime,
     });
 
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "created",
+        actorUsername: actor.username,
+        after: lostArrow,
+        before: null,
+        changedAtDate: createdAtDate,
+        changedAtTime: createdAtTime,
+        entityId: lostArrow.id,
+        entityLabel: `${lostArrow.arrowColour} ${lostArrow.arrowMaterial}`,
+        entityType: "lost_arrow",
+        req,
+        statusCode: 201,
+        target: `/api/lost-arrows/${lostArrow.id}`,
+      }).catch((auditError) => {
+        console.error("Failed to record lost arrow audit event", auditError);
+      });
+    }
+
     broadcastLostArrowUpdated("lost-arrows.create", [payload.archerUsername]);
 
     res.status(201).json({
@@ -261,11 +281,30 @@ export function registerLostArrowRoutes({
       return;
     }
 
+    const [foundAtDate, foundAtTime] = getUtcTimestampParts();
     const lostArrow = await lostArrowGateway.markLostArrowFound({
       dateFound: foundPayload.dateFound,
       foundByUsername: foundPayload.foundByUsername,
       id: lostArrowId,
     });
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "found",
+        actorUsername: actor.username,
+        after: lostArrow,
+        before: existingLostArrow,
+        changedAtDate: foundAtDate,
+        changedAtTime: foundAtTime,
+        entityId: lostArrowId,
+        entityLabel: `${existingLostArrow.arrowColour} ${existingLostArrow.arrowMaterial}`,
+        entityType: "lost_arrow",
+        req,
+        target: `/api/lost-arrows/${lostArrowId}/found`,
+      }).catch((auditError) => {
+        console.error("Failed to record lost arrow audit event", auditError);
+      });
+    }
 
     broadcastLostArrowUpdated("lost-arrows.found", [existingLostArrow.archerUsername]);
 

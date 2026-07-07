@@ -4,6 +4,7 @@ const ROLE_PERMISSION_FALLBACKS = {
   coach: ["add_coaching_sessions"],
   admin: [
     "manage_announcements",
+    "manage_range_rules",
     "manage_members",
     "manage_roles_permissions",
     "delete_roles",
@@ -28,6 +29,7 @@ const ROLE_PERMISSION_FALLBACKS = {
   ],
   developer: [
     "manage_announcements",
+    "manage_range_rules",
     "manage_members",
     "manage_roles_permissions",
     "delete_roles",

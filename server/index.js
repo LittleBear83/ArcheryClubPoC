@@ -58,6 +58,7 @@ import { createMemberAuthGateway } from "./infrastructure/persistence/memberAuth
 import { createMemberProfileGateway } from "./infrastructure/persistence/memberProfileGateway.js";
 import { createLostArrowGateway } from "./infrastructure/persistence/lostArrowGateway.js";
 import { createOutdoorTableGateway } from "./infrastructure/persistence/outdoorTableGateway.js";
+import { createRangeRulesGateway } from "./infrastructure/persistence/rangeRulesGateway.js";
 import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
 import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
 import { createTournamentGateway } from "./infrastructure/persistence/tournamentGateway.js";
@@ -75,6 +76,7 @@ import { registerAuthRoutes } from "./presentation/http/registerAuthRoutes.js";
 import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRoutes.js";
 import { registerLostArrowRoutes } from "./presentation/http/registerLostArrowRoutes.js";
 import { registerOutdoorTableRoutes } from "./presentation/http/registerOutdoorTableRoutes.js";
+import { registerRangeRulesRoutes } from "./presentation/http/registerRangeRulesRoutes.js";
 import { registerSseRoutes } from "./presentation/http/registerSseRoutes.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
@@ -486,6 +488,11 @@ const announcementGateway = createAnnouncementGateway({
   softDeleteAnnouncementById: sqliteAnnouncementStatements?.softDeleteAnnouncementById,
   pool: db.pool,
   updateAnnouncementById: sqliteAnnouncementStatements?.updateAnnouncementById,
+});
+const rangeRulesGateway = createRangeRulesGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
 });
 const serverEventBus = createServerEventBus();
 const publicServerEventBus = createServerEventBus();
@@ -3483,6 +3490,15 @@ registerAnnouncementRoutes({
   PERMISSIONS,
   serverEventBus,
   toUtcDateString,
+});
+registerRangeRulesRoutes({
+  actorHasPermission,
+  app,
+  getActorUser,
+  getUtcTimestampParts,
+  PERMISSIONS,
+  rangeRulesGateway,
+  serverEventBus,
 });
 
 registerSseRoutes({

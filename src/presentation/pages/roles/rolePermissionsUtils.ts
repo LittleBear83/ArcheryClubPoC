@@ -35,6 +35,8 @@ function getPermissionGroup(permissionKey: string): PermissionGroupKey {
     case "sign_off_distances":
     case "manage_committee_roles":
       return "member-setup";
+    case "manage_range_rules":
+      return "system-admin";
     case "add_decommission_equipment":
     case "assign_equipment":
     case "return_equipment":

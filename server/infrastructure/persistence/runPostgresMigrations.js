@@ -1,3 +1,5 @@
+import { getDefaultRangeRulesContent } from "../../../shared/rangeRulesDefaults.js";
+
 function buildInitialSchemaSql() {
   return `
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -76,6 +78,16 @@ function buildInitialSchemaSql() {
       seen_at_date TEXT NOT NULL,
       seen_at_time TEXT NOT NULL,
       PRIMARY KEY (announcement_id, username)
+    );
+
+    CREATE TABLE IF NOT EXISTS range_rules_content (
+      content_key TEXT PRIMARY KEY,
+      indoor_rules_json JSONB NOT NULL,
+      outdoor_rules_json JSONB NOT NULL,
+      outdoor_lane_rules_json JSONB NOT NULL,
+      updated_at_date TEXT NOT NULL,
+      updated_at_time TEXT NOT NULL,
+      updated_by_username TEXT REFERENCES users(username)
     );
 
     CREATE TABLE IF NOT EXISTS user_types (
@@ -489,6 +501,7 @@ function buildRolePermissionSeedSql({
   systemRoleDefinitions,
 }) {
   const statements = [];
+  const defaultRangeRulesContent = getDefaultRangeRulesContent();
 
   for (const permission of permissionDefinitions) {
     statements.push({
@@ -534,6 +547,28 @@ function buildRolePermissionSeedSql({
       ON CONFLICT(label) DO NOTHING
     `,
     values: [defaultEquipmentCupboardLabel],
+  });
+
+  statements.push({
+    sql: `
+      INSERT INTO range_rules_content (
+        content_key,
+        indoor_rules_json,
+        outdoor_rules_json,
+        outdoor_lane_rules_json,
+        updated_at_date,
+        updated_at_time,
+        updated_by_username
+      )
+      VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, '1970-01-01', '00:00:00.000Z', NULL)
+      ON CONFLICT(content_key) DO NOTHING
+    `,
+    values: [
+      "default",
+      JSON.stringify(defaultRangeRulesContent.indoorRules),
+      JSON.stringify(defaultRangeRulesContent.outdoorRules),
+      JSON.stringify(defaultRangeRulesContent.outdoorLaneRules),
+    ],
   });
 
   for (const role of committeeRoleSeed) {
@@ -1032,6 +1067,30 @@ export async function runPostgresMigrations({
       ALTER TABLE outdoor_table_entries
       ADD COLUMN IF NOT EXISTS elite_master_bowman_date TEXT NOT NULL DEFAULT ''
     `);
+
+    const defaultRangeRulesContent = getDefaultRangeRulesContent();
+
+    await client.query(
+      `
+        UPDATE range_rules_content
+        SET
+          indoor_rules_json = $1::jsonb,
+          outdoor_rules_json = $2::jsonb,
+          outdoor_lane_rules_json = $3::jsonb
+        WHERE content_key = $4
+          AND updated_at_date = $5
+          AND updated_at_time = $6
+          AND updated_by_username IS NULL
+      `,
+      [
+        JSON.stringify(defaultRangeRulesContent.indoorRules),
+        JSON.stringify(defaultRangeRulesContent.outdoorRules),
+        JSON.stringify(defaultRangeRulesContent.outdoorLaneRules),
+        "default",
+        "1970-01-01",
+        "00:00:00.000Z",
+      ],
+    );
 
     await client.query("COMMIT");
   } catch (error) {

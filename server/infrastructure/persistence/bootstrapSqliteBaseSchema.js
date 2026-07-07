@@ -1,3 +1,5 @@
+import { getDefaultRangeRulesContent } from "../../../shared/rangeRulesDefaults.js";
+
 export const LOGIN_EVENTS_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS login_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -257,6 +259,61 @@ export function bootstrapSqliteBaseSchema({
       FOREIGN KEY (username) REFERENCES users(username)
     )
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS range_rules_content (
+      content_key TEXT PRIMARY KEY,
+      indoor_rules_json TEXT NOT NULL,
+      outdoor_rules_json TEXT NOT NULL,
+      outdoor_lane_rules_json TEXT NOT NULL,
+      updated_at_date TEXT NOT NULL,
+      updated_at_time TEXT NOT NULL,
+      updated_by_username TEXT,
+      FOREIGN KEY (updated_by_username) REFERENCES users(username)
+    )
+  `);
+
+  const defaultRangeRulesContent = getDefaultRangeRulesContent();
+
+  db.prepare(`
+    INSERT OR IGNORE INTO range_rules_content (
+      content_key,
+      indoor_rules_json,
+      outdoor_rules_json,
+      outdoor_lane_rules_json,
+      updated_at_date,
+      updated_at_time,
+      updated_by_username
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    "default",
+    JSON.stringify(defaultRangeRulesContent.indoorRules),
+    JSON.stringify(defaultRangeRulesContent.outdoorRules),
+    JSON.stringify(defaultRangeRulesContent.outdoorLaneRules),
+    "1970-01-01",
+    "00:00:00.000Z",
+    null,
+  );
+
+  db.prepare(`
+    UPDATE range_rules_content
+    SET
+      indoor_rules_json = ?,
+      outdoor_rules_json = ?,
+      outdoor_lane_rules_json = ?
+    WHERE content_key = ?
+      AND updated_at_date = ?
+      AND updated_at_time = ?
+      AND updated_by_username IS NULL
+  `).run(
+    JSON.stringify(defaultRangeRulesContent.indoorRules),
+    JSON.stringify(defaultRangeRulesContent.outdoorRules),
+    JSON.stringify(defaultRangeRulesContent.outdoorLaneRules),
+    "default",
+    "1970-01-01",
+    "00:00:00.000Z",
+  );
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_types (

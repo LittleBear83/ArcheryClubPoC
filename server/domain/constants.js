@@ -3,6 +3,7 @@ import { serverRuntime } from "../config/runtime.js";
 export const PERMISSIONS = {
   MANAGE_MEMBERS: "manage_members",
   MANAGE_ANNOUNCEMENTS: "manage_announcements",
+  MANAGE_RANGE_RULES: "manage_range_rules",
   MANAGE_MEMBER_DISCIPLINES: "manage_member_disciplines",
   SIGN_OFF_DISTANCES: "sign_off_distances",
   MANAGE_ROLES_PERMISSIONS: "manage_roles_permissions",
@@ -34,6 +35,11 @@ export const PERMISSION_DEFINITIONS = [
     key: PERMISSIONS.MANAGE_ANNOUNCEMENTS,
     label: "Manage Announcements",
     description: "Create announcements and review who has seen them.",
+  },
+  {
+    key: PERMISSIONS.MANAGE_RANGE_RULES,
+    label: "Manage Range Rules",
+    description: "Update the indoor and outdoor range rules page content.",
   },
   {
     key: PERMISSIONS.MANAGE_MEMBERS,

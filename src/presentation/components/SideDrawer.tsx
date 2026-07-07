@@ -36,6 +36,7 @@ const pages = [
     path: "/outdoor-table",
     disabledForRoles: ["beginner"],
   },
+  { id: "range-rules", label: "Range Rules", path: "/range-rules" },
   { id: "feedback-form", label: "Suggestion Box", path: "/feedback-form" },
   {
     id: "lost-and-found",
@@ -53,6 +54,12 @@ const pages = [
     label: "Committee Admin",
     path: "/committee-admin",
     permission: "manage_committee_roles",
+  },
+  {
+    id: "range-rules-admin",
+    label: "Range Rules Admin",
+    path: "/range-rules-admin",
+    permission: "manage_range_rules",
   },
   { id: "general-info", label: "General Information", path: "/general-info" },
   {

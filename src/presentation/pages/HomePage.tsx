@@ -26,6 +26,8 @@ import { GeneralInfoPage } from "./GeneralInfoPage";
 import { RecordsPage } from "./RecordsPage";
 import { OutdoorTablePage } from "./OutdoorTablePage";
 import { AnnouncementsPage } from "./AnnouncementsPage";
+import { RangeRulesAdminPage } from "./RangeRulesAdminPage";
+import { RangeRulesPage } from "./RangeRulesPage";
 import { formatDate } from "../../utils/dateTime";
 import {
   getMyBeginnerDashboard,
@@ -174,6 +176,8 @@ const pageTitleMap = {
   tournaments: "Tournaments",
   records: "Records",
   "outdoor-table": "Outdoor Table",
+  "range-rules": "Range Rules",
+  "range-rules-admin": "Range Rules Admin",
   "tournament-setup": "Tournament Setup",
   "committee-org-chart": "Committee Org Chart",
   "committee-admin": "Committee Admin",
@@ -199,6 +203,8 @@ const pathToPageId = {
   "/tournaments": "tournaments",
   "/records": "records",
   "/outdoor-table": "outdoor-table",
+  "/range-rules": "range-rules",
+  "/range-rules-admin": "range-rules-admin",
   "/tournament-setup": "tournament-setup",
   "/committee-org-chart": "committee-org-chart",
   "/committee-admin": "committee-admin",
@@ -846,6 +852,16 @@ export function HomePage({
             <Route
               path="/outdoor-table"
               element={<OutdoorTablePage currentUserProfile={currentUserProfile} />}
+            />
+            <Route
+              path="/range-rules"
+              element={<RangeRulesPage currentUserProfile={currentUserProfile} />}
+            />
+            <Route
+              path="/range-rules-admin"
+              element={
+                <RangeRulesAdminPage currentUserProfile={currentUserProfile} />
+              }
             />
             <Route
               path="/tournament-setup"

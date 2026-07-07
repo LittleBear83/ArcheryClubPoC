@@ -73,11 +73,15 @@ function formatAuditAction(event: AuditEventRecord) {
 
       if (activityType === "login") {
         if (method === "rfid") {
-          return "member logged in with rfid";
+          return "member logged in via rfid";
         }
 
-        if (method === "password" || method === "password-mobile") {
-          return "member logged in";
+        if (method === "password-mobile") {
+          return "member logged in via mobile";
+        }
+
+        if (method === "password") {
+          return "member logged in via website";
         }
       }
     }
@@ -164,6 +168,30 @@ function formatAuditAction(event: AuditEventRecord) {
   }
 
   return event.action.split("_").join(" ").toLowerCase();
+}
+
+function getActivitySourceLabel(metadata: EntityChangeAuditMetadata) {
+  const changes = metadata.changes ?? [];
+  const activityType = changes.find((change) => change.path === "activityType")?.after;
+  const method = changes.find((change) => change.path === "method")?.after;
+
+  if (activityType === "mobile_check_in" || method === "mobile-app") {
+    return "Source: Mobile";
+  }
+
+  if (method === "rfid") {
+    return "Source: RFID";
+  }
+
+  if (method === "password-mobile") {
+    return "Source: Mobile";
+  }
+
+  if (method === "password") {
+    return "Source: Website";
+  }
+
+  return "";
 }
 
 function toSentenceCase(value: string) {
@@ -317,11 +345,17 @@ function AuditDetailsSummary({ event }: { event: AuditEventRecord }) {
   const entityLabel = isEntityChangeMetadata(metadata)
     ? metadata.entityLabel || metadata.entityType || ""
     : "";
+  const activitySource = isActivityAuditMetadata(metadata)
+    ? getActivitySourceLabel(metadata)
+    : "";
 
   return (
     <div className="audit-log-details-summary">
       {entityLabel ? (
         <p className="audit-log-details-heading">{entityLabel}</p>
+      ) : null}
+      {activitySource ? (
+        <p className="audit-log-preview">{activitySource}</p>
       ) : null}
       {formatMetadataPreview(event.metadata) ? (
         <p className="audit-log-preview">{formatMetadataPreview(event.metadata)}</p>

@@ -131,6 +131,10 @@ export function RangeRulesPage({ currentUserProfile }: RangeRulesPageProps) {
                 ))}
               </tbody>
             </table>
+            <tfoot>
+              * Special X targets can only be used at Club Captains discretion
+              during club shoots
+            </tfoot>
           </div>
         ) : null}
 

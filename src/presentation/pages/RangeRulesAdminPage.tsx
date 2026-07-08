@@ -104,7 +104,7 @@ export function RangeRulesAdminPage({
 
   const handleLaneRuleChange = (
     index: number,
-    field: "lanes" | "distance",
+    field: "target" | "recurve" | "compound" | "longbow" | "barebow",
     value: string,
   ) => {
     setDraft((current) => ({
@@ -118,7 +118,16 @@ export function RangeRulesAdminPage({
   const addLaneRule = () => {
     setDraft((current) => ({
       ...current,
-      outdoorLaneRules: [...current.outdoorLaneRules, { lanes: "", distance: "" }],
+      outdoorLaneRules: [
+        ...current.outdoorLaneRules,
+        {
+          target: "",
+          recurve: "",
+          compound: "",
+          longbow: "",
+          barebow: "",
+        },
+      ],
     }));
   };
 
@@ -208,30 +217,65 @@ export function RangeRulesAdminPage({
 
         <div className="range-rules-editor-card range-rules-editor-card--wide">
           <div className="range-rules-editor-header">
-            <h4>Outdoor Lane Table</h4>
+            <h4>Outdoor Distance Table</h4>
             <Button onClick={addLaneRule} size="sm" variant="secondary">
-              Add Lane Row
+              Add Table Row
             </Button>
+          </div>
+          <div className="range-rules-lane-row range-rules-lane-row--header">
+            <span>Target</span>
+            <span>Recurve</span>
+            <span>Compound</span>
+            <span>Longbow</span>
+            <span>Barebow</span>
+            <span></span>
           </div>
           {draft.outdoorLaneRules.map((entry, index) => (
             <div key={`lane-${index}`} className="range-rules-lane-row">
               <input
                 className="profile-input"
                 onChange={(event) =>
-                  handleLaneRuleChange(index, "lanes", event.target.value)
+                  handleLaneRuleChange(index, "target", event.target.value)
                 }
-                placeholder="Lanes"
+                placeholder="Target"
                 type="text"
-                value={entry.lanes}
+                value={entry.target}
               />
               <input
                 className="profile-input"
                 onChange={(event) =>
-                  handleLaneRuleChange(index, "distance", event.target.value)
+                  handleLaneRuleChange(index, "recurve", event.target.value)
                 }
-                placeholder="Maximum distance"
+                placeholder="Recurve"
                 type="text"
-                value={entry.distance}
+                value={entry.recurve}
+              />
+              <input
+                className="profile-input"
+                onChange={(event) =>
+                  handleLaneRuleChange(index, "compound", event.target.value)
+                }
+                placeholder="Compound"
+                type="text"
+                value={entry.compound}
+              />
+              <input
+                className="profile-input"
+                onChange={(event) =>
+                  handleLaneRuleChange(index, "longbow", event.target.value)
+                }
+                placeholder="Longbow"
+                type="text"
+                value={entry.longbow}
+              />
+              <input
+                className="profile-input"
+                onChange={(event) =>
+                  handleLaneRuleChange(index, "barebow", event.target.value)
+                }
+                placeholder="Barebow"
+                type="text"
+                value={entry.barebow}
               />
               <Button
                 className="range-rules-remove-button"

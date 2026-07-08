@@ -1,8 +1,11 @@
 import { buildActorHeaders, fetchApi } from "./client";
 
 export type RangeRulesLaneRule = {
-  lanes: string;
-  distance: string;
+  target: string;
+  recurve: string;
+  compound: string;
+  longbow: string;
+  barebow: string;
 };
 
 export type RangeRulesRecord = {

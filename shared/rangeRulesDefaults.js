@@ -7,14 +7,24 @@ export const DEFAULT_INDOOR_RANGE_RULES = [
 
 export const DEFAULT_OUTDOOR_RANGE_RULES = [
   "Range usage is only permitted during daylight hours.",
-  "Compound archers are to use lanes 9 to 11.",
+  "Archers are restricted to the target and maximum distances permitted for their bow style.",
   "Bosses are to be stored in the boss store at the end of each archer's shooting session.",
+  "The Special X target may only be used at the Club Captains' discretion during club shoots.",
 ];
 
 export const DEFAULT_OUTDOOR_LANE_RULES = [
-  { lanes: "1 - 2", distance: "Up to 30 yards" },
-  { lanes: "3 - 4", distance: "Up to 40 yards" },
-  { lanes: "5 - 11", distance: "Up to 100 yards" },
+  { target: "1", recurve: "30m", compound: "N/a", longbow: "30m", barebow: "30m" },
+  { target: "2", recurve: "30m", compound: "N/a", longbow: "30m", barebow: "30m" },
+  { target: "3", recurve: "50m", compound: "N/a", longbow: "50m", barebow: "50m" },
+  { target: "4", recurve: "60m", compound: "N/a", longbow: "60m", barebow: "60m" },
+  { target: "5", recurve: "60m", compound: "N/a", longbow: "60m", barebow: "60m" },
+  { target: "6", recurve: "60m", compound: "N/a", longbow: "60m", barebow: "60m" },
+  { target: "7", recurve: "60m", compound: "N/a", longbow: "60m", barebow: "60m" },
+  { target: "8", recurve: "80y", compound: "N/a", longbow: "80y", barebow: "80y" },
+  { target: "9", recurve: "100y", compound: "100y", longbow: "80y", barebow: "80y" },
+  { target: "10", recurve: "100y", compound: "100y", longbow: "80y", barebow: "100y" },
+  { target: "11", recurve: "100y", compound: "100y", longbow: "80y", barebow: "100y" },
+  { target: "Special X*", recurve: "20y", compound: "N/a", longbow: "20y", barebow: "20y" },
 ];
 
 export function getDefaultRangeRulesContent() {

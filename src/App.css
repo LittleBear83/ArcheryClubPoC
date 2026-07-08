@@ -7372,19 +7372,47 @@ button:disabled {
 }
 
 .range-rules-table {
-  width: 100%;
+  width: auto;
+  min-width: 42rem;
+  margin: 0 auto;
   border-collapse: collapse;
+  border: 2px solid var(--panel-border-strong);
+  background: var(--surface);
 }
 
 .range-rules-table th,
 .range-rules-table td {
-  padding: 0.8rem 0.95rem;
-  text-align: left;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 0.55rem 0.8rem;
+  text-align: center;
+  border-bottom: 1px solid var(--panel-border);
+  border-right: 1px solid var(--panel-border);
+  white-space: nowrap;
 }
 
 .range-rules-table th {
   font-weight: 700;
+  color: var(--text-h);
+  background: color-mix(in srgb, var(--accent-bg) 35%, var(--surface));
+}
+
+.range-rules-table th:first-child,
+.range-rules-table td:first-child {
+  text-align: left;
+  min-width: 7rem;
+}
+
+.range-rules-table th:not(:first-child),
+.range-rules-table td:not(:first-child) {
+  min-width: 7.5rem;
+}
+
+.range-rules-table th:last-child,
+.range-rules-table td:last-child {
+  border-right: 0;
+}
+
+.range-rules-table tbody tr:last-child td {
+  border-bottom: 0;
 }
 
 .range-rules-audit {
@@ -7443,8 +7471,20 @@ button:disabled {
 .range-rules-lane-row {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns:
+    minmax(110px, 0.8fr)
+    repeat(4, minmax(110px, 1fr))
+    auto;
   align-items: center;
+}
+
+.range-rules-lane-row--header {
+  margin-bottom: -0.15rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .range-rules-editor-actions {

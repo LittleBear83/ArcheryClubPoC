@@ -108,15 +108,25 @@ export function RangeRulesPage({ currentUserProfile }: RangeRulesPageProps) {
             <table className="range-rules-table">
               <thead>
                 <tr>
-                  <th>Lanes</th>
-                  <th>Maximum Distance</th>
+                  <th></th>
+                  <th colSpan={4}>Maximum Distances Permitted</th>
+                </tr>
+                <tr>
+                  <th>Target</th>
+                  <th>Recurve</th>
+                  <th>Compound</th>
+                  <th>Longbow</th>
+                  <th>Barebow</th>
                 </tr>
               </thead>
               <tbody>
                 {rangeRules.outdoorLaneRules.map((laneRule) => (
-                  <tr key={`${laneRule.lanes}-${laneRule.distance}`}>
-                    <td>{laneRule.lanes}</td>
-                    <td>{laneRule.distance}</td>
+                  <tr key={laneRule.target}>
+                    <td>{laneRule.target}</td>
+                    <td>{laneRule.recurve}</td>
+                    <td>{laneRule.compound}</td>
+                    <td>{laneRule.longbow}</td>
+                    <td>{laneRule.barebow}</td>
                   </tr>
                 ))}
               </tbody>

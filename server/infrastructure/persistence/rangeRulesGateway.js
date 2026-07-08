@@ -19,11 +19,35 @@ function normalizeRuleList(value) {
 function normalizeLaneRules(value) {
   return (safeParseJsonArray(value) ?? [])
     .map((entry) => ({
-      distance:
-        typeof entry?.distance === "string" ? entry.distance.trim() : "",
-      lanes: typeof entry?.lanes === "string" ? entry.lanes.trim() : "",
+      target: typeof entry?.target === "string"
+        ? entry.target.trim()
+        : typeof entry?.lanes === "string"
+          ? entry.lanes.trim()
+          : "",
+      recurve: typeof entry?.recurve === "string"
+        ? entry.recurve.trim()
+        : typeof entry?.distance === "string"
+          ? entry.distance.trim()
+          : "",
+      compound: typeof entry?.compound === "string" ? entry.compound.trim() : "",
+      longbow: typeof entry?.longbow === "string"
+        ? entry.longbow.trim()
+        : typeof entry?.distance === "string"
+          ? entry.distance.trim()
+          : "",
+      barebow: typeof entry?.barebow === "string"
+        ? entry.barebow.trim()
+        : typeof entry?.distance === "string"
+          ? entry.distance.trim()
+          : "",
     }))
-    .filter((entry) => entry.lanes && entry.distance);
+    .filter((entry) =>
+      entry.target &&
+      entry.recurve &&
+      entry.compound &&
+      entry.longbow &&
+      entry.barebow,
+    );
 }
 
 function buildRangeRulesResponse(row) {

@@ -855,11 +855,12 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .page-heading-group {
-  display: grid;
-  justify-items: end;
-  width: min(100%, fit-content);
-  max-width: var(--banner-title-width);
+  display: flex;
+  justify-content: flex-end;
+  width: fit-content;
+  max-width: none;
   min-width: 0;
+  margin-left: auto;
 }
 
 .page-toolbar {
@@ -913,16 +914,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .target-arch-banner .heading-wrap h1 {
-  width: 100%;
-  max-width: 100%;
+  width: auto;
+  max-width: none;
+  display: inline-block;
   margin: 0;
   font-size: var(--banner-title-font-size);
   color: var(--banner-title-color);
   text-align: right;
   pointer-events: none;
   text-shadow: var(--banner-title-shadow);
-  overflow: hidden;
-  text-overflow: ellipsis;
   overflow-wrap: normal;
   word-break: normal;
   white-space: nowrap;
@@ -5024,10 +5024,13 @@ button:disabled {
   }
 
   .page-heading-group {
+    display: grid;
     justify-items: center;
+    margin-left: 0;
   }
 
   .target-arch-banner .heading-wrap h1 {
+    display: block;
     text-align: center;
     font-size: clamp(1.15rem, 0.92rem + 1.05vw, 1.65rem);
     line-height: 1.02;

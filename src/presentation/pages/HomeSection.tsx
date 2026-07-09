@@ -1,6 +1,10 @@
 import { Button } from "../components/Button";
 import { formatDate } from "../../utils/dateTime";
-import { formatRangeMemberDisplayName, getUserProfileKey } from "../../utils/userProfile";
+import {
+  formatRangeMemberDisplayName,
+  getUserProfileKey,
+  isJuniorMemberProfile,
+} from "../../utils/userProfile";
 
 function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
   if (!mobileOnSiteFeature?.isMobile) {
@@ -129,16 +133,20 @@ function MembersAtRangeList({ members }) {
       <h3 className="home-panel-title">Current Members At The Range</h3>
       <ul className="home-info-list home-info-list--members">
         {members.length > 0 ? (
-          members.map((member) => (
-            <li key={getUserProfileKey(member)}>
-              {formatRangeMemberDisplayName(member)}
-              {member.membership.disciplines?.length
-                ? ` - ${member.membership.disciplines.join(", ")}`
-                : member.accountType === "guest"
-                  ? " - Guest"
-                  : ""}
-            </li>
-          ))
+          members.map((member) => {
+            const isJuniorMember = isJuniorMemberProfile(member);
+
+            return (
+              <li key={getUserProfileKey(member)}>
+                {formatRangeMemberDisplayName(member)}
+                {!isJuniorMember && member.membership.disciplines?.length
+                  ? ` - ${member.membership.disciplines.join(", ")}`
+                  : !isJuniorMember && member.accountType === "guest"
+                    ? " - Guest"
+                    : ""}
+              </li>
+            );
+          })
         ) : (
           <li>No members have logged in within the last 2 hours</li>
         )}

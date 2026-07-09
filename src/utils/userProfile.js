@@ -113,7 +113,7 @@ export function formatRangeMemberDisplayName(value) {
   }
 
   const role = getDisplayRole(value);
-  const isJuniorMember = Boolean(value.meta?.juniorMember ?? value.juniorMember);
+  const isJuniorMember = isJuniorMemberProfile(value);
 
   if (isJuniorMember) {
     return withRoleDisplaySuffix("Jnr", role);
@@ -126,6 +126,14 @@ export function formatRangeMemberDisplayName(value) {
     "";
 
   return withRoleDisplaySuffix(firstName, role);
+}
+
+export function isJuniorMemberProfile(value) {
+  if (!value) {
+    return false;
+  }
+
+  return Boolean(value.meta?.juniorMember ?? value.juniorMember);
 }
 
 export function formatMemberDisplayUsername(value) {

@@ -492,6 +492,8 @@ export function EventCalendarPage({
     onSuccess: async (result) => {
       const firstCreatedEvent = result.createdEvents[0] ?? null;
 
+      setIsModalOpen(false);
+
       queryClient.setQueryData<CalendarEvent[]>(
         eventQueryKeys.list(actorUsername),
         (existingEvents = []) =>
@@ -524,7 +526,6 @@ export function EventCalendarPage({
       setSelectedMultiDates([]);
       setMultiDateModalOpen(false);
       setEventFormError("");
-      setIsModalOpen(false);
       setBookingMessage(getCreatedEventMessage(result.createdEvents, result.failures));
     },
     onError: (error: Error) => {

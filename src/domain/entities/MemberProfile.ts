@@ -42,6 +42,7 @@ export type EditableMemberProfile = {
   rfidTag: string;
   activeMember: boolean;
   affiliateMember: boolean;
+  juniorMember: boolean;
   membershipFeesDue: string;
   coachingVolunteer: boolean;
   userType: string;
@@ -59,6 +60,7 @@ export type MemberProfileFormInput = {
   rfidTag?: string;
   activeMember?: boolean;
   affiliateMember?: boolean;
+  juniorMember?: boolean;
   membershipFeesDue?: string;
   coachingVolunteer?: boolean;
   userType?: string;

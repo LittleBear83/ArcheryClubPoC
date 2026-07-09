@@ -18,6 +18,7 @@ function normalizeUserRows(rows) {
   return rows.map((row) => ({
     ...row,
     active_member: Number(row.active_member ?? 0),
+    junior_member: Number(row.junior_member ?? 0),
   }));
 }
 
@@ -207,6 +208,7 @@ function createPostgresActivityReportingGateway({ pool }) {
           users.surname,
           users.rfid_tag,
           users.active_member,
+          users.junior_member,
           users.membership_fees_due,
           user_types.user_type,
           MAX(login_events.logged_in_date::text || 'T' || login_events.logged_in_time::text) AS last_logged_in_at
@@ -215,7 +217,7 @@ function createPostgresActivityReportingGateway({ pool }) {
         INNER JOIN user_types ON user_types.user_id = users.id
         WHERE (login_events.logged_in_date::text || 'T' || login_events.logged_in_time::text) >= $1
           AND login_events.login_method != 'password-mobile'
-        GROUP BY users.id, users.username, users.first_name, users.surname, users.rfid_tag, users.active_member, users.membership_fees_due, user_types.user_type
+        GROUP BY users.id, users.username, users.first_name, users.surname, users.rfid_tag, users.active_member, users.junior_member, users.membership_fees_due, user_types.user_type
         ORDER BY users.surname ASC, users.first_name ASC`,
         [cutoff],
       );

@@ -30,6 +30,7 @@ export function bootstrapSqliteUserCompatibility({ db }) {
           rfid_tag TEXT UNIQUE,
           active_member INTEGER NOT NULL DEFAULT 1,
           affiliate_member INTEGER NOT NULL DEFAULT 0,
+          junior_member INTEGER NOT NULL DEFAULT 0,
           membership_fees_due TEXT,
           coaching_volunteer INTEGER NOT NULL DEFAULT 0
         )
@@ -43,6 +44,8 @@ export function bootstrapSqliteUserCompatibility({ db }) {
           password,
           rfid_tag,
           active_member,
+          affiliate_member,
+          junior_member,
           membership_fees_due,
           coaching_volunteer
         )
@@ -54,6 +57,8 @@ export function bootstrapSqliteUserCompatibility({ db }) {
           password,
           rfid_tag,
           COALESCE(active_member, 1),
+          COALESCE(affiliate_member, 0),
+          0,
           membership_fees_due,
           COALESCE(coaching_volunteer, 0)
         FROM users_old
@@ -244,6 +249,12 @@ export function bootstrapSqliteUserCompatibility({ db }) {
   if (!userColumns.some((column) => column.name === "affiliate_member")) {
     db.exec(
       `ALTER TABLE users ADD COLUMN affiliate_member INTEGER NOT NULL DEFAULT 0`,
+    );
+  }
+
+  if (!userColumns.some((column) => column.name === "junior_member")) {
+    db.exec(
+      `ALTER TABLE users ADD COLUMN junior_member INTEGER NOT NULL DEFAULT 0`,
     );
   }
 

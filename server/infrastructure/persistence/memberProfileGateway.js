@@ -276,10 +276,11 @@ function createPostgresMemberProfileGateway({
               rfid_tag,
               active_member,
               affiliate_member,
+              junior_member,
               membership_fees_due,
               coaching_volunteer
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             ON CONFLICT(username) DO UPDATE SET
               first_name = EXCLUDED.first_name,
               surname = EXCLUDED.surname,
@@ -288,6 +289,7 @@ function createPostgresMemberProfileGateway({
               rfid_tag = EXCLUDED.rfid_tag,
               active_member = EXCLUDED.active_member,
               affiliate_member = EXCLUDED.affiliate_member,
+              junior_member = EXCLUDED.junior_member,
               membership_fees_due = EXCLUDED.membership_fees_due,
               coaching_volunteer = EXCLUDED.coaching_volunteer
           `,
@@ -300,6 +302,7 @@ function createPostgresMemberProfileGateway({
             userPayload.rfidTag,
             userPayload.activeMember,
             userPayload.affiliateMember,
+            userPayload.juniorMember,
             userPayload.membershipFeesDue,
             userPayload.coachingVolunteer,
           ],

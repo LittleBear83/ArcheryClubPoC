@@ -19,6 +19,7 @@ export function bootstrapSqliteUserData({
       rfid_tag,
       active_member,
       affiliate_member,
+      junior_member,
       membership_fees_due,
       coaching_volunteer
     )
@@ -31,6 +32,7 @@ export function bootstrapSqliteUserData({
       @rfidTag,
       @activeMember,
       @affiliateMember,
+      @juniorMember,
       @membershipFeesDue,
       @coachingVolunteer
     )
@@ -42,6 +44,7 @@ export function bootstrapSqliteUserData({
       rfid_tag = excluded.rfid_tag,
       active_member = excluded.active_member,
       affiliate_member = excluded.affiliate_member,
+      junior_member = excluded.junior_member,
       membership_fees_due = excluded.membership_fees_due,
       coaching_volunteer = excluded.coaching_volunteer
   `);
@@ -109,6 +112,7 @@ export function bootstrapSqliteUserData({
         emailAddress: user.emailAddress ?? null,
         activeMember: user.activeMember ? 1 : 0,
         affiliateMember: user.affiliateMember ? 1 : 0,
+        juniorMember: user.juniorMember ? 1 : 0,
         coachingVolunteer: user.coachingVolunteer ? 1 : 0,
       });
       upsertUserType.run(user);
@@ -142,6 +146,7 @@ export function bootstrapSqliteUserData({
       users.rfid_tag,
       users.active_member,
       users.affiliate_member,
+      users.junior_member,
       users.membership_fees_due,
       users.coaching_volunteer,
       user_types.user_type
@@ -184,6 +189,7 @@ export function bootstrapSqliteUserData({
       users.rfid_tag,
       users.active_member,
       users.affiliate_member,
+      users.junior_member,
       users.membership_fees_due,
       users.coaching_volunteer,
       user_types.user_type
@@ -203,6 +209,7 @@ export function bootstrapSqliteUserData({
       users.rfid_tag,
       users.active_member,
       users.affiliate_member,
+      users.junior_member,
       users.membership_fees_due,
       users.coaching_volunteer,
       user_types.user_type
@@ -221,6 +228,7 @@ export function bootstrapSqliteUserData({
       users.rfid_tag,
       users.active_member,
       users.affiliate_member,
+      users.junior_member,
       users.membership_fees_due,
       users.coaching_volunteer,
       user_types.user_type

@@ -564,6 +564,7 @@ export function useProfilePageState({
       rfidTag: canManageMembers ? editableProfile.rfidTag : undefined,
       activeMember: editableProfile.activeMember,
       affiliateMember: editableProfile.affiliateMember,
+      juniorMember: editableProfile.juniorMember,
       membershipFeesDue: editableProfile.membershipFeesDue,
       coachingVolunteer: editableProfile.coachingVolunteer,
       userType: editableProfile.userType,

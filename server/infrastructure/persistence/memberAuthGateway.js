@@ -7,6 +7,7 @@ function normalizeUserRow(row) {
     ...row,
     active_member: Number(row.active_member ?? 0),
     affiliate_member: Number(row.affiliate_member ?? 0),
+    junior_member: Number(row.junior_member ?? 0),
     coaching_volunteer: Number(row.coaching_volunteer ?? 0),
   };
 }
@@ -31,6 +32,7 @@ function mapUserPayloadToSqliteProfile(user) {
     rfidTag: user.rfidTag,
     activeMember: user.activeMember,
     affiliateMember: user.affiliateMember,
+    juniorMember: user.juniorMember,
     membershipFeesDue: user.membershipFeesDue,
     coachingVolunteer: user.coachingVolunteer,
   };
@@ -120,6 +122,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.rfid_tag,
             users.active_member,
             users.affiliate_member,
+            users.junior_member,
             users.membership_fees_due,
             users.coaching_volunteer,
             user_types.user_type
@@ -146,6 +149,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.rfid_tag,
             users.active_member,
             users.affiliate_member,
+            users.junior_member,
             users.membership_fees_due,
             users.coaching_volunteer,
             user_types.user_type
@@ -172,6 +176,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.rfid_tag,
             users.active_member,
             users.affiliate_member,
+            users.junior_member,
             users.membership_fees_due,
             users.coaching_volunteer,
             user_types.user_type
@@ -197,6 +202,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.rfid_tag,
             users.active_member,
             users.affiliate_member,
+            users.junior_member,
             users.membership_fees_due,
             users.coaching_volunteer,
             user_types.user_type

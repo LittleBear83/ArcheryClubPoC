@@ -1,6 +1,6 @@
 import { Button } from "../components/Button";
 import { formatDate } from "../../utils/dateTime";
-import { formatMemberDisplayName, getUserProfileKey } from "../../utils/userProfile";
+import { formatRangeMemberDisplayName, getUserProfileKey } from "../../utils/userProfile";
 
 function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
   if (!mobileOnSiteFeature?.isMobile) {
@@ -131,7 +131,7 @@ function MembersAtRangeList({ members }) {
         {members.length > 0 ? (
           members.map((member) => (
             <li key={getUserProfileKey(member)}>
-              {formatMemberDisplayName(member)}
+              {formatRangeMemberDisplayName(member)}
               {member.membership.disciplines?.length
                 ? ` - ${member.membership.disciplines.join(", ")}`
                 : member.accountType === "guest"

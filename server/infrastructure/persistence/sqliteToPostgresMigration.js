@@ -22,6 +22,8 @@ const orderedTableCopies = [
       "password",
       "rfid_tag",
       "active_member",
+      "affiliate_member",
+      "junior_member",
       "membership_fees_due",
       "coaching_volunteer",
     ],

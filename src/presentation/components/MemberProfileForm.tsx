@@ -141,6 +141,18 @@ export function MemberProfileForm({
         </label>
 
         <label>
+          Junior member
+          <select
+            value={editableProfile.juniorMember ? "yes" : "no"}
+            onChange={handleBooleanSelectChange("juniorMember", "yes")}
+            disabled={!isAdmin || isProfileLocked}
+          >
+            <option value="no">No</option>
+            <option value="yes">Yes</option>
+          </select>
+        </label>
+
+        <label>
           Membership fees due
           <DatePicker
             value={editableProfile.membershipFeesDue}

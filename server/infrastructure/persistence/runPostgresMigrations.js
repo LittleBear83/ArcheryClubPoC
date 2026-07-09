@@ -17,6 +17,7 @@ function buildInitialSchemaSql() {
       rfid_tag TEXT UNIQUE,
       active_member INTEGER NOT NULL DEFAULT 1,
       affiliate_member INTEGER NOT NULL DEFAULT 0,
+      junior_member INTEGER NOT NULL DEFAULT 0,
       membership_fees_due TEXT,
       coaching_volunteer INTEGER NOT NULL DEFAULT 0
     );
@@ -611,10 +612,11 @@ function buildRolePermissionSeedSql({
           rfid_tag,
           active_member,
           affiliate_member,
+          junior_member,
           membership_fees_due,
           coaching_volunteer
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT(username) DO UPDATE SET
           first_name = EXCLUDED.first_name,
           surname = EXCLUDED.surname,
@@ -623,6 +625,7 @@ function buildRolePermissionSeedSql({
           rfid_tag = EXCLUDED.rfid_tag,
           active_member = EXCLUDED.active_member,
           affiliate_member = EXCLUDED.affiliate_member,
+          junior_member = EXCLUDED.junior_member,
           membership_fees_due = EXCLUDED.membership_fees_due,
           coaching_volunteer = EXCLUDED.coaching_volunteer
       `,
@@ -635,6 +638,7 @@ function buildRolePermissionSeedSql({
         user.rfidTag,
         user.activeMember ? 1 : 0,
         user.affiliateMember ? 1 : 0,
+        user.juniorMember ? 1 : 0,
         user.membershipFeesDue,
         user.coachingVolunteer ? 1 : 0,
       ],
@@ -962,6 +966,10 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS affiliate_member INTEGER NOT NULL DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS junior_member INTEGER NOT NULL DEFAULT 0
     `);
     await client.query(`
       ALTER TABLE announcements

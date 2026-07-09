@@ -911,6 +911,7 @@ export function registerAdminMemberRoutes({
       rfidTag,
       activeMember,
       affiliateMember,
+      juniorMember,
       membershipFeesDue,
       coachingVolunteer,
       userType,
@@ -935,6 +936,7 @@ export function registerAdminMemberRoutes({
       rfidTag,
       activeMember,
       affiliateMember,
+      juniorMember,
       membershipFeesDue,
       coachingVolunteer,
       userType,
@@ -1039,6 +1041,7 @@ export function registerAdminMemberRoutes({
       rfidTag,
       activeMember,
       affiliateMember,
+      juniorMember,
       membershipFeesDue,
       coachingVolunteer,
       userType,
@@ -1066,6 +1069,9 @@ export function registerAdminMemberRoutes({
       affiliateMember: canManageMembers
         ? affiliateMember
         : existingUser.affiliate_member,
+      juniorMember: canManageMembers
+        ? juniorMember
+        : existingUser.junior_member,
       membershipFeesDue: canManageMembers
         ? membershipFeesDue
         : existingUser.membership_fees_due,
@@ -1295,6 +1301,7 @@ export function registerAdminMemberRoutes({
       rfidTag,
       activeMember: existingUser.active_member,
       affiliateMember: existingUser.affiliate_member,
+      juniorMember: existingUser.junior_member,
       membershipFeesDue: existingUser.membership_fees_due,
       coachingVolunteer: existingUser.coaching_volunteer,
       userType: existingUser.user_type,

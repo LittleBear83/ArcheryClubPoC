@@ -13,6 +13,7 @@ const EMPTY_PROFILE = {
   rfidTag: "",
   activeMember: true,
   affiliateMember: false,
+  juniorMember: false,
   membershipFeesDue: new Date().toISOString().slice(0, 10),
   coachingVolunteer: false,
   userType: "general",

@@ -107,6 +107,27 @@ export function formatMemberDisplayName(value) {
   return withRoleDisplaySuffix(fullName, role);
 }
 
+export function formatRangeMemberDisplayName(value) {
+  if (!value) {
+    return "";
+  }
+
+  const role = getDisplayRole(value);
+  const isJuniorMember = Boolean(value.meta?.juniorMember ?? value.juniorMember);
+
+  if (isJuniorMember) {
+    return withRoleDisplaySuffix("Jnr", role);
+  }
+
+  const firstName =
+    value.personal?.firstName ??
+    value.firstName ??
+    value.first_name ??
+    "";
+
+  return withRoleDisplaySuffix(firstName, role);
+}
+
 export function formatMemberDisplayUsername(value) {
   if (!value) {
     return "";

@@ -939,16 +939,22 @@ export function EventCalendarPage({
     mutationFn: async (event: CalendarEvent) =>
       cancelEvent(actorUsername, event.id),
     onSuccess: async (_result, event) => {
-      await queryClient.invalidateQueries({
-        queryKey: eventQueryKeys.list(actorUsername),
-      });
-      setBookingMessage(`${event.title} cancelled successfully.`);
       setCancelEventModalOpen(false);
       setCancelEventId(null);
       setCancelConfirmationOpen(false);
       setCancelConfirmationText("");
       setSelectedEventId((current) => (current === event.id ? null : current));
+      queryClient.setQueryData<CalendarEvent[]>(
+        eventQueryKeys.list(actorUsername),
+        (existingEvents = []) =>
+          existingEvents.filter((existingEvent) => existingEvent.id !== event.id),
+      );
+      setBookingMessage(`${event.title} cancelled successfully.`);
       onBookingsChanged?.();
+
+      await queryClient.invalidateQueries({
+        queryKey: eventQueryKeys.list(actorUsername),
+      });
     },
     onError: (error: Error) => {
       setBookingMessage(error.message);

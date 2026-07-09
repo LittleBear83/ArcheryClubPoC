@@ -921,10 +921,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   text-align: right;
   pointer-events: none;
   text-shadow: var(--banner-title-shadow);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
   word-break: normal;
-  white-space: normal;
-  text-wrap: balance;
+  white-space: nowrap;
 }
 
 .target-arch-banner h1 {
@@ -5028,11 +5029,9 @@ button:disabled {
 
   .target-arch-banner .heading-wrap h1 {
     text-align: center;
-    font-size: clamp(1.3rem, 1.08rem + 1.05vw, 1.75rem);
+    font-size: clamp(1.15rem, 0.92rem + 1.05vw, 1.65rem);
     line-height: 1.02;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    text-wrap: balance;
+    white-space: nowrap;
   }
 
   .profile-member-select,
@@ -5345,10 +5344,8 @@ button:disabled {
   }
 
   .target-arch-banner .heading-wrap h1 {
-    font-size: 1.55rem;
-    white-space: normal;
-    overflow-wrap: anywhere;
-    text-wrap: balance;
+    font-size: 1.35rem;
+    white-space: nowrap;
   }
 
   .page-toolbar {

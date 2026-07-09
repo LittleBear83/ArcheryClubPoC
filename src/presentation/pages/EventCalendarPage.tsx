@@ -38,6 +38,16 @@ function getTodayDateString() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function parseDateString(dateString: string) {
+  const [year, month, day] = dateString.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day, 12, 0, 0);
+}
+
 function addDays(dateString: string, daysToAdd: number) {
   const nextDate = new Date(`${dateString}T12:00:00`);
   nextDate.setDate(nextDate.getDate() + daysToAdd);
@@ -224,6 +234,72 @@ function getCourseParticipantLabel(lesson: BeginnersCourseCalendarLesson) {
 function getCancelledSummary(reason?: string) {
   const cancellationReason = reason?.trim();
   return cancellationReason ? ` | Cancelled: ${cancellationReason}` : " | Cancelled";
+}
+
+function mergeCalendarEvents(
+  existingEvents: CalendarEvent[],
+  createdEvents: CalendarEvent[],
+) {
+  const eventsById = new Map(
+    existingEvents.map((event) => [String(event.id), event]),
+  );
+
+  for (const event of createdEvents) {
+    eventsById.set(String(event.id), event);
+  }
+
+  return [...eventsById.values()].sort((left, right) => {
+    const byDate = left.date.localeCompare(right.date);
+
+    if (byDate !== 0) {
+      return byDate;
+    }
+
+    const byStartTime = left.startTime.localeCompare(right.startTime);
+
+    if (byStartTime !== 0) {
+      return byStartTime;
+    }
+
+    return String(left.id).localeCompare(String(right.id));
+  });
+}
+
+function getCreatedEventMessage(createdEvents: CalendarEvent[], failures: string[]) {
+  const pendingCount = createdEvents.filter((event) => event.isPendingApproval).length;
+  const approvedCount = createdEvents.filter((event) => event.isApproved).length;
+
+  if (createdEvents.length === 1) {
+    if (pendingCount === 1) {
+      return "Event submitted for approval.";
+    }
+
+    if (approvedCount === 1) {
+      return "Event approved and published successfully.";
+    }
+  }
+
+  const messageParts = [`${createdEvents.length} event${createdEvents.length === 1 ? "" : "s"} saved.`];
+
+  if (pendingCount > 0) {
+    messageParts.push(
+      `${pendingCount} awaiting approval.`,
+    );
+  }
+
+  if (approvedCount > 0) {
+    messageParts.push(
+      `${approvedCount} published immediately.`,
+    );
+  }
+
+  if (failures.length > 0) {
+    messageParts.push(
+      `${failures.length} could not be created.`,
+    );
+  }
+
+  return messageParts.join(" ");
 }
 
 const eventQueryKeys = {
@@ -414,9 +490,27 @@ export function EventCalendarPage({
       };
     },
     onSuccess: async (result) => {
+      const firstCreatedEvent = result.createdEvents[0] ?? null;
+
+      queryClient.setQueryData<CalendarEvent[]>(
+        eventQueryKeys.list(actorUsername),
+        (existingEvents = []) =>
+          mergeCalendarEvents(existingEvents, result.createdEvents),
+      );
       await queryClient.invalidateQueries({
         queryKey: eventQueryKeys.list(actorUsername),
       });
+      if (firstCreatedEvent?.date) {
+        const createdEventDate = parseDateString(firstCreatedEvent.date);
+
+        setSelectedDate(firstCreatedEvent.date);
+        setSelectedEventId(firstCreatedEvent.id);
+
+        if (createdEventDate) {
+          setYear(createdEventDate.getFullYear());
+          setMonth(createdEventDate.getMonth());
+        }
+      }
       setNewEvent("");
       setNewEventDate(today.toISOString().slice(0, 10));
       setNewEventStartTime("09:00");
@@ -431,11 +525,7 @@ export function EventCalendarPage({
       setMultiDateModalOpen(false);
       setEventFormError("");
       setIsModalOpen(false);
-      setBookingMessage(
-        result.failures.length > 0
-          ? `${result.createdEvents.length} event${result.createdEvents.length === 1 ? "" : "s"} saved. ${result.failures.length} could not be created.`
-          : `${result.createdEvents.length} event${result.createdEvents.length === 1 ? "" : "s"} saved successfully.`,
-      );
+      setBookingMessage(getCreatedEventMessage(result.createdEvents, result.failures));
     },
     onError: (error: Error) => {
       setEventFormError(error.message);

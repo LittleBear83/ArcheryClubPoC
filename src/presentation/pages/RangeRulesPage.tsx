@@ -112,7 +112,7 @@ export function RangeRulesPage({ currentUserProfile }: RangeRulesPageProps) {
                   <th colSpan={4}>Maximum Distances Permitted</th>
                 </tr>
                 <tr>
-                  <th>Target</th>
+                  <th>Lane</th>
                   <th>Recurve</th>
                   <th>Compound</th>
                   <th>Longbow</th>

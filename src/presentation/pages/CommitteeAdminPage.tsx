@@ -57,8 +57,11 @@ const committeeQueryKeys = {
 const createOptionValue = "__create__";
 const MAX_COMMITTEE_PHOTO_DIMENSION_PX = 1200;
 const TARGET_COMMITTEE_PHOTO_DATA_URL_LENGTH = 850_000;
+const MAX_ORIGINAL_COMMITTEE_PHOTO_DATA_URL_LENGTH = 4_500_000;
 const MIN_COMMITTEE_PHOTO_QUALITY = 0.45;
 const COMMITTEE_PHOTO_QUALITY_STEP = 0.1;
+const COMMITTEE_PHOTO_ACCEPT_VALUE =
+  "image/*,.heic,.heif,.avif,.svg,.bmp,.tif,.tiff";
 
 const emptyDraft: CommitteeRoleDraft = {
   title: "",
@@ -95,6 +98,26 @@ function loadImageFromFile(file: File) {
       reject(new Error("The selected image could not be read."));
     };
     image.src = objectUrl;
+  });
+}
+
+function loadFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result !== "string" || !reader.result) {
+        reject(new Error("The selected image could not be read."));
+        return;
+      }
+
+      resolve(reader.result);
+    };
+    reader.onerror = () => {
+      reject(new Error("The selected image could not be read."));
+    };
+
+    reader.readAsDataURL(file);
   });
 }
 
@@ -157,6 +180,28 @@ async function buildCompressedImageDataUrl(file: File) {
   throw new Error(
     "The selected image is still too large after compression. Please choose a smaller photo.",
   );
+}
+
+async function buildCommitteePhotoDataUrl(file: File) {
+  try {
+    return await buildCompressedImageDataUrl(file);
+  } catch (error) {
+    const fallbackDataUrl = await loadFileAsDataUrl(file);
+
+    if (!fallbackDataUrl.startsWith("data:image/")) {
+      throw new Error("Please choose an image file for the committee profile photo.");
+    }
+
+    if (fallbackDataUrl.length > MAX_ORIGINAL_COMMITTEE_PHOTO_DATA_URL_LENGTH) {
+      throw new Error(
+        "The selected image is too large to upload directly. Please choose a smaller photo.",
+      );
+    }
+
+    // Preserve formats the browser could not safely decode onto a canvas,
+    // such as some phone-originated image types.
+    return fallbackDataUrl;
+  }
 }
 
 export function CommitteeAdminPage({ currentUserProfile }) {
@@ -313,7 +358,7 @@ export function CommitteeAdminPage({ currentUserProfile }) {
     }
 
     try {
-      const dataUrl = await buildCompressedImageDataUrl(file);
+      const dataUrl = await buildCommitteePhotoDataUrl(file);
       handleActiveDraftChange("photoDataUrl", dataUrl);
       setError("");
     } catch (photoError) {
@@ -464,7 +509,7 @@ export function CommitteeAdminPage({ currentUserProfile }) {
                 <span>Upload profile photo</span>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept={COMMITTEE_PHOTO_ACCEPT_VALUE}
                   onChange={(event) => handlePhotoSelected(event.target.files?.[0] ?? null)}
                   disabled={isSavingCurrent}
                 />

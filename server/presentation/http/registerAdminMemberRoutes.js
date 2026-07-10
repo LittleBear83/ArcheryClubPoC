@@ -482,9 +482,9 @@ export function registerAdminMemberRoutes({
     return typeof value === "string" ? value.trim() : fallback;
   }
 
-  const MAX_COMMITTEE_PHOTO_DATA_URL_LENGTH = 1_000_000;
+  const MAX_COMMITTEE_PHOTO_DATA_URL_LENGTH = 5_000_000;
   const COMMITTEE_PHOTO_DATA_URL_PATTERN =
-    /^data:image\/(?:png|jpeg|jpg|webp);base64,[a-z0-9+/=]+$/i;
+    /^data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i;
 
   function normalizeCommitteeRolePhotoDataUrl(value) {
     if (typeof value !== "string") {

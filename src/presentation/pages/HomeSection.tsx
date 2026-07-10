@@ -6,6 +6,17 @@ import {
   isJuniorMemberProfile,
 } from "../../utils/userProfile";
 
+function getFirstNameOnly(value) {
+  const displayName =
+    value?.personal?.firstName ??
+    value?.firstName ??
+    value?.first_name ??
+    value?.archerName ??
+    "";
+
+  return String(displayName).trim().split(/\s+/)[0] || "";
+}
+
 function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
   if (!mobileOnSiteFeature?.isMobile) {
     return null;
@@ -127,6 +138,43 @@ function TournamentRemindersList({ reminders }) {
   );
 }
 
+function CurrentLostArrowsCard({ lostArrows, onOpenLostAndFound }) {
+  const currentLostArrowCount = lostArrows.length;
+  const latestLostArrow = lostArrows[0] ?? null;
+
+  return (
+    <button
+      type="button"
+      className="home-panel home-panel--interactive"
+      onClick={onOpenLostAndFound}
+      aria-label="Open the lost arrow page"
+    >
+      <h3 className="home-panel-title">Current Lost Arrows</h3>
+      <div className="home-panel-copy">
+        <p className="home-panel-stat">{currentLostArrowCount}</p>
+        <p>
+          {currentLostArrowCount === 1
+            ? "arrow is currently recorded as lost."
+            : "arrows are currently recorded as lost."}
+        </p>
+        {latestLostArrow ? (
+          <p>
+            Latest:{" "}
+            <strong>
+              {latestLostArrow.arrowColour} {latestLostArrow.arrowMaterial}
+            </strong>{" "}
+            for {getFirstNameOnly(latestLostArrow) || latestLostArrow.archerUsername} on{" "}
+            <strong>{formatDate(latestLostArrow.dateLost)}</strong>
+          </p>
+        ) : (
+          <p>No open lost arrows right now.</p>
+        )}
+        <p className="home-panel-link-copy">Open Lost Arrow Page</p>
+      </div>
+    </button>
+  );
+}
+
 function MembersAtRangeList({ members }) {
   return (
     <section className="home-panel">
@@ -221,6 +269,8 @@ export function HomeSection({
   members,
   signedUpEvents,
   tournamentReminders,
+  lostArrows,
+  onOpenLostAndFound,
   beginnerDashboard,
   beginnerCoachAssignments,
   mobileOnSiteFeature = null,
@@ -229,6 +279,10 @@ export function HomeSection({
   return (
     <div className="home-split-view">
       <MembersAtRangeList members={members} />
+      <CurrentLostArrowsCard
+        lostArrows={lostArrows}
+        onOpenLostAndFound={onOpenLostAndFound}
+      />
       {hideEventPanels ? null : <SignedUpEventsList events={signedUpEvents} />}
       {hideEventPanels ? null : (
         <TournamentRemindersList reminders={tournamentReminders} />

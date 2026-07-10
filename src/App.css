@@ -879,8 +879,76 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   width: 100%;
   display: flex;
   justify-content: flex-end;
+  align-items: flex-start;
+  gap: 12px;
   flex-wrap: wrap;
   transform: translateY(0);
+}
+
+.lost-arrow-toast-stack {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 120;
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.lost-arrow-toast {
+  width: min(100%, 360px);
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, #5ebd3e 72%, var(--panel-border-strong));
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgb(33 94 24 / 0.98), rgb(87 154 56 / 0.95));
+  color: #f7fff2;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.28);
+  pointer-events: auto;
+  animation: lost-arrow-toast-slide-up 0.28s ease-out;
+}
+
+.lost-arrow-toast-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.lost-arrow-toast-copy strong {
+  color: #d8ffaf;
+  font-size: 0.88rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.lost-arrow-toast-copy p {
+  margin: 0;
+  color: inherit;
+  line-height: 1.4;
+}
+
+.lost-arrow-toast-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lost-arrow-toast-dismiss {
+  color: #f7fff2;
+}
+
+@keyframes lost-arrow-toast-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .theme-toggle-button {
@@ -1303,6 +1371,31 @@ button:disabled {
   border-radius: 18px;
   background: var(--surface);
   min-height: 100%;
+}
+
+.home-panel--interactive {
+  width: 100%;
+  display: block;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.home-panel--interactive:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+  box-shadow: 0 20px 44px rgb(0 0 0 / 0.28);
+  transform: translateY(-2px);
+}
+
+.home-panel--interactive:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .profile-page {
@@ -2782,6 +2875,19 @@ button:disabled {
   margin: 0;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.home-panel-stat {
+  margin: 0;
+  color: var(--accent);
+  font-size: clamp(2rem, 1.5rem + 1.2vw, 2.8rem);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.home-panel-link-copy {
+  color: var(--accent) !important;
+  font-weight: 700;
 }
 
 .home-info-list {
@@ -5011,6 +5117,26 @@ button:disabled {
     justify-content: flex-end;
     padding-right: 0;
     transform: none;
+  }
+
+  .lost-arrow-toast-stack {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    width: auto;
+    justify-items: stretch;
+  }
+
+  .lost-arrow-toast {
+    width: 100%;
+  }
+
+  .lost-arrow-toast-actions {
+    justify-content: stretch;
+  }
+
+  .lost-arrow-toast-actions .app-button {
+    flex: 1 1 160px;
   }
 
   .page-shell {

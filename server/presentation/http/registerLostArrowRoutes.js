@@ -131,19 +131,18 @@ export function registerLostArrowRoutes({
   memberAuthGateway,
   serverEventBus,
 }) {
-  function broadcastLostArrowUpdated(scope = "lost-arrows", usernames = []) {
-    serverEventBus?.broadcastToAll("lost-found.updated", {
+  function broadcastLostArrowUpdated(scope = "lost-arrows", usernames = [], details = {}) {
+    const payload = {
       changedAt: new Date().toISOString(),
       scope,
       usernames,
-    });
+      ...details,
+    };
+
+    serverEventBus?.broadcastToAll("lost-found.updated", payload);
 
     if (usernames.length > 0) {
-      serverEventBus?.broadcastToUsers(usernames, "lost-found.updated", {
-        changedAt: new Date().toISOString(),
-        scope,
-        usernames,
-      });
+      serverEventBus?.broadcastToUsers(usernames, "lost-found.updated", payload);
     }
   }
 
@@ -221,7 +220,15 @@ export function registerLostArrowRoutes({
       });
     }
 
-    broadcastLostArrowUpdated("lost-arrows.create", [payload.archerUsername]);
+    broadcastLostArrowUpdated("lost-arrows.create", [payload.archerUsername], {
+      action: "created",
+      archerName: lostArrow.archerName || lostArrow.archerUsername,
+      archerUsername: lostArrow.archerUsername,
+      arrowId: lostArrow.id,
+      arrowSummary: `${lostArrow.arrowColour} ${lostArrow.arrowMaterial} arrow`,
+      message: `${lostArrow.archerName || lostArrow.archerUsername} reported a lost ${lostArrow.arrowColour} ${lostArrow.arrowMaterial} arrow.`,
+      targetPath: "/lost-and-found",
+    });
 
     res.status(201).json({
       success: true,
@@ -306,7 +313,14 @@ export function registerLostArrowRoutes({
       });
     }
 
-    broadcastLostArrowUpdated("lost-arrows.found", [existingLostArrow.archerUsername]);
+    broadcastLostArrowUpdated("lost-arrows.found", [existingLostArrow.archerUsername], {
+      action: "found",
+      archerName: lostArrow.archerName || lostArrow.archerUsername,
+      archerUsername: lostArrow.archerUsername,
+      arrowId: lostArrow.id,
+      arrowSummary: `${lostArrow.arrowColour} ${lostArrow.arrowMaterial} arrow`,
+      targetPath: "/lost-and-found",
+    });
 
     res.json({
       success: true,

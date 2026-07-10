@@ -43,7 +43,7 @@ export function startServer({
   onBeforeListen?.();
 
   const server = app.listen(port, () => {
-    console.log(`App and auth server listening on http://localhost:${port}`);
+    console.log(`Backend/API server listening on http://localhost:${port}`);
     if (databaseEngine === "postgres") {
       console.log(
         `PostgreSQL database: ${databaseUrl ? "DATABASE_URL" : "configured connection settings"}`,
@@ -53,6 +53,8 @@ export function startServer({
     }
     if (existsSync(distDirectory)) {
       console.log(`Serving frontend from: ${distDirectory}`);
+    } else {
+      console.log("Frontend dev app: http://localhost:5173");
     }
   });
 

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "node --watch server/index.js",
-    "dev:full": "concurrently \"npm run dev:server\" \"npm run dev\"",
+    "dev:full": "node -e \"console.log('Open the app at http://localhost:5173'); console.log('Backend API runs at http://localhost:3001');\" && concurrently -n api,web -c yellow,cyan \"npm run dev:server\" \"npm run dev\"",
     "build": "vite build",
     "lint": "eslint .",
     "migrate:postgres": "node scripts/migrateSqliteToPostgres.mjs",

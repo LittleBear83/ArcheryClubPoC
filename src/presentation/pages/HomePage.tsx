@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
 import { SideDrawer } from "../components/SideDrawer";
@@ -46,7 +46,7 @@ import {
   type AnnouncementRecord,
 } from "../../api/announcementApi";
 import { listTournaments } from "../../api/tournamentApi";
-import { listMyLostArrowNotices } from "../../api/lostArrowApi";
+import { listMyLostArrowNotices, listOpenLostArrows } from "../../api/lostArrowApi";
 import { useTheme } from "../../theme/useTheme";
 import type { HomeMember, LostArrowRecord, UserProfile } from "../../types/app";
 import type { AppDependencies } from "../../bootstrap/createAppDependencies";
@@ -54,6 +54,7 @@ import { useMobileGeofence } from "../hooks/useMobileGeofence";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
   formatMemberDisplayName,
+  formatRangeMemberDisplayName,
   hasPermission,
   normalizeUserProfile,
 } from "../../utils/userProfile";
@@ -142,6 +143,11 @@ type BeginnerCoachAssignment = {
   beginnerCount: number;
 };
 type LostArrowNotice = LostArrowRecord;
+type LostArrowToast = {
+  id: string;
+  message: string;
+  targetPath: string;
+};
 
 const homeQueryKeys = {
   rangeMembers: () => ["range-members"] as const,
@@ -160,6 +166,7 @@ const MOBILE_ON_SITE_FEATURE_TARGET = {
   longitude: -1.0966694674728845,
   radiusMeters: 50,
 } as const;
+const LOST_ARROW_SEEN_TOASTS_STORAGE_KEY = "archeryclubpoc-seen-lost-arrow-toasts";
 
 const pageTitleMap = {
   home: "Home",
@@ -381,6 +388,52 @@ function buildAnnouncementTickerTrackClassName(isMobile: boolean) {
     .join(" ");
 }
 
+function getHomeWelcomeName(currentUserProfile: UserProfile | null) {
+  return (
+    formatRangeMemberDisplayName(currentUserProfile) ||
+    formatMemberDisplayName(currentUserProfile)
+  );
+}
+
+function readSeenLostArrowToastIds(username: string) {
+  if (!username || typeof window === "undefined") {
+    return new Set<string>();
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(LOST_ARROW_SEEN_TOASTS_STORAGE_KEY);
+    const parsedValue = rawValue ? JSON.parse(rawValue) : {};
+    const storedIds = Array.isArray(parsedValue?.[username]) ? parsedValue[username] : [];
+
+    return new Set(
+      storedIds.filter((value: unknown) => typeof value === "string"),
+    );
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function writeSeenLostArrowToastIds(username: string, seenIds: Set<string>) {
+  if (!username || typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(LOST_ARROW_SEEN_TOASTS_STORAGE_KEY);
+    const parsedValue = rawValue ? JSON.parse(rawValue) : {};
+
+    window.localStorage.setItem(
+      LOST_ARROW_SEEN_TOASTS_STORAGE_KEY,
+      JSON.stringify({
+        ...parsedValue,
+        [username]: Array.from(seenIds),
+      }),
+    );
+  } catch {
+    return;
+  }
+}
+
 async function fetchRangeMembers(): Promise<HomeMember[]> {
   const result = await listRangeMembers();
 
@@ -517,6 +570,11 @@ export function HomePage({
     queryFn: () => fetchLostArrowNotices(currentUserProfile),
     enabled: Boolean(actorUsername),
   });
+  const { data: openLostArrowsResult } = useQuery({
+    queryKey: ["lost-arrows", actorUsername],
+    queryFn: () => listOpenLostArrows(currentUserProfile),
+    enabled: Boolean(actorUsername),
+  });
 
   const signedUpEvents = homeActivity?.signedUpEvents ?? [];
   const tournamentReminders = homeActivity?.tournamentReminders ?? [];
@@ -534,9 +592,117 @@ export function HomePage({
     () => getLostArrowNoticeMessages(lostArrowNotices),
     [lostArrowNotices],
   );
+  const openLostArrows = useMemo(
+    () => openLostArrowsResult?.lostArrows ?? [],
+    [openLostArrowsResult?.lostArrows],
+  );
   const [mobileOnSiteStatus, setMobileOnSiteStatus] = useState("");
   const [mobileOnSiteError, setMobileOnSiteError] = useState("");
   const [isBookingOnSite, setIsBookingOnSite] = useState(false);
+  const [lostArrowToasts, setLostArrowToasts] = useState<LostArrowToast[]>([]);
+  const previousOpenLostArrowIdsRef = useRef<number[] | null>(null);
+  const seenLostArrowToastIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!actorUsername) {
+      setLostArrowToasts([]);
+      previousOpenLostArrowIdsRef.current = null;
+      seenLostArrowToastIdsRef.current = new Set();
+      return undefined;
+    }
+
+    seenLostArrowToastIdsRef.current = readSeenLostArrowToastIds(actorUsername);
+  }, [actorUsername]);
+
+  useEffect(() => {
+    if (!actorUsername) {
+      previousOpenLostArrowIdsRef.current = null;
+      return;
+    }
+
+    const previousIds = previousOpenLostArrowIdsRef.current;
+    const currentIds = openLostArrows.map((arrow) => arrow.id);
+
+    if (!previousIds) {
+      previousOpenLostArrowIdsRef.current = currentIds;
+
+      if (openLostArrows.length > 0) {
+        const latestLostArrow = openLostArrows[0];
+        const initialToastId = `lost-arrow-${latestLostArrow.id}`;
+
+        if (!seenLostArrowToastIdsRef.current.has(initialToastId)) {
+          seenLostArrowToastIdsRef.current.add(initialToastId);
+          writeSeenLostArrowToastIds(actorUsername, seenLostArrowToastIdsRef.current);
+          setLostArrowToasts([
+            {
+              id: initialToastId,
+              message: `${latestLostArrow.archerName || latestLostArrow.archerUsername} currently has a lost ${latestLostArrow.arrowColour} ${latestLostArrow.arrowMaterial} arrow recorded.`,
+              targetPath: "/lost-and-found",
+            },
+          ]);
+        }
+      }
+
+      return;
+    }
+
+    const previousIdSet = new Set(previousIds);
+    const newLostArrows = openLostArrows.filter((arrow) => !previousIdSet.has(arrow.id));
+
+    previousOpenLostArrowIdsRef.current = currentIds;
+
+    if (newLostArrows.length === 0) {
+      return;
+    }
+
+    setLostArrowToasts((current) => {
+      const nextToasts = newLostArrows
+        .map((arrow) => ({
+          id: `lost-arrow-${arrow.id}`,
+          message: `${arrow.archerName || arrow.archerUsername} reported a lost ${arrow.arrowColour} ${arrow.arrowMaterial} arrow.`,
+          targetPath: "/lost-and-found",
+        }))
+        .filter((toast) => !seenLostArrowToastIdsRef.current.has(toast.id));
+
+      if (nextToasts.length === 0) {
+        return current;
+      }
+
+      for (const toast of nextToasts) {
+        seenLostArrowToastIdsRef.current.add(toast.id);
+      }
+
+      writeSeenLostArrowToastIds(actorUsername, seenLostArrowToastIdsRef.current);
+
+      const dedupedCurrent = current.filter(
+        (toast) => !nextToasts.some((nextToast) => nextToast.id === toast.id),
+      );
+
+      return [...dedupedCurrent, ...nextToasts].slice(-3);
+    });
+  }, [actorUsername, openLostArrows]);
+
+  useEffect(() => {
+    if (lostArrowToasts.length === 0) {
+      return undefined;
+    }
+
+    const timerIds = lostArrowToasts.map((toast) =>
+      setTimeout(() => {
+        setLostArrowToasts((current) => current.filter((item) => item.id !== toast.id));
+      }, 8000),
+    );
+
+    return () => {
+      for (const timerId of timerIds) {
+        clearTimeout(timerId);
+      }
+    };
+  }, [lostArrowToasts]);
+
+  const handleDismissLostArrowToast = (toastId: string) => {
+    setLostArrowToasts((current) => current.filter((toast) => toast.id !== toastId));
+  };
 
   const handleNavigate = (pageId) => {
     const target = pageIdToPath[pageId] || "/";
@@ -733,7 +899,7 @@ export function HomePage({
         <section className="page-content">
           {activePage === "home" ? (
             <h1 className="welcome-message">
-              Welcome {formatMemberDisplayName(currentUserProfile)}
+              Welcome {getHomeWelcomeName(currentUserProfile)}
             </h1>
           ) : null}
 
@@ -818,6 +984,8 @@ export function HomePage({
                     statusMessage: mobileOnSiteStatus,
                   }}
                   hideEventPanels={isBeginnerMember}
+                  lostArrows={openLostArrows}
+                  onOpenLostAndFound={() => navigate("/lost-and-found")}
                 />
               }
             />
@@ -922,6 +1090,39 @@ export function HomePage({
           </Routes>
         </section>
       </main>
+
+      {lostArrowToasts.length > 0 ? (
+        <div className="lost-arrow-toast-stack" aria-live="polite" aria-atomic="true">
+          {lostArrowToasts.map((toast) => (
+            <div key={toast.id} className="lost-arrow-toast" role="status">
+              <div className="lost-arrow-toast-copy">
+                <strong>New lost arrow</strong>
+                <p>{toast.message}</p>
+              </div>
+              <div className="lost-arrow-toast-actions">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => navigate(toast.targetPath)}
+                >
+                  Open lost arrows
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="lost-arrow-toast-dismiss"
+                  onClick={() => handleDismissLostArrowToast(toast.id)}
+                  aria-label="Dismiss lost arrow notification"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </>
   );
 }

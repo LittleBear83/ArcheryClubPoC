@@ -22,6 +22,62 @@ function normalizeUserRows(rows) {
   }));
 }
 
+const POSTGRES_MEMBER_PRESENCE_EVENTS_CTE = `
+  WITH RECURSIVE ordered_member_presence_events AS (
+    SELECT
+      username,
+      logged_in_date,
+      logged_in_time,
+      (logged_in_date::text || 'T' || logged_in_time::text) AS logged_in_at,
+      ROW_NUMBER() OVER (
+        PARTITION BY username
+        ORDER BY logged_in_date, logged_in_time
+      ) AS sequence_number
+    FROM login_events
+    WHERE login_method IN ('rfid', 'mobile-app')
+      AND (logged_in_date::text || 'T' || logged_in_time::text) < $1
+  ),
+  member_presence_sessions AS (
+    SELECT
+      username,
+      logged_in_date,
+      logged_in_time,
+      logged_in_at,
+      sequence_number,
+      logged_in_at AS session_started_at
+    FROM ordered_member_presence_events
+    WHERE sequence_number = 1
+
+    UNION ALL
+
+    SELECT
+      current_event.username,
+      current_event.logged_in_date,
+      current_event.logged_in_time,
+      current_event.logged_in_at,
+      current_event.sequence_number,
+      CASE
+        WHEN current_event.logged_in_at::timestamp >
+          previous_session.session_started_at::timestamp + INTERVAL '2 hours'
+          THEN current_event.logged_in_at
+        ELSE previous_session.session_started_at
+      END AS session_started_at
+    FROM ordered_member_presence_events AS current_event
+    INNER JOIN member_presence_sessions AS previous_session
+      ON previous_session.username = current_event.username
+     AND previous_session.sequence_number = current_event.sequence_number - 1
+  ),
+  member_presence_visit_starts AS (
+    SELECT
+      username,
+      logged_in_date,
+      logged_in_time,
+      logged_in_at
+    FROM member_presence_sessions
+    WHERE logged_in_at = session_started_at
+  )
+`;
+
 function createSqliteActivityReportingGateway({
   countGuestLoginsInRange,
   countMemberLoginsForUserInRange,
@@ -49,11 +105,11 @@ function createSqliteActivityReportingGateway({
     },
     async countMemberLoginsForUserInRange(username, startIso, endIsoExclusive) {
       return normalizeCountRow(
-        countMemberLoginsForUserInRange.get(username, startIso, endIsoExclusive),
+        countMemberLoginsForUserInRange.get(endIsoExclusive, username, startIso),
       );
     },
     async countMemberLoginsInRange(startIso, endIsoExclusive) {
-      return normalizeCountRow(countMemberLoginsInRange.get(startIso, endIsoExclusive));
+      return normalizeCountRow(countMemberLoginsInRange.get(endIsoExclusive, startIso));
     },
     async findMemberCoachingBookingsByUserId(userId) {
       return findMemberCoachingBookingsByUserId.all(userId);
@@ -87,27 +143,27 @@ function createSqliteActivityReportingGateway({
     },
     async memberLoginsByDateForUserInRange(username, startIso, endIsoExclusive) {
       return normalizeRowsWithCount(
-        memberLoginsByDateForUserInRange.all(username, startIso, endIsoExclusive),
+        memberLoginsByDateForUserInRange.all(endIsoExclusive, username, startIso),
       );
     },
     async memberLoginsByDateInRange(startIso, endIsoExclusive) {
-      return normalizeRowsWithCount(memberLoginsByDateInRange.all(startIso, endIsoExclusive));
+      return normalizeRowsWithCount(memberLoginsByDateInRange.all(endIsoExclusive, startIso));
     },
     async memberLoginsByHourForUserInRange(username, startIso, endIsoExclusive) {
       return normalizeRowsWithCount(
-        memberLoginsByHourForUserInRange.all(username, startIso, endIsoExclusive),
+        memberLoginsByHourForUserInRange.all(endIsoExclusive, username, startIso),
       );
     },
     async memberLoginsByHourInRange(startIso, endIsoExclusive) {
-      return normalizeRowsWithCount(memberLoginsByHourInRange.all(startIso, endIsoExclusive));
+      return normalizeRowsWithCount(memberLoginsByHourInRange.all(endIsoExclusive, startIso));
     },
     async memberLoginsByWeekdayForUserInRange(username, startIso, endIsoExclusive) {
       return normalizeRowsWithCount(
-        memberLoginsByWeekdayForUserInRange.all(username, startIso, endIsoExclusive),
+        memberLoginsByWeekdayForUserInRange.all(endIsoExclusive, username, startIso),
       );
     },
     async memberLoginsByWeekdayInRange(startIso, endIsoExclusive) {
-      return normalizeRowsWithCount(memberLoginsByWeekdayInRange.all(startIso, endIsoExclusive));
+      return normalizeRowsWithCount(memberLoginsByWeekdayInRange.all(endIsoExclusive, startIso));
     },
   };
 }
@@ -125,20 +181,22 @@ function createPostgresActivityReportingGateway({ pool }) {
     },
     async countMemberLoginsForUserInRange(username, startIso, endIsoExclusive) {
       const result = await pool.query(
-        `SELECT COUNT(*) AS count FROM login_events
-         WHERE username = $1
-           AND (logged_in_date::text || 'T' || logged_in_time::text) >= $2
-           AND (logged_in_date::text || 'T' || logged_in_time::text) < $3`,
-        [username, startIso, endIsoExclusive],
+        `${POSTGRES_MEMBER_PRESENCE_EVENTS_CTE}
+         SELECT COUNT(*) AS count
+         FROM member_presence_visit_starts
+         WHERE username = $2
+           AND logged_in_at >= $3`,
+        [endIsoExclusive, username, startIso],
       );
       return normalizeCountRow(result.rows[0]);
     },
     async countMemberLoginsInRange(startIso, endIsoExclusive) {
       const result = await pool.query(
-        `SELECT COUNT(*) AS count FROM login_events
-         WHERE (logged_in_date::text || 'T' || logged_in_time::text) >= $1
-           AND (logged_in_date::text || 'T' || logged_in_time::text) < $2`,
-        [startIso, endIsoExclusive],
+        `${POSTGRES_MEMBER_PRESENCE_EVENTS_CTE}
+         SELECT COUNT(*) AS count
+         FROM member_presence_visit_starts
+         WHERE logged_in_at >= $2`,
+        [endIsoExclusive, startIso],
       );
       return normalizeCountRow(result.rows[0]);
     },
@@ -216,7 +274,7 @@ function createPostgresActivityReportingGateway({ pool }) {
         INNER JOIN users ON users.id = login_events.user_id
         INNER JOIN user_types ON user_types.user_id = users.id
         WHERE (login_events.logged_in_date::text || 'T' || login_events.logged_in_time::text) >= $1
-          AND login_events.login_method != 'password-mobile'
+          AND login_events.login_method IN ('rfid', 'mobile-app')
         GROUP BY users.id, users.username, users.first_name, users.surname, users.rfid_tag, users.active_member, users.junior_member, users.membership_fees_due, user_types.user_type
         ORDER BY users.surname ASC, users.first_name ASC`,
         [cutoff],
@@ -296,70 +354,70 @@ function createPostgresActivityReportingGateway({ pool }) {
     },
     async memberLoginsByDateForUserInRange(username, startIso, endIsoExclusive) {
       const result = await pool.query(
-        `SELECT logged_in_date AS "usageDate", COUNT(*) AS count
-         FROM login_events
-         WHERE username = $1
-           AND (logged_in_date::text || 'T' || logged_in_time::text) >= $2
-           AND (logged_in_date::text || 'T' || logged_in_time::text) < $3
+        `${POSTGRES_MEMBER_PRESENCE_EVENTS_CTE}
+         SELECT logged_in_date AS "usageDate", COUNT(*) AS count
+         FROM member_presence_visit_starts
+         WHERE username = $2
+           AND logged_in_at >= $3
          GROUP BY "usageDate"`,
-        [username, startIso, endIsoExclusive],
+        [endIsoExclusive, username, startIso],
       );
       return normalizeRowsWithCount(result.rows);
     },
     async memberLoginsByDateInRange(startIso, endIsoExclusive) {
       const result = await pool.query(
-        `SELECT logged_in_date AS "usageDate", COUNT(*) AS count
-         FROM login_events
-         WHERE (logged_in_date::text || 'T' || logged_in_time::text) >= $1
-           AND (logged_in_date::text || 'T' || logged_in_time::text) < $2
+        `${POSTGRES_MEMBER_PRESENCE_EVENTS_CTE}
+         SELECT logged_in_date AS "usageDate", COUNT(*) AS count
+         FROM member_presence_visit_starts
+         WHERE logged_in_at >= $2
          GROUP BY "usageDate"`,
-        [startIso, endIsoExclusive],
+        [endIsoExclusive, startIso],
       );
       return normalizeRowsWithCount(result.rows);
     },
     async memberLoginsByHourForUserInRange(username, startIso, endIsoExclusive) {
       const result = await pool.query(
-        `SELECT EXTRACT(HOUR FROM logged_in_time::time)::integer AS hour, COUNT(*) AS count
-         FROM login_events
-         WHERE username = $1
-           AND (logged_in_date::text || 'T' || logged_in_time::text) >= $2
-           AND (logged_in_date::text || 'T' || logged_in_time::text) < $3
+        `${POSTGRES_MEMBER_PRESENCE_EVENTS_CTE}
+         SELECT EXTRACT(HOUR FROM logged_in_time::time)::integer AS hour, COUNT(*) AS count
+         FROM member_presence_visit_starts
+         WHERE username = $2
+           AND logged_in_at >= $3
          GROUP BY hour`,
-        [username, startIso, endIsoExclusive],
+        [endIsoExclusive, username, startIso],
       );
       return normalizeRowsWithCount(result.rows);
     },
     async memberLoginsByHourInRange(startIso, endIsoExclusive) {
       const result = await pool.query(
-        `SELECT EXTRACT(HOUR FROM logged_in_time::time)::integer AS hour, COUNT(*) AS count
-         FROM login_events
-         WHERE (logged_in_date::text || 'T' || logged_in_time::text) >= $1
-           AND (logged_in_date::text || 'T' || logged_in_time::text) < $2
+        `${POSTGRES_MEMBER_PRESENCE_EVENTS_CTE}
+         SELECT EXTRACT(HOUR FROM logged_in_time::time)::integer AS hour, COUNT(*) AS count
+         FROM member_presence_visit_starts
+         WHERE logged_in_at >= $2
          GROUP BY hour`,
-        [startIso, endIsoExclusive],
+        [endIsoExclusive, startIso],
       );
       return normalizeRowsWithCount(result.rows);
     },
     async memberLoginsByWeekdayForUserInRange(username, startIso, endIsoExclusive) {
       const result = await pool.query(
-        `SELECT EXTRACT(DOW FROM logged_in_date::date)::integer AS "dayOfWeek", COUNT(*) AS count
-         FROM login_events
-         WHERE username = $1
-           AND (logged_in_date::text || 'T' || logged_in_time::text) >= $2
-           AND (logged_in_date::text || 'T' || logged_in_time::text) < $3
+        `${POSTGRES_MEMBER_PRESENCE_EVENTS_CTE}
+         SELECT EXTRACT(DOW FROM logged_in_date::date)::integer AS "dayOfWeek", COUNT(*) AS count
+         FROM member_presence_visit_starts
+         WHERE username = $2
+           AND logged_in_at >= $3
          GROUP BY "dayOfWeek"`,
-        [username, startIso, endIsoExclusive],
+        [endIsoExclusive, username, startIso],
       );
       return normalizeRowsWithCount(result.rows);
     },
     async memberLoginsByWeekdayInRange(startIso, endIsoExclusive) {
       const result = await pool.query(
-        `SELECT EXTRACT(DOW FROM logged_in_date::date)::integer AS "dayOfWeek", COUNT(*) AS count
-         FROM login_events
-         WHERE (logged_in_date::text || 'T' || logged_in_time::text) >= $1
-           AND (logged_in_date::text || 'T' || logged_in_time::text) < $2
+        `${POSTGRES_MEMBER_PRESENCE_EVENTS_CTE}
+         SELECT EXTRACT(DOW FROM logged_in_date::date)::integer AS "dayOfWeek", COUNT(*) AS count
+         FROM member_presence_visit_starts
+         WHERE logged_in_at >= $2
          GROUP BY "dayOfWeek"`,
-        [startIso, endIsoExclusive],
+        [endIsoExclusive, startIso],
       );
       return normalizeRowsWithCount(result.rows);
     },

@@ -1,4 +1,60 @@
 export function createSqliteReportingStatements(db) {
+  const memberPresenceEventsCte = `
+    WITH RECURSIVE ordered_member_presence_events AS (
+      SELECT
+        username,
+        logged_in_date,
+        logged_in_time,
+        (logged_in_date || 'T' || logged_in_time) AS logged_in_at,
+        ROW_NUMBER() OVER (
+          PARTITION BY username
+          ORDER BY logged_in_date, logged_in_time
+        ) AS sequence_number
+      FROM login_events
+      WHERE login_method IN ('rfid', 'mobile-app')
+        AND logged_in_date || 'T' || logged_in_time < ?
+    ),
+    member_presence_sessions AS (
+      SELECT
+        username,
+        logged_in_date,
+        logged_in_time,
+        logged_in_at,
+        sequence_number,
+        logged_in_at AS session_started_at
+      FROM ordered_member_presence_events
+      WHERE sequence_number = 1
+
+      UNION ALL
+
+      SELECT
+        current_event.username,
+        current_event.logged_in_date,
+        current_event.logged_in_time,
+        current_event.logged_in_at,
+        current_event.sequence_number,
+        CASE
+          WHEN datetime(current_event.logged_in_at) >
+            datetime(previous_session.session_started_at, '+2 hours')
+            THEN current_event.logged_in_at
+          ELSE previous_session.session_started_at
+        END AS session_started_at
+      FROM ordered_member_presence_events AS current_event
+      INNER JOIN member_presence_sessions AS previous_session
+        ON previous_session.username = current_event.username
+       AND previous_session.sequence_number = current_event.sequence_number - 1
+    ),
+    member_presence_visit_starts AS (
+      SELECT
+        username,
+        logged_in_date,
+        logged_in_time,
+        logged_in_at
+      FROM member_presence_sessions
+      WHERE logged_in_at = session_started_at
+    )
+  `;
+
   const findRecentRangeMembers = db.prepare(`
     SELECT
       users.id,
@@ -19,7 +75,7 @@ export function createSqliteReportingStatements(db) {
     INNER JOIN user_types
       ON user_types.user_id = users.id
     WHERE login_events.logged_in_date || 'T' || login_events.logged_in_time >= ?
-      AND login_events.login_method != 'password-mobile'
+      AND login_events.login_method IN ('rfid', 'mobile-app')
     GROUP BY users.id, users.username, users.first_name, users.surname, users.password,
       users.rfid_tag, users.active_member, users.junior_member, users.membership_fees_due, users.coaching_volunteer, user_types.user_type
     ORDER BY users.surname ASC, users.first_name ASC
@@ -53,10 +109,10 @@ export function createSqliteReportingStatements(db) {
   `);
 
   const countMemberLoginsInRange = db.prepare(`
+    ${memberPresenceEventsCte}
     SELECT COUNT(*) AS count
-    FROM login_events
-    WHERE logged_in_date || 'T' || logged_in_time >= ?
-      AND logged_in_date || 'T' || logged_in_time < ?
+    FROM member_presence_visit_starts
+    WHERE logged_in_at >= ?
   `);
 
   const countGuestLoginsInRange = db.prepare(`
@@ -67,10 +123,10 @@ export function createSqliteReportingStatements(db) {
   `);
 
   const memberLoginsByHourInRange = db.prepare(`
+    ${memberPresenceEventsCte}
     SELECT substr(logged_in_time, 1, 2) AS hour, COUNT(*) AS count
-    FROM login_events
-    WHERE logged_in_date || 'T' || logged_in_time >= ?
-      AND logged_in_date || 'T' || logged_in_time < ?
+    FROM member_presence_visit_starts
+    WHERE logged_in_at >= ?
     GROUP BY substr(logged_in_time, 1, 2)
   `);
 
@@ -83,10 +139,10 @@ export function createSqliteReportingStatements(db) {
   `);
 
   const memberLoginsByWeekdayInRange = db.prepare(`
+    ${memberPresenceEventsCte}
     SELECT CAST(strftime('%w', logged_in_date) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
-    FROM login_events
-    WHERE logged_in_date || 'T' || logged_in_time >= ?
-      AND logged_in_date || 'T' || logged_in_time < ?
+    FROM member_presence_visit_starts
+    WHERE logged_in_at >= ?
     GROUP BY strftime('%w', logged_in_date)
   `);
 
@@ -99,10 +155,10 @@ export function createSqliteReportingStatements(db) {
   `);
 
   const memberLoginsByDateInRange = db.prepare(`
+    ${memberPresenceEventsCte}
     SELECT logged_in_date AS usageDate, COUNT(*) AS count
-    FROM login_events
-    WHERE logged_in_date || 'T' || logged_in_time >= ?
-      AND logged_in_date || 'T' || logged_in_time < ?
+    FROM member_presence_visit_starts
+    WHERE logged_in_at >= ?
     GROUP BY logged_in_date
   `);
 
@@ -115,37 +171,37 @@ export function createSqliteReportingStatements(db) {
   `);
 
   const countMemberLoginsForUserInRange = db.prepare(`
+    ${memberPresenceEventsCte}
     SELECT COUNT(*) AS count
-    FROM login_events
+    FROM member_presence_visit_starts
     WHERE username = ?
-      AND logged_in_date || 'T' || logged_in_time >= ?
-      AND logged_in_date || 'T' || logged_in_time < ?
+      AND logged_in_at >= ?
   `);
 
   const memberLoginsByHourForUserInRange = db.prepare(`
+    ${memberPresenceEventsCte}
     SELECT substr(logged_in_time, 1, 2) AS hour, COUNT(*) AS count
-    FROM login_events
+    FROM member_presence_visit_starts
     WHERE username = ?
-      AND logged_in_date || 'T' || logged_in_time >= ?
-      AND logged_in_date || 'T' || logged_in_time < ?
+      AND logged_in_at >= ?
     GROUP BY substr(logged_in_time, 1, 2)
   `);
 
   const memberLoginsByWeekdayForUserInRange = db.prepare(`
+    ${memberPresenceEventsCte}
     SELECT CAST(strftime('%w', logged_in_date) AS INTEGER) AS dayOfWeek, COUNT(*) AS count
-    FROM login_events
+    FROM member_presence_visit_starts
     WHERE username = ?
-      AND logged_in_date || 'T' || logged_in_time >= ?
-      AND logged_in_date || 'T' || logged_in_time < ?
+      AND logged_in_at >= ?
     GROUP BY strftime('%w', logged_in_date)
   `);
 
   const memberLoginsByDateForUserInRange = db.prepare(`
+    ${memberPresenceEventsCte}
     SELECT logged_in_date AS usageDate, COUNT(*) AS count
-    FROM login_events
+    FROM member_presence_visit_starts
     WHERE username = ?
-      AND logged_in_date || 'T' || logged_in_time >= ?
-      AND logged_in_date || 'T' || logged_in_time < ?
+      AND logged_in_at >= ?
     GROUP BY logged_in_date
   `);
 

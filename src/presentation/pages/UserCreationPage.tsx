@@ -93,8 +93,8 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
     setEditableProfile((current) => ({ ...current, [field]: value }));
   };
 
-  const handleBooleanSelectChange = (field) => (event) => {
-    const value = event.target.value === "active";
+  const handleBooleanSelectChange = (field, trueValue = "active") => (event) => {
+    const value = event.target.value === trueValue;
     setEditableProfile((current) => ({ ...current, [field]: value }));
   };
 

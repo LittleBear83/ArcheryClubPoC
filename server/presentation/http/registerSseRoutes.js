@@ -30,7 +30,7 @@ export function registerSseRoutes({
     });
   });
 
-  app.get("/api/events", (req, res) => {
+  app.get("/api/server-events", (req, res) => {
     const actor = getActorUser(req);
 
     if (!actor) {

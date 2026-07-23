@@ -1,6 +1,6 @@
 import { createEventStreamClient } from "./createEventStreamClient";
 
-const serverEventsClient = createEventStreamClient("/api/events");
+const serverEventsClient = createEventStreamClient("/api/server-events");
 
 export const connectServerEvents = () => serverEventsClient.connect();
 export const disconnectServerEvents = () => serverEventsClient.disconnect();

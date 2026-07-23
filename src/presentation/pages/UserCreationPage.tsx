@@ -4,6 +4,19 @@ import { MemberProfileForm } from "../components/MemberProfileForm";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { hasPermission } from "../../utils/userProfile";
 
+function buildGeneratedUsername(firstName, surname) {
+  const normalizedFirstName = String(firstName ?? "").trim();
+  const normalizedSurname = String(surname ?? "")
+    .replace(/\s+/g, "")
+    .trim();
+
+  if (!normalizedFirstName && !normalizedSurname) {
+    return "";
+  }
+
+  return `${normalizedFirstName.slice(0, 1)}${normalizedSurname}`;
+}
+
 const EMPTY_PROFILE = {
   username: "",
   firstName: "",
@@ -37,6 +50,7 @@ const EMPTY_PROFILE = {
 
 export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
   const [editableProfile, setEditableProfile] = useState(EMPTY_PROFILE);
+  const [isUsernameManuallyEdited, setIsUsernameManuallyEdited] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -85,7 +99,29 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
-    setEditableProfile((current) => ({ ...current, [field]: value }));
+
+    setEditableProfile((current) => {
+      if (field === "username") {
+        setIsUsernameManuallyEdited(true);
+        return { ...current, username: value };
+      }
+
+      if (
+        !isUsernameManuallyEdited &&
+        (field === "firstName" || field === "surname")
+      ) {
+        const nextProfile = { ...current, [field]: value };
+        return {
+          ...nextProfile,
+          username: buildGeneratedUsername(
+            nextProfile.firstName,
+            nextProfile.surname,
+          ),
+        };
+      }
+
+      return { ...current, [field]: value };
+    });
   };
 
   const handleBooleanChange = (field) => (event) => {
@@ -128,6 +164,7 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
         ...EMPTY_PROFILE,
         userType: defaultRole,
       });
+      setIsUsernameManuallyEdited(false);
       await queryClient.invalidateQueries({ queryKey: ["profile-options", actorUsername] });
     },
     onError: (createError: Error) => {

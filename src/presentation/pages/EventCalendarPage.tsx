@@ -8,6 +8,7 @@ import { MobileKeyValueList } from "../components/mobile/MobileKeyValueList";
 import { MobileSectionHeader } from "../components/mobile/MobileSectionHeader";
 import { SummaryDate } from "../components/SummaryDate";
 import { SummaryList } from "../components/SummaryList";
+import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { EventCalendarDesktopView } from "./event-calendar/EventCalendarDesktopView";
 import { EventCalendarMobileView } from "./event-calendar/EventCalendarMobileView";
@@ -437,20 +438,35 @@ export function EventCalendarPage({
     EVENT_TYPE_OPTIONS.find((option) => option.value === type) ??
     EVENT_TYPE_OPTIONS[0];
 
-  const { data: events = [] } = useQuery({
+  const eventsQuery = useQuery({
     queryKey: eventQueryKeys.list(actorUsername),
     queryFn: () => fetchEvents(actorUsername),
   });
 
-  const { data: coachingSessions = [] } = useQuery({
+  const coachingSessionsQuery = useQuery({
     queryKey: ["coaching-sessions", actorUsername],
     queryFn: () => fetchCoachingSessions(actorUsername),
   });
 
-  const { data: beginnersLessons = [] } = useQuery({
+  const beginnersLessonsQuery = useQuery({
     queryKey: ["beginners-course-calendar"],
     queryFn: fetchBeginnersCourseLessons,
   });
+  const events = eventsQuery.data ?? [];
+  const coachingSessions = coachingSessionsQuery.data ?? [];
+  const beginnersLessons = beginnersLessonsQuery.data ?? [];
+  const calendarLoadError =
+    eventsQuery.error instanceof Error
+      ? eventsQuery.error.message
+      : coachingSessionsQuery.error instanceof Error
+        ? coachingSessionsQuery.error.message
+        : beginnersLessonsQuery.error instanceof Error
+          ? beginnersLessonsQuery.error.message
+          : "";
+  const isCalendarLoading =
+    eventsQuery.isLoading ||
+    coachingSessionsQuery.isLoading ||
+    beginnersLessonsQuery.isLoading;
 
   const addEventMutation = useMutation({
     mutationFn: async (eventDates: string[]) => {
@@ -1625,6 +1641,11 @@ export function EventCalendarPage({
         events, coaching sessions, and approved beginners course lessons
         together in one view.
       </p>
+      <StatusMessagePanel
+        error={calendarLoadError}
+        loading={isCalendarLoading}
+        loadingLabel="Loading calendar items..."
+      />
       {isMobile ? (
         <EventCalendarMobileView
           filterBar={filterBar}

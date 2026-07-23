@@ -24,6 +24,24 @@ import {
 } from "../../api/beginnersCoursesApi";
 import type { ApprovalEvent, CoachingSession, UserProfile } from "../../types/app";
 
+function getEventTypeLabel(type: string) {
+  switch (type) {
+    case "competition":
+      return "Competition";
+    case "social":
+      return "Social event";
+    case "range-closed":
+      return "Range closed";
+    default:
+      return type;
+  }
+}
+
+function getEventTypeSummary(event: ApprovalEvent) {
+  const types = event.types?.length ? event.types : [event.type];
+  return types.map(getEventTypeLabel).join(", ");
+}
+
 const VENUE_LABELS = {
   indoor: "Indoor",
   outdoor: "Outdoor",
@@ -466,7 +484,7 @@ export function ApprovalsPage({ currentUserProfile }) {
                       {formatDate(event.date)} from {formatClockTime(event.startTime)} to{" "}
                       {formatClockTime(event.endTime)}
                     </p>
-                    <p>Type: {event.type}</p>
+                    <p>Type: {getEventTypeSummary(event)}</p>
                     <p>Venue: {formatVenueLabel(event.venue)}</p>
                     <p>Submitted by: {event.submittedByUsername ?? "Unknown"}</p>
                   </ApprovalCard>

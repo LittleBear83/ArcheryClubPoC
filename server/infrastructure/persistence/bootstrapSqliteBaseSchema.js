@@ -69,6 +69,7 @@ export const CLUB_EVENTS_TABLE_SQL = `
     title TEXT NOT NULL,
     details TEXT,
     type TEXT NOT NULL CHECK (type IN ('competition', 'social', 'range-closed')),
+    types TEXT,
     venue TEXT NOT NULL DEFAULT 'both' CHECK (venue IN ('indoor', 'outdoor', 'both')),
     submitted_by_username TEXT,
     approval_status TEXT NOT NULL DEFAULT 'approved',

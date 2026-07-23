@@ -47,6 +47,7 @@ function createSqliteScheduleGateway({
         args.title,
         args.details,
         args.type,
+        args.types,
         args.venue,
         args.submittedByUsername,
         args.approvalStatus,
@@ -190,6 +191,7 @@ function createPostgresScheduleGateway({ pool }) {
             title,
             details,
             type,
+            types,
             venue,
             submitted_by_username,
             approval_status,
@@ -200,7 +202,7 @@ function createPostgresScheduleGateway({ pool }) {
             created_at_date,
             created_at_time
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
           RETURNING id
         `,
         [
@@ -210,6 +212,7 @@ function createPostgresScheduleGateway({ pool }) {
           args.title,
           args.details,
           args.type,
+          args.types,
           args.venue,
           args.submittedByUsername,
           args.approvalStatus,
@@ -361,6 +364,7 @@ function createPostgresScheduleGateway({ pool }) {
             title,
             details,
             type,
+            types,
             CASE
               WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor'
               WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor'
@@ -479,6 +483,7 @@ function createPostgresScheduleGateway({ pool }) {
             title,
             details,
             type,
+            types,
             CASE
               WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor'
               WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor'

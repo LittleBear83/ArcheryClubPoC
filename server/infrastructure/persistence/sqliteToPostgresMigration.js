@@ -129,6 +129,7 @@ const orderedTableCopies = [
       "title",
       "details",
       "type",
+      "types",
       "venue",
       "submitted_by_username",
       "approval_status",

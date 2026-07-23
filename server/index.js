@@ -2147,6 +2147,7 @@ while ($true) {
 function buildClubEvent(event, bookings = [], actor = null) {
   const actorUsername = actor?.username ?? null;
   const canApprove = actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS);
+  const eventTypes = normalizeClubEventTypes(event);
 
   return {
     id: event.id,
@@ -2155,7 +2156,8 @@ function buildClubEvent(event, bookings = [], actor = null) {
     endTime: event.end_time,
     title: event.title,
     details: event.details?.trim() || "",
-    type: event.type,
+    type: eventTypes[0],
+    types: eventTypes,
     venue: normalizeVenue(event.venue),
     bookingCount: bookings.length,
     approvalStatus: event.approval_status ?? "approved",
@@ -2175,6 +2177,36 @@ function buildClubEvent(event, bookings = [], actor = null) {
       (event.approval_status ?? "approved") === "pending",
     ),
   };
+}
+
+function normalizeClubEventTypes(event) {
+  const parsedTypes =
+    typeof event?.types === "string" && event.types.trim().startsWith("[")
+      ? safelyParseJsonArray(event.types)
+      : [];
+  const normalizedTypes = [...new Set(
+    parsedTypes
+      .filter((value) => typeof value === "string")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  )];
+
+  if (normalizedTypes.length > 0) {
+    return normalizedTypes;
+  }
+
+  return typeof event?.type === "string" && event.type.trim()
+    ? [event.type.trim()]
+    : [];
+}
+
+function safelyParseJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function canActorViewApprovalEntry(

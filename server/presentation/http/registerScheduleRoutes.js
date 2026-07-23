@@ -17,6 +17,7 @@ export function registerScheduleRoutes({
   scheduleGateway,
   serverEventBus,
 }) {
+  const ALLOWED_EVENT_TYPES = ["competition", "social", "range-closed"];
   const APPROVAL_PERMISSION_KEYS = [
     PERMISSIONS.APPROVE_EVENTS,
     PERMISSIONS.APPROVE_COACHING_SESSIONS,
@@ -41,6 +42,21 @@ export function registerScheduleRoutes({
         scope,
       });
     }
+  };
+
+  const normalizeEventTypes = (value) => {
+    const requestedValues = Array.isArray(value)
+      ? value
+      : typeof value === "string"
+        ? [value]
+        : [];
+
+    return [...new Set(
+      requestedValues
+        .filter((entry) => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry) => ALLOWED_EVENT_TYPES.includes(entry)),
+    )];
   };
 
   app.get("/api/events", async (req, res) => {
@@ -80,6 +96,7 @@ export function registerScheduleRoutes({
           endTime: "12:00",
           title: "Range closed until 12:00",
           type: "range-closed",
+          types: ["range-closed"],
           venue: "both",
           system: true,
           bookingCount: 0,
@@ -101,11 +118,21 @@ export function registerScheduleRoutes({
 
   app.post("/api/events", async (req, res) => {
     const actor = getActorUser(req);
-    const { date, startTime, endTime, title, details, type, venue } = req.body ?? {};
+    const {
+      date,
+      startTime,
+      endTime,
+      title,
+      details,
+      type,
+      types,
+      venue,
+    } = req.body ?? {};
     const trimmedTitle = title?.trim();
     const trimmedDetails =
       typeof details === "string" ? details.trim().slice(0, 2000) : "";
     const normalizedVenue = normalizeVenue(venue);
+    const normalizedTypes = normalizeEventTypes(types ?? type);
 
     if (!actor) {
       res.status(401).json({
@@ -123,11 +150,11 @@ export function registerScheduleRoutes({
       return;
     }
 
-    if (!date || !startTime || !endTime || !trimmedTitle || !type) {
+    if (!date || !startTime || !endTime || !trimmedTitle || normalizedTypes.length === 0) {
       res.status(400).json({
         success: false,
         message:
-          "Date, start time, end time, title, and event type are required.",
+          "Date, start time, end time, title, and at least one event type are required.",
       });
       return;
     }
@@ -175,7 +202,8 @@ export function registerScheduleRoutes({
       startTime,
       submittedByUsername: actor.username,
       title: trimmedTitle,
-      type,
+      type: normalizedTypes[0],
+      types: JSON.stringify(normalizedTypes),
       venue: normalizedVenue,
     });
 
@@ -375,7 +403,19 @@ export function registerScheduleRoutes({
       return;
     }
 
-    if (event.type === "range-closed") {
+    const eventTypes =
+      typeof event.types === "string"
+        ? (() => {
+            try {
+              const parsed = JSON.parse(event.types);
+              return Array.isArray(parsed) ? parsed : [event.type];
+            } catch {
+              return [event.type];
+            }
+          })()
+        : [event.type];
+
+    if (eventTypes.includes("range-closed")) {
       res.status(400).json({
         success: false,
         message: "Range closed entries cannot be booked.",

@@ -184,6 +184,7 @@ type CalendarEvent = {
   title: string;
   details?: string;
   type: string;
+  types?: string[];
   venue: string;
   isBookedOn?: boolean;
   isPendingApproval?: boolean;
@@ -235,6 +236,24 @@ function getCourseParticipantLabel(lesson: BeginnersCourseCalendarLesson) {
 function getCancelledSummary(reason?: string) {
   const cancellationReason = reason?.trim();
   return cancellationReason ? ` | Cancelled: ${cancellationReason}` : " | Cancelled";
+}
+
+function getEventTypes(event: Pick<CalendarEvent, "type" | "types">) {
+  const normalizedTypes = [...new Set(
+    (event.types?.length ? event.types : [event.type])
+      .filter((type): type is string => typeof type === "string")
+      .map((type) => type.trim())
+      .filter(Boolean),
+  )];
+
+  return normalizedTypes.length > 0 ? normalizedTypes : ["competition"];
+}
+
+function eventMatchesType(
+  event: Pick<CalendarEvent, "type" | "types">,
+  filterKey: CalendarEvent["type"],
+) {
+  return getEventTypes(event).includes(filterKey);
 }
 
 function mergeCalendarEvents(
@@ -360,7 +379,7 @@ export function EventCalendarPage({
   const [newEventStartTime, setNewEventStartTime] = useState("09:00");
   const [newEventEndTime, setNewEventEndTime] = useState("10:00");
   const [newEventDetails, setNewEventDetails] = useState("");
-  const [newEventType, setNewEventType] = useState("competition");
+  const [newEventTypes, setNewEventTypes] = useState<string[]>(["competition"]);
   const [newEventVenue, setNewEventVenue] = useState("indoor");
   const [eventCreationMode, setEventCreationMode] = useState<EventCreationMode>("single");
   const [repeatPattern, setRepeatPattern] = useState<"weekly" | "monthly">("weekly");
@@ -437,6 +456,29 @@ export function EventCalendarPage({
   const getEventTypeDetails = (type) =>
     EVENT_TYPE_OPTIONS.find((option) => option.value === type) ??
     EVENT_TYPE_OPTIONS[0];
+  const hasRangeClosedType = (event: Pick<CalendarEvent, "type" | "types">) =>
+    eventMatchesType(event, "range-closed");
+  const toggleNewEventType = (type: string) => {
+    setNewEventTypes((current) => {
+      if (current.includes(type)) {
+        return current.length === 1 ? current : current.filter((value) => value !== type);
+      }
+
+      return [...current, type];
+    });
+  };
+  const renderEventTypeBadges = (event: Pick<CalendarEvent, "type" | "types">) => (
+    <>
+      {getEventTypes(event).map((type) => (
+        <span
+          key={type}
+          className={`event-type-badge ${getEventTypeDetails(type).className}`}
+        >
+          {getEventTypeDetails(type).label}
+        </span>
+      ))}
+    </>
+  );
 
   const eventsQuery = useQuery({
     queryKey: eventQueryKeys.list(actorUsername),
@@ -483,7 +525,8 @@ export function EventCalendarPage({
               endTime: newEventEndTime,
               title: newEvent.trim(),
               details: newEventDetails.trim(),
-              type: newEventType,
+              type: newEventTypes[0],
+              types: newEventTypes,
               venue: newEventVenue,
             },
           );
@@ -534,7 +577,7 @@ export function EventCalendarPage({
       setNewEventStartTime("09:00");
       setNewEventEndTime("10:00");
       setNewEventDetails("");
-      setNewEventType("competition");
+      setNewEventTypes(["competition"]);
       setNewEventVenue("indoor");
       setEventCreationMode("single");
       setRepeatPattern("weekly");
@@ -585,7 +628,7 @@ export function EventCalendarPage({
           .filter(
             (event) =>
               isUnfiltered ||
-              activeFilters.includes(event.type as CalendarFilterKey),
+              activeFilters.some((filterKey) => eventMatchesType(event, filterKey)),
           )
           .map((event) => ({ ...event, kind: "event" as const })),
         ...coachingSessions
@@ -1109,7 +1152,9 @@ export function EventCalendarPage({
           .filter(
             (item): item is MixedCalendarEvent => item.kind === "event",
           )
-          .map((item) => getEventTypeDetails(item.type).className),
+          .flatMap((item) =>
+            getEventTypes(item).map((type) => getEventTypeDetails(type).className),
+          ),
       ),
     ] as string[];
     const hasRejectedItems = scheduleItems.some(
@@ -1149,7 +1194,7 @@ export function EventCalendarPage({
         <span
           className={[
             "calendar-entry-label",
-            getEventTypeDetails(item.type).className,
+            getEventTypeDetails(getEventTypes(item)[0]).className,
             item.isRejected ? "is-rejected" : "",
             item.isCancelled ? "is-cancelled" : "",
           ]
@@ -1213,11 +1258,7 @@ export function EventCalendarPage({
     key: `${item.kind}-${item.id}`,
     badge:
       item.kind === "event" ? (
-        <span
-          className={`event-type-badge ${getEventTypeDetails(item.type).className}`}
-        >
-          {getEventTypeDetails(item.type).label}
-        </span>
+        <div className="event-detail-badge-row">{renderEventTypeBadges(item)}</div>
       ) : item.kind === "coaching" ? (
         <span className="coaching-session-badge">
           <TrainingIcon className="coaching-badge-icon" />
@@ -1345,11 +1386,9 @@ export function EventCalendarPage({
                     onClick={() => setSelectedEventId(evt.id)}
                     variant="unstyled"
                   >
-                    <span
-                      className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
-                    >
-                      {getEventTypeDetails(evt.type).label}
-                    </span>
+                    <div className="event-detail-badge-row">
+                      {renderEventTypeBadges(evt)}
+                    </div>
                     {evt.isCancelled ? (
                       <span className="event-summary-status-badge is-cancelled">
                         Cancelled
@@ -1494,11 +1533,9 @@ export function EventCalendarPage({
                     onClick={() => setSelectedEventId(evt.id)}
                     variant="unstyled"
                   >
-                    <span
-                      className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
-                    >
-                      {getEventTypeDetails(evt.type).label}
-                    </span>
+                    <div className="event-detail-badge-row">
+                      {renderEventTypeBadges(evt)}
+                    </div>
                     <span className="event-summary-status-badge is-rejected">
                       Rejected
                     </span>
@@ -1557,11 +1594,9 @@ export function EventCalendarPage({
                     onClick={() => setSelectedEventId(evt.id)}
                     variant="unstyled"
                   >
-                    <span
-                      className={`event-type-badge ${getEventTypeDetails(evt.type).className}`}
-                    >
-                      {getEventTypeDetails(evt.type).label}
-                    </span>
+                    <div className="event-detail-badge-row">
+                      {renderEventTypeBadges(evt)}
+                    </div>
                     <span className="event-summary-status-badge is-cancelled">
                       Cancelled
                     </span>
@@ -1928,11 +1963,11 @@ export function EventCalendarPage({
                     "form-choice-option",
                     "form-choice-option-keyed",
                     option.className,
-                    newEventType === option.value ? "selected" : "",
+                    newEventTypes.includes(option.value) ? "selected" : "",
                   ]
                     .filter(Boolean)
                     .join(" ")}
-                  onClick={() => setNewEventType(option.value)}
+                  onClick={() => toggleNewEventType(option.value)}
                   variant="ghost"
                 >
                   {option.label}
@@ -2401,11 +2436,7 @@ export function EventCalendarPage({
         {selectedEventDetail ? (
           <div className={eventDetailModalClassName}>
             <div className="event-detail-badge-row">
-              <span
-                className={`event-type-badge ${getEventTypeDetails(selectedEventDetail.type).className}`}
-              >
-                {getEventTypeDetails(selectedEventDetail.type).label}
-              </span>
+              {renderEventTypeBadges(selectedEventDetail)}
             </div>
             {isMobile ? (
               <MobileKeyValueList
@@ -2432,7 +2463,7 @@ export function EventCalendarPage({
                           ? "Request rejected"
                           : hasEventEnded(selectedEventDetail)
                             ? "Event finished"
-                            : selectedEventDetail.type === "range-closed"
+                            : hasRangeClosedType(selectedEventDetail)
                               ? "Not bookable"
                               : "Open for booking",
                   },
@@ -2458,10 +2489,10 @@ export function EventCalendarPage({
                       : selectedEventDetail.isPendingApproval
                         ? "Pending approval"
                         : selectedEventDetail.isRejected
-                          ? "Request rejected"
-                          : hasEventEnded(selectedEventDetail)
-                            ? "Event finished"
-                            : selectedEventDetail.type === "range-closed"
+                        ? "Request rejected"
+                        : hasEventEnded(selectedEventDetail)
+                          ? "Event finished"
+                            : hasRangeClosedType(selectedEventDetail)
                               ? "Not bookable"
                               : "Open for booking"}
                   </span>
@@ -2474,7 +2505,7 @@ export function EventCalendarPage({
                 <p>{selectedEventDetail.details}</p>
               </div>
             ) : null}
-            {selectedEventDetail.type === "range-closed" ? (
+            {hasRangeClosedType(selectedEventDetail) ? (
               <p className="event-detail-note event-detail-note-range-closed">
                 Range closed event: this entry closes the range and cannot be booked onto.
               </p>
@@ -2497,7 +2528,7 @@ export function EventCalendarPage({
               ) : null}
               {!selectedEventDetail.isBookedOn &&
               selectedEventDetail.isApproved &&
-              selectedEventDetail.type !== "range-closed" &&
+              !hasRangeClosedType(selectedEventDetail) &&
               !hasEventEnded(selectedEventDetail) &&
               canManageBookings ? (
                 <Button
@@ -2767,11 +2798,9 @@ export function EventCalendarPage({
                 }}
                 variant="ghost"
               >
-                <span
-                  className={`event-type-badge ${getEventTypeDetails(event.type).className}`}
-                >
-                  {getEventTypeDetails(event.type).label}
-                </span>
+                <div className="event-detail-badge-row">
+                  {renderEventTypeBadges(event)}
+                </div>
                 <strong>{event.title}</strong>
                 <span>
                   {formatDate(event.date)} | {formatClockTime(event.startTime)} to{" "}

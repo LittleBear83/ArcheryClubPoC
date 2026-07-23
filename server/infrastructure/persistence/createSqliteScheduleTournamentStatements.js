@@ -168,6 +168,7 @@ export function createSqliteScheduleTournamentStatements(db) {
       title,
       details,
       type,
+      types,
       CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END AS venue,
       submitted_by_username,
       approval_status,
@@ -187,6 +188,7 @@ export function createSqliteScheduleTournamentStatements(db) {
       title,
       details,
       type,
+      types,
       venue,
       submitted_by_username,
       approval_status,
@@ -197,7 +199,7 @@ export function createSqliteScheduleTournamentStatements(db) {
       created_at_date,
       created_at_time
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const listTournaments = db.prepare(`
@@ -433,7 +435,9 @@ export function createSqliteScheduleTournamentStatements(db) {
       start_time,
       end_time,
       title,
+      details,
       type,
+      types,
       CASE WHEN lower(COALESCE(venue, '')) = 'outdoor' THEN 'outdoor' WHEN lower(COALESCE(venue, '')) = 'indoor' THEN 'indoor' ELSE 'both' END AS venue,
       submitted_by_username,
       approval_status,

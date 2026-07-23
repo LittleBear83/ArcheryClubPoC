@@ -283,6 +283,7 @@ function buildInitialSchemaSql() {
       title TEXT NOT NULL,
       details TEXT,
       type TEXT NOT NULL,
+      types TEXT,
       venue TEXT NOT NULL DEFAULT 'both',
       submitted_by_username TEXT REFERENCES users(username),
       approval_status TEXT NOT NULL DEFAULT 'approved',
@@ -304,6 +305,9 @@ function buildInitialSchemaSql() {
       member_user_id BIGINT REFERENCES users(id),
       PRIMARY KEY (club_event_id, member_username)
     );
+
+    ALTER TABLE club_events
+    ADD COLUMN IF NOT EXISTS types TEXT;
 
     CREATE TABLE IF NOT EXISTS tournaments (
       id BIGSERIAL PRIMARY KEY,

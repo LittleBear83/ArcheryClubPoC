@@ -67,6 +67,7 @@ export type ApprovalEvent = {
   endTime: string;
   title: string;
   type: string;
+  types?: string[];
   venue: string;
   submittedByUsername?: string;
   approvalStatus?: string;

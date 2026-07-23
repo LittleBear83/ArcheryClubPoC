@@ -129,6 +129,7 @@ export function bootstrapSqliteCourseScheduleCompatibility({
 
   const clubEventApprovalColumns = [
     ["details", "TEXT"],
+    ["types", "TEXT"],
     ["venue", "TEXT NOT NULL DEFAULT 'both'"],
     ["submitted_by_username", "TEXT"],
     ["approval_status", "TEXT NOT NULL DEFAULT 'approved'"],

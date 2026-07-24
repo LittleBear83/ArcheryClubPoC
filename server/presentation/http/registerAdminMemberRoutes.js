@@ -906,6 +906,7 @@ export function registerAdminMemberRoutes({
       username,
       firstName,
       surname,
+      archeryGbMembershipNumber,
       emailAddress,
       password,
       rfidTag,
@@ -931,6 +932,7 @@ export function registerAdminMemberRoutes({
       username,
       firstName,
       surname,
+      archeryGbMembershipNumber,
       emailAddress,
       password,
       rfidTag,
@@ -1036,6 +1038,7 @@ export function registerAdminMemberRoutes({
     const {
       firstName,
       surname,
+      archeryGbMembershipNumber,
       emailAddress,
       password,
       rfidTag,
@@ -1062,6 +1065,9 @@ export function registerAdminMemberRoutes({
       username: existingUser.username,
       firstName,
       surname,
+      archeryGbMembershipNumber: canManageMembers
+        ? archeryGbMembershipNumber
+        : existingUser.archery_gb_membership_number,
       emailAddress,
       password,
       rfidTag: canManageMembers ? rfidTag : existingUser.rfid_tag,
@@ -1128,6 +1134,123 @@ export function registerAdminMemberRoutes({
       success: true,
       ...result,
       editableProfile: updatedEditableProfile,
+    });
+  });
+
+  app.delete("/api/user-profiles/:username", async (req, res) => {
+    const actor = getActorUser(req);
+    const requestedUsername = req.params.username;
+
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to delete member profiles.",
+      });
+      return;
+    }
+
+    const existingUser = await findMemberByUsername(requestedUsername);
+
+    if (!existingUser) {
+      res.status(404).json({
+        success: false,
+        message: "Member profile not found.",
+      });
+      return;
+    }
+
+    if (
+      actor.username.localeCompare(existingUser.username, undefined, {
+        sensitivity: "accent",
+      }) === 0
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "You cannot delete your own member profile.",
+      });
+      return;
+    }
+
+    const confirmationUsername =
+      typeof req.body?.confirmationUsername === "string"
+        ? req.body.confirmationUsername.trim()
+        : "";
+
+    if (confirmationUsername !== existingUser.username) {
+      res.status(400).json({
+        success: false,
+        message: "Type the exact member username to confirm deletion.",
+      });
+      return;
+    }
+
+    const existingDisciplines = await listMemberDisciplines(existingUser.username);
+    const existingLoanBow = await findMemberLoanBow(existingUser.username);
+    const previousEditableProfile = await buildEditableProfileWithDistanceSignOffs(
+      existingUser,
+      existingDisciplines,
+      existingLoanBow,
+      true,
+    );
+
+    const result = await saveMemberProfile({
+      username: existingUser.username,
+      firstName: existingUser.first_name,
+      surname: existingUser.surname,
+      archeryGbMembershipNumber: existingUser.archery_gb_membership_number,
+      emailAddress: existingUser.email_address,
+      password: existingUser.password,
+      rfidTag: existingUser.rfid_tag,
+      activeMember: false,
+      affiliateMember: existingUser.affiliate_member,
+      juniorMember: existingUser.junior_member,
+      membershipFeesDue: existingUser.membership_fees_due,
+      coachingVolunteer: existingUser.coaching_volunteer,
+      userType: existingUser.user_type,
+      disciplines: existingDisciplines,
+      loanBow: buildLoanBowRecord(existingLoanBow),
+      existingUser,
+    });
+
+    if (!result.success) {
+      res.status(result.status).json(result);
+      return;
+    }
+
+    const deletedUser = await findMemberByUsername(existingUser.username);
+    const deletedLoanBow = await findMemberLoanBow(existingUser.username);
+    const deletedEditableProfile = await buildEditableProfileWithDistanceSignOffs(
+      deletedUser,
+      existingDisciplines,
+      deletedLoanBow,
+      true,
+    );
+    const [deletedAtDate, deletedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "deleted",
+        actorUsername: actor.username,
+        after: deletedEditableProfile,
+        before: previousEditableProfile,
+        changedAtDate: deletedAtDate,
+        changedAtTime: deletedAtTime,
+        entityId: existingUser.username,
+        entityLabel: `${existingUser.first_name} ${existingUser.surname}`.trim(),
+        entityType: "member_profile",
+        req,
+        target: `/api/user-profiles/${existingUser.username}`,
+      }).catch((auditError) => {
+        console.error("Failed to record member profile delete event", auditError);
+      });
+    }
+
+    broadcastMembersUpdated("members.delete", existingUser.username);
+
+    res.json({
+      success: true,
+      deletedUsername: existingUser.username,
+      message: `${existingUser.username} deleted successfully.`,
     });
   });
 
@@ -1297,6 +1420,7 @@ export function registerAdminMemberRoutes({
       username: existingUser.username,
       firstName: existingUser.first_name,
       surname: existingUser.surname,
+      archeryGbMembershipNumber: existingUser.archery_gb_membership_number,
       password: existingUser.password,
       rfidTag,
       activeMember: existingUser.active_member,

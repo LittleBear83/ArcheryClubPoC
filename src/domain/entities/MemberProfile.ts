@@ -37,6 +37,7 @@ export type EditableMemberProfile = {
   username: string;
   firstName: string;
   surname: string;
+  archeryGbMembershipNumber: string;
   emailAddress: string;
   password: string;
   rfidTag: string;
@@ -55,6 +56,7 @@ export type MemberProfileFormInput = {
   username?: string;
   firstName: string;
   surname: string;
+  archeryGbMembershipNumber?: string;
   emailAddress?: string;
   password?: string;
   rfidTag?: string;
@@ -99,6 +101,11 @@ export type MemberProfilePageData = {
 export type MemberProfileSaveResult = {
   editableProfile: EditableMemberProfile;
   userProfile?: unknown;
+};
+
+export type MemberProfileDeleteResult = {
+  deletedUsername: string;
+  message?: string;
 };
 
 export type MemberProfileApiProfileResult = MemberProfileSaveResult & {

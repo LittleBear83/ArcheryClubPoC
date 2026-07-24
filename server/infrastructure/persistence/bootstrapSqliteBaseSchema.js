@@ -1,3 +1,4 @@
+import { getDefaultGeneralInfoContent } from "../../../shared/generalInfoDefaults.js";
 import { getDefaultRangeRulesContent } from "../../../shared/rangeRulesDefaults.js";
 
 export const LOGIN_EVENTS_TABLE_SQL = `
@@ -96,6 +97,21 @@ export const EVENT_BOOKINGS_TABLE_SQL = `
   )
 `;
 
+export const GENERAL_INFO_CONTENT_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS general_info_content (
+    content_key TEXT PRIMARY KEY,
+    intro_paragraphs_json TEXT NOT NULL,
+    quick_facts_json TEXT NOT NULL,
+    facilities_json TEXT NOT NULL,
+    beginners_json TEXT NOT NULL,
+    club_life_json TEXT NOT NULL,
+    updated_at_date TEXT NOT NULL,
+    updated_at_time TEXT NOT NULL,
+    updated_by_username TEXT,
+    FOREIGN KEY (updated_by_username) REFERENCES users(username)
+  )
+`;
+
 export const TOURNAMENTS_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS tournaments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -148,6 +164,7 @@ export function bootstrapSqliteBaseSchema({
       username TEXT NOT NULL UNIQUE,
       first_name TEXT NOT NULL,
       surname TEXT NOT NULL,
+      archery_gb_membership_number TEXT,
       email_address TEXT,
       password TEXT,
       rfid_tag TEXT UNIQUE,
@@ -275,6 +292,8 @@ export function bootstrapSqliteBaseSchema({
     )
   `);
 
+  db.exec(GENERAL_INFO_CONTENT_TABLE_SQL);
+
   const defaultRangeRulesContent = getDefaultRangeRulesContent();
 
   db.prepare(`
@@ -315,6 +334,33 @@ export function bootstrapSqliteBaseSchema({
     "default",
     "1970-01-01",
     "00:00:00.000Z",
+  );
+
+  const defaultGeneralInfoContent = getDefaultGeneralInfoContent();
+
+  db.prepare(`
+    INSERT OR IGNORE INTO general_info_content (
+      content_key,
+      intro_paragraphs_json,
+      quick_facts_json,
+      facilities_json,
+      beginners_json,
+      club_life_json,
+      updated_at_date,
+      updated_at_time,
+      updated_by_username
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    "default",
+    JSON.stringify(defaultGeneralInfoContent.introParagraphs),
+    JSON.stringify(defaultGeneralInfoContent.quickFacts),
+    JSON.stringify(defaultGeneralInfoContent.facilities),
+    JSON.stringify(defaultGeneralInfoContent.beginners),
+    JSON.stringify(defaultGeneralInfoContent.clubLife),
+    "1970-01-01",
+    "00:00:00.000Z",
+    null,
   );
 
   db.exec(`

@@ -23,6 +23,7 @@ import { RolePermissionsPage } from "./RolePermissionsPage";
 import { ReportingPage } from "./ReportingPage";
 import { ApprovalsPage } from "./ApprovalsPage";
 import { GeneralInfoPage } from "./GeneralInfoPage";
+import { GeneralInfoAdminPage } from "./GeneralInfoAdminPage";
 import { RecordsPage } from "./RecordsPage";
 import { OutdoorTablePage } from "./OutdoorTablePage";
 import { AnnouncementsPage } from "./AnnouncementsPage";
@@ -69,6 +70,7 @@ type HomePageProps = {
     | "getMemberProfileOptionsUseCase"
     | "createMemberProfileUseCase"
     | "updateMemberProfileUseCase"
+    | "deleteMemberProfileUseCase"
     | "assignMemberRfidTagUseCase"
     | "returnLoanBowUseCase"
     | "signOffMemberDistanceUseCase"
@@ -187,6 +189,7 @@ const pageTitleMap = {
   "outdoor-table": "Outdoor Table",
   "range-rules": "Range Rules",
   "range-rules-admin": "Range Rules Admin",
+  "general-info-admin": "General Info Admin",
   "tournament-setup": "Tournament Setup",
   "committee-org-chart": "Committee Org Chart",
   "committee-admin": "Committee Admin",
@@ -215,6 +218,7 @@ const pathToPageId = {
   "/outdoor-table": "outdoor-table",
   "/range-rules": "range-rules",
   "/range-rules-admin": "range-rules-admin",
+  "/general-info-admin": "general-info-admin",
   "/tournament-setup": "tournament-setup",
   "/committee-org-chart": "committee-org-chart",
   "/committee-admin": "committee-admin",
@@ -1040,6 +1044,12 @@ export function HomePage({
               }
             />
             <Route
+              path="/general-info-admin"
+              element={
+                <GeneralInfoAdminPage currentUserProfile={currentUserProfile} />
+              }
+            />
+            <Route
               path="/tournament-setup"
               element={
                 <TournamentsPage
@@ -1078,7 +1088,10 @@ export function HomePage({
               path="/lost-and-found"
               element={<LostAndFoundPage currentUserProfile={currentUserProfile} />}
             />
-            <Route path="/general-info" element={<GeneralInfoPage />} />
+            <Route
+              path="/general-info"
+              element={<GeneralInfoPage currentUserProfile={currentUserProfile} />}
+            />
             <Route
               path="*"
               element={

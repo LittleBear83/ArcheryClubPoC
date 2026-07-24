@@ -6,6 +6,7 @@ import type {
   EquipmentLoan,
   LoanBowReturnPayload,
   LoanBowReturnResult,
+  MemberProfileDeleteResult,
   MemberProfileApiProfileResult,
   MemberProfileFormInput,
   MemberProfilePageData,
@@ -17,6 +18,7 @@ type MemberProfileEnvelope = ApiEnvelope & MemberProfileApiProfileResult;
 type EquipmentLoansEnvelope = ApiEnvelope & { loans?: EquipmentLoan[] };
 type ProfileOptionsEnvelope = ApiEnvelope & ProfileOptions;
 type MemberProfileSaveEnvelope = ApiEnvelope & MemberProfileSaveResult;
+type MemberProfileDeleteEnvelope = ApiEnvelope & MemberProfileDeleteResult;
 type LoanBowReturnEnvelope = ApiEnvelope & LoanBowReturnResult;
 type DistanceSignOffEnvelope = ApiEnvelope & DistanceSignOffResult;
 type UserProfileEnvelope = ApiEnvelope & { userProfile?: unknown };
@@ -81,6 +83,18 @@ export class MemberProfileApi {
       method: "PUT",
       headers: buildActorHeaders(actorUsername, true),
       body: JSON.stringify(profile),
+    });
+  }
+
+  async deleteProfile(
+    actorUsername: string,
+    username: string,
+    confirmationUsername: string,
+  ): Promise<MemberProfileDeleteResult> {
+    return fetchApi<MemberProfileDeleteEnvelope>(`/api/user-profiles/${username}`, {
+      method: "DELETE",
+      headers: buildActorHeaders(actorUsername, true),
+      body: JSON.stringify({ confirmationUsername }),
     });
   }
 

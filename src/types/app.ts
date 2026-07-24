@@ -32,6 +32,12 @@ export type CoachingBooking = {
   fullName: string;
 };
 
+export type EventBooking = {
+  username: string;
+  fullName: string;
+  bookedAt?: string;
+};
+
 export type CoachingSession = {
   id: string | number;
   date: string;
@@ -69,6 +75,9 @@ export type ApprovalEvent = {
   type: string;
   types?: string[];
   venue: string;
+  bookings?: EventBooking[];
+  bookingCount?: number;
+  canViewBookings?: boolean;
   submittedByUsername?: string;
   approvalStatus?: string;
   isPendingApproval?: boolean;

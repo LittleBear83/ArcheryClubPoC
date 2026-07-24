@@ -2,6 +2,7 @@ import type {
   DistanceSignOffInput,
   DistanceSignOffResult,
   MemberProfileFormInput,
+  MemberProfileDeleteResult,
   MemberProfilePageData,
   MemberProfileSaveResult,
   ProfileOptions,
@@ -31,6 +32,12 @@ export abstract class MemberProfileRepository {
     username: string,
     profile: MemberProfileFormInput,
   ): Promise<MemberProfileSaveResult>;
+
+  abstract deleteProfile(
+    actorUsername: string,
+    username: string,
+    confirmationUsername: string,
+  ): Promise<MemberProfileDeleteResult>;
 
   abstract assignRfidTag(
     actorUsername: string,

@@ -4,6 +4,7 @@ import type {
   DistanceSignOffResult,
   LoanBowReturnPayload,
   LoanBowReturnResult,
+  MemberProfileDeleteResult,
   MemberProfileFormInput,
   MemberProfilePageData,
   MemberProfileSaveResult,
@@ -155,6 +156,41 @@ export class AssignMemberRfidTagUseCase {
       actorUsername,
       username,
       rfidTag,
+    );
+  }
+}
+
+export class DeleteMemberProfileUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
+  constructor({ memberProfileRepository }) {
+    this.memberProfileRepository = memberProfileRepository;
+  }
+
+  async execute({
+    actorUsername,
+    username,
+    confirmationUsername,
+  }: ActorUsernameInput & {
+    username: string;
+    confirmationUsername: string;
+  }): Promise<MemberProfileDeleteResult> {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!username?.trim()) {
+      throw new Error("A member username is required.");
+    }
+
+    if (!confirmationUsername?.trim()) {
+      throw new Error("Type the member username to confirm deletion.");
+    }
+
+    return this.memberProfileRepository.deleteProfile(
+      actorUsername,
+      username,
+      confirmationUsername,
     );
   }
 }

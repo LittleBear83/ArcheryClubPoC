@@ -523,8 +523,8 @@ export function registerMemberActivityRoutes({
     }
 
     rows.sort((left, right) => {
-      const byTimestamp = `${left.date}T${left.time}`.localeCompare(
-        `${right.date}T${right.time}`,
+      const byTimestamp = `${right.date}T${right.time}`.localeCompare(
+        `${left.date}T${left.time}`,
       );
 
       return byTimestamp !== 0 ? byTimestamp : left.name.localeCompare(right.name);

@@ -21,6 +21,7 @@ const EMPTY_PROFILE = {
   username: "",
   firstName: "",
   surname: "",
+  archeryGbMembershipNumber: "",
   emailAddress: "",
   password: "",
   rfidTag: "",

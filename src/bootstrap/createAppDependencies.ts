@@ -9,6 +9,7 @@ import { EquipmentRepositoryImpl } from "../data/repositories/EquipmentRepositor
 import {
   AssignMemberRfidTagUseCase,
   CreateMemberProfileUseCase,
+  DeleteMemberProfileUseCase,
   GetMemberProfileOptionsUseCase,
   GetMemberProfilePageDataUseCase,
   GetUserProfileUseCase,
@@ -73,6 +74,9 @@ export function createAppDependencies() {
       memberProfileRepository,
     }),
     updateMemberProfileUseCase: new UpdateMemberProfileUseCase({
+      memberProfileRepository,
+    }),
+    deleteMemberProfileUseCase: new DeleteMemberProfileUseCase({
       memberProfileRepository,
     }),
     assignMemberRfidTagUseCase: new AssignMemberRfidTagUseCase({

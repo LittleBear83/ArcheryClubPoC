@@ -1,6 +1,7 @@
 import { Button } from "../../components/Button";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { MemberProfileForm } from "../../components/MemberProfileForm";
+import { Modal } from "../../components/Modal";
 import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
@@ -21,6 +22,9 @@ export function ProfileDesktopView({
   canSelectMembers,
   canSignOffSelectedMember,
   canSignOffDistances,
+  currentUserProfile,
+  deleteConfirmationUsername,
+  deleteError,
   disciplineOptions,
   distanceSignOffOptions,
   editableProfile,
@@ -30,6 +34,10 @@ export function ProfileDesktopView({
   handleBooleanSelectChange,
   handleChange,
   handleOpenCardModal,
+  handleCloseDeleteModal,
+  handleDeleteConfirmationUsernameChange,
+  handleDeleteMember,
+  handleOpenDeleteModal,
   handleOpenDistanceSignOffModal,
   handleOutdoorTableAward252SignOffDateChange,
   handleOutdoorTableAchievementDateChange,
@@ -38,6 +46,8 @@ export function ProfileDesktopView({
   handleSaveOutdoorTableEntry,
   handleSelectMember,
   isInitialLoading,
+  isDeleteModalOpen,
+  isDeletingMember,
   isLoadingOutdoorTable,
   isRefreshingProfile,
   isSaving,
@@ -86,6 +96,16 @@ export function ProfileDesktopView({
               >
                 {editableProfile.rfidTag?.trim() ? "Issue new card" : "Add tag"}
               </Button>
+              {editableProfile.username !== currentUserProfile?.auth?.username ? (
+                <Button
+                  type="button"
+                  onClick={handleOpenDeleteModal}
+                  disabled={isInitialLoading || isRefreshingProfile || isSaving}
+                  variant="danger"
+                >
+                  Delete member
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </SectionPanel>
@@ -268,6 +288,45 @@ export function ProfileDesktopView({
           onSave={handleSaveOutdoorTableEntry}
         />
       ) : null}
+
+      <Modal
+        open={isDeleteModalOpen}
+        onClose={handleCloseDeleteModal}
+        title="Delete Member"
+      >
+        <div className="event-cancel-flow">
+          <p>
+            This is a soft delete. The member account will be deactivated and kept
+            for historical records, but the member will no longer be able to use
+            the portal.
+          </p>
+          <p>
+            Type <strong>{editableProfile?.username ?? ""}</strong> to confirm.
+          </p>
+          <label>
+            Confirm username
+            <input
+              value={deleteConfirmationUsername}
+              onChange={handleDeleteConfirmationUsernameChange}
+              disabled={isDeletingMember}
+            />
+          </label>
+          {deleteError ? <p className="usage-error">{deleteError}</p> : null}
+          <div className="event-detail-actions">
+            <Button
+              type="button"
+              onClick={handleDeleteMember}
+              disabled={
+                isDeletingMember ||
+                deleteConfirmationUsername !== (editableProfile?.username ?? "")
+              }
+              variant="danger"
+            >
+              {isDeletingMember ? "Deleting member..." : "Delete member"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

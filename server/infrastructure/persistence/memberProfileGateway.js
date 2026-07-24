@@ -271,6 +271,7 @@ function createPostgresMemberProfileGateway({
               username,
               first_name,
               surname,
+              archery_gb_membership_number,
               email_address,
               password,
               rfid_tag,
@@ -280,10 +281,11 @@ function createPostgresMemberProfileGateway({
               membership_fees_due,
               coaching_volunteer
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             ON CONFLICT(username) DO UPDATE SET
               first_name = EXCLUDED.first_name,
               surname = EXCLUDED.surname,
+              archery_gb_membership_number = EXCLUDED.archery_gb_membership_number,
               email_address = EXCLUDED.email_address,
               password = EXCLUDED.password,
               rfid_tag = EXCLUDED.rfid_tag,
@@ -297,6 +299,7 @@ function createPostgresMemberProfileGateway({
             userPayload.username,
             userPayload.firstName,
             userPayload.surname,
+            userPayload.archeryGbMembershipNumber,
             userPayload.emailAddress,
             userPayload.password,
             userPayload.rfidTag,

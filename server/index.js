@@ -60,6 +60,7 @@ import { createMemberProfileGateway } from "./infrastructure/persistence/memberP
 import { createLostArrowGateway } from "./infrastructure/persistence/lostArrowGateway.js";
 import { createOutdoorTableGateway } from "./infrastructure/persistence/outdoorTableGateway.js";
 import { createRangeRulesGateway } from "./infrastructure/persistence/rangeRulesGateway.js";
+import { createGeneralInfoGateway } from "./infrastructure/persistence/generalInfoGateway.js";
 import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
 import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
 import { createTournamentGateway } from "./infrastructure/persistence/tournamentGateway.js";
@@ -80,6 +81,7 @@ import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRo
 import { registerLostArrowRoutes } from "./presentation/http/registerLostArrowRoutes.js";
 import { registerOutdoorTableRoutes } from "./presentation/http/registerOutdoorTableRoutes.js";
 import { registerRangeRulesRoutes } from "./presentation/http/registerRangeRulesRoutes.js";
+import { registerGeneralInfoRoutes } from "./presentation/http/registerGeneralInfoRoutes.js";
 import { registerSseRoutes } from "./presentation/http/registerSseRoutes.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
@@ -507,6 +509,11 @@ const auditLogGateway = createAuditLogGateway({
   pool: db.pool,
 });
 const rangeRulesGateway = createRangeRulesGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
+});
+const generalInfoGateway = createGeneralInfoGateway({
   databaseEngine: serverRuntime.databaseEngine,
   db,
   pool: db.pool,
@@ -956,7 +963,7 @@ function buildMemberUserProfile(user, disciplines = [], meta = {}) {
       surname: user.surname,
       fullName: `${user.first_name} ${user.surname}`,
       emailAddress: user.email_address ?? "",
-      archeryGbMembershipNumber: null,
+      archeryGbMembershipNumber: user.archery_gb_membership_number ?? null,
     },
     membership: {
       role: user.user_type,
@@ -1061,6 +1068,7 @@ function buildEditableMemberProfile(user, disciplines = [], loanBow = null) {
     username: user.username,
     firstName: user.first_name,
     surname: user.surname,
+    archeryGbMembershipNumber: user.archery_gb_membership_number ?? "",
     emailAddress: user.email_address ?? "",
     password: "",
     rfidTag: user.rfid_tag ?? "",
@@ -2148,6 +2156,7 @@ function buildClubEvent(event, bookings = [], actor = null) {
   const actorUsername = actor?.username ?? null;
   const canApprove = actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS);
   const eventTypes = normalizeClubEventTypes(event);
+  const canViewBookings = canActorViewEventBookings(actor, event);
 
   return {
     id: event.id,
@@ -2159,7 +2168,9 @@ function buildClubEvent(event, bookings = [], actor = null) {
     type: eventTypes[0],
     types: eventTypes,
     venue: normalizeVenue(event.venue),
+    bookings: canViewBookings ? bookings : [],
     bookingCount: bookings.length,
+    canViewBookings,
     approvalStatus: event.approval_status ?? "approved",
     isApproved: (event.approval_status ?? "approved") === "approved",
     isPendingApproval: (event.approval_status ?? "approved") === "pending",
@@ -2177,6 +2188,22 @@ function buildClubEvent(event, bookings = [], actor = null) {
       (event.approval_status ?? "approved") === "pending",
     ),
   };
+}
+
+function canActorViewEventBookings(actor, event) {
+  const actorUsername = actor?.username ?? null;
+
+  if (!actorUsername) {
+    return false;
+  }
+
+  if ((event?.submitted_by_username ?? null) === actorUsername) {
+    return true;
+  }
+
+  const roleKey = String(actor?.user_type ?? "").trim().toLowerCase();
+
+  return roleKey === "admin" || roleKey === "developer";
 }
 
 function normalizeClubEventTypes(event) {
@@ -3661,6 +3688,16 @@ registerRangeRulesRoutes({
   rangeRulesGateway,
   serverEventBus,
 });
+registerGeneralInfoRoutes({
+  actorHasPermission,
+  app,
+  auditChangeLogger,
+  generalInfoGateway,
+  getActorUser,
+  getUtcTimestampParts,
+  PERMISSIONS,
+  serverEventBus,
+});
 
 registerSseRoutes({
   app,
@@ -4243,6 +4280,7 @@ app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
     username,
     firstName: sanitized.value.firstName,
     surname: sanitized.value.surname,
+    archeryGbMembershipNumber: "",
     password,
     rfidTag: "",
     activeMember: true,
@@ -4525,6 +4563,7 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
       username: existingUser.username,
       firstName: existingUser.first_name,
       surname: existingUser.surname,
+      archeryGbMembershipNumber: existingUser.archery_gb_membership_number ?? "",
       password: existingUser.password,
       rfidTag: existingUser.rfid_tag ?? "",
       activeMember: Boolean(existingUser.active_member),

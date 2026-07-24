@@ -1,6 +1,7 @@
 import { Button } from "../../components/Button";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { MemberProfileForm } from "../../components/MemberProfileForm";
+import { Modal } from "../../components/Modal";
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
 import { MobileCardList } from "../../components/mobile/MobileCardList";
@@ -33,6 +34,9 @@ export function ProfileMobileView({
   canSelectMembers,
   canSignOffSelectedMember,
   canSignOffDistances,
+  currentUserProfile,
+  deleteConfirmationUsername,
+  deleteError,
   disciplineOptions,
   editableProfile,
   equipmentLoans,
@@ -41,6 +45,10 @@ export function ProfileMobileView({
   handleBooleanSelectChange,
   handleChange,
   handleOpenCardModal,
+  handleCloseDeleteModal,
+  handleDeleteConfirmationUsernameChange,
+  handleDeleteMember,
+  handleOpenDeleteModal,
   handleOpenDistanceSignOffModal,
   handleOutdoorTableAward252SignOffDateChange,
   handleOutdoorTableAchievementDateChange,
@@ -49,6 +57,8 @@ export function ProfileMobileView({
   handleSaveOutdoorTableEntry,
   handleSelectMember,
   isInitialLoading,
+  isDeleteModalOpen,
+  isDeletingMember,
   isLoadingOutdoorTable,
   isRefreshingProfile,
   isSaving,
@@ -88,16 +98,29 @@ export function ProfileMobileView({
               ))}
             </LabeledSelect>
             {canManageMembers && editableProfile ? (
-              <Button
-                type="button"
-                className="profile-rfid-button"
-                onClick={handleOpenCardModal}
-                disabled={isInitialLoading || isRefreshingProfile || isSaving}
-                variant="danger"
-                fullWidth
-              >
-                {editableProfile.rfidTag?.trim() ? "Issue new card" : "Add tag"}
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  className="profile-rfid-button"
+                  onClick={handleOpenCardModal}
+                  disabled={isInitialLoading || isRefreshingProfile || isSaving}
+                  variant="danger"
+                  fullWidth
+                >
+                  {editableProfile.rfidTag?.trim() ? "Issue new card" : "Add tag"}
+                </Button>
+                {editableProfile.username !== currentUserProfile?.auth?.username ? (
+                  <Button
+                    type="button"
+                    onClick={handleOpenDeleteModal}
+                    disabled={isInitialLoading || isRefreshingProfile || isSaving}
+                    variant="danger"
+                    fullWidth
+                  >
+                    Delete member
+                  </Button>
+                ) : null}
+              </>
             ) : null}
           </div>
         </SectionPanel>
@@ -251,6 +274,46 @@ export function ProfileMobileView({
           onSave={handleSaveOutdoorTableEntry}
         />
       ) : null}
+
+      <Modal
+        open={isDeleteModalOpen}
+        onClose={handleCloseDeleteModal}
+        title="Delete Member"
+      >
+        <div className="event-cancel-flow">
+          <p>
+            This is a soft delete. The member account will be deactivated and kept
+            for historical records, but the member will no longer be able to use
+            the portal.
+          </p>
+          <p>
+            Type <strong>{editableProfile?.username ?? ""}</strong> to confirm.
+          </p>
+          <label>
+            Confirm username
+            <input
+              value={deleteConfirmationUsername}
+              onChange={handleDeleteConfirmationUsernameChange}
+              disabled={isDeletingMember}
+            />
+          </label>
+          {deleteError ? <p className="usage-error">{deleteError}</p> : null}
+          <div className="event-detail-actions">
+            <Button
+              type="button"
+              onClick={handleDeleteMember}
+              disabled={
+                isDeletingMember ||
+                deleteConfirmationUsername !== (editableProfile?.username ?? "")
+              }
+              variant="danger"
+              fullWidth
+            >
+              {isDeletingMember ? "Deleting member..." : "Delete member"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -55,6 +55,10 @@ export function useProfilePageState({
   const [cardIssueStatus, setCardIssueStatus] = useState("");
   const [cardIssueSuccess, setCardIssueSuccess] = useState("");
   const [isIssuingCard, setIsIssuingCard] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteConfirmationUsername, setDeleteConfirmationUsername] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [isDeletingMember, setIsDeletingMember] = useState(false);
   const [equipmentLoans, setEquipmentLoans] = useState([]);
   const [isDistanceSignOffModalOpen, setIsDistanceSignOffModalOpen] =
     useState(false);
@@ -160,6 +164,10 @@ export function useProfilePageState({
     setCardIssueStatus("");
     setCardIssueSuccess("");
     setIsIssuingCard(false);
+    setIsDeleteModalOpen(false);
+    setDeleteConfirmationUsername("");
+    setDeleteError("");
+    setIsDeletingMember(false);
     setIsDistanceSignOffModalOpen(false);
     setDistanceSignOffError("");
     setIsSavingDistanceSignOff(false);
@@ -559,6 +567,7 @@ export function useProfilePageState({
     const requestBody = {
       firstName: editableProfile.firstName,
       surname: editableProfile.surname,
+      archeryGbMembershipNumber: editableProfile.archeryGbMembershipNumber,
       emailAddress: editableProfile.emailAddress,
       password: editableProfile.password,
       rfidTag: canManageMembers ? editableProfile.rfidTag : undefined,
@@ -660,12 +669,32 @@ export function useProfilePageState({
     setIsCardModalOpen(true);
   };
 
+  const handleOpenDeleteModal = () => {
+    setError("");
+    setMessage("");
+    setDeleteError("");
+    setDeleteConfirmationUsername("");
+    setIsDeleteModalOpen(true);
+  };
+
   const handleCloseCardModal = () => {
     setIsCardModalOpen(false);
     setIsIssuingCard(false);
     setCardIssueError("");
     setCardIssueStatus("");
     setCardIssueSuccess("");
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (!isDeletingMember) {
+      setIsDeleteModalOpen(false);
+      setDeleteConfirmationUsername("");
+      setDeleteError("");
+    }
+  };
+
+  const handleDeleteConfirmationUsernameChange = (event) => {
+    setDeleteConfirmationUsername(event.target.value);
   };
 
   const handleOpenDistanceSignOffModal = (nextSelection?: {
@@ -716,6 +745,44 @@ export function useProfilePageState({
       memberPasswordConfirmation: "",
     });
     setIsDistanceSignOffModalOpen(true);
+  };
+
+  const handleDeleteMember = async () => {
+    if (!editableProfile?.username) {
+      return;
+    }
+
+    setIsDeletingMember(true);
+    setDeleteError("");
+    setError("");
+    setMessage("");
+
+    try {
+      const result = await memberProfileCrud.deleteMemberProfileUseCase.execute({
+        actorUsername,
+        username: editableProfile.username,
+        confirmationUsername: deleteConfirmationUsername,
+      });
+      const remainingMembers = memberOptions.filter(
+        (member) => member.username !== result.deletedUsername,
+      );
+
+      setMemberOptions(remainingMembers);
+      setEditableProfile(null);
+      setEquipmentLoans([]);
+      setOutdoorTableEntries([]);
+      setOutdoorTableDraftsByBowType({});
+      setSelectedUsername(
+        remainingMembers[0]?.username ?? currentUserProfile?.auth?.username ?? "",
+      );
+      setMessage(result.message ?? `${result.deletedUsername} deleted successfully.`);
+      setIsDeleteModalOpen(false);
+      setDeleteConfirmationUsername("");
+    } catch (deleteMemberError) {
+      setDeleteError(deleteMemberError.message);
+    } finally {
+      setIsDeletingMember(false);
+    }
   };
 
   const handleCloseDistanceSignOffModal = () => {
@@ -935,6 +1002,8 @@ export function useProfilePageState({
     cardIssueError,
     cardIssueStatus,
     cardIssueSuccess,
+    deleteConfirmationUsername,
+    deleteError,
     currentUserProfile,
     availableDistanceSignOffOptions,
     disciplineOptions,
@@ -949,10 +1018,14 @@ export function useProfilePageState({
     handleBooleanSelectChange,
     handleChange,
     handleCloseCardModal,
+    handleCloseDeleteModal,
     handleCloseDistanceSignOffModal,
     handleCloseReturnModal,
+    handleDeleteConfirmationUsernameChange,
+    handleDeleteMember,
     handleDistanceSignOffChange,
     handleOpenCardModal,
+    handleOpenDeleteModal,
     handleOpenDistanceSignOffModal,
     handleOutdoorTableAward252SignOffDateChange,
     handleOutdoorTableAchievementDateChange,
@@ -963,9 +1036,11 @@ export function useProfilePageState({
     handleSelectMember,
     handleSignOffDistance,
     isCardModalOpen,
+    isDeleteModalOpen,
     isDistanceSignOffModalOpen,
     isGuest,
     isInitialLoading,
+    isDeletingMember,
     isIssuingCard,
     isRefreshingProfile,
     isReturnModalOpen,

@@ -18,6 +18,7 @@ const orderedTableCopies = [
       "username",
       "first_name",
       "surname",
+      "archery_gb_membership_number",
       "email_address",
       "password",
       "rfid_tag",

@@ -85,6 +85,15 @@ export function MemberProfileForm({
         </label>
 
         <label>
+          AGB membership number
+          <input
+            value={editableProfile.archeryGbMembershipNumber ?? ""}
+            onChange={handleChange("archeryGbMembershipNumber")}
+            disabled={isProfileLocked}
+          />
+        </label>
+
+        <label>
           Email address
           <input
             type="email"

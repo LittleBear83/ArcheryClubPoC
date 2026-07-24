@@ -32,6 +32,7 @@ import {
 import type {
   BeginnersCourseCalendarLesson,
   CoachingSession,
+  EventBooking,
   UserProfile,
 } from "../../types/app";
 
@@ -186,6 +187,9 @@ type CalendarEvent = {
   type: string;
   types?: string[];
   venue: string;
+  bookings?: EventBooking[];
+  bookingCount?: number;
+  canViewBookings?: boolean;
   isBookedOn?: boolean;
   isPendingApproval?: boolean;
   isRejected?: boolean;
@@ -2514,6 +2518,19 @@ export function EventCalendarPage({
               <p className="event-form-error">
                 Rejection reason: {selectedEventDetail.rejectionReason}
               </p>
+            ) : null}
+            {selectedEventDetail.canViewBookings ? (
+              <>
+                <h4>Booked Members</h4>
+                {selectedEventDetail.bookings && selectedEventDetail.bookings.length > 0 ? (
+                  <SummaryList
+                    items={selectedEventDetail.bookings}
+                    renderItem={(booking) => booking.fullName}
+                  />
+                ) : (
+                  <p>No members have booked onto this event yet.</p>
+                )}
+              </>
             ) : null}
             <div className="event-detail-actions">
               {selectedEventDetail.canApprove ? (

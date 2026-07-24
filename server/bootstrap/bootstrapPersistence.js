@@ -39,10 +39,7 @@ export async function bootstrapPersistence({
       defaultEquipmentCupboardLabel,
       permissionDefinitions,
       pool: db.pool,
-      seedUsers: getSeedUsers({
-        hashPassword,
-        isLive: runtime.isLive,
-      }),
+      seedUsers: [],
       systemRoleDefinitions,
     });
 
@@ -96,4 +93,3 @@ export async function bootstrapPersistence({
     isPasswordHash,
   });
 }
-

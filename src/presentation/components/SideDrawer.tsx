@@ -61,6 +61,12 @@ const pages = [
     path: "/range-rules-admin",
     permission: "manage_range_rules",
   },
+  {
+    id: "general-info-admin",
+    label: "General Info Admin",
+    path: "/general-info-admin",
+    permission: "manage_range_rules",
+  },
   { id: "general-info", label: "General Information", path: "/general-info" },
   {
     id: "user-creation",

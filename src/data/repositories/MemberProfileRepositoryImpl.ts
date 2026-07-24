@@ -4,6 +4,7 @@ import type {
   DistanceSignOffResult,
   LoanBowReturnPayload,
   LoanBowReturnResult,
+  MemberProfileDeleteResult,
   MemberProfileFormInput,
   MemberProfilePageData,
   MemberProfileSaveResult,
@@ -29,6 +30,11 @@ type MemberProfileDataSource = {
     username: string,
     profile: MemberProfileFormInput,
   ): Promise<MemberProfileSaveResult>;
+  deleteProfile(
+    actorUsername: string,
+    username: string,
+    confirmationUsername: string,
+  ): Promise<MemberProfileDeleteResult>;
   assignRfidTag(
     actorUsername: string,
     username: string,
@@ -71,6 +77,14 @@ export class MemberProfileRepositoryImpl extends MemberProfileRepository {
 
   async updateProfile(actorUsername, username, profile) {
     return this.dataSource.updateProfile(actorUsername, username, profile);
+  }
+
+  async deleteProfile(actorUsername, username, confirmationUsername) {
+    return this.dataSource.deleteProfile(
+      actorUsername,
+      username,
+      confirmationUsername,
+    );
   }
 
   async assignRfidTag(actorUsername, username, rfidTag) {

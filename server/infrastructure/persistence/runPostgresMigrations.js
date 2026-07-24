@@ -1,3 +1,4 @@
+import { getDefaultGeneralInfoContent } from "../../../shared/generalInfoDefaults.js";
 import { getDefaultRangeRulesContent } from "../../../shared/rangeRulesDefaults.js";
 
 function buildInitialSchemaSql() {
@@ -12,6 +13,7 @@ function buildInitialSchemaSql() {
       username TEXT NOT NULL UNIQUE,
       first_name TEXT NOT NULL,
       surname TEXT NOT NULL,
+      archery_gb_membership_number TEXT,
       email_address TEXT,
       password TEXT,
       rfid_tag TEXT UNIQUE,
@@ -86,6 +88,18 @@ function buildInitialSchemaSql() {
       indoor_rules_json JSONB NOT NULL,
       outdoor_rules_json JSONB NOT NULL,
       outdoor_lane_rules_json JSONB NOT NULL,
+      updated_at_date TEXT NOT NULL,
+      updated_at_time TEXT NOT NULL,
+      updated_by_username TEXT REFERENCES users(username)
+    );
+
+    CREATE TABLE IF NOT EXISTS general_info_content (
+      content_key TEXT PRIMARY KEY,
+      intro_paragraphs_json JSONB NOT NULL,
+      quick_facts_json JSONB NOT NULL,
+      facilities_json JSONB NOT NULL,
+      beginners_json JSONB NOT NULL,
+      club_life_json JSONB NOT NULL,
       updated_at_date TEXT NOT NULL,
       updated_at_time TEXT NOT NULL,
       updated_by_username TEXT REFERENCES users(username)
@@ -507,6 +521,7 @@ function buildRolePermissionSeedSql({
 }) {
   const statements = [];
   const defaultRangeRulesContent = getDefaultRangeRulesContent();
+  const defaultGeneralInfoContent = getDefaultGeneralInfoContent();
 
   for (const permission of permissionDefinitions) {
     statements.push({
@@ -552,6 +567,32 @@ function buildRolePermissionSeedSql({
       ON CONFLICT(label) DO NOTHING
     `,
     values: [defaultEquipmentCupboardLabel],
+  });
+
+  statements.push({
+    sql: `
+      INSERT INTO general_info_content (
+        content_key,
+        intro_paragraphs_json,
+        quick_facts_json,
+        facilities_json,
+        beginners_json,
+        club_life_json,
+        updated_at_date,
+        updated_at_time,
+        updated_by_username
+      )
+      VALUES ($1, $2::jsonb, $3::jsonb, $4::jsonb, $5::jsonb, $6::jsonb, '1970-01-01', '00:00:00.000Z', NULL)
+      ON CONFLICT(content_key) DO NOTHING
+    `,
+    values: [
+      "default",
+      JSON.stringify(defaultGeneralInfoContent.introParagraphs),
+      JSON.stringify(defaultGeneralInfoContent.quickFacts),
+      JSON.stringify(defaultGeneralInfoContent.facilities),
+      JSON.stringify(defaultGeneralInfoContent.beginners),
+      JSON.stringify(defaultGeneralInfoContent.clubLife),
+    ],
   });
 
   statements.push({
@@ -611,6 +652,7 @@ function buildRolePermissionSeedSql({
           username,
           first_name,
           surname,
+          archery_gb_membership_number,
           email_address,
           password,
           rfid_tag,
@@ -620,10 +662,11 @@ function buildRolePermissionSeedSql({
           membership_fees_due,
           coaching_volunteer
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT(username) DO UPDATE SET
           first_name = EXCLUDED.first_name,
           surname = EXCLUDED.surname,
+          archery_gb_membership_number = EXCLUDED.archery_gb_membership_number,
           email_address = EXCLUDED.email_address,
           password = EXCLUDED.password,
           rfid_tag = EXCLUDED.rfid_tag,
@@ -637,6 +680,7 @@ function buildRolePermissionSeedSql({
         user.username,
         user.firstName,
         user.surname,
+        user.archeryGbMembershipNumber ?? null,
         user.emailAddress ?? null,
         user.password,
         user.rfidTag,
@@ -963,6 +1007,10 @@ export async function runPostgresMigrations({
       await client.query(statement.sql, statement.values);
     }
 
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS archery_gb_membership_number TEXT
+    `);
     await client.query(`
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS email_address TEXT

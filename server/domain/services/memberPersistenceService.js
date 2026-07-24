@@ -60,6 +60,7 @@ export function createMemberPersistenceService({
   return {
     async saveMemberProfile({
       activeMember,
+      archeryGbMembershipNumber,
       affiliateMember,
       juniorMember,
       coachingVolunteer,
@@ -78,6 +79,7 @@ export function createMemberPersistenceService({
       const trimmedUsername = username?.trim();
       const trimmedFirstName = firstName?.trim();
       const trimmedSurname = surname?.trim();
+      const trimmedArcheryGbMembershipNumber = archeryGbMembershipNumber?.trim() || "";
       const trimmedEmailAddress = emailAddress?.trim() || "";
       const trimmedPassword = password?.trim();
       const trimmedRfidTag = rfidTag?.trim();
@@ -134,6 +136,7 @@ export function createMemberPersistenceService({
         username: normalizedUser.username,
         firstName: trimmedFirstName,
         surname: trimmedSurname,
+        archeryGbMembershipNumber: trimmedArcheryGbMembershipNumber,
         emailAddress: trimmedEmailAddress,
         password: passwordToSave,
         rfidTag: normalizedUser.rfid_tag,

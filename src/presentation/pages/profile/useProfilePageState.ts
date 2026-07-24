@@ -35,6 +35,9 @@ export function useProfilePageState({
 }) {
   const hasLoadedProfileRef = useRef(false);
   const isIssuingCardRef = useRef(false);
+  const isLoadingProfileRef = useRef(false);
+  const isLoadingProfileOptionsRef = useRef(false);
+  const isLoadingOutdoorTableRef = useRef(false);
   const [editableProfile, setEditableProfile] = useState(null);
   const [memberOptions, setMemberOptions] = useState([]);
   const [selectedUsername, setSelectedUsername] = useState(
@@ -192,6 +195,12 @@ export function useProfilePageState({
         return;
       }
 
+      if (isLoadingProfileRef.current) {
+        return;
+      }
+
+      isLoadingProfileRef.current = true;
+
       if (isBackgroundRefresh) {
         setIsRefreshingProfile(true);
       } else {
@@ -223,6 +232,8 @@ export function useProfilePageState({
           setError(loadError.message);
         }
       } finally {
+        isLoadingProfileRef.current = false;
+
         if (!signal?.aborted) {
           setIsInitialLoading(false);
           setIsRefreshingProfile(false);
@@ -237,6 +248,12 @@ export function useProfilePageState({
       if (!canSelectMembers || isGuest) {
         return;
       }
+
+      if (isLoadingProfileOptionsRef.current) {
+        return;
+      }
+
+      isLoadingProfileOptionsRef.current = true;
 
       try {
         const result =
@@ -256,6 +273,8 @@ export function useProfilePageState({
         if (!signal?.aborted) {
           setError(loadError.message);
         }
+      } finally {
+        isLoadingProfileOptionsRef.current = false;
       }
     },
     [actorUsername, canSelectMembers, isGuest, memberProfileCrud],
@@ -268,6 +287,12 @@ export function useProfilePageState({
         setIsLoadingOutdoorTable(false);
         return;
       }
+
+      if (isLoadingOutdoorTableRef.current) {
+        return;
+      }
+
+      isLoadingOutdoorTableRef.current = true;
 
       setIsLoadingOutdoorTable(true);
       setOutdoorTableError("");
@@ -290,6 +315,8 @@ export function useProfilePageState({
           setOutdoorTableError(loadError.message);
         }
       } finally {
+        isLoadingOutdoorTableRef.current = false;
+
         if (!signal?.aborted) {
           setIsLoadingOutdoorTable(false);
         }

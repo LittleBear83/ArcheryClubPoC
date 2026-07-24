@@ -2714,6 +2714,75 @@ button:disabled {
   margin: 0;
 }
 
+.profile-delete-modal .modal-header h3 {
+  font-size: 1rem;
+}
+
+.profile-delete-flow {
+  display: grid;
+  gap: 16px;
+}
+
+.profile-delete-flow p {
+  margin: 0;
+}
+
+.profile-delete-copy {
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.profile-delete-confirmation {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--danger-border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--danger-bg) 72%, transparent);
+}
+
+.profile-delete-confirmation-title {
+  color: var(--text-h);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.profile-delete-field {
+  display: grid;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.profile-delete-field span {
+  font-size: 0.95rem;
+}
+
+.profile-delete-field input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: var(--control-height);
+  padding: 12px 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 12px;
+  background: var(--input-bg);
+  color: var(--input-text);
+}
+
+.profile-delete-field input:focus {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+.profile-delete-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .event-cancel-list {
   display: grid;
   gap: 10px;
@@ -2825,6 +2894,17 @@ button:disabled {
 .event-multi-date-summary strong {
   color: var(--text-h);
   font-size: 0.95rem;
+}
+
+@media (max-width: 720px) {
+  .profile-delete-modal .modal-header h3 {
+    font-size: 0.95rem;
+  }
+
+  .profile-delete-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
 }
 
 .event-multi-date-chip-list {

@@ -1,7 +1,7 @@
 import { Button } from "../../components/Button";
 import { LabeledSelect } from "../../components/LabeledSelect";
 import { MemberProfileForm } from "../../components/MemberProfileForm";
-import { Modal } from "../../components/Modal";
+import { DeleteMemberModal } from "./DeleteMemberModal";
 import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
@@ -289,44 +289,16 @@ export function ProfileDesktopView({
         />
       ) : null}
 
-      <Modal
-        open={isDeleteModalOpen}
+      <DeleteMemberModal
+        confirmationUsername={deleteConfirmationUsername}
+        error={deleteError}
+        expectedUsername={editableProfile?.username ?? ""}
+        isDeleting={isDeletingMember}
+        onChangeConfirmationUsername={handleDeleteConfirmationUsernameChange}
         onClose={handleCloseDeleteModal}
-        title="Delete Member"
-      >
-        <div className="event-cancel-flow">
-          <p>
-            This is a soft delete. The member account will be deactivated and kept
-            for historical records, but the member will no longer be able to use
-            the portal.
-          </p>
-          <p>
-            Type <strong>{editableProfile?.username ?? ""}</strong> to confirm.
-          </p>
-          <label>
-            Confirm username
-            <input
-              value={deleteConfirmationUsername}
-              onChange={handleDeleteConfirmationUsernameChange}
-              disabled={isDeletingMember}
-            />
-          </label>
-          {deleteError ? <p className="usage-error">{deleteError}</p> : null}
-          <div className="event-detail-actions">
-            <Button
-              type="button"
-              onClick={handleDeleteMember}
-              disabled={
-                isDeletingMember ||
-                deleteConfirmationUsername !== (editableProfile?.username ?? "")
-              }
-              variant="danger"
-            >
-              {isDeletingMember ? "Deleting member..." : "Delete member"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+        onDelete={handleDeleteMember}
+        open={isDeleteModalOpen}
+      />
     </div>
   );
 }

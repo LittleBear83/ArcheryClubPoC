@@ -102,6 +102,10 @@ const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_RATE_LIMIT_MAX_ATTEMPTS = 20;
 const GLOBAL_API_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const GLOBAL_API_RATE_LIMIT_MAX_REQUESTS = 300;
+const GLOBAL_API_RATE_LIMIT_EXCLUDED_PATHS = new Set([
+  "/api/public-events",
+  "/api/server-events",
+]);
 const GENERAL_JSON_BODY_LIMIT = "256kb";
 const COMMITTEE_PHOTO_JSON_BODY_LIMIT = "5mb";
 const AUTH_RATE_LIMIT_PATHS = new Set([
@@ -141,7 +145,9 @@ const csrfProtection = createCsrfProtection({
 });
 const globalApiRateLimiter = createRateLimiter({
   getKey: getClientIp,
-  isLimitedPath: (req) => req.path.startsWith("/api/"),
+  isLimitedPath: (req) =>
+    req.path.startsWith("/api/") &&
+    !GLOBAL_API_RATE_LIMIT_EXCLUDED_PATHS.has(req.path),
   maxAttempts: GLOBAL_API_RATE_LIMIT_MAX_REQUESTS,
   message: "Too many requests. Please wait a moment and try again.",
   windowMs: GLOBAL_API_RATE_LIMIT_WINDOW_MS,

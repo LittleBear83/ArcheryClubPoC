@@ -1058,11 +1058,22 @@ export function registerAdminMemberRoutes({
 
     const goldenRecords = await buildGoldenRecordsSnapshotForUser(user);
 
-    await syncOutdoorTableHandicapsFromGoldenRecords({
-      disciplines,
-      goldenRecordsSnapshot: goldenRecords,
-      user,
-    });
+    try {
+      await syncOutdoorTableHandicapsFromGoldenRecords({
+        disciplines,
+        goldenRecordsSnapshot: goldenRecords,
+        user,
+      });
+    } catch (syncError) {
+      console.error(
+        "Failed to sync Golden Records outdoor handicaps for profile load",
+        {
+          error: syncError instanceof Error ? syncError.message : syncError,
+          matchSource: goldenRecords?.matchSource ?? "unknown",
+          username: user.username,
+        },
+      );
+    }
 
     res.json({
       success: true,

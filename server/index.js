@@ -61,6 +61,7 @@ import { createLostArrowGateway } from "./infrastructure/persistence/lostArrowGa
 import { createOutdoorTableGateway } from "./infrastructure/persistence/outdoorTableGateway.js";
 import { createRangeRulesGateway } from "./infrastructure/persistence/rangeRulesGateway.js";
 import { createGeneralInfoGateway } from "./infrastructure/persistence/generalInfoGateway.js";
+import { createGoldenRecordsCurrentHandicapService } from "./infrastructure/golden-records/goldenRecordsCurrentHandicapService.js";
 import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
 import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
 import { createTournamentGateway } from "./infrastructure/persistence/tournamentGateway.js";
@@ -524,6 +525,9 @@ const generalInfoGateway = createGeneralInfoGateway({
   db,
   pool: db.pool,
 });
+const goldenRecordsCurrentHandicapService = createGoldenRecordsCurrentHandicapService(
+  serverRuntime.goldenRecords,
+);
 const serverEventBus = createServerEventBus();
 const publicServerEventBus = createServerEventBus();
 
@@ -3623,6 +3627,7 @@ registerAdminMemberRoutes({
   buildUniqueRoleKeyFromTitle,
   CURRENT_PERMISSION_KEY_SET,
   DISTANCE_SIGN_OFF_YARDS,
+  goldenRecordsCurrentHandicapService,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,
@@ -3630,6 +3635,7 @@ registerAdminMemberRoutes({
   listProfilePageMembers,
   memberDirectoryGateway,
   memberDistanceSignOffRepository,
+  outdoorTableGateway,
   PERMISSIONS,
   refreshRoleAccessSnapshot,
   roleCommitteeGateway,

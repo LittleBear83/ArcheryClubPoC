@@ -169,6 +169,7 @@ const MOBILE_ON_SITE_FEATURE_TARGET = {
   radiusMeters: 50,
 } as const;
 const LOST_ARROW_SEEN_TOASTS_STORAGE_KEY = "archeryclubpoc-seen-lost-arrow-toasts";
+const ON_SITE_BOOKING_WINDOW_MS = 2 * 60 * 60 * 1000;
 
 const pageTitleMap = {
   home: "Home",
@@ -603,9 +604,56 @@ export function HomePage({
   const [mobileOnSiteStatus, setMobileOnSiteStatus] = useState("");
   const [mobileOnSiteError, setMobileOnSiteError] = useState("");
   const [isBookingOnSite, setIsBookingOnSite] = useState(false);
+  const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
   const [lostArrowToasts, setLostArrowToasts] = useState<LostArrowToast[]>([]);
   const previousOpenLostArrowIdsRef = useRef<number[] | null>(null);
   const seenLostArrowToastIdsRef = useRef<Set<string>>(new Set());
+  const activeRangeMemberEntry = useMemo(
+    () =>
+      rangeMembers.find(
+        (member) =>
+          member?.auth?.username?.toLowerCase() === actorUsername.toLowerCase(),
+      ) ?? null,
+    [actorUsername, rangeMembers],
+  );
+  const activeRangePresenceEndsAt = useMemo(() => {
+    const lastLoggedInAt = activeRangeMemberEntry?.meta?.lastLoggedInAt;
+
+    if (!lastLoggedInAt) {
+      return null;
+    }
+
+    const lastLoggedInMs = new Date(lastLoggedInAt).getTime();
+
+    if (Number.isNaN(lastLoggedInMs)) {
+      return null;
+    }
+
+    return lastLoggedInMs + ON_SITE_BOOKING_WINDOW_MS;
+  }, [activeRangeMemberEntry?.meta?.lastLoggedInAt]);
+  const isOnSiteBookingWindowOpen = Boolean(
+    activeRangePresenceEndsAt && activeRangePresenceEndsAt > nowTimestamp,
+  );
+  const activeRangePresenceEndsAtText = useMemo(() => {
+    if (!activeRangePresenceEndsAt || activeRangePresenceEndsAt <= nowTimestamp) {
+      return "";
+    }
+
+    return new Date(activeRangePresenceEndsAt).toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }, [activeRangePresenceEndsAt, nowTimestamp]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNowTimestamp(Date.now());
+    }, 60000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     if (!actorUsername) {
@@ -727,6 +775,7 @@ export function HomePage({
       await queryClient.invalidateQueries({
         queryKey: homeQueryKeys.rangeMembers(),
       });
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) {
       setMobileOnSiteError(
         error instanceof Error
@@ -982,8 +1031,10 @@ export function HomePage({
                   beginnerCoachAssignments={beginnerCoachAssignments}
                   mobileOnSiteFeature={{
                     ...mobileOnSiteFeature,
+                    activeRangePresenceEndsAtText,
                     error: mobileOnSiteError || mobileOnSiteFeature.error,
                     isBookingOnSite,
+                    isCheckInWindowOpen: isOnSiteBookingWindowOpen,
                     onBookOnSite: handleBookOnSite,
                     statusMessage: mobileOnSiteStatus,
                   }}

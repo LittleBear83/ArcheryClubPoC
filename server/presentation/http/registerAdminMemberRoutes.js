@@ -9,12 +9,14 @@ export function registerAdminMemberRoutes({
   buildUniqueRoleKeyFromTitle,
   CURRENT_PERMISSION_KEY_SET,
   DISTANCE_SIGN_OFF_YARDS,
+  goldenRecordsCurrentHandicapService,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,
   listAssignableRoleKeys,
   listProfilePageMembers,
   memberDirectoryGateway,
+  outdoorTableGateway,
   roleCommitteeGateway,
   PERMISSIONS,
   refreshRoleAccessSnapshot,
@@ -101,6 +103,183 @@ export function registerAdminMemberRoutes({
         disciplines,
       ),
     };
+  }
+
+  async function buildGoldenRecordsSnapshotForUser(user) {
+    if (!goldenRecordsCurrentHandicapService?.isEnabled || !user) {
+      return {
+        enabled: false,
+        handicaps: [],
+        matchedMemberId: "",
+        matchedMemberName: "",
+        matchSource: "disabled",
+      };
+    }
+
+    return goldenRecordsCurrentHandicapService.getSnapshotForMember({
+      archeryGbMembershipNumber: user.archery_gb_membership_number ?? "",
+      firstName: user.first_name,
+      surname: user.surname,
+      username: user.username,
+    });
+  }
+
+  function mapGoldenRecordsBowClassToOutdoorBowType(bowClass) {
+    switch (String(bowClass ?? "").trim().toLowerCase()) {
+      case "recurve":
+        return "Rec";
+      case "compound":
+        return "Comp";
+      case "barebow":
+        return "B/bow";
+      case "longbow":
+        return "L/bow";
+      default:
+        return "";
+    }
+  }
+
+  function buildEmptyOutdoorEntryPayload({
+    archerUsername,
+    bowType,
+    handicap,
+    updatedAtDate,
+    updatedAtTime,
+    updatedByUsername,
+  }) {
+    const emptyDates = ["", "", ""];
+
+    return {
+      seasonYear: new Date().getUTCFullYear(),
+      archerUsername,
+      bowType,
+      handicap,
+      archer3rd: false,
+      archer2nd: false,
+      archer1st: false,
+      bowman3rd: false,
+      bowman2nd: false,
+      bowman1st: false,
+      masterBowman: false,
+      grandMasterBowman: false,
+      eliteMasterBowman: false,
+      archer3rdDate: "",
+      archer2ndDate: "",
+      archer1stDate: "",
+      bowman3rdDate: "",
+      bowman2ndDate: "",
+      bowman1stDate: "",
+      masterBowmanDate: "",
+      grandMasterBowmanDate: "",
+      eliteMasterBowmanDate: "",
+      award25220: false,
+      award25230: false,
+      award25240: false,
+      award25250: false,
+      award25260: false,
+      award25280: false,
+      award252100: false,
+      award25220SignOffDates: [...emptyDates],
+      award25230SignOffDates: [...emptyDates],
+      award25240SignOffDates: [...emptyDates],
+      award25250SignOffDates: [...emptyDates],
+      award25260SignOffDates: [...emptyDates],
+      award25280SignOffDates: [...emptyDates],
+      award252100SignOffDates: [...emptyDates],
+      cloutWhite20: false,
+      cloutWhite30: false,
+      cloutWhite40: false,
+      cloutWhite50: false,
+      cloutWhite60: false,
+      cloutWhite7080: false,
+      cloutWhite90100: false,
+      createdAtDate: updatedAtDate,
+      createdAtTime: updatedAtTime,
+      updatedAtDate,
+      updatedAtTime,
+      updatedByUsername,
+    };
+  }
+
+  async function syncOutdoorTableHandicapsFromGoldenRecords({
+    disciplines,
+    goldenRecordsSnapshot,
+    user,
+  }) {
+    const outdoorHandicaps = (goldenRecordsSnapshot?.handicaps ?? []).filter(
+      (entry) =>
+        String(entry.type ?? "").trim().toLowerCase() === "outdoor" &&
+        Number.isInteger(entry.handicap),
+    );
+
+    if (outdoorHandicaps.length === 0) {
+      return;
+    }
+
+    const currentSeasonYear = new Date().getUTCFullYear();
+    const currentEntries = await outdoorTableGateway.listEntriesByYear(currentSeasonYear);
+    const memberEntriesByBowType = new Map(
+      currentEntries
+        .filter((entry) => entry.archerUsername === user.username)
+        .map((entry) => [entry.bowType, entry]),
+    );
+    const allowedBowTypes = new Set(
+      disciplines.flatMap((discipline) => {
+        switch (discipline) {
+          case "Recurve Bow":
+            return ["Rec"];
+          case "Compound Bow":
+            return ["Comp"];
+          case "Bare Bow":
+            return ["B/bow"];
+          case "Long Bow":
+            return ["L/bow"];
+          default:
+            return [];
+        }
+      }),
+    );
+    const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+
+    for (const entry of outdoorHandicaps) {
+      const bowType = mapGoldenRecordsBowClassToOutdoorBowType(entry.bowClass);
+
+      if (!bowType || !allowedBowTypes.has(bowType)) {
+        continue;
+      }
+
+      const existingEntry = memberEntriesByBowType.get(bowType);
+
+      if (existingEntry) {
+        if (existingEntry.handicap === entry.handicap) {
+          continue;
+        }
+
+        const updatedEntry = await outdoorTableGateway.updateEntry({
+          ...existingEntry,
+          handicap: entry.handicap,
+          updatedAtDate,
+          updatedAtTime,
+          updatedByUsername: "golden-records-sync",
+        });
+
+        memberEntriesByBowType.set(bowType, updatedEntry);
+        continue;
+      }
+
+      const createdEntry = await outdoorTableGateway.createEntry(
+        buildEmptyOutdoorEntryPayload({
+          archerUsername: user.username,
+          bowType,
+          handicap: entry.handicap,
+          updatedAtDate,
+          updatedAtTime,
+          updatedByUsername: "golden-records-sync",
+        }),
+      );
+
+      memberEntriesByBowType.set(bowType, createdEntry);
+    }
   }
 
   async function buildRoleDefinitionPayload(role) {
@@ -877,6 +1056,14 @@ export function registerAdminMemberRoutes({
     const disciplines = await listMemberDisciplines(user.username);
     const loanBow = await findMemberLoanBow(user.username);
 
+    const goldenRecords = await buildGoldenRecordsSnapshotForUser(user);
+
+    await syncOutdoorTableHandicapsFromGoldenRecords({
+      disciplines,
+      goldenRecordsSnapshot: goldenRecords,
+      user,
+    });
+
     res.json({
       success: true,
       editableProfile: await buildEditableProfileWithDistanceSignOffs(
@@ -885,6 +1072,7 @@ export function registerAdminMemberRoutes({
         loanBow,
         canManageMembers,
       ),
+      goldenRecords,
       userProfile: buildMemberUserProfile(user, disciplines),
       userTypes: listAssignableRoleKeys(),
       disciplines: ALLOWED_DISCIPLINES,

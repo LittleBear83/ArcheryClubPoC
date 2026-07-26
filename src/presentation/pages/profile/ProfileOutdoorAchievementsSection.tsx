@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../components/Button";
 import { SectionPanel } from "../../components/SectionPanel";
+import { formatDate } from "../../../utils/dateTime";
 import {
   BOW_TYPE_DISCIPLINE_MAPPINGS,
   OUTDOOR_252_COLUMNS,
@@ -18,6 +19,10 @@ type ProfileOutdoorAchievementsSectionProps = {
   canManageMembers: boolean;
   entries: ProfileOutdoorTableDraft[];
   error: string;
+  goldenRecordsOutdoorHandicapsByBowType: Record<
+    string,
+    { achieved: string; handicap: number | null }
+  >;
   isLoading: boolean;
   isSavingByBowType: Record<string, boolean>;
   onAward252SignOffDateChange: (
@@ -40,6 +45,7 @@ export function ProfileOutdoorAchievementsSection({
   canManageMembers,
   entries,
   error,
+  goldenRecordsOutdoorHandicapsByBowType,
   isLoading,
   isSavingByBowType,
   onAward252SignOffDateChange,
@@ -103,6 +109,8 @@ export function ProfileOutdoorAchievementsSection({
           {entriesByPreferredOrder.map((entry) => {
             const isCollapsed = hasMultipleDisciplines && collapsedBowTypes[entry.bowType];
             const bowLabel = bowLabelsByType.get(entry.bowType) ?? entry.discipline;
+            const goldenRecordsHandicap =
+              goldenRecordsOutdoorHandicapsByBowType[entry.bowType] ?? null;
 
             return (
               <article key={entry.bowType} className="profile-outdoor-card">
@@ -144,6 +152,14 @@ export function ProfileOutdoorAchievementsSection({
                         Boolean(isSavingByBowType[entry.bowType])
                       }
                     />
+                    {goldenRecordsHandicap ? (
+                      <small className="profile-outdoor-handicap-source">
+                        Golden Records: {goldenRecordsHandicap.handicap ?? "-"}
+                        {goldenRecordsHandicap.achieved
+                          ? ` (achieved ${formatDate(goldenRecordsHandicap.achieved)})`
+                          : ""}
+                      </small>
+                    ) : null}
                   </label>
                 </div>
 

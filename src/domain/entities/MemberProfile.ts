@@ -52,6 +52,25 @@ export type EditableMemberProfile = {
   distanceSignOffs?: DistanceSignOffDiscipline[];
 };
 
+export type GoldenRecordsHandicap = {
+  achieved: string;
+  bowClass: string;
+  handicap: number | null;
+  memberId: string;
+  name: string;
+  type: string;
+  updated: string;
+};
+
+export type GoldenRecordsSnapshot = {
+  enabled: boolean;
+  error?: string;
+  handicaps: GoldenRecordsHandicap[];
+  matchedMemberId: string;
+  matchedMemberName: string;
+  matchSource: string;
+};
+
 export type MemberProfileFormInput = {
   username?: string;
   firstName: string;
@@ -94,6 +113,7 @@ export type MemberProfilePageData = {
   editableProfile: EditableMemberProfile;
   equipmentLoans: EquipmentLoan[];
   disciplines: string[];
+  goldenRecords?: GoldenRecordsSnapshot;
   userTypes: string[];
   userProfile?: unknown;
 };
@@ -110,6 +130,7 @@ export type MemberProfileDeleteResult = {
 
 export type MemberProfileApiProfileResult = MemberProfileSaveResult & {
   disciplines: string[];
+  goldenRecords?: GoldenRecordsSnapshot;
   userTypes: string[];
 };
 

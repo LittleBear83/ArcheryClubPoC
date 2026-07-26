@@ -40,6 +40,14 @@ const databaseName = process.env.DB_NAME?.trim() || "";
 const databaseUser = process.env.DB_USER?.trim() || "";
 const databasePassword = process.env.DB_PASSWORD ?? "";
 const databasePort = Number(process.env.DB_PORT ?? 5432);
+const goldenRecordsBaseUrl =
+  process.env.GOLDEN_RECORDS_BASE_URL?.trim() || "https://api2.archery-records.net";
+const goldenRecordsAuthMode = process.env.GOLDEN_RECORDS_AUTH_MODE?.trim() || "api-key";
+const goldenRecordsApiKey = process.env.GOLDEN_RECORDS_API_KEY ?? "";
+const goldenRecordsUsername = process.env.GOLDEN_RECORDS_USERNAME ?? "";
+const goldenRecordsPassword = process.env.GOLDEN_RECORDS_PASSWORD ?? "";
+const goldenRecordsUserAgent =
+  process.env.GOLDEN_RECORDS_USER_AGENT?.trim() || "ArcheryClubPoC/1.0";
 
 function buildPostgresSocketDirectory(instanceConnectionName) {
   if (!instanceConnectionName) {
@@ -86,6 +94,14 @@ export const serverRuntime = {
   requestTimeoutMs,
   rfidReaderNames,
   trustProxy: parseTrustProxy(trustProxyValue),
+  goldenRecords: {
+    apiKey: goldenRecordsApiKey,
+    authMode: goldenRecordsAuthMode,
+    baseUrl: goldenRecordsBaseUrl,
+    password: goldenRecordsPassword,
+    userAgent: goldenRecordsUserAgent,
+    username: goldenRecordsUsername,
+  },
   postgres: {
     databaseName,
     host: databaseHost,

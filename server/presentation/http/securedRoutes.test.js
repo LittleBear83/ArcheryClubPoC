@@ -85,6 +85,7 @@ function registerAuthTestRoutes(app, getSessionUsername, overrides = {}) {
 
   registerAuthRoutes({
     app,
+    auditChangeLogger: overrides.auditChangeLogger ?? null,
     buildGuestUserProfile: overrides.buildGuestUserProfile ?? (() => ({})),
     buildMemberUserProfile: overrides.buildMemberUserProfile ?? (() => ({})),
     clearCsrfCookie: () => "archeryclubpoc_csrf=; Max-Age=0",
@@ -409,6 +410,144 @@ test("mobile password login is recorded without marking range presence as an RFI
 
     assert.equal(response.status, 200);
     assert.deepEqual(recordedMethods, ["password-mobile"]);
+  } finally {
+    server.close();
+  }
+});
+
+test("failed password login audit records an incorrect password attempt", async () => {
+  const app = express();
+  app.use(express.json());
+  const recordedAuditEvents = [];
+
+  registerAuthTestRoutes(app, () => null, {
+    auditChangeLogger: {
+      recordEntityChange: async (payload) => {
+        recordedAuditEvents.push(payload);
+      },
+    },
+    memberAuthGateway: {
+      findUserByCredentials: async () => ({
+        active_member: 1,
+        password: "hashed-secret",
+        username: "member-one",
+      }),
+    },
+    verifyPassword: () => false,
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/login", {
+      body: {
+        password: "wrong-password",
+        username: "member-one",
+      },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(recordedAuditEvents.length, 1);
+    assert.deepEqual(recordedAuditEvents[0].after, {
+      activityType: "login_failed",
+      attemptedRfidTagSuffix: null,
+      attemptedUsername: "member-one",
+      failureReason: "password_incorrect",
+      incorrectFields: ["password"],
+      method: "password",
+    });
+    assert.equal(recordedAuditEvents[0].actorUsername, "member-one");
+    assert.equal(recordedAuditEvents[0].entityType, "auth_activity");
+    assert.equal(recordedAuditEvents[0].statusCode, 401);
+    assert.equal(recordedAuditEvents[0].target, "/api/auth/login");
+  } finally {
+    server.close();
+  }
+});
+
+test("failed password login audit records an incorrect username attempt", async () => {
+  const app = express();
+  app.use(express.json());
+  const recordedAuditEvents = [];
+
+  registerAuthTestRoutes(app, () => null, {
+    auditChangeLogger: {
+      recordEntityChange: async (payload) => {
+        recordedAuditEvents.push(payload);
+      },
+    },
+    memberAuthGateway: {
+      findUserByCredentials: async () => null,
+    },
+    verifyPassword: () => false,
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/login", {
+      body: {
+        password: "secret",
+        username: "unknown-member",
+      },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(recordedAuditEvents.length, 1);
+    assert.deepEqual(recordedAuditEvents[0].after, {
+      activityType: "login_failed",
+      attemptedRfidTagSuffix: null,
+      attemptedUsername: "unknown-member",
+      failureReason: "username_not_found",
+      incorrectFields: ["username"],
+      method: "password",
+    });
+    assert.equal(recordedAuditEvents[0].actorUsername, "unknown-member");
+  } finally {
+    server.close();
+  }
+});
+
+test("failed RFID login audit records an unrecognised tag attempt without storing the full tag", async () => {
+  const app = express();
+  app.use(express.json());
+  const recordedAuditEvents = [];
+
+  registerAuthTestRoutes(app, () => null, {
+    auditChangeLogger: {
+      recordEntityChange: async (payload) => {
+        recordedAuditEvents.push(payload);
+      },
+    },
+    memberAuthGateway: {
+      findUserByRfid: async () => null,
+    },
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/rfid", {
+      body: {
+        rfidTag: "ABC123456",
+      },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(recordedAuditEvents.length, 1);
+    assert.deepEqual(recordedAuditEvents[0].after, {
+      activityType: "login_failed",
+      attemptedRfidTagSuffix: "3456",
+      attemptedUsername: null,
+      failureReason: "rfid_tag_not_recognised",
+      incorrectFields: ["rfid_tag"],
+      method: "rfid",
+    });
+    assert.equal(recordedAuditEvents[0].actorUsername, "rfid:3456");
+    assert.equal(recordedAuditEvents[0].entityLabel, "RFID ending 3456");
   } finally {
     server.close();
   }

@@ -13,6 +13,10 @@ type MobileGeofenceOptions = {
   radiusMeters: number;
 };
 
+type ReadCurrentLocationOptions = {
+  forceFresh?: boolean;
+};
+
 type GeolocationPermissionState =
   | PermissionState
   | "unsupported"
@@ -78,7 +82,7 @@ export function useMobileGeofence({
     typeof distanceMeters === "number" &&
     distanceMeters <= radiusMeters;
 
-  const readCurrentLocation = useCallback(() => {
+  const readCurrentLocation = useCallback((options: ReadCurrentLocationOptions = {}) => {
     if (!isMobile) {
       setError("This location-gated feature is only available on mobile.");
       return;
@@ -119,7 +123,7 @@ export function useMobileGeofence({
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 30_000,
+        maximumAge: options.forceFresh ? 0 : 30_000,
         timeout: 15_000,
       },
     );
@@ -153,7 +157,7 @@ export function useMobileGeofence({
         }
 
         if (status.state === "granted") {
-          readCurrentLocation();
+          readCurrentLocation({ forceFresh: true });
         }
       })
       .catch(() => {
@@ -173,6 +177,32 @@ export function useMobileGeofence({
       }
     };
   }, [isMobile, isSupported, readCurrentLocation]);
+
+  useEffect(() => {
+    if (!isMobile || !isSupported || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const refreshLocation = () => {
+      if (document.visibilityState === "visible" && permissionState !== "denied") {
+        readCurrentLocation({ forceFresh: true });
+      }
+    };
+
+    const handlePageShow = () => {
+      if (permissionState !== "denied") {
+        readCurrentLocation({ forceFresh: true });
+      }
+    };
+
+    document.addEventListener("visibilitychange", refreshLocation);
+    window.addEventListener("pageshow", handlePageShow);
+
+    return () => {
+      document.removeEventListener("visibilitychange", refreshLocation);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [isMobile, isSupported, permissionState, readCurrentLocation]);
 
   useEffect(() => {
     if (
@@ -204,10 +234,17 @@ export function useMobileGeofence({
               : null,
         });
       },
-      () => {},
+      (positionError) => {
+        if (positionError.code === positionError.PERMISSION_DENIED) {
+          setPermissionState("denied");
+          setError(
+            "Location access was denied. Enable it to use on-site mobile features.",
+          );
+        }
+      },
       {
         enableHighAccuracy: true,
-        maximumAge: 30_000,
+        maximumAge: 0,
         timeout: 15_000,
       },
     );

@@ -23,9 +23,11 @@ function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
   }
 
   const {
+    activeRangePresenceEndsAtText,
     distanceMeters,
     error,
     isBookingOnSite,
+    isCheckInWindowOpen,
     isLocating,
     isSupported,
     isWithinGeofence,
@@ -67,6 +69,12 @@ function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
         )}
         {error ? <p className="profile-error">{error}</p> : null}
         {statusMessage ? <p>{statusMessage}</p> : null}
+        {isCheckInWindowOpen && activeRangePresenceEndsAtText ? (
+          <p>
+            You are already booked on site. The button will unlock again after{" "}
+            {activeRangePresenceEndsAtText}.
+          </p>
+        ) : null}
       </div>
       {isSupported ? (
         <>
@@ -86,10 +94,14 @@ function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
             <Button
               type="button"
               onClick={onBookOnSite}
-              disabled={isBookingOnSite}
+              disabled={isBookingOnSite || isCheckInWindowOpen}
               variant="primary"
             >
-              {isBookingOnSite ? "Booking on site..." : "Book On Site"}
+              {isBookingOnSite
+                ? "Booking on site..."
+                : isCheckInWindowOpen
+                  ? "Already booked on site"
+                  : "Book On Site"}
             </Button>
           ) : null}
         </>

@@ -21,6 +21,84 @@ export function registerAuthRoutes({
 }) {
   // Auth routes own session-cookie creation and login-event recording; callers
   // receive normalized profile payloads for the frontend session snapshot.
+  const buildAuthFailureActor = ({
+    attemptedRfidTag,
+    attemptedUsername,
+  }) => {
+    const normalizedUsername = String(attemptedUsername ?? "").trim();
+
+    if (normalizedUsername) {
+      return normalizedUsername;
+    }
+
+    const normalizedRfidTag = String(attemptedRfidTag ?? "").trim();
+
+    if (normalizedRfidTag) {
+      return `rfid:${normalizedRfidTag.slice(-4)}`;
+    }
+
+    return "anonymous";
+  };
+
+  const recordFailedAuthAttempt = ({
+    attemptedRfidTag = "",
+    attemptedUsername = "",
+    failureReason,
+    incorrectFields = [],
+    method,
+    req,
+    statusCode,
+    target,
+  }) => {
+    if (!auditChangeLogger) {
+      return;
+    }
+
+    const normalizedAttemptedUsername = String(attemptedUsername ?? "").trim();
+    const normalizedAttemptedRfidTag = String(attemptedRfidTag ?? "").trim();
+    const [changedAtDate, changedAtTime] = getUtcTimestampParts();
+    const attemptedRfidTagSuffix = normalizedAttemptedRfidTag
+      ? normalizedAttemptedRfidTag.slice(-4)
+      : null;
+
+    void auditChangeLogger.recordEntityChange({
+      action: "created",
+      actorUsername: buildAuthFailureActor({
+        attemptedRfidTag: normalizedAttemptedRfidTag,
+        attemptedUsername: normalizedAttemptedUsername,
+      }),
+      after: {
+        activityType: "login_failed",
+        attemptedRfidTagSuffix,
+        attemptedUsername: normalizedAttemptedUsername || null,
+        failureReason,
+        incorrectFields,
+        method,
+      },
+      before: null,
+      changedAtDate,
+      changedAtTime,
+      entityId: [
+        method,
+        normalizedAttemptedUsername || attemptedRfidTagSuffix || "anonymous",
+        changedAtDate,
+        changedAtTime,
+        failureReason,
+      ].join(":"),
+      entityLabel:
+        normalizedAttemptedUsername ||
+        (attemptedRfidTagSuffix
+          ? `RFID ending ${attemptedRfidTagSuffix}`
+          : "Unknown login attempt"),
+      entityType: "auth_activity",
+      req,
+      statusCode,
+      target,
+    }).catch((auditError) => {
+      console.error("Failed to record failed login audit event", auditError);
+    });
+  };
+
   const setSessionCookies = (req, res, username) => {
     const csrfToken = getCsrfToken(req);
 
@@ -65,6 +143,18 @@ export function registerAuthRoutes({
     const { username, password, deviceType } = req.body ?? {};
 
     if (!username || !password) {
+      recordFailedAuthAttempt({
+        attemptedUsername: username,
+        failureReason: "missing_credentials",
+        incorrectFields: [
+          ...(!username ? ["username"] : []),
+          ...(!password ? ["password"] : []),
+        ],
+        method: "password",
+        req,
+        statusCode: 400,
+        target: "/api/auth/login",
+      });
       res.status(400).json({
         success: false,
         message: "Username and password are required.",
@@ -77,6 +167,15 @@ export function registerAuthRoutes({
     const user = await syncMemberStatusWithFees(isValidPassword ? loginUser : null);
 
     if (!user) {
+      recordFailedAuthAttempt({
+        attemptedUsername: username,
+        failureReason: loginUser ? "password_incorrect" : "username_not_found",
+        incorrectFields: [loginUser ? "password" : "username"],
+        method: "password",
+        req,
+        statusCode: 401,
+        target: "/api/auth/login",
+      });
       res.status(401).json({
         success: false,
         message:
@@ -86,6 +185,15 @@ export function registerAuthRoutes({
     }
 
     if (!user.active_member) {
+      recordFailedAuthAttempt({
+        attemptedUsername: user.username,
+        failureReason: "account_inactive",
+        incorrectFields: [],
+        method: "password",
+        req,
+        statusCode: 403,
+        target: "/api/auth/login",
+      });
       res.status(403).json({
         success: false,
         message:
@@ -154,6 +262,14 @@ export function registerAuthRoutes({
     const { rfidTag } = req.body ?? {};
 
     if (!rfidTag) {
+      recordFailedAuthAttempt({
+        failureReason: "missing_rfid_tag",
+        incorrectFields: ["rfid_tag"],
+        method: "rfid",
+        req,
+        statusCode: 400,
+        target: "/api/auth/rfid",
+      });
       res.status(400).json({
         success: false,
         message: "RFID tag is required.",
@@ -168,6 +284,15 @@ export function registerAuthRoutes({
       ));
 
     if (!user) {
+      recordFailedAuthAttempt({
+        attemptedRfidTag: rfidTag,
+        failureReason: "rfid_tag_not_recognised",
+        incorrectFields: ["rfid_tag"],
+        method: "rfid",
+        req,
+        statusCode: 401,
+        target: "/api/auth/rfid",
+      });
       res.status(401).json({
         success: false,
         message: "RFID tag not recognised.",
@@ -176,6 +301,16 @@ export function registerAuthRoutes({
     }
 
     if (!user.active_member) {
+      recordFailedAuthAttempt({
+        attemptedRfidTag: rfidTag,
+        attemptedUsername: user.username,
+        failureReason: "account_inactive",
+        incorrectFields: [],
+        method: "rfid",
+        req,
+        statusCode: 403,
+        target: "/api/auth/rfid",
+      });
       res.status(403).json({
         success: false,
         message:

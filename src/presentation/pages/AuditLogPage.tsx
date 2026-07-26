@@ -29,6 +29,14 @@ type EntityChangeAuditMetadata = {
   changes?: AuditFieldChange[];
 };
 
+type AuthActivityFailureReason =
+  | "missing_credentials"
+  | "username_not_found"
+  | "password_incorrect"
+  | "account_inactive"
+  | "missing_rfid_tag"
+  | "rfid_tag_not_recognised";
+
 const queryKeys = {
   list: (
     actorUsername: string,
@@ -62,6 +70,18 @@ function formatAuditAction(event: AuditEventRecord) {
   const metadata = event.metadata;
 
   if (isEntityChangeMetadata(metadata)) {
+    if (metadata.entityType === "auth_activity") {
+      const changes = metadata.changes ?? [];
+      const activityType = changes.find((change) => change.path === "activityType")?.after;
+      const method = changes.find((change) => change.path === "method")?.after;
+
+      if (activityType === "login_failed") {
+        return method === "rfid"
+          ? "failed rfid sign-in"
+          : "failed member sign-in";
+      }
+    }
+
     if (metadata.entityType === "member_activity") {
       const changes = metadata.changes ?? [];
       const activityType = changes.find((change) => change.path === "activityType")?.after;
@@ -175,6 +195,14 @@ function getActivitySourceLabel(metadata: EntityChangeAuditMetadata) {
   const activityType = changes.find((change) => change.path === "activityType")?.after;
   const method = changes.find((change) => change.path === "method")?.after;
 
+  if (activityType === "login_failed" && method === "rfid") {
+    return "Source: RFID";
+  }
+
+  if (activityType === "login_failed" && method === "password") {
+    return "Source: Website";
+  }
+
   if (activityType === "mobile_check_in" || method === "mobile-app") {
     return "Source: Mobile";
   }
@@ -194,6 +222,81 @@ function getActivitySourceLabel(metadata: EntityChangeAuditMetadata) {
   return "";
 }
 
+function getActivityChangeValue(
+  metadata: EntityChangeAuditMetadata,
+  path: string,
+) {
+  return (metadata.changes ?? []).find((change) => change.path === path)?.after;
+}
+
+function formatIncorrectFieldLabel(field: string) {
+  switch (field) {
+    case "username":
+      return "Username";
+    case "password":
+      return "Password";
+    case "rfid_tag":
+      return "RFID tag";
+    default:
+      return field.split("_").join(" ");
+  }
+}
+
+function formatAuthFailureReason(reason: AuthActivityFailureReason | string) {
+  switch (reason) {
+    case "missing_credentials":
+      return "Missing sign-in details";
+    case "username_not_found":
+      return "Unknown username";
+    case "password_incorrect":
+      return "Incorrect password";
+    case "account_inactive":
+      return "Inactive account";
+    case "missing_rfid_tag":
+      return "Missing RFID tag";
+    case "rfid_tag_not_recognised":
+      return "RFID tag not recognised";
+    default:
+      return reason.split("_").join(" ");
+  }
+}
+
+function formatAuthFailureSummary(metadata: EntityChangeAuditMetadata) {
+  const activityType = getActivityChangeValue(metadata, "activityType");
+
+  if (activityType !== "login_failed") {
+    return "";
+  }
+
+  const reason = getActivityChangeValue(metadata, "failureReason");
+  const incorrectFields = getActivityChangeValue(metadata, "incorrectFields");
+  const attemptedUsername = getActivityChangeValue(metadata, "attemptedUsername");
+  const attemptedRfidTagSuffix = getActivityChangeValue(metadata, "attemptedRfidTagSuffix");
+  const parts = [];
+
+  if (typeof reason === "string" && reason) {
+    parts.push(formatAuthFailureReason(reason));
+  }
+
+  if (Array.isArray(incorrectFields) && incorrectFields.length > 0) {
+    const labels = incorrectFields
+      .filter((field): field is string => typeof field === "string" && field.length > 0)
+      .map(formatIncorrectFieldLabel);
+
+    if (labels.length > 0) {
+      parts.push(`Incorrect: ${labels.join(", ")}`);
+    }
+  }
+
+  if (typeof attemptedUsername === "string" && attemptedUsername) {
+    parts.push(`Attempted username: ${attemptedUsername}`);
+  } else if (typeof attemptedRfidTagSuffix === "string" && attemptedRfidTagSuffix) {
+    parts.push(`RFID ending: ${attemptedRfidTagSuffix}`);
+  }
+
+  return parts.join(" | ");
+}
+
 function toSentenceCase(value: string) {
   if (!value) {
     return "";
@@ -204,7 +307,11 @@ function toSentenceCase(value: string) {
 
 function isActivityAuditMetadata(metadata: unknown): metadata is EntityChangeAuditMetadata {
   return isEntityChangeMetadata(metadata) &&
-    (metadata.entityType === "member_activity" || metadata.entityType === "guest_activity");
+    (
+      metadata.entityType === "member_activity" ||
+      metadata.entityType === "guest_activity" ||
+      metadata.entityType === "auth_activity"
+    );
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -248,6 +355,10 @@ function formatMetadataPreview(metadata: unknown) {
     entityChangeMetadata.auditKind === "entity_change" &&
     Array.isArray(entityChangeMetadata.changes)
   ) {
+    if (entityChangeMetadata.entityType === "auth_activity") {
+      return formatAuthFailureSummary(entityChangeMetadata);
+    }
+
     const count = entityChangeMetadata.changes.length;
     const entityLabel =
       entityChangeMetadata.entityLabel ||

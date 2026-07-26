@@ -49,6 +49,7 @@ export class MemberProfileApi {
       equipmentLoans: loansResult.loans ?? [],
       disciplines: profileResult.disciplines ?? [],
       userTypes: profileResult.userTypes ?? [],
+      ...(profileResult.goldenRecords ? { goldenRecords: profileResult.goldenRecords } : {}),
     };
   }
 

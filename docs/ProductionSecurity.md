@@ -83,6 +83,36 @@ The Node HTTP server also sets request, header, and keep-alive timeouts. These
 can be tuned with `REQUEST_TIMEOUT_MS`, `HEADERS_TIMEOUT_MS`, and
 `KEEP_ALIVE_TIMEOUT_MS`.
 
+### Cloud Run Notes For SSE
+
+When this app is deployed on Cloud Run and Server-Sent Events are enabled, do
+not treat it like a short-request-only API service.
+
+Required baseline:
+
+- set `TRUST_PROXY=true` or `TRUST_PROXY=1`
+- keep the public and authenticated SSE endpoints out of the coarse global
+  `/api/*` rate limiter
+- allow more than one instance in production
+- avoid very low request concurrency settings
+
+Operational note from the July 24, 2026 incident review:
+
+- `maxScale=1` and `containerConcurrency=20` were too restrictive for mobile
+  SSE traffic and caused Cloud Run `429` responses on normal page requests,
+  static assets, and session checks
+- increasing the service to `max instances = 5` and `concurrency = 80`
+  resolved the issue in production
+
+Recommended Cloud Run starting point for this app:
+
+- `max instances`: `5`
+- `container concurrency`: `80`
+
+These values can be revisited later, but single-instance operation is a poor
+fit once long-lived SSE connections and mobile reconnect behavior are part of
+normal traffic.
+
 For production, run the app behind a reverse proxy or WAF that can enforce:
 
 - connection limits

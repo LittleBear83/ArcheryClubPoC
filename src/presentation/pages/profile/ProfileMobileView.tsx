@@ -41,6 +41,7 @@ export function ProfileMobileView({
   editableProfile,
   equipmentLoans,
   error,
+  goldenRecordsOutdoorHandicapsByBowType,
   handleBooleanChange,
   handleBooleanSelectChange,
   handleChange,
@@ -266,6 +267,7 @@ export function ProfileMobileView({
           canManageMembers={canManageMembers}
           entries={outdoorTableBowEntries}
           error={outdoorTableError}
+          goldenRecordsOutdoorHandicapsByBowType={goldenRecordsOutdoorHandicapsByBowType}
           isLoading={isLoadingOutdoorTable}
           isSavingByBowType={isSavingOutdoorTableByBowType}
           onAward252SignOffDateChange={handleOutdoorTableAward252SignOffDateChange}

@@ -28,6 +28,21 @@ type LoadProfileOptions = {
   isBackgroundRefresh?: boolean;
 };
 
+function mapGoldenRecordsBowClassToBowType(bowClass: string) {
+  switch (String(bowClass ?? "").trim().toLowerCase()) {
+    case "recurve":
+      return "Rec";
+    case "compound":
+      return "Comp";
+    case "barebow":
+      return "B/bow";
+    case "longbow":
+      return "L/bow";
+    default:
+      return "";
+  }
+}
+
 export function useProfilePageState({
   currentUserProfile,
   memberProfileCrud,
@@ -81,6 +96,7 @@ export function useProfilePageState({
   const [isSavingOutdoorTableByBowType, setIsSavingOutdoorTableByBowType] = useState<
     Record<string, boolean>
   >({});
+  const [goldenRecordsSnapshot, setGoldenRecordsSnapshot] = useState(null);
 
   const canManageMembers = hasPermission(
     currentUserProfile,
@@ -146,6 +162,31 @@ export function useProfilePageState({
     () => Object.values(outdoorTableDraftsByBowType),
     [outdoorTableDraftsByBowType],
   );
+  const goldenRecordsOutdoorHandicapsByBowType = useMemo(() => {
+    const entries = goldenRecordsSnapshot?.handicaps ?? [];
+
+    return entries.reduce<Record<string, { achieved: string; handicap: number | null }>>(
+      (next, entry) => {
+        if (String(entry.type ?? "").trim().toLowerCase() !== "outdoor") {
+          return next;
+        }
+
+        const bowType = mapGoldenRecordsBowClassToBowType(entry.bowClass);
+
+        if (!bowType) {
+          return next;
+        }
+
+        next[bowType] = {
+          achieved: entry.achieved,
+          handicap: entry.handicap,
+        };
+
+        return next;
+      },
+      {},
+    );
+  }, [goldenRecordsSnapshot]);
   const submitLabel = isSaving
     ? "Saving profile..."
     : isRefreshingProfile
@@ -179,6 +220,7 @@ export function useProfilePageState({
     setOutdoorTableError("");
     setIsLoadingOutdoorTable(false);
     setIsSavingOutdoorTableByBowType({});
+    setGoldenRecordsSnapshot(null);
   }, [currentUserProfile?.auth?.username]);
 
   useEffect(() => {
@@ -224,6 +266,7 @@ export function useProfilePageState({
         setEditableProfile(result.editableProfile);
         setEquipmentLoans(result.equipmentLoans ?? []);
         setDisciplineOptions(result.disciplines ?? []);
+        setGoldenRecordsSnapshot(result.goldenRecords ?? null);
         setRoleOptions(result.userTypes ?? []);
         setMessage("");
         hasLoadedProfileRef.current = true;
@@ -1041,6 +1084,7 @@ export function useProfilePageState({
     editableProfile,
     equipmentLoans,
     error,
+    goldenRecordsOutdoorHandicapsByBowType,
     handleBooleanChange,
     handleBooleanSelectChange,
     handleChange,

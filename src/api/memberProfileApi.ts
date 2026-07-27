@@ -4,6 +4,8 @@ import type {
   DistanceSignOffInput,
   DistanceSignOffResult,
   EquipmentLoan,
+  GoldenRecordsHandicapRefreshResult,
+  GoldenRecordsMatchAssignResult,
   LoanBowReturnPayload,
   LoanBowReturnResult,
   MemberProfileDeleteResult,
@@ -21,6 +23,7 @@ type MemberProfileSaveEnvelope = ApiEnvelope & MemberProfileSaveResult;
 type MemberProfileDeleteEnvelope = ApiEnvelope & MemberProfileDeleteResult;
 type LoanBowReturnEnvelope = ApiEnvelope & LoanBowReturnResult;
 type DistanceSignOffEnvelope = ApiEnvelope & DistanceSignOffResult;
+type GoldenRecordsHandicapRefreshEnvelope = ApiEnvelope & GoldenRecordsHandicapRefreshResult;
 type UserProfileEnvelope = ApiEnvelope & { userProfile?: unknown };
 
 export class MemberProfileApi {
@@ -133,6 +136,35 @@ export class MemberProfileApi {
       headers: buildActorHeaders(actorUsername, true),
       body: JSON.stringify(signOff),
     });
+  }
+
+  async refreshGoldenRecordsHandicap(
+    actorUsername: string,
+    username: string,
+  ): Promise<GoldenRecordsHandicapRefreshResult> {
+    return fetchApi<GoldenRecordsHandicapRefreshEnvelope>(
+      `/api/user-profiles/${username}/golden-records/refresh-handicap`,
+      {
+        method: "POST",
+        headers: buildActorHeaders(actorUsername, true),
+        body: JSON.stringify({}),
+      },
+    );
+  }
+
+  async assignGoldenRecordsMatch(
+    actorUsername: string,
+    username: string,
+    goldenRecordsId: string,
+  ): Promise<GoldenRecordsMatchAssignResult> {
+    return fetchApi<GoldenRecordsHandicapRefreshEnvelope>(
+      `/api/user-profiles/${username}/golden-records/assign-match`,
+      {
+        method: "POST",
+        headers: buildActorHeaders(actorUsername, true),
+        body: JSON.stringify({ goldenRecordsId }),
+      },
+    );
   }
 
   async getUserProfile(

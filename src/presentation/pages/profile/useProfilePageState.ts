@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ApiError } from "../../../api/client";
 import { hasPermission } from "../../../utils/userProfile";
 import { subscribeToRfidScans } from "../../../utils/rfidScanHub";
 import { subscribeToServerEvent } from "../../../lib/serverEvents";
 import { useSseFallbackPolling } from "../../state/useSseFallbackPolling";
-import type { LoanBowReturnPayload } from "../../../domain/entities/MemberProfile";
+import type {
+  GoldenRecordsCandidateMatch,
+  GoldenRecordsSnapshot,
+  LoanBowReturnPayload,
+} from "../../../domain/entities/MemberProfile";
 import {
   createOutdoorTableEntry,
   listOutdoorTableDashboard,
@@ -41,6 +46,32 @@ function mapGoldenRecordsBowClassToBowType(bowClass: string) {
     default:
       return "";
   }
+}
+
+function buildGoldenRecordsHandicapsByBowType(snapshot, type) {
+  const entries = snapshot?.handicaps ?? [];
+
+  return entries.reduce(
+    (next, entry) => {
+      if (String(entry.type ?? "").trim().toLowerCase() !== type) {
+        return next;
+      }
+
+      const bowType = mapGoldenRecordsBowClassToBowType(entry.bowClass);
+
+      if (!bowType) {
+        return next;
+      }
+
+      next[bowType] = {
+        achieved: entry.achieved,
+        handicap: entry.handicap,
+      };
+
+      return next;
+    },
+    {} as Record<string, { achieved: string; handicap: number | null }>,
+  );
 }
 
 export function useProfilePageState({
@@ -97,6 +128,15 @@ export function useProfilePageState({
     Record<string, boolean>
   >({});
   const [goldenRecordsSnapshot, setGoldenRecordsSnapshot] = useState(null);
+  const [isRefreshingGoldenRecordsHandicap, setIsRefreshingGoldenRecordsHandicap] =
+    useState(false);
+  const [isGoldenRecordsMatchModalOpen, setIsGoldenRecordsMatchModalOpen] = useState(false);
+  const [isGoldenRecordsMatchConfirmModalOpen, setIsGoldenRecordsMatchConfirmModalOpen] =
+    useState(false);
+  const [selectedGoldenRecordsCandidateId, setSelectedGoldenRecordsCandidateId] =
+    useState("");
+  const [goldenRecordsMatchError, setGoldenRecordsMatchError] = useState("");
+  const [isSavingGoldenRecordsMatch, setIsSavingGoldenRecordsMatch] = useState(false);
 
   const canManageMembers = hasPermission(
     currentUserProfile,
@@ -162,31 +202,27 @@ export function useProfilePageState({
     () => Object.values(outdoorTableDraftsByBowType),
     [outdoorTableDraftsByBowType],
   );
-  const goldenRecordsOutdoorHandicapsByBowType = useMemo(() => {
-    const entries = goldenRecordsSnapshot?.handicaps ?? [];
-
-    return entries.reduce<Record<string, { achieved: string; handicap: number | null }>>(
-      (next, entry) => {
-        if (String(entry.type ?? "").trim().toLowerCase() !== "outdoor") {
-          return next;
-        }
-
-        const bowType = mapGoldenRecordsBowClassToBowType(entry.bowClass);
-
-        if (!bowType) {
-          return next;
-        }
-
-        next[bowType] = {
-          achieved: entry.achieved,
-          handicap: entry.handicap,
-        };
-
-        return next;
-      },
-      {},
-    );
-  }, [goldenRecordsSnapshot]);
+  const goldenRecordsOutdoorHandicapsByBowType = useMemo(
+    () => buildGoldenRecordsHandicapsByBowType(goldenRecordsSnapshot, "outdoor"),
+    [goldenRecordsSnapshot],
+  );
+  const goldenRecordsIndoorHandicapsByBowType = useMemo(
+    () => buildGoldenRecordsHandicapsByBowType(goldenRecordsSnapshot, "indoor"),
+    [goldenRecordsSnapshot],
+  );
+  const goldenRecordsFetchedAt = goldenRecordsSnapshot?.fetchedAt ?? "";
+  const goldenRecordsCandidateMatches = useMemo<GoldenRecordsCandidateMatch[]>(
+    () => goldenRecordsSnapshot?.candidateMatches ?? [],
+    [goldenRecordsSnapshot],
+  );
+  const goldenRecordsMatchSource = goldenRecordsSnapshot?.matchSource ?? "";
+  const selectedGoldenRecordsCandidate = useMemo(
+    () =>
+      goldenRecordsCandidateMatches.find(
+        (candidate) => candidate.memberId === selectedGoldenRecordsCandidateId,
+      ) ?? null,
+    [goldenRecordsCandidateMatches, selectedGoldenRecordsCandidateId],
+  );
   const submitLabel = isSaving
     ? "Saving profile..."
     : isRefreshingProfile
@@ -221,6 +257,12 @@ export function useProfilePageState({
     setIsLoadingOutdoorTable(false);
     setIsSavingOutdoorTableByBowType({});
     setGoldenRecordsSnapshot(null);
+    setIsRefreshingGoldenRecordsHandicap(false);
+    setIsGoldenRecordsMatchModalOpen(false);
+    setIsGoldenRecordsMatchConfirmModalOpen(false);
+    setSelectedGoldenRecordsCandidateId("");
+    setGoldenRecordsMatchError("");
+    setIsSavingGoldenRecordsMatch(false);
   }, [currentUserProfile?.auth?.username]);
 
   useEffect(() => {
@@ -637,6 +679,7 @@ export function useProfilePageState({
     const requestBody = {
       firstName: editableProfile.firstName,
       surname: editableProfile.surname,
+      goldenRecordsId: editableProfile.goldenRecordsId,
       archeryGbMembershipNumber: editableProfile.archeryGbMembershipNumber,
       emailAddress: editableProfile.emailAddress,
       password: editableProfile.password,
@@ -1061,6 +1104,134 @@ export function useProfilePageState({
     }
   };
 
+  const handleRefreshGoldenRecordsHandicap = async () => {
+    if (!editableProfile?.username) {
+      return;
+    }
+
+    setIsRefreshingGoldenRecordsHandicap(true);
+    setOutdoorTableError("");
+    setError("");
+    setMessage("");
+    setGoldenRecordsMatchError("");
+
+    try {
+      const result =
+        await memberProfileCrud.refreshGoldenRecordsHandicapUseCase.execute({
+          actorUsername,
+          username: editableProfile.username,
+        });
+
+      setGoldenRecordsSnapshot(result.goldenRecords ?? null);
+      await loadOutdoorTableEntries(editableProfile.username, undefined);
+      setMessage(result.message ?? "Golden Records handicaps refreshed.");
+    } catch (refreshError) {
+      if (refreshError instanceof ApiError) {
+        const payload = refreshError.payload as {
+          candidateMatches?: GoldenRecordsCandidateMatch[];
+          goldenRecords?: GoldenRecordsSnapshot | null;
+        };
+        const candidateMatches = Array.isArray(payload?.candidateMatches)
+          ? payload.candidateMatches
+          : [];
+        const suggestedSnapshot = payload?.goldenRecords ?? null;
+
+        if (suggestedSnapshot) {
+          setGoldenRecordsSnapshot(suggestedSnapshot);
+        }
+
+        if (candidateMatches.length > 0) {
+          setSelectedGoldenRecordsCandidateId(candidateMatches[0].memberId ?? "");
+          setIsGoldenRecordsMatchModalOpen(true);
+        }
+      }
+
+      setOutdoorTableError(refreshError.message);
+    } finally {
+      setIsRefreshingGoldenRecordsHandicap(false);
+    }
+  };
+
+  const handleOpenGoldenRecordsMatchModal = () => {
+    if (!goldenRecordsCandidateMatches.length) {
+      setOutdoorTableError("No likely Golden Records matches are available for this member.");
+      return;
+    }
+
+    setGoldenRecordsMatchError("");
+    setSelectedGoldenRecordsCandidateId(
+      selectedGoldenRecordsCandidateId || goldenRecordsCandidateMatches[0]?.memberId || "",
+    );
+    setIsGoldenRecordsMatchModalOpen(true);
+  };
+
+  const handleCloseGoldenRecordsMatchModal = () => {
+    if (isSavingGoldenRecordsMatch) {
+      return;
+    }
+
+    setIsGoldenRecordsMatchModalOpen(false);
+    setGoldenRecordsMatchError("");
+  };
+
+  const handleGoldenRecordsCandidateSelectionChange = (event) => {
+    setSelectedGoldenRecordsCandidateId(event.target.value);
+  };
+
+  const handleContinueGoldenRecordsMatchAssignment = () => {
+    if (!selectedGoldenRecordsCandidateId) {
+      setGoldenRecordsMatchError("Choose a Golden Records account before continuing.");
+      return;
+    }
+
+    setGoldenRecordsMatchError("");
+    setIsGoldenRecordsMatchModalOpen(false);
+    setIsGoldenRecordsMatchConfirmModalOpen(true);
+  };
+
+  const handleCloseGoldenRecordsMatchConfirmModal = () => {
+    if (isSavingGoldenRecordsMatch) {
+      return;
+    }
+
+    setIsGoldenRecordsMatchConfirmModalOpen(false);
+    setGoldenRecordsMatchError("");
+  };
+
+  const handleAssignGoldenRecordsMatch = async () => {
+    if (!editableProfile?.username || !selectedGoldenRecordsCandidateId) {
+      setGoldenRecordsMatchError("Choose a Golden Records account before continuing.");
+      return;
+    }
+
+    setIsSavingGoldenRecordsMatch(true);
+    setGoldenRecordsMatchError("");
+    setOutdoorTableError("");
+    setError("");
+    setMessage("");
+
+    try {
+      const result = await memberProfileCrud.assignGoldenRecordsMatchUseCase.execute({
+        actorUsername,
+        goldenRecordsId: selectedGoldenRecordsCandidateId,
+        username: editableProfile.username,
+      });
+
+      setGoldenRecordsSnapshot(result.goldenRecords ?? null);
+      await loadProfile(editableProfile.username, {
+        isBackgroundRefresh: hasLoadedProfileRef.current,
+      });
+      await loadOutdoorTableEntries(editableProfile.username, undefined);
+      setMessage(result.message ?? "Golden Records account assigned successfully.");
+      setIsGoldenRecordsMatchConfirmModalOpen(false);
+      setIsGoldenRecordsMatchModalOpen(false);
+    } catch (assignError) {
+      setGoldenRecordsMatchError(assignError.message);
+    } finally {
+      setIsSavingGoldenRecordsMatch(false);
+    }
+  };
+
   return {
     canEditCurrentProfile,
     canManageMemberDisciplines,
@@ -1084,23 +1255,35 @@ export function useProfilePageState({
     editableProfile,
     equipmentLoans,
     error,
+    goldenRecordsCandidateMatches,
+    goldenRecordsFetchedAt,
+    goldenRecordsMatchError,
+    goldenRecordsMatchSource,
     goldenRecordsOutdoorHandicapsByBowType,
+    goldenRecordsIndoorHandicapsByBowType,
+    handleAssignGoldenRecordsMatch,
     handleBooleanChange,
     handleBooleanSelectChange,
     handleChange,
     handleCloseCardModal,
     handleCloseDeleteModal,
     handleCloseDistanceSignOffModal,
+    handleCloseGoldenRecordsMatchConfirmModal,
+    handleCloseGoldenRecordsMatchModal,
     handleCloseReturnModal,
     handleDeleteConfirmationUsernameChange,
     handleDeleteMember,
     handleDistanceSignOffChange,
+    handleGoldenRecordsCandidateSelectionChange,
+    handleContinueGoldenRecordsMatchAssignment,
     handleOpenCardModal,
     handleOpenDeleteModal,
     handleOpenDistanceSignOffModal,
+    handleOpenGoldenRecordsMatchModal,
     handleOutdoorTableAward252SignOffDateChange,
     handleOutdoorTableAchievementDateChange,
     handleOutdoorTableHandicapChange,
+    handleRefreshGoldenRecordsHandicap,
     handleReturnLoanBow,
     handleSave,
     handleSaveOutdoorTableEntry,
@@ -1112,11 +1295,15 @@ export function useProfilePageState({
     isGuest,
     isInitialLoading,
     isDeletingMember,
+    isGoldenRecordsMatchConfirmModalOpen,
+    isGoldenRecordsMatchModalOpen,
     isIssuingCard,
+    isRefreshingGoldenRecordsHandicap,
     isRefreshingProfile,
     isReturnModalOpen,
     isSaving,
     isSavingDistanceSignOff,
+    isSavingGoldenRecordsMatch,
     isSavingOutdoorTableByBowType,
     isSavingReturn,
     memberOptions,
@@ -1125,6 +1312,8 @@ export function useProfilePageState({
     outdoorTableError,
     returnError,
     roleOptions,
+    selectedGoldenRecordsCandidate,
+    selectedGoldenRecordsCandidateId,
     selectedUsername,
     submitLabel,
     toggleDiscipline,

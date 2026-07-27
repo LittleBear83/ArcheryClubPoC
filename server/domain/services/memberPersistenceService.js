@@ -68,6 +68,7 @@ export function createMemberPersistenceService({
       emailAddress,
       existingUser,
       firstName,
+      goldenRecordsId,
       loanBow,
       membershipFeesDue,
       password,
@@ -90,6 +91,7 @@ export function createMemberPersistenceService({
       const normalizedCoachingVolunteer = Boolean(coachingVolunteer);
       const normalizedDisciplines = sanitizeDisciplines(disciplines);
       const normalizedLoanBow = sanitizeLoanBow(loanBow);
+      const normalizedGoldenRecordsId = String(goldenRecordsId ?? "").trim();
 
       if (!trimmedUsername || !trimmedFirstName || !trimmedSurname) {
         return {
@@ -136,6 +138,7 @@ export function createMemberPersistenceService({
         username: normalizedUser.username,
         firstName: trimmedFirstName,
         surname: trimmedSurname,
+        goldenRecordsId: normalizedGoldenRecordsId || existingUser?.gr_id || null,
         archeryGbMembershipNumber: trimmedArcheryGbMembershipNumber,
         emailAddress: trimmedEmailAddress,
         password: passwordToSave,

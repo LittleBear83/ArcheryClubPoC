@@ -74,6 +74,7 @@ type HomePageProps = {
     | "assignMemberRfidTagUseCase"
     | "returnLoanBowUseCase"
     | "signOffMemberDistanceUseCase"
+    | "refreshGoldenRecordsHandicapUseCase"
     | "getUserProfileUseCase"
   >;
   roleCrud: Pick<

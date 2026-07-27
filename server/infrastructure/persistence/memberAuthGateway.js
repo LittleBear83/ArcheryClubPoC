@@ -5,6 +5,7 @@ function normalizeUserRow(row) {
 
   return {
     ...row,
+    gr_id: row.gr_id ?? null,
     active_member: Number(row.active_member ?? 0),
     affiliate_member: Number(row.affiliate_member ?? 0),
     junior_member: Number(row.junior_member ?? 0),
@@ -27,6 +28,7 @@ function mapUserPayloadToSqliteProfile(user) {
     username: user.username,
     firstName: user.firstName,
     surname: user.surname,
+    goldenRecordsId: user.goldenRecordsId ?? user.gr_id ?? null,
     archeryGbMembershipNumber: user.archeryGbMembershipNumber,
     emailAddress: user.emailAddress,
     password: user.password,
@@ -48,6 +50,7 @@ function createSqliteMemberAuthGateway({
   insertLoginEvent,
   listAllUsers,
   updateUserMembershipStatus,
+  updateGoldenRecordsId,
   updateUserPassword,
 }) {
   return {
@@ -89,6 +92,9 @@ function createSqliteMemberAuthGateway({
     async updateUserMembershipStatus(username, activeMember, rfidTag) {
       updateUserMembershipStatus.run(activeMember, rfidTag, username);
     },
+    async updateGoldenRecordsId(username, goldenRecordsId) {
+      updateGoldenRecordsId.run(goldenRecordsId, username);
+    },
     async updateUserPassword(username, passwordHash) {
       updateUserPassword.run(passwordHash, username);
     },
@@ -118,6 +124,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.username,
             users.first_name,
             users.surname,
+            users.gr_id,
             users.archery_gb_membership_number,
             users.email_address,
             users.password,
@@ -146,6 +153,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.username,
             users.first_name,
             users.surname,
+            users.gr_id,
             users.archery_gb_membership_number,
             users.email_address,
             users.password,
@@ -174,6 +182,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.username,
             users.first_name,
             users.surname,
+            users.gr_id,
             users.archery_gb_membership_number,
             users.email_address,
             users.password,
@@ -202,6 +211,7 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.username,
             users.first_name,
             users.surname,
+            users.gr_id,
             users.archery_gb_membership_number,
             users.email_address,
             users.rfid_tag,
@@ -276,6 +286,16 @@ function createPostgresMemberAuthGateway({ pool }) {
           WHERE LOWER(username) = LOWER($3)
         `,
         [activeMember, rfidTag, username],
+      );
+    },
+    async updateGoldenRecordsId(username, goldenRecordsId) {
+      await pool.query(
+        `
+          UPDATE users
+          SET gr_id = $1
+          WHERE LOWER(username) = LOWER($2)
+        `,
+        [goldenRecordsId, username],
       );
     },
     async updateUserPassword(username, passwordHash) {

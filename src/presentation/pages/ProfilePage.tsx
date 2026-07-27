@@ -32,6 +32,130 @@ export function ProfilePage({
 
       {profilePageState.editableProfile ? (
         <Modal
+          open={profilePageState.isGoldenRecordsMatchModalOpen}
+          onClose={profilePageState.handleCloseGoldenRecordsMatchModal}
+          title="Choose Golden Records Account"
+        >
+          <div className="profile-card-issue-modal">
+            <p>
+              Golden Records could not match this member automatically. Choose the correct account
+              from the most likely matches below.
+            </p>
+            <label>
+              Golden Records account
+              <select
+                value={profilePageState.selectedGoldenRecordsCandidateId}
+                onChange={profilePageState.handleGoldenRecordsCandidateSelectionChange}
+                disabled={profilePageState.isSavingGoldenRecordsMatch}
+              >
+                {profilePageState.goldenRecordsCandidateMatches.map((candidate) => (
+                  <option key={candidate.memberId} value={candidate.memberId}>
+                    {candidate.name}
+                    {candidate.membershipId ? ` (${candidate.membershipId})` : ""}
+                    {candidate.memberArchived ? " - archived" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {profilePageState.selectedGoldenRecordsCandidate ? (
+              <p className="profile-card-issue-note">
+                Selected account:{" "}
+                <strong>{profilePageState.selectedGoldenRecordsCandidate.name}</strong>
+                {profilePageState.selectedGoldenRecordsCandidate.membershipId
+                  ? ` (${profilePageState.selectedGoldenRecordsCandidate.membershipId})`
+                  : ""}
+                {profilePageState.selectedGoldenRecordsCandidate.memberArchived
+                  ? ". This Golden Records account is archived."
+                  : "."}
+              </p>
+            ) : null}
+            {profilePageState.goldenRecordsMatchError ? (
+              <p className="profile-error">{profilePageState.goldenRecordsMatchError}</p>
+            ) : null}
+            <div className="profile-card-issue-actions">
+              <Button
+                type="button"
+                className="secondary-button"
+                onClick={profilePageState.handleCloseGoldenRecordsMatchModal}
+                disabled={profilePageState.isSavingGoldenRecordsMatch}
+                variant="secondary"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={profilePageState.handleContinueGoldenRecordsMatchAssignment}
+                disabled={
+                  profilePageState.isSavingGoldenRecordsMatch ||
+                  !profilePageState.selectedGoldenRecordsCandidateId
+                }
+              >
+                Continue
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {profilePageState.editableProfile ? (
+        <Modal
+          open={profilePageState.isGoldenRecordsMatchConfirmModalOpen}
+          onClose={profilePageState.handleCloseGoldenRecordsMatchConfirmModal}
+          title="Confirm Golden Records Assignment"
+        >
+          <div className="profile-card-issue-modal">
+            <p>
+              This will assign the selected Golden Records account to{" "}
+              <strong>
+                {profilePageState.editableProfile.firstName}{" "}
+                {profilePageState.editableProfile.surname}
+              </strong>
+              .
+            </p>
+            <p className="profile-card-issue-note">
+              Only continue if you are completely sure this is the correct Golden Records account.
+              Assigning the wrong account could link another archer&apos;s records to this member.
+            </p>
+            {profilePageState.selectedGoldenRecordsCandidate ? (
+              <p className="profile-card-issue-status">
+                Selected account: {profilePageState.selectedGoldenRecordsCandidate.name}
+                {profilePageState.selectedGoldenRecordsCandidate.membershipId
+                  ? ` (${profilePageState.selectedGoldenRecordsCandidate.membershipId})`
+                  : ""}
+              </p>
+            ) : null}
+            {profilePageState.goldenRecordsMatchError ? (
+              <p className="profile-error">{profilePageState.goldenRecordsMatchError}</p>
+            ) : null}
+            <div className="profile-card-issue-actions">
+              <Button
+                type="button"
+                className="secondary-button"
+                onClick={profilePageState.handleCloseGoldenRecordsMatchConfirmModal}
+                disabled={profilePageState.isSavingGoldenRecordsMatch}
+                variant="secondary"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={profilePageState.handleAssignGoldenRecordsMatch}
+                disabled={
+                  profilePageState.isSavingGoldenRecordsMatch ||
+                  !profilePageState.selectedGoldenRecordsCandidateId
+                }
+              >
+                {profilePageState.isSavingGoldenRecordsMatch
+                  ? "Assigning..."
+                  : "Assign Golden Records account"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+
+      {profilePageState.editableProfile ? (
+        <Modal
           open={profilePageState.isDistanceSignOffModalOpen}
           onClose={profilePageState.handleCloseDistanceSignOffModal}
           title="Sign Off Distance"

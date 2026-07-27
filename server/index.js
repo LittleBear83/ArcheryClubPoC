@@ -437,6 +437,7 @@ const {
   findUserByUsername,
   insertUserDiscipline,
   listAllUsers,
+  updateGoldenRecordsId,
   updateUserMembershipStatus,
   updateUserPassword,
   upsertUser,
@@ -848,6 +849,7 @@ const memberAuthGateway = createMemberAuthGateway({
   insertLoginEvent,
   listAllUsers,
   pool: db.pool,
+  updateGoldenRecordsId,
   updateUserMembershipStatus,
   updateUserPassword,
 });
@@ -883,6 +885,8 @@ const memberDirectoryGateway = {
     memberProfileGateway.findLoanBowByUsername(username),
   findUserByUsername: (username) => memberAuthGateway.findUserByUsername(username),
   listAllUsers: () => memberAuthGateway.listAllUsers(),
+  updateGoldenRecordsId: (username, goldenRecordsId) =>
+    memberAuthGateway.updateGoldenRecordsId(username, goldenRecordsId),
 };
 
 const beginnersCourseReadGateway = createBeginnersCourseReadGateway({
@@ -1078,6 +1082,7 @@ function buildEditableMemberProfile(user, disciplines = [], loanBow = null) {
     username: user.username,
     firstName: user.first_name,
     surname: user.surname,
+    goldenRecordsId: user.gr_id ?? "",
     archeryGbMembershipNumber: user.archery_gb_membership_number ?? "",
     emailAddress: user.email_address ?? "",
     password: "",

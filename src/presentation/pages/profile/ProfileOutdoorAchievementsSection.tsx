@@ -13,18 +13,29 @@ import {
   type OutdoorAchievementDateFieldKey,
   type ProfileOutdoorTableDraft,
 } from "./outdoorTableProfileUtils";
+import type { GoldenRecordsCandidateMatch } from "../../../domain/entities/MemberProfile";
 
 type ProfileOutdoorAchievementsSectionProps = {
   canManageOutdoorAchievements: boolean;
   canManageMembers: boolean;
   entries: ProfileOutdoorTableDraft[];
   error: string;
+  goldenRecordsCandidateMatches: GoldenRecordsCandidateMatch[];
+  goldenRecordsFetchedAt: string;
+  goldenRecordsIndoorHandicapsByBowType: Record<
+    string,
+    { achieved: string; handicap: number | null }
+  >;
+  goldenRecordsMatchSource: string;
   goldenRecordsOutdoorHandicapsByBowType: Record<
     string,
     { achieved: string; handicap: number | null }
   >;
+  isRefreshingGoldenRecordsHandicap: boolean;
   isLoading: boolean;
   isSavingByBowType: Record<string, boolean>;
+  onOpenGoldenRecordsMatchModal: () => void;
+  onRefreshGoldenRecordsHandicap: () => void;
   onAward252SignOffDateChange: (
     bowType: string,
     field: Outdoor252SignOffFieldKey,
@@ -36,25 +47,42 @@ type ProfileOutdoorAchievementsSectionProps = {
     field: OutdoorAchievementDateFieldKey,
     value: string,
   ) => void;
-  onHandicapChange: (bowType: string, value: string) => void;
   onSave: (bowType: string) => void;
 };
+
+function formatHandicapValue(value: number | null | undefined) {
+  return value === null || value === undefined || Number.isNaN(value) ? "" : String(value);
+}
+
+function formatAchievedDate(value: string | null | undefined) {
+  return value ? formatDate(value) : "";
+}
 
 export function ProfileOutdoorAchievementsSection({
   canManageOutdoorAchievements,
   canManageMembers,
   entries,
   error,
+  goldenRecordsCandidateMatches,
+  goldenRecordsFetchedAt,
+  goldenRecordsIndoorHandicapsByBowType,
+  goldenRecordsMatchSource,
   goldenRecordsOutdoorHandicapsByBowType,
+  isRefreshingGoldenRecordsHandicap,
   isLoading,
   isSavingByBowType,
+  onOpenGoldenRecordsMatchModal,
+  onRefreshGoldenRecordsHandicap,
   onAward252SignOffDateChange,
   onAchievementDateChange,
-  onHandicapChange,
   onSave,
 }: ProfileOutdoorAchievementsSectionProps) {
   const [collapsedBowTypes, setCollapsedBowTypes] = useState<Record<string, boolean>>({});
   const hasMultipleDisciplines = entries.length > 1;
+  const canChooseGoldenRecordsMatch =
+    canManageMembers &&
+    (goldenRecordsMatchSource === "not-found" || goldenRecordsMatchSource === "ambiguous") &&
+    goldenRecordsCandidateMatches.length > 0;
   const bowLabelsByType = useMemo(
     () =>
       new Map<string, string>(
@@ -97,8 +125,37 @@ export function ProfileOutdoorAchievementsSection({
         {canManageMembers && !canManageOutdoorAchievements ? (
           <p>Members cannot sign off their own outdoor achievements.</p>
         ) : null}
+        {canChooseGoldenRecordsMatch ? (
+          <p>
+            Golden Records could not match this member automatically. Review the most likely
+            accounts and choose the correct one before continuing.
+          </p>
+        ) : null}
         {error ? <p className="profile-error">{error}</p> : null}
       </div>
+      {canManageMembers ? (
+        <div className="profile-outdoor-section-actions">
+          {canChooseGoldenRecordsMatch ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onOpenGoldenRecordsMatchModal}
+            >
+              Choose Golden Records account
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onRefreshGoldenRecordsHandicap}
+            disabled={isRefreshingGoldenRecordsHandicap}
+          >
+            {isRefreshingGoldenRecordsHandicap
+              ? "Updating handicap..."
+              : "Update handicap"}
+          </Button>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <p>Loading outdoor achievements...</p>
@@ -109,9 +166,10 @@ export function ProfileOutdoorAchievementsSection({
           {entriesByPreferredOrder.map((entry) => {
             const isCollapsed = hasMultipleDisciplines && collapsedBowTypes[entry.bowType];
             const bowLabel = bowLabelsByType.get(entry.bowType) ?? entry.discipline;
-            const goldenRecordsHandicap =
+            const goldenRecordsOutdoorHandicap =
               goldenRecordsOutdoorHandicapsByBowType[entry.bowType] ?? null;
-
+            const goldenRecordsIndoorHandicap =
+              goldenRecordsIndoorHandicapsByBowType[entry.bowType] ?? null;
             return (
               <article key={entry.bowType} className="profile-outdoor-card">
                 <div className="profile-outdoor-card-header">
@@ -139,28 +197,26 @@ export function ProfileOutdoorAchievementsSection({
                     <p>{entry.isExistingEntry ? "Existing outdoor row" : "No outdoor row yet"}</p>
                   </div>
 
-                  <label className="profile-outdoor-handicap">
-                    <span>Handicap</span>
-                    <input
-                      type="number"
-                      min="0"
-                      max="150"
-                      value={entry.handicapText}
-                      onChange={(event) => onHandicapChange(entry.bowType, event.target.value)}
-                      disabled={
-                        !canManageOutdoorAchievements ||
-                        Boolean(isSavingByBowType[entry.bowType])
-                      }
-                    />
-                    {goldenRecordsHandicap ? (
+                  <div className="profile-outdoor-handicap-summary">
+                    <div className="profile-outdoor-handicap-row">
+                      <span>Outdoor Handicap</span>
+                      <strong>{formatHandicapValue(goldenRecordsOutdoorHandicap?.handicap)}</strong>
+                    </div>
+                    {goldenRecordsOutdoorHandicap?.achieved ? (
                       <small className="profile-outdoor-handicap-source">
-                        Golden Records: {goldenRecordsHandicap.handicap ?? "-"}
-                        {goldenRecordsHandicap.achieved
-                          ? ` (achieved ${formatDate(goldenRecordsHandicap.achieved)})`
-                          : ""}
+                        Achived on {formatAchievedDate(goldenRecordsOutdoorHandicap.achieved)}
                       </small>
                     ) : null}
-                  </label>
+                    <div className="profile-outdoor-handicap-row">
+                      <span>Indoor Handicap</span>
+                      <strong>{formatHandicapValue(goldenRecordsIndoorHandicap?.handicap)}</strong>
+                    </div>
+                    {goldenRecordsIndoorHandicap?.achieved ? (
+                      <small className="profile-outdoor-handicap-source">
+                        Achived on {formatAchievedDate(goldenRecordsIndoorHandicap.achieved)}
+                      </small>
+                    ) : null}
+                  </div>
                 </div>
 
                 {!isCollapsed ? (
@@ -251,15 +307,20 @@ export function ProfileOutdoorAchievementsSection({
                   </>
                 ) : null}
 
-                {canManageOutdoorAchievements ? (
+                {canManageMembers || canManageOutdoorAchievements ? (
                   <div className="profile-outdoor-card-actions">
-                    <Button
-                      type="button"
-                      onClick={() => onSave(entry.bowType)}
-                      disabled={Boolean(isSavingByBowType[entry.bowType])}
-                    >
-                      {isSavingByBowType[entry.bowType] ? "Saving..." : "Save"}
-                    </Button>
+                    {canManageOutdoorAchievements ? (
+                      <Button
+                        type="button"
+                        onClick={() => onSave(entry.bowType)}
+                        disabled={
+                          Boolean(isSavingByBowType[entry.bowType]) ||
+                          isRefreshingGoldenRecordsHandicap
+                        }
+                      >
+                        {isSavingByBowType[entry.bowType] ? "Saving..." : "Save"}
+                      </Button>
+                    ) : null}
                   </div>
                 ) : null}
               </article>
@@ -267,6 +328,12 @@ export function ProfileOutdoorAchievementsSection({
           })}
         </div>
       )}
+
+      <p className="profile-outdoor-footnote">
+        {goldenRecordsFetchedAt
+          ? `All records shown here are from Golden Records, and are correct as of ${formatDate(goldenRecordsFetchedAt)}.`
+          : "All records shown here are from Golden Records."}
+      </p>
     </SectionPanel>
   );
 }

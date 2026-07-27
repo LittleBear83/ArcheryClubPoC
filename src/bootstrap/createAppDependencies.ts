@@ -7,12 +7,14 @@ import { RoleRepositoryImpl } from "../data/repositories/RoleRepositoryImpl";
 import { TournamentRepositoryImpl } from "../data/repositories/TournamentRepositoryImpl";
 import { EquipmentRepositoryImpl } from "../data/repositories/EquipmentRepositoryImpl";
 import {
+  AssignGoldenRecordsMatchUseCase,
   AssignMemberRfidTagUseCase,
   CreateMemberProfileUseCase,
   DeleteMemberProfileUseCase,
   GetMemberProfileOptionsUseCase,
   GetMemberProfilePageDataUseCase,
   GetUserProfileUseCase,
+  RefreshGoldenRecordsHandicapUseCase,
   ReturnLoanBowUseCase,
   SignOffMemberDistanceUseCase,
   UpdateMemberProfileUseCase,
@@ -82,10 +84,16 @@ export function createAppDependencies() {
     assignMemberRfidTagUseCase: new AssignMemberRfidTagUseCase({
       memberProfileRepository,
     }),
+    assignGoldenRecordsMatchUseCase: new AssignGoldenRecordsMatchUseCase({
+      memberProfileRepository,
+    }),
     returnLoanBowUseCase: new ReturnLoanBowUseCase({
       memberProfileRepository,
     }),
     signOffMemberDistanceUseCase: new SignOffMemberDistanceUseCase({
+      memberProfileRepository,
+    }),
+    refreshGoldenRecordsHandicapUseCase: new RefreshGoldenRecordsHandicapUseCase({
       memberProfileRepository,
     }),
     getUserProfileUseCase: new GetUserProfileUseCase({

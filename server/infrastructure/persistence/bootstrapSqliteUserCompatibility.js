@@ -25,6 +25,7 @@ export function bootstrapSqliteUserCompatibility({ db }) {
           username TEXT NOT NULL UNIQUE,
           first_name TEXT NOT NULL,
           surname TEXT NOT NULL,
+          gr_id TEXT,
           archery_gb_membership_number TEXT,
           email_address TEXT,
           password TEXT,
@@ -41,6 +42,7 @@ export function bootstrapSqliteUserCompatibility({ db }) {
           username,
           first_name,
           surname,
+          gr_id,
           archery_gb_membership_number,
           email_address,
           password,
@@ -271,6 +273,10 @@ export function bootstrapSqliteUserCompatibility({ db }) {
 
   if (!userColumns.some((column) => column.name === "archery_gb_membership_number")) {
     db.exec(`ALTER TABLE users ADD COLUMN archery_gb_membership_number TEXT`);
+  }
+
+  if (!userColumns.some((column) => column.name === "gr_id")) {
+    db.exec(`ALTER TABLE users ADD COLUMN gr_id TEXT`);
   }
 
   if (!userColumns.some((column) => column.name === "coaching_volunteer")) {

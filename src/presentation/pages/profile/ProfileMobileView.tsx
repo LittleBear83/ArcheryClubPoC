@@ -41,6 +41,10 @@ export function ProfileMobileView({
   editableProfile,
   equipmentLoans,
   error,
+  goldenRecordsCandidateMatches,
+  goldenRecordsFetchedAt,
+  goldenRecordsIndoorHandicapsByBowType,
+  goldenRecordsMatchSource,
   goldenRecordsOutdoorHandicapsByBowType,
   handleBooleanChange,
   handleBooleanSelectChange,
@@ -51,9 +55,10 @@ export function ProfileMobileView({
   handleDeleteMember,
   handleOpenDeleteModal,
   handleOpenDistanceSignOffModal,
+  handleOpenGoldenRecordsMatchModal,
   handleOutdoorTableAward252SignOffDateChange,
   handleOutdoorTableAchievementDateChange,
-  handleOutdoorTableHandicapChange,
+  handleRefreshGoldenRecordsHandicap,
   handleSave,
   handleSaveOutdoorTableEntry,
   handleSelectMember,
@@ -61,6 +66,7 @@ export function ProfileMobileView({
   isDeleteModalOpen,
   isDeletingMember,
   isLoadingOutdoorTable,
+  isRefreshingGoldenRecordsHandicap,
   isRefreshingProfile,
   isSaving,
   isSavingOutdoorTableByBowType,
@@ -267,12 +273,18 @@ export function ProfileMobileView({
           canManageMembers={canManageMembers}
           entries={outdoorTableBowEntries}
           error={outdoorTableError}
+          goldenRecordsCandidateMatches={goldenRecordsCandidateMatches}
+          goldenRecordsFetchedAt={goldenRecordsFetchedAt}
+          goldenRecordsIndoorHandicapsByBowType={goldenRecordsIndoorHandicapsByBowType}
+          goldenRecordsMatchSource={goldenRecordsMatchSource}
           goldenRecordsOutdoorHandicapsByBowType={goldenRecordsOutdoorHandicapsByBowType}
+          isRefreshingGoldenRecordsHandicap={isRefreshingGoldenRecordsHandicap}
           isLoading={isLoadingOutdoorTable}
           isSavingByBowType={isSavingOutdoorTableByBowType}
+          onOpenGoldenRecordsMatchModal={handleOpenGoldenRecordsMatchModal}
+          onRefreshGoldenRecordsHandicap={handleRefreshGoldenRecordsHandicap}
           onAward252SignOffDateChange={handleOutdoorTableAward252SignOffDateChange}
           onAchievementDateChange={handleOutdoorTableAchievementDateChange}
-          onHandicapChange={handleOutdoorTableHandicapChange}
           onSave={handleSaveOutdoorTableEntry}
         />
       ) : null}

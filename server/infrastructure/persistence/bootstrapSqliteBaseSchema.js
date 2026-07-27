@@ -164,6 +164,7 @@ export function bootstrapSqliteBaseSchema({
       username TEXT NOT NULL UNIQUE,
       first_name TEXT NOT NULL,
       surname TEXT NOT NULL,
+      gr_id TEXT,
       archery_gb_membership_number TEXT,
       email_address TEXT,
       password TEXT,

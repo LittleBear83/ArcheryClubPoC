@@ -1762,6 +1762,21 @@ button:disabled {
   margin-top: 16px;
 }
 
+.profile-outdoor-section-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.profile-outdoor-footnote {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+  text-align: right;
+}
+
 .profile-outdoor-card {
   display: grid;
   gap: 16px;
@@ -1815,15 +1830,32 @@ button:disabled {
   color: var(--muted);
 }
 
-.profile-outdoor-handicap {
+.profile-outdoor-handicap-summary {
   display: grid;
   gap: 6px;
-  width: min(180px, 100%);
+  width: min(240px, 100%);
 }
 
-.profile-outdoor-handicap span {
-  color: var(--muted);
-  font-size: 0.88rem;
+.profile-outdoor-handicap-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.profile-outdoor-handicap-row span {
+  color: var(--text);
+  font-size: 0.98rem;
+  line-height: 1.2;
+}
+
+.profile-outdoor-handicap-row strong {
+  color: var(--text-h);
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  text-align: right;
 }
 
 .profile-golden-records-copy {
@@ -1831,8 +1863,8 @@ button:disabled {
 }
 
 .profile-outdoor-handicap-source {
-  color: var(--muted);
-  font-size: 0.78rem;
+  color: var(--text);
+  font-size: 0.92rem;
   line-height: 1.35;
 }
 
@@ -1864,6 +1896,18 @@ button:disabled {
 }
 
 @media (max-width: 640px) {
+  .profile-outdoor-section-actions {
+    justify-content: stretch;
+  }
+
+  .profile-outdoor-section-actions .app-button {
+    width: 100%;
+  }
+
+  .profile-outdoor-footnote {
+    text-align: left;
+  }
+
   .profile-outdoor-card {
     padding: 16px;
   }
@@ -1872,7 +1916,7 @@ button:disabled {
     display: grid;
   }
 
-  .profile-outdoor-handicap {
+  .profile-outdoor-handicap-summary {
     width: 100%;
   }
 

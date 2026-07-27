@@ -2,6 +2,8 @@ import { MemberProfileRepository } from "../../domain/repositories/MemberProfile
 import type {
   DistanceSignOffInput,
   DistanceSignOffResult,
+  GoldenRecordsHandicapRefreshResult,
+  GoldenRecordsMatchAssignResult,
   LoanBowReturnPayload,
   LoanBowReturnResult,
   MemberProfileDeleteResult,
@@ -50,6 +52,15 @@ type MemberProfileDataSource = {
     username: string,
     signOff: DistanceSignOffInput,
   ): Promise<DistanceSignOffResult>;
+  refreshGoldenRecordsHandicap(
+    actorUsername: string,
+    username: string,
+  ): Promise<GoldenRecordsHandicapRefreshResult>;
+  assignGoldenRecordsMatch(
+    actorUsername: string,
+    username: string,
+    goldenRecordsId: string,
+  ): Promise<GoldenRecordsMatchAssignResult>;
   getUserProfile(actorUsername: string, username: string, signal?: AbortSignal): Promise<unknown>;
 };
 
@@ -97,6 +108,18 @@ export class MemberProfileRepositoryImpl extends MemberProfileRepository {
 
   async signOffDistance(actorUsername, username, signOff) {
     return this.dataSource.signOffDistance(actorUsername, username, signOff);
+  }
+
+  async refreshGoldenRecordsHandicap(actorUsername, username) {
+    return this.dataSource.refreshGoldenRecordsHandicap(actorUsername, username);
+  }
+
+  async assignGoldenRecordsMatch(actorUsername, username, goldenRecordsId) {
+    return this.dataSource.assignGoldenRecordsMatch(
+      actorUsername,
+      username,
+      goldenRecordsId,
+    );
   }
 
   async getUserProfile(actorUsername, username, signal) {

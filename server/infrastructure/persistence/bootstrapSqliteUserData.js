@@ -14,6 +14,7 @@ export function bootstrapSqliteUserData({
       username,
       first_name,
       surname,
+      gr_id,
       archery_gb_membership_number,
       email_address,
       password,
@@ -28,6 +29,7 @@ export function bootstrapSqliteUserData({
       @username,
       @firstName,
       @surname,
+      @goldenRecordsId,
       @archeryGbMembershipNumber,
       @emailAddress,
       @password,
@@ -41,6 +43,7 @@ export function bootstrapSqliteUserData({
     ON CONFLICT(username) DO UPDATE SET
       first_name = excluded.first_name,
       surname = excluded.surname,
+      gr_id = excluded.gr_id,
       archery_gb_membership_number = excluded.archery_gb_membership_number,
       email_address = excluded.email_address,
       password = excluded.password,
@@ -112,6 +115,7 @@ export function bootstrapSqliteUserData({
     for (const user of seedUsers) {
       upsertUser.run({
         ...user,
+        goldenRecordsId: user.goldenRecordsId ?? null,
         emailAddress: user.emailAddress ?? null,
         activeMember: user.activeMember ? 1 : 0,
         affiliateMember: user.affiliateMember ? 1 : 0,
@@ -144,6 +148,7 @@ export function bootstrapSqliteUserData({
       users.username,
       users.first_name,
       users.surname,
+      users.gr_id,
       users.archery_gb_membership_number,
       users.email_address,
       users.password,
@@ -163,6 +168,12 @@ export function bootstrapSqliteUserData({
     UPDATE users
     SET password = ?
     WHERE username = ?
+  `);
+
+  const updateGoldenRecordsId = db.prepare(`
+    UPDATE users
+    SET gr_id = ?
+    WHERE username = ? COLLATE NOCASE
   `);
 
   const migrateLegacyPlaintextPasswords = db.transaction(() => {
@@ -189,6 +200,7 @@ export function bootstrapSqliteUserData({
       users.username,
       users.first_name,
       users.surname,
+      users.gr_id,
       users.archery_gb_membership_number,
       users.email_address,
       users.rfid_tag,
@@ -209,6 +221,7 @@ export function bootstrapSqliteUserData({
       users.username,
       users.first_name,
       users.surname,
+      users.gr_id,
       users.archery_gb_membership_number,
       users.email_address,
       users.password,
@@ -230,6 +243,7 @@ export function bootstrapSqliteUserData({
       users.username,
       users.first_name,
       users.surname,
+      users.gr_id,
       users.archery_gb_membership_number,
       users.email_address,
       users.rfid_tag,
@@ -251,6 +265,7 @@ export function bootstrapSqliteUserData({
     findUserByUsername,
     insertUserDiscipline,
     listAllUsers,
+    updateGoldenRecordsId,
     updateUserMembershipStatus,
     updateUserPassword,
     upsertUser,

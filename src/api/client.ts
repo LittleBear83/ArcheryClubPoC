@@ -4,6 +4,18 @@ export type ApiEnvelope = {
   csrfToken?: string;
 };
 
+export class ApiError<T extends ApiEnvelope = ApiEnvelope> extends Error {
+  status: number;
+  payload: T;
+
+  constructor(message: string, status: number, payload: T) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 export type ActorIdentity = {
   auth?: {
     username?: string | null;
@@ -154,7 +166,7 @@ export async function fetchApi<T extends ApiEnvelope = ApiEnvelope & Record<stri
       csrfTokenCache = "";
     }
 
-    throw new Error(result.message ?? "The request failed.");
+    throw new ApiError(result.message ?? "The request failed.", response.status, result);
   }
 
   return result;

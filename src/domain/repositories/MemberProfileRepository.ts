@@ -1,6 +1,8 @@
 import type {
   DistanceSignOffInput,
   DistanceSignOffResult,
+  GoldenRecordsHandicapRefreshResult,
+  GoldenRecordsMatchAssignResult,
   MemberProfileFormInput,
   MemberProfileDeleteResult,
   MemberProfilePageData,
@@ -56,6 +58,17 @@ export abstract class MemberProfileRepository {
     username: string,
     signOff: DistanceSignOffInput,
   ): Promise<DistanceSignOffResult>;
+
+  abstract refreshGoldenRecordsHandicap(
+    actorUsername: string,
+    username: string,
+  ): Promise<GoldenRecordsHandicapRefreshResult>;
+
+  abstract assignGoldenRecordsMatch(
+    actorUsername: string,
+    username: string,
+    goldenRecordsId: string,
+  ): Promise<GoldenRecordsMatchAssignResult>;
 
   abstract getUserProfile(
     actorUsername: string,

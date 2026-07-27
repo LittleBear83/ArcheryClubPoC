@@ -2,6 +2,8 @@ import type { MemberProfileRepository } from "../../domain/repositories/MemberPr
 import type {
   DistanceSignOffInput,
   DistanceSignOffResult,
+  GoldenRecordsHandicapRefreshResult,
+  GoldenRecordsMatchAssignResult,
   LoanBowReturnPayload,
   LoanBowReturnResult,
   MemberProfileDeleteResult,
@@ -286,5 +288,68 @@ export class GetUserProfileUseCase {
     }
 
     return this.memberProfileRepository.getUserProfile(actorUsername, username, signal);
+  }
+}
+
+export class RefreshGoldenRecordsHandicapUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
+  constructor({ memberProfileRepository }) {
+    this.memberProfileRepository = memberProfileRepository;
+  }
+
+  async execute({
+    actorUsername,
+    username,
+  }: ActorUsernameInput & {
+    username: string;
+  }): Promise<GoldenRecordsHandicapRefreshResult> {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!username?.trim()) {
+      throw new Error("A member username is required.");
+    }
+
+    return this.memberProfileRepository.refreshGoldenRecordsHandicap(
+      actorUsername,
+      username,
+    );
+  }
+}
+
+export class AssignGoldenRecordsMatchUseCase {
+  private readonly memberProfileRepository: MemberProfileRepository;
+
+  constructor({ memberProfileRepository }) {
+    this.memberProfileRepository = memberProfileRepository;
+  }
+
+  async execute({
+    actorUsername,
+    username,
+    goldenRecordsId,
+  }: ActorUsernameInput & {
+    username: string;
+    goldenRecordsId: string;
+  }): Promise<GoldenRecordsMatchAssignResult> {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!username?.trim()) {
+      throw new Error("A member username is required.");
+    }
+
+    if (!goldenRecordsId?.trim()) {
+      throw new Error("A Golden Records account must be selected.");
+    }
+
+    return this.memberProfileRepository.assignGoldenRecordsMatch(
+      actorUsername,
+      username,
+      goldenRecordsId,
+    );
   }
 }

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -5,8 +6,71 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const serverRootDirectory = path.resolve(__dirname, "..");
+const projectRootDirectory = path.resolve(serverRootDirectory, "..");
 const dataDirectory = path.join(serverRootDirectory, "data");
 const exportsDirectory = path.join(dataDirectory, "exports");
+
+function parseDotEnvLine(line) {
+  const trimmedLine = line.trim();
+
+  if (!trimmedLine || trimmedLine.startsWith("#")) {
+    return null;
+  }
+
+  const separatorIndex = trimmedLine.indexOf("=");
+
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const key = trimmedLine.slice(0, separatorIndex).trim();
+
+  if (!key) {
+    return null;
+  }
+
+  let value = trimmedLine.slice(separatorIndex + 1).trim();
+
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+
+  return { key, value };
+}
+
+function loadLocalEnvironmentFiles() {
+  const candidatePaths = [
+    path.join(projectRootDirectory, ".env.local"),
+    path.join(projectRootDirectory, ".env"),
+  ];
+
+  for (const candidatePath of candidatePaths) {
+    if (!fs.existsSync(candidatePath)) {
+      continue;
+    }
+
+    const fileContents = fs.readFileSync(candidatePath, "utf8");
+    const lines = fileContents.split(/\r?\n/u);
+
+    for (const line of lines) {
+      const parsedEntry = parseDotEnvLine(line);
+
+      if (!parsedEntry) {
+        continue;
+      }
+
+      if (process.env[parsedEntry.key] === undefined) {
+        process.env[parsedEntry.key] = parsedEntry.value;
+      }
+    }
+  }
+}
+
+loadLocalEnvironmentFiles();
+
 const appMode = process.env.ARCHERY_APP_MODE ?? process.env.APP_ENV ?? "development";
 const isLive = ["live", "production"].includes(appMode.toLowerCase());
 const defaultSqliteDatabasePath = path.join(

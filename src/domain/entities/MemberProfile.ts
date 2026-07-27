@@ -37,6 +37,7 @@ export type EditableMemberProfile = {
   username: string;
   firstName: string;
   surname: string;
+  goldenRecordsId?: string;
   archeryGbMembershipNumber: string;
   emailAddress: string;
   password: string;
@@ -55,6 +56,7 @@ export type EditableMemberProfile = {
 export type GoldenRecordsHandicap = {
   achieved: string;
   bowClass: string;
+  discipline: string;
   handicap: number | null;
   memberId: string;
   name: string;
@@ -62,9 +64,45 @@ export type GoldenRecordsHandicap = {
   updated: string;
 };
 
+export type GoldenRecordsAchievement = {
+  achieved: string;
+  achievement: string;
+  achievementId: string;
+  ageGroup: string;
+  bowClass: string;
+  discipline: string;
+  memberId: string;
+  name: string;
+  round: string;
+};
+
+export type GoldenRecordsClassification = {
+  achieved: string;
+  ageGroup: string;
+  bowClass: string;
+  classification: string;
+  classificationId: string;
+  discipline: string;
+  memberId: string;
+  name: string;
+  type: string;
+  updated: string;
+};
+
+export type GoldenRecordsCandidateMatch = {
+  memberArchived: boolean;
+  memberId: string;
+  membershipId: string;
+  name: string;
+};
+
 export type GoldenRecordsSnapshot = {
+  achievements: GoldenRecordsAchievement[];
+  candidateMatches?: GoldenRecordsCandidateMatch[];
+  classifications: GoldenRecordsClassification[];
   enabled: boolean;
   error?: string;
+  fetchedAt?: string;
   handicaps: GoldenRecordsHandicap[];
   matchedMemberId: string;
   matchedMemberName: string;
@@ -75,6 +113,7 @@ export type MemberProfileFormInput = {
   username?: string;
   firstName: string;
   surname: string;
+  goldenRecordsId?: string;
   archeryGbMembershipNumber?: string;
   emailAddress?: string;
   password?: string;
@@ -161,3 +200,13 @@ export type DistanceSignOffResult = {
   signOff: DistanceSignOff | null;
   editableProfile: EditableMemberProfile;
 };
+
+export type GoldenRecordsHandicapRefreshResult = {
+  createdHandicapCount: number;
+  goldenRecords?: GoldenRecordsSnapshot;
+  message?: string;
+  syncedHandicapCount: number;
+  updatedHandicapCount: number;
+};
+
+export type GoldenRecordsMatchAssignResult = GoldenRecordsHandicapRefreshResult;

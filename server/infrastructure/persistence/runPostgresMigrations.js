@@ -13,6 +13,7 @@ function buildInitialSchemaSql() {
       username TEXT NOT NULL UNIQUE,
       first_name TEXT NOT NULL,
       surname TEXT NOT NULL,
+      gr_id TEXT,
       archery_gb_membership_number TEXT,
       email_address TEXT,
       password TEXT,
@@ -1007,6 +1008,10 @@ export async function runPostgresMigrations({
       await client.query(statement.sql, statement.values);
     }
 
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS gr_id TEXT
+    `);
     await client.query(`
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS archery_gb_membership_number TEXT

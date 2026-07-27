@@ -115,11 +115,14 @@ export function bootstrapSqliteUserData({
     for (const user of seedUsers) {
       upsertUser.run({
         ...user,
+        archeryGbMembershipNumber: user.archeryGbMembershipNumber ?? null,
         goldenRecordsId: user.goldenRecordsId ?? null,
         emailAddress: user.emailAddress ?? null,
+        rfidTag: user.rfidTag ?? null,
         activeMember: user.activeMember ? 1 : 0,
         affiliateMember: user.affiliateMember ? 1 : 0,
         juniorMember: user.juniorMember ? 1 : 0,
+        membershipFeesDue: user.membershipFeesDue ?? "",
         coachingVolunteer: user.coachingVolunteer ? 1 : 0,
       });
       upsertUserType.run(user);

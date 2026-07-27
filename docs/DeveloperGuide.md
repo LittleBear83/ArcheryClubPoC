@@ -454,9 +454,9 @@ npm test
 Current runtime support:
 
 - `sqlite`
-  Default local runtime.
+  Local-development-only runtime.
 - `postgres`
-  Supported in code and migrations, but still part of the migration rollout.
+  Required runtime for live/production deployments.
 
 Important runtime settings live in:
 
@@ -485,8 +485,9 @@ Key environment variables include:
 Operational notes:
 
 - local SQLite databases are created and bootstrapped automatically
-- live mode defaults to `server/data/auth.live.sqlite` unless overridden
-- the current baseline accounts are seeded in SQLite live mode
+- live mode will fail fast unless PostgreSQL is configured
+- non-live PostgreSQL startup seeds the baseline demo users into an empty
+  database
 - exports are written under `server/data/exports`
 
 ## Security And Reliability

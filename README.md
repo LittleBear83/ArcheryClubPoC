@@ -129,23 +129,25 @@ Useful alternatives:
 The backend currently supports two database engines:
 
 - `sqlite`
-  Default for local development.
+  Local-development-only option.
 - `postgres`
-  Implemented for migration and runtime validation work, but still part of the
-  active rollout.
+  Required for live/production deployments.
 
 SQLite notes:
 
 - the local database is created automatically if needed
 - non-live mode defaults to `server/data/auth.sqlite`
-- live mode defaults to `server/data/auth.live.sqlite`
 - you can override the path with `DATABASE_PATH`
+- live/production mode no longer permits SQLite startup
 
 PostgreSQL notes:
 
 - set `DATABASE_URL`, or set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and
   `DB_PASSWORD`
 - `INSTANCE_CONNECTION_NAME` can be used for Cloud SQL socket connections
+- live mode requires PostgreSQL configuration before the server will start
+- non-live PostgreSQL startup seeds the baseline demo users into an empty
+  database
 
 Other important runtime notes:
 
@@ -184,5 +186,6 @@ Current runtime behavior includes:
 This repository is a working internal proof of concept with real workflow
 coverage across auth, scheduling, equipment, and beginner operations. It is not
 yet a finished production platform, and the biggest active platform-level work
-items remain PostgreSQL rollout, deployed-runtime hardening, and continued
-modularization of some large backend areas such as the beginners-course logic.
+items remain deployment hardening, PostgreSQL verification coverage, and
+continued modularization of some large backend areas such as the
+beginners-course logic.

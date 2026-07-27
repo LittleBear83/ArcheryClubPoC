@@ -113,6 +113,12 @@ const goldenRecordsPassword = process.env.GOLDEN_RECORDS_PASSWORD ?? "";
 const goldenRecordsUserAgent =
   process.env.GOLDEN_RECORDS_USER_AGENT?.trim() || "ArcheryClubPoC/1.0";
 
+if (isLive && databaseEngine !== "postgres") {
+  throw new Error(
+    "Live mode requires PostgreSQL. Set DATABASE_ENGINE=postgres and provide DATABASE_URL or DB_HOST/DB_NAME/DB_USER credentials.",
+  );
+}
+
 function buildPostgresSocketDirectory(instanceConnectionName) {
   if (!instanceConnectionName) {
     return "";

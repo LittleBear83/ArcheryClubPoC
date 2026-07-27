@@ -34,12 +34,16 @@ export async function bootstrapPersistence({
   systemRoleDefinitions,
 }) {
   if (runtime.databaseEngine === "postgres") {
+    const seedUsers = runtime.isLive
+      ? []
+      : getSeedUsers({ hashPassword, isLive: runtime.isLive });
+
     await runPostgresMigrations({
       committeeRoleSeed,
       defaultEquipmentCupboardLabel,
       permissionDefinitions,
       pool: db.pool,
-      seedUsers: [],
+      seedUsers,
       systemRoleDefinitions,
     });
 

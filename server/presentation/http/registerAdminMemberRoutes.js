@@ -1655,7 +1655,6 @@ export function registerAdminMemberRoutes({
               syncSummary.signOffCount === 1 ? "was" : "were"
             } refreshed.`
           : "Golden Records API sync completed successfully. No local data changes were needed.",
-          : "Golden Records API sync completed successfully. No local data changes were needed.",
       syncedHandicapCount: syncSummary.syncedCount,
       updatedHandicapCount: syncSummary.updatedCount,
       createdHandicapCount: syncSummary.createdCount,
@@ -1742,7 +1741,6 @@ export function registerAdminMemberRoutes({
             } synced and ${syncSummary.signOffCount} distance sign-off ${
               syncSummary.signOffCount === 1 ? "was" : "were"
             } refreshed.`
-          : "Golden Records account assigned and Golden Records API sync completed successfully. No local data changes were needed.",
           : "Golden Records account assigned and Golden Records API sync completed successfully. No local data changes were needed.",
       syncedHandicapCount: syncSummary.syncedCount,
       updatedHandicapCount: syncSummary.updatedCount,

@@ -34,6 +34,22 @@ export async function updateCommitteeRole<TRole>(
   });
 }
 
+export async function updateOwnCommitteeRoleBlurb<TRole>(
+  actor: ActorIdentity | string,
+  roleId: string | number,
+  personalBlurb: string,
+) {
+  return fetchApi<{ success: true; role: TRole }>(
+    `/api/committee-roles/${roleId}/personal-blurb`,
+    {
+      method: "PUT",
+      headers: buildActorHeaders(actor, true),
+      cache: "no-store",
+      body: JSON.stringify({ personalBlurb }),
+    },
+  );
+}
+
 export async function deleteCommitteeRole(
   actor: ActorIdentity | string,
   roleId: string | number,

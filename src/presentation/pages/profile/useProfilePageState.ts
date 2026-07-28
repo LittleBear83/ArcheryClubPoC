@@ -1125,7 +1125,11 @@ export function useProfilePageState({
 
       setGoldenRecordsSnapshot(result.goldenRecords ?? null);
       await loadOutdoorTableEntries(editableProfile.username, undefined);
-      setMessage(result.message ?? "Golden Records synced successfully.");
+      setMessage(
+        result.message
+          ? `Golden Records API sync successful. ${result.message}`
+          : "Golden Records API sync successful.",
+      );
     } catch (refreshError) {
       if (refreshError instanceof ApiError) {
         const payload = refreshError.payload as {
@@ -1223,7 +1227,11 @@ export function useProfilePageState({
         isBackgroundRefresh: hasLoadedProfileRef.current,
       });
       await loadOutdoorTableEntries(editableProfile.username, undefined);
-      setMessage(result.message ?? "Golden Records account assigned successfully.");
+      setMessage(
+        result.message
+          ? `Golden Records API sync successful. ${result.message}`
+          : "Golden Records API sync successful.",
+      );
       setIsGoldenRecordsMatchConfirmModalOpen(false);
       setIsGoldenRecordsMatchModalOpen(false);
     } catch (assignError) {

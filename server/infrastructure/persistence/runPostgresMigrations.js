@@ -84,6 +84,25 @@ function buildInitialSchemaSql() {
       PRIMARY KEY (announcement_id, username)
     );
 
+    CREATE TABLE IF NOT EXISTS suggestions (
+      id BIGSERIAL PRIMARY KEY,
+      submitted_by_username TEXT REFERENCES users(username),
+      submitted_by_name TEXT NOT NULL DEFAULT 'Anonymous',
+      is_anonymous BOOLEAN NOT NULL DEFAULT FALSE,
+      suggestion_title TEXT NOT NULL,
+      improvement_text TEXT NOT NULL,
+      suggestion_details TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'new',
+      resolution_note TEXT NOT NULL DEFAULT '',
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      updated_at_date TEXT,
+      updated_at_time TEXT,
+      updated_by_username TEXT REFERENCES users(username),
+      submitted_by_user_id BIGINT REFERENCES users(id),
+      updated_by_user_id BIGINT REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS range_rules_content (
       content_key TEXT PRIMARY KEY,
       indoor_rules_json JSONB NOT NULL,
@@ -735,6 +754,13 @@ function buildUserReferenceSyncStatements() {
       references: [{ usernameColumn: "actor_username", userIdColumn: "actor_user_id" }],
     },
     {
+      tableName: "suggestions",
+      references: [
+        { usernameColumn: "submitted_by_username", userIdColumn: "submitted_by_user_id" },
+        { usernameColumn: "updated_by_username", userIdColumn: "updated_by_user_id" },
+      ],
+    },
+    {
       tableName: "user_types",
       references: [{ usernameColumn: "username", userIdColumn: "user_id" }],
     },
@@ -1038,6 +1064,18 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS junior_member INTEGER NOT NULL DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE suggestions
+      ADD COLUMN IF NOT EXISTS submitted_by_user_id BIGINT REFERENCES users(id)
+    `);
+    await client.query(`
+      ALTER TABLE suggestions
+      ADD COLUMN IF NOT EXISTS updated_by_user_id BIGINT REFERENCES users(id)
+    `);
+    await client.query(`
+      ALTER TABLE suggestions
+      ADD COLUMN IF NOT EXISTS resolution_note TEXT NOT NULL DEFAULT ''
     `);
     await client.query(`
       ALTER TABLE announcements

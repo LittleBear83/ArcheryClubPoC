@@ -67,6 +67,7 @@ import { createGoldenRecordsSyncGateway } from "./infrastructure/persistence/gol
 import { createGoldenRecordsCurrentHandicapService } from "./infrastructure/golden-records/goldenRecordsCurrentHandicapService.js";
 import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
 import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
+import { createSuggestionGateway } from "./infrastructure/persistence/suggestionGateway.js";
 import { createTournamentGateway } from "./infrastructure/persistence/tournamentGateway.js";
 import { createMemberDistanceSignOffRepository } from "./infrastructure/persistence/memberDistanceSignOffRepository.js";
 import {
@@ -87,6 +88,7 @@ import { registerOutdoorTableRoutes } from "./presentation/http/registerOutdoorT
 import { registerRangeRulesRoutes } from "./presentation/http/registerRangeRulesRoutes.js";
 import { registerGeneralInfoRoutes } from "./presentation/http/registerGeneralInfoRoutes.js";
 import { registerSseRoutes } from "./presentation/http/registerSseRoutes.js";
+import { registerSuggestionRoutes } from "./presentation/http/registerSuggestionRoutes.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
@@ -513,6 +515,11 @@ const announcementGateway = createAnnouncementGateway({
   softDeleteAnnouncementById: sqliteAnnouncementStatements?.softDeleteAnnouncementById,
   pool: db.pool,
   updateAnnouncementById: sqliteAnnouncementStatements?.updateAnnouncementById,
+});
+const suggestionGateway = createSuggestionGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
 });
 const auditLogGateway = createAuditLogGateway({
   databaseEngine: serverRuntime.databaseEngine,
@@ -3711,6 +3718,15 @@ registerAnnouncementRoutes({
   PERMISSIONS,
   serverEventBus,
   toUtcDateString,
+});
+registerSuggestionRoutes({
+  actorHasPermission,
+  app,
+  auditChangeLogger,
+  getActorUser,
+  getUtcTimestampParts,
+  PERMISSIONS,
+  suggestionGateway,
 });
 registerAuditRoutes({
   actorHasPermission,

@@ -39,6 +39,12 @@ const pages = [
   { id: "range-rules", label: "Range Rules", path: "/range-rules" },
   { id: "feedback-form", label: "Suggestion Box", path: "/feedback-form" },
   {
+    id: "suggestions-admin",
+    label: "Suggestion Inbox",
+    path: "/suggestions-admin",
+    permission: "manage_announcements",
+  },
+  {
     id: "lost-and-found",
     label: "Lost and Found",
     path: "/lost-and-found",

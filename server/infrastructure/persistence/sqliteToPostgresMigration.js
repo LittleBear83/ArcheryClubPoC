@@ -12,6 +12,27 @@ const orderedTableCopies = [
     columns: ["role_key", "permission_key"],
   },
   {
+    tableName: "suggestions",
+    columns: [
+      "id",
+      "submitted_by_username",
+      "submitted_by_name",
+      "is_anonymous",
+      "suggestion_title",
+      "improvement_text",
+      "suggestion_details",
+      "status",
+      "resolution_note",
+      "created_at_date",
+      "created_at_time",
+      "updated_at_date",
+      "updated_at_time",
+      "updated_by_username",
+      "submitted_by_user_id",
+      "updated_by_user_id",
+    ],
+  },
+  {
     tableName: "users",
     columns: [
       "id",

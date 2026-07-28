@@ -1,12 +1,16 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "../components/Button";
 import { MobileKeyValueList } from "../components/mobile/MobileKeyValueList";
 import { MobileSectionHeader } from "../components/mobile/MobileSectionHeader";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { Modal } from "../components/Modal";
 import { useIsMobile } from "../hooks/useIsMobile";
-import { listCommitteeRoles } from "../../api/committeeApi";
+import {
+  listCommitteeRoles,
+  updateOwnCommitteeRoleBlurb,
+} from "../../api/committeeApi";
 import {
   formatMemberDisplayName,
   formatMemberDisplayUsername,
@@ -54,7 +58,11 @@ const committeeQueryKeys = {
 
 export function CommitteeOrgChartPage({ currentUserProfile }) {
   const isMobile = useIsMobile();
-  const [selectedRole, setSelectedRole] = useState<CommitteeRole | null>(null);
+  const queryClient = useQueryClient();
+  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
+  const [blurbDraft, setBlurbDraft] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const actorUsername = currentUserProfile?.auth?.username ?? "";
 
   const { data, isLoading } = useQuery({
@@ -65,6 +73,38 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
   });
 
   const roles = data?.roles ?? [];
+  const selectedRole = useMemo(
+    () => roles.find((role) => role.id === selectedRoleId) ?? null,
+    [roles, selectedRoleId],
+  );
+  const canEditSelectedRoleBlurb =
+    Boolean(selectedRole?.assignedMember?.username) &&
+    selectedRole?.assignedMember?.username === actorUsername;
+
+  useEffect(() => {
+    setBlurbDraft(selectedRole?.personalBlurb ?? "");
+    setMessage("");
+    setError("");
+  }, [selectedRole?.id, selectedRole?.personalBlurb]);
+
+  const saveBlurbMutation = useMutation({
+    mutationFn: async ({ roleId, personalBlurb }: { roleId: number; personalBlurb: string }) =>
+      updateOwnCommitteeRoleBlurb<CommitteeRole>(currentUserProfile, roleId, personalBlurb),
+    onMutate: () => {
+      setMessage("");
+      setError("");
+    },
+    onSuccess: async (result) => {
+      setBlurbDraft(result.role.personalBlurb ?? "");
+      setMessage("Personal blurb updated.");
+      await queryClient.invalidateQueries({
+        queryKey: committeeQueryKeys.roles(actorUsername),
+      });
+    },
+    onError: (saveError: Error) => {
+      setError(saveError.message);
+    },
+  });
 
   return (
     <div
@@ -81,10 +121,10 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
       </p>
 
       <StatusMessagePanel
-        error=""
+        error={error}
         loading={isLoading}
         loadingLabel="Loading committee roles..."
-        success=""
+        success={message}
       />
 
       {data ? (
@@ -99,7 +139,7 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
                 key={role.id}
                 type="button"
                 className="committee-role-card committee-role-card-button"
-                onClick={() => setSelectedRole(role)}
+                onClick={() => setSelectedRoleId(role.id)}
               >
                 <div className="committee-role-card-header">
                   {role.photoDataUrl ? (
@@ -148,7 +188,7 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
 
       <Modal
         open={Boolean(selectedRole)}
-        onClose={() => setSelectedRole(null)}
+        onClose={() => setSelectedRoleId(null)}
         title={selectedRole?.title ?? "Committee Role"}
         contentClassName={[
           "modal-content--wide",
@@ -227,7 +267,34 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
 
               <section className="committee-role-section">
                 <h5>Personal Blurb</h5>
-                <p>{getRoleBlurb(selectedRole)}</p>
+                {canEditSelectedRoleBlurb ? (
+                  <div className="left-align-form">
+                    <p>You can update your own committee profile blurb here.</p>
+                    <textarea
+                      value={blurbDraft}
+                      onChange={(event) => setBlurbDraft(event.target.value)}
+                      disabled={saveBlurbMutation.isPending}
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        if (!selectedRole) {
+                          return;
+                        }
+
+                        saveBlurbMutation.mutate({
+                          roleId: selectedRole.id,
+                          personalBlurb: blurbDraft,
+                        });
+                      }}
+                      disabled={saveBlurbMutation.isPending}
+                    >
+                      {saveBlurbMutation.isPending ? "Saving..." : "Save personal blurb"}
+                    </Button>
+                  </div>
+                ) : (
+                  <p>{getRoleBlurb(selectedRole)}</p>
+                )}
               </section>
 
               <section className="committee-role-section committee-role-section--full">

@@ -281,6 +281,33 @@ export function bootstrapSqliteBaseSchema({
   `);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS suggestions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      submitted_by_username TEXT,
+      submitted_by_name TEXT NOT NULL DEFAULT 'Anonymous',
+      is_anonymous INTEGER NOT NULL DEFAULT 0,
+      suggestion_title TEXT NOT NULL,
+      improvement_text TEXT NOT NULL,
+      suggestion_details TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'new',
+      resolution_note TEXT NOT NULL DEFAULT '',
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      updated_at_date TEXT,
+      updated_at_time TEXT,
+      updated_by_username TEXT,
+      FOREIGN KEY (submitted_by_username) REFERENCES users(username),
+      FOREIGN KEY (updated_by_username) REFERENCES users(username)
+    )
+  `);
+
+  const suggestionColumns = db.prepare(`PRAGMA table_info(suggestions)`).all();
+
+  if (!suggestionColumns.some((column) => column.name === "resolution_note")) {
+    db.exec(`ALTER TABLE suggestions ADD COLUMN resolution_note TEXT NOT NULL DEFAULT ''`);
+  }
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS range_rules_content (
       content_key TEXT PRIMARY KEY,
       indoor_rules_json TEXT NOT NULL,

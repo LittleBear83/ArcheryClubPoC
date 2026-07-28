@@ -1407,8 +1407,107 @@ button:disabled {
   align-content: start;
 }
 
+.suggestion-form-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 18px;
+  align-items: start;
+}
+
 .utility-form-card {
   max-width: 760px;
+}
+
+.suggestion-member-history {
+  display: grid;
+  gap: 16px;
+}
+
+.suggestion-member-history-header {
+  display: grid;
+  gap: 8px;
+}
+
+.suggestion-member-history-header p,
+.suggestion-member-history-empty {
+  margin: 0;
+  color: var(--muted);
+}
+
+.suggestion-member-history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.suggestion-member-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--surface-deep);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.suggestion-member-history-row:hover {
+  border-color: var(--panel-border-strong);
+  background: var(--surface-selected);
+}
+
+.suggestion-member-history-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.suggestion-member-history-main strong,
+.suggestion-member-history-main span {
+  overflow-wrap: anywhere;
+}
+
+.suggestion-member-history-main span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.suggestion-member-modal {
+  display: grid;
+  gap: 18px;
+}
+
+.suggestion-member-modal-meta {
+  display: grid;
+  gap: 10px;
+}
+
+.suggestion-member-modal-meta p,
+.suggestion-member-modal-section h4,
+.suggestion-member-modal-section p {
+  margin: 0;
+}
+
+.suggestion-member-modal-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.suggestion-member-modal-section {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--surface-deep);
 }
 
 .general-info-page {
@@ -4833,6 +4932,208 @@ button:disabled {
   gap: var(--mobile-card-gap);
 }
 
+.suggestion-inbox-list {
+  display: grid;
+  gap: 18px;
+}
+
+.suggestion-inbox-sections {
+  display: grid;
+  gap: 24px;
+}
+
+.suggestion-inbox-group {
+  display: grid;
+  gap: 14px;
+}
+
+.suggestion-inbox-group-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.suggestion-inbox-group-header h3,
+.suggestion-inbox-group-header p {
+  margin: 0;
+}
+
+.suggestion-inbox-group-header p {
+  color: var(--muted);
+}
+
+.suggestion-inbox-card {
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: var(--surface-strong);
+}
+
+.suggestion-inbox-card-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 18px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.suggestion-inbox-card-summary::-webkit-details-marker {
+  display: none;
+}
+
+.suggestion-inbox-card-summary-main,
+.suggestion-inbox-card-summary-side {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.suggestion-inbox-card-summary-side {
+  justify-items: end;
+}
+
+.suggestion-inbox-card-summary h3,
+.suggestion-inbox-card-summary p {
+  margin: 0;
+}
+
+.suggestion-inbox-card-summary h3 {
+  color: var(--text-h);
+}
+
+.suggestion-inbox-card-summary-meta {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.suggestion-inbox-card-content {
+  display: grid;
+  gap: 18px;
+  padding: 0 18px 18px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.suggestion-inbox-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(240px, 0.9fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.suggestion-inbox-card-submitter,
+.suggestion-inbox-card-status,
+.suggestion-inbox-card-section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.suggestion-inbox-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.suggestion-inbox-card-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.suggestion-inbox-card-submitter h3,
+.suggestion-inbox-card-section h4,
+.suggestion-inbox-card-submitter p,
+.suggestion-inbox-card-section p,
+.suggestion-inbox-update-note {
+  margin: 0;
+}
+
+.suggestion-inbox-card-submitter h3,
+.suggestion-inbox-card-section h4 {
+  color: var(--text-h);
+}
+
+.suggestion-inbox-card-submitter p,
+.suggestion-inbox-card-section p,
+.suggestion-inbox-update-note {
+  overflow-wrap: anywhere;
+}
+
+.suggestion-inbox-card-section {
+  align-content: start;
+  padding: 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--surface-deep);
+}
+
+.suggestion-inbox-status-field {
+  display: grid;
+  gap: 8px;
+}
+
+.suggestion-inbox-field-note {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.suggestion-inbox-note-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.suggestion-inbox-status-field select {
+  min-width: 180px;
+}
+
+.suggestion-inbox-card-section--full {
+  grid-column: 1 / -1;
+}
+
+.suggestion-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.suggestion-status-pill--new {
+  background: rgba(212, 175, 55, 0.14);
+  color: var(--warning);
+}
+
+.suggestion-status-pill--reviewing {
+  background: rgba(64, 148, 255, 0.14);
+  color: #7dc2ff;
+}
+
+.suggestion-status-pill--implemented {
+  background: rgba(64, 179, 120, 0.14);
+  color: var(--success);
+}
+
+.suggestion-status-pill--declined {
+  background: rgba(210, 90, 90, 0.16);
+  color: #ff9c9c;
+}
+
+.suggestion-inbox-empty-copy {
+  color: var(--muted);
+}
+
 .mobile-key-value-list {
   display: grid;
   gap: calc(var(--mobile-card-gap) - 2px);
@@ -5679,6 +5980,10 @@ button:disabled {
     max-width: none;
   }
 
+  .suggestion-form-layout {
+    grid-template-columns: 1fr;
+  }
+
   .profile-distance-signoff-table th,
   .profile-distance-signoff-table td {
     min-width: 104px;
@@ -5696,6 +6001,16 @@ button:disabled {
 
   .equipment-table-toolbar {
     gap: 12px;
+  }
+
+  .suggestion-inbox-card-summary,
+  .suggestion-inbox-card-header,
+  .suggestion-inbox-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .suggestion-inbox-card-summary-side {
+    justify-items: start;
   }
 
   .equipment-inventory-table,
@@ -5742,6 +6057,40 @@ button:disabled {
   .profile-mobile-card {
     padding: 14px;
     border-radius: 14px;
+  }
+
+  .suggestion-member-history-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .suggestion-inbox-card {
+    border-radius: 14px;
+  }
+
+  .suggestion-inbox-card-summary,
+  .suggestion-inbox-card-content {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .suggestion-inbox-card-summary {
+    padding-top: 14px;
+    padding-bottom: 14px;
+  }
+
+  .suggestion-inbox-card-content {
+    padding-bottom: 14px;
+  }
+
+  .suggestion-inbox-card-section {
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  .suggestion-inbox-status-field select {
+    width: 100%;
+    min-width: 0;
   }
 
   .equipment-action-card {

@@ -12,6 +12,10 @@ const files = [
   "src/api/memberProfileApi.test.ts",
   "src/presentation/pages/home/committeeApprovalsCardUtils.ts",
   "src/presentation/pages/home/committeeApprovalsCardUtils.test.ts",
+  "src/presentation/pages/home/committeeApprovedCoursesUtils.ts",
+  "src/presentation/pages/home/committeeApprovedCoursesUtils.test.ts",
+  "src/presentation/pages/home/homeActivityFilters.ts",
+  "src/presentation/pages/home/homeActivityFilters.test.ts",
   "src/data/repositories/RoleRepositoryImpl.ts",
   "src/data/repositories/RoleRepositoryImpl.test.ts",
   "src/domain/repositories/RoleRepository.ts",
@@ -63,6 +67,17 @@ await import(
   )
 );
 await import(
+  pathToFileURL(
+    path.join(
+      outDir,
+      "src/presentation/pages/home/committeeApprovedCoursesUtils.test.js",
+    ),
+  )
+);
+await import(
+  pathToFileURL(path.join(outDir, "src/presentation/pages/home/homeActivityFilters.test.js"))
+);
+await import(
   pathToFileURL(path.join(outDir, "src/data/repositories/RoleRepositoryImpl.test.js"))
 );
 await import(pathToFileURL(path.join(root, "server/security/csrf.test.js")));
@@ -86,6 +101,14 @@ await import(
 );
 await import(
   pathToFileURL(path.join(root, "server/domain/services/memberPersistenceService.test.js"))
+);
+await import(
+  pathToFileURL(path.join(root, "server/domain/services/goldenRecordsMemberSyncService.test.js"))
+);
+await import(
+  pathToFileURL(
+    path.join(root, "server/domain/services/goldenRecordsMemberSyncService.partial-failure.test.js"),
+  )
 );
 await import(
   pathToFileURL(path.join(root, "server/presentation/http/securedRoutes.test.js"))

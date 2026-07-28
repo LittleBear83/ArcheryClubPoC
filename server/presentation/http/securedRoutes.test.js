@@ -176,6 +176,7 @@ function createAdminRoleTestApp() {
   const permissionStore = new Map();
   const committeeRoleStore = new Map();
   const PERMISSIONS = {
+    MANAGE_COMMITTEE_ROLES: "manage_committee_roles",
     MANAGE_ROLES_PERMISSIONS: "manage_roles_permissions",
   };
   let committeeRoleId = 1;
@@ -186,7 +187,22 @@ function createAdminRoleTestApp() {
     actorHasPermission: (actor, permission) => actor?.permissions?.includes(permission),
     ALLOWED_DISCIPLINES: [],
     app,
-    buildCommitteeRole: () => ({}),
+    buildCommitteeRole: (role) => ({
+      id: role.id,
+      title: role.title,
+      summary: role.summary,
+      responsibilities: role.responsibilities,
+      personalBlurb: role.personal_blurb ?? "",
+      photoDataUrl: role.photo_data_url ?? null,
+      assignedMember: role.assigned_username
+        ? {
+            username: role.assigned_username,
+            fullName: "Committee Member",
+            userType: "member",
+          }
+        : null,
+      roleKey: role.role_key,
+    }),
     buildEditableMemberProfile: () => ({}),
     buildLoanBowRecord: () => ({}),
     buildMemberUserProfile: () => ({}),
@@ -195,15 +211,30 @@ function createAdminRoleTestApp() {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "_")
         .replace(/^_+|_+$/g, ""),
-    CURRENT_PERMISSION_KEY_SET: new Set([PERMISSIONS.MANAGE_ROLES_PERMISSIONS]),
+    CURRENT_PERMISSION_KEY_SET: new Set([
+      PERMISSIONS.MANAGE_COMMITTEE_ROLES,
+      PERMISSIONS.MANAGE_ROLES_PERMISSIONS,
+    ]),
     DISTANCE_SIGN_OFF_YARDS: [],
     getActorUser: (req) => {
-      if (!String(req.headers.cookie ?? "").includes("archeryclubpoc_session=valid")) {
+      const cookieHeader = String(req.headers.cookie ?? "");
+
+      if (!cookieHeader.includes("archeryclubpoc_session=")) {
         return null;
       }
 
+      if (cookieHeader.includes("archeryclubpoc_session=committee")) {
+        return {
+          permissions: [],
+          username: "committee-member",
+        };
+      }
+
       return {
-        permissions: [PERMISSIONS.MANAGE_ROLES_PERMISSIONS],
+        permissions: [
+          PERMISSIONS.MANAGE_COMMITTEE_ROLES,
+          PERMISSIONS.MANAGE_ROLES_PERMISSIONS,
+        ],
         username: "admin",
       };
     },
@@ -214,8 +245,22 @@ function createAdminRoleTestApp() {
     memberDirectoryGateway: {
       findDisciplinesByUsername: async () => [],
       findLoanBowByUsername: async () => null,
-      findUserByUsername: async () => null,
-      listAllUsers: async () => [],
+      findUserByUsername: async (username) =>
+        username === "committee-member"
+          ? {
+              first_name: "Committee",
+              surname: "Member",
+              username: "committee-member",
+            }
+          : null,
+      listAllUsers: async () => [
+        {
+          first_name: "Committee",
+          surname: "Member",
+          user_type: "member",
+          username: "committee-member",
+        },
+      ],
     },
     memberDistanceSignOffRepository: {
       listByDiscipline: async () => [],
@@ -309,12 +354,12 @@ function createAdminRoleTestApp() {
   return { app, csrf };
 }
 
-function createCsrfHeaders(csrf, { includeSession = true } = {}) {
+function createCsrfHeaders(csrf, { includeSession = true, sessionValue = "valid" } = {}) {
   const token = csrf.createToken();
   const cookies = [`${csrf.cookieName}=${encodeURIComponent(token)}`];
 
   if (includeSession) {
-    cookies.push("archeryclubpoc_session=valid");
+    cookies.push(`archeryclubpoc_session=${sessionValue}`);
   }
 
   return {
@@ -592,6 +637,110 @@ test("mutating admin routes require both a session cookie and a valid CSRF token
       roleKey: "range_admin",
       title: "Range Admin",
     });
+  } finally {
+    server.close();
+  }
+});
+
+test("assigned committee members can update only their own personal blurb", async () => {
+  const { app, csrf } = createAdminRoleTestApp();
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const createResponse = await requestJson(baseUrl, "/api/committee-roles", {
+      body: {
+        assignedUsername: "committee-member",
+        personalBlurb: "Original blurb",
+        responsibilities: "Keep everyone aligned",
+        summary: "Keeps the club moving",
+        title: "Secretary",
+      },
+      headers: createCsrfHeaders(csrf),
+      method: "POST",
+    });
+
+    assert.equal(createResponse.status, 201);
+
+    const roleId = createResponse.body.role.id;
+    const updateResponse = await requestJson(
+      baseUrl,
+      `/api/committee-roles/${roleId}/personal-blurb`,
+      {
+        body: {
+          personalBlurb: "Updated by the assigned member",
+        },
+        headers: createCsrfHeaders(csrf, { sessionValue: "committee" }),
+        method: "PUT",
+      },
+    );
+
+    assert.equal(updateResponse.status, 200);
+    assert.equal(
+      updateResponse.body.role.personalBlurb,
+      "Updated by the assigned member",
+    );
+    assert.equal(
+      updateResponse.body.role.assignedMember?.username,
+      "committee-member",
+    );
+  } finally {
+    server.close();
+  }
+});
+
+test("changing or removing a committee assignment clears the personal blurb and removes self-edit access", async () => {
+  const { app, csrf } = createAdminRoleTestApp();
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const createResponse = await requestJson(baseUrl, "/api/committee-roles", {
+      body: {
+        assignedUsername: "committee-member",
+        personalBlurb: "Original blurb",
+        responsibilities: "Keep everyone aligned",
+        summary: "Keeps the club moving",
+        title: "Secretary",
+      },
+      headers: createCsrfHeaders(csrf),
+      method: "POST",
+    });
+    assert.equal(createResponse.status, 201);
+
+    const roleId = createResponse.body.role.id;
+    const unassignResponse = await requestJson(
+      baseUrl,
+      `/api/committee-roles/${roleId}`,
+      {
+        body: {
+          assignedUsername: "",
+          personalBlurb: "Should be cleared",
+          responsibilities: "Keep everyone aligned",
+          summary: "Keeps the club moving",
+          title: "Secretary",
+        },
+        headers: createCsrfHeaders(csrf),
+        method: "PUT",
+      },
+    );
+
+    assert.equal(unassignResponse.status, 200);
+    assert.equal(unassignResponse.body.role.personalBlurb, "");
+    assert.equal(unassignResponse.body.role.assignedMember, null);
+
+    const deniedResponse = await requestJson(
+      baseUrl,
+      `/api/committee-roles/${roleId}/personal-blurb`,
+      {
+        body: {
+          personalBlurb: "Trying again after removal",
+        },
+        headers: createCsrfHeaders(csrf, { sessionValue: "committee" }),
+        method: "PUT",
+      },
+    );
+
+    assert.equal(deniedResponse.status, 403);
+    assert.equal(deniedResponse.body.success, false);
   } finally {
     server.close();
   }

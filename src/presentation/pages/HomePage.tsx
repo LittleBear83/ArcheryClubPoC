@@ -30,6 +30,7 @@ import { AnnouncementsPage } from "./AnnouncementsPage";
 import { AuditLogPage } from "./AuditLogPage";
 import { RangeRulesAdminPage } from "./RangeRulesAdminPage";
 import { RangeRulesPage } from "./RangeRulesPage";
+import { SuggestionsAdminPage } from "./SuggestionsAdminPage";
 import { formatDate } from "../../utils/dateTime";
 import {
   getMyBeginnerDashboard,
@@ -68,6 +69,8 @@ import {
   canViewCommitteeApprovalsCard as canViewCommitteeApprovalsCardForUser,
   hasCommitteeApprovalAccess,
 } from "./home/committeeApprovalsCardUtils";
+import { countActiveApprovedCourses } from "./home/committeeApprovedCoursesUtils";
+import { filterHomeActivityCurrentOrUpcoming } from "./home/homeActivityFilters";
 import {
   formatMemberDisplayName,
   formatRangeMemberDisplayName,
@@ -169,6 +172,11 @@ type CommitteeRole = {
 };
 type PendingCourseApproval = {
   approvalStatus: string;
+  isCancelled?: boolean;
+  lessons?: Array<{
+    date?: string;
+    endTime?: string;
+  }>;
 };
 type CommitteeApprovalSummary = {
   totalPendingCount: number;
@@ -232,6 +240,7 @@ const pageTitleMap = {
   "committee-org-chart": "Committee Org Chart",
   "committee-admin": "Committee Admin",
   announcements: "Announcements",
+  "suggestions-admin": "Suggestion Inbox",
   "general-info": "General Info",
   "lost-and-found": "Lost and Found",
 };
@@ -261,6 +270,7 @@ const pathToPageId = {
   "/committee-org-chart": "committee-org-chart",
   "/committee-admin": "committee-admin",
   "/announcements": "announcements",
+  "/suggestions-admin": "suggestions-admin",
   "/general-info": "general-info",
   "/lost-and-found": "lost-and-found",
 };
@@ -500,14 +510,18 @@ async function fetchHomeActivity(username: string): Promise<{
   ]);
 
   return {
-    signedUpEvents: [...(coachingResult.bookings ?? []), ...(eventResult.bookings ?? [])]
-      .sort((left, right) => {
-        const byDate = left.date.localeCompare(right.date);
-        return byDate !== 0
-          ? byDate
-          : (left.startTime ?? "").localeCompare(right.startTime ?? "");
-      }),
-    tournamentReminders: reminderResult.reminders ?? [],
+    signedUpEvents: filterHomeActivityCurrentOrUpcoming([
+      ...(coachingResult.bookings ?? []),
+      ...(eventResult.bookings ?? []),
+    ]).sort((left, right) => {
+      const byDate = left.date.localeCompare(right.date);
+      return byDate !== 0
+        ? byDate
+        : (left.startTime ?? "").localeCompare(right.startTime ?? "");
+    }),
+    tournamentReminders: filterHomeActivityCurrentOrUpcoming(
+      reminderResult.reminders ?? [],
+    ),
     beginnerDashboard: beginnerResult.dashboard ?? null,
     beginnerCoachAssignments: coachAssignmentsResult.lessons ?? [],
   };
@@ -603,12 +617,12 @@ async function fetchCommitteeApprovalSummary({
   const pendingHaveAGoSessions = (
     (haveAGoResult.courses ?? []) as PendingCourseApproval[]
   ).filter((course) => course.approvalStatus === "pending").length;
-  const approvedBeginnersCourses = (
-    (beginnersResult.courses ?? []) as PendingCourseApproval[]
-  ).filter((course) => course.approvalStatus === "approved").length;
-  const approvedHaveAGoSessions = (
-    (haveAGoResult.courses ?? []) as PendingCourseApproval[]
-  ).filter((course) => course.approvalStatus === "approved").length;
+  const approvedBeginnersCourses = countActiveApprovedCourses(
+    (beginnersResult.courses ?? []) as PendingCourseApproval[],
+  );
+  const approvedHaveAGoSessions = countActiveApprovedCourses(
+    (haveAGoResult.courses ?? []) as PendingCourseApproval[],
+  );
   const calendarItemsCount = pendingEvents + pendingSessions;
 
   return {
@@ -1308,7 +1322,16 @@ export function HomePage({
                 <AnnouncementsPage currentUserProfile={currentUserProfile} />
               }
             />
-            <Route path="/feedback-form" element={<FeedbackFormPage />} />
+            <Route
+              path="/suggestions-admin"
+              element={
+                <SuggestionsAdminPage currentUserProfile={currentUserProfile} />
+              }
+            />
+            <Route
+              path="/feedback-form"
+              element={<FeedbackFormPage currentUserProfile={currentUserProfile} />}
+            />
             <Route path="/ideas-form" element={<Navigate to="/feedback-form" replace />} />
             <Route
               path="/lost-and-found"

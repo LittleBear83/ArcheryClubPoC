@@ -685,16 +685,31 @@ export function createGoldenRecordsMemberSyncService({
       updatedByUsername: safeUpdatedByUsername,
       user,
     });
-    const signOffSummary = await syncDistanceSignOffsFromGoldenRecords({
-      disciplines,
-      goldenRecordsSnapshot: snapshot,
-      updatedByUsername: safeUpdatedByUsername,
-      user,
-    });
+    let signOffSummary = {
+      replacedCount: 0,
+    };
+    let signOffError = "";
+
+    try {
+      signOffSummary = await syncDistanceSignOffsFromGoldenRecords({
+        disciplines,
+        goldenRecordsSnapshot: snapshot,
+        updatedByUsername: safeUpdatedByUsername,
+        user,
+      });
+    } catch (error) {
+      signOffError =
+        error instanceof Error ? error.message : "Distance sign-off sync failed.";
+      logger.error?.("Golden Records distance sign-off sync failed for member", {
+        error: signOffError,
+        username: user.username,
+      });
+    }
 
     return {
       createdCount: outdoorSyncSummary.createdCount,
       goldenRecords: snapshot,
+      signOffError,
       signOffCount: signOffSummary.replacedCount,
       syncedCount: outdoorSyncSummary.syncedCount,
       updatedCount: outdoorSyncSummary.updatedCount,

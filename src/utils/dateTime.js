@@ -109,6 +109,25 @@ export function formatShortDateTime(dateInput) {
   ].join("/") + ` ${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}`;
 }
 
+export function formatCompactDateTimeWithSeconds(dateInput) {
+  if (!dateInput) {
+    return "";
+  }
+
+  const date = parseDateTime(dateInput);
+
+  if (Number.isNaN(date?.getTime())) {
+    return String(dateInput);
+  }
+
+  return [
+    padDatePart(date.getDate()),
+    padDatePart(date.getMonth() + 1),
+    String(date.getFullYear()).slice(-2),
+  ].join("/") +
+    ` ${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}:${padDatePart(date.getSeconds())}`;
+}
+
 export function formatHourLabel(hour) {
   const safeHour = Number(hour);
 

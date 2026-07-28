@@ -1145,6 +1145,16 @@ export function registerAdminMemberRoutes({
     };
   }
 
+  function isAssignedCommitteeRoleActor(role, actor) {
+    if (!role?.assigned_username || !actor?.username) {
+      return false;
+    }
+
+    return role.assigned_username.localeCompare(actor.username, undefined, {
+      sensitivity: "accent",
+    }) === 0;
+  }
+
   function buildEditableProfileResponse(user, disciplines, loanBow, canViewRfidTag) {
     const editableProfile = buildEditableMemberProfile(user, disciplines, loanBow);
 
@@ -1321,12 +1331,14 @@ export function registerAdminMemberRoutes({
     }
 
     const existingRolePayload = buildCommitteeRole(role);
+    const shouldClearPersonalBlurb =
+      (role.assigned_username ?? null) !== payload.assignedUsername;
     await roleCommitteeGateway.updateCommitteeRoleDetails({
       id: role.id,
       title: payload.title,
       summary: payload.summary,
       responsibilities: payload.responsibilities,
-      personalBlurb: payload.personalBlurb,
+      personalBlurb: shouldClearPersonalBlurb ? "" : payload.personalBlurb,
       photoDataUrl: payload.photoDataUrl,
       assignedUsername: payload.assignedUsername,
     });
@@ -1354,6 +1366,81 @@ export function registerAdminMemberRoutes({
       });
     }
     broadcastCommitteeUpdated("committee.update");
+
+    res.json({
+      success: true,
+      role: updatedRole,
+    });
+  });
+
+  app.put("/api/committee-roles/:id/personal-blurb", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    const role = await roleCommitteeGateway.findCommitteeRoleById(req.params.id);
+
+    if (!role) {
+      res.status(404).json({
+        success: false,
+        message: "Committee role not found.",
+      });
+      return;
+    }
+
+    if (!isAssignedCommitteeRoleActor(role, actor)) {
+      res.status(403).json({
+        success: false,
+        message: "You can only update the personal blurb for your assigned committee role.",
+      });
+      return;
+    }
+
+    const personalBlurb = normalizeCommitteeRoleText(
+      req.body?.personalBlurb,
+      role.personal_blurb ?? "",
+    );
+    const existingRolePayload = buildCommitteeRole(role);
+
+    await roleCommitteeGateway.updateCommitteeRoleDetails({
+      id: role.id,
+      title: role.title,
+      summary: role.summary,
+      responsibilities: role.responsibilities ?? role.summary,
+      personalBlurb,
+      photoDataUrl: role.photo_data_url ?? null,
+      assignedUsername: role.assigned_username ?? null,
+    });
+
+    const updatedRole = (await roleCommitteeGateway.listCommitteeRoles())
+      .map(buildCommitteeRole)
+      .find((entry) => entry.id === role.id);
+    const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger && updatedRole) {
+      void auditChangeLogger.recordEntityChange({
+        action: "updated",
+        actorUsername: actor.username,
+        after: updatedRole,
+        before: existingRolePayload,
+        changedAtDate: updatedAtDate,
+        changedAtTime: updatedAtTime,
+        entityId: role.id,
+        entityLabel: updatedRole.title,
+        entityType: "committee_role",
+        req,
+        target: `/api/committee-roles/${role.id}/personal-blurb`,
+      }).catch((auditError) => {
+        console.error("Failed to record committee role personal blurb audit event", auditError);
+      });
+    }
+    broadcastCommitteeUpdated("committee.personal-blurb");
 
     res.json({
       success: true,
@@ -1562,12 +1649,13 @@ export function registerAdminMemberRoutes({
       goldenRecords,
       message:
         syncSummary.syncedCount > 0 || syncSummary.signOffCount > 0
-          ? `Golden Records synced. ${syncSummary.syncedCount} outdoor field ${
+          ? `Golden Records API sync completed successfully. ${syncSummary.syncedCount} outdoor field ${
               syncSummary.syncedCount === 1 ? "change was" : "changes were"
             } synced and ${syncSummary.signOffCount} distance sign-off ${
               syncSummary.signOffCount === 1 ? "was" : "were"
             } refreshed.`
-          : "Golden Records synced. No local data changes were needed.",
+          : "Golden Records API sync completed successfully. No local data changes were needed.",
+          : "Golden Records API sync completed successfully. No local data changes were needed.",
       syncedHandicapCount: syncSummary.syncedCount,
       updatedHandicapCount: syncSummary.updatedCount,
       createdHandicapCount: syncSummary.createdCount,
@@ -1649,12 +1737,13 @@ export function registerAdminMemberRoutes({
       goldenRecords,
       message:
         syncSummary.syncedCount > 0 || syncSummary.signOffCount > 0
-          ? `Golden Records account assigned and refreshed. ${syncSummary.syncedCount} outdoor field ${
+          ? `Golden Records account assigned and Golden Records API sync completed successfully. ${syncSummary.syncedCount} outdoor field ${
               syncSummary.syncedCount === 1 ? "change was" : "changes were"
             } synced and ${syncSummary.signOffCount} distance sign-off ${
               syncSummary.signOffCount === 1 ? "was" : "were"
             } refreshed.`
-          : "Golden Records account assigned and refreshed. No local data changes were needed.",
+          : "Golden Records account assigned and Golden Records API sync completed successfully. No local data changes were needed.",
+          : "Golden Records account assigned and Golden Records API sync completed successfully. No local data changes were needed.",
       syncedHandicapCount: syncSummary.syncedCount,
       updatedHandicapCount: syncSummary.updatedCount,
       createdHandicapCount: syncSummary.createdCount,

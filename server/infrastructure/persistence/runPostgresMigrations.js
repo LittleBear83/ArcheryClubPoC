@@ -1078,6 +1078,14 @@ export async function runPostgresMigrations({
       ADD COLUMN IF NOT EXISTS resolution_note TEXT NOT NULL DEFAULT ''
     `);
     await client.query(`
+      ALTER TABLE member_distance_sign_offs
+      ADD COLUMN IF NOT EXISTS user_id BIGINT REFERENCES users(id)
+    `);
+    await client.query(`
+      ALTER TABLE member_distance_sign_offs
+      ADD COLUMN IF NOT EXISTS signed_off_by_user_id BIGINT REFERENCES users(id)
+    `);
+    await client.query(`
       ALTER TABLE announcements
       ADD COLUMN IF NOT EXISTS amended_by_username TEXT REFERENCES users(username)
     `);

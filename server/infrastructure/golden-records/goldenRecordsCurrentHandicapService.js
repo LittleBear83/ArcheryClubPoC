@@ -361,20 +361,32 @@ export function createGoldenRecordsCurrentHandicapService({
   }
 
   async function getAchievementsByMemberId(memberId) {
-    await waitForQuotaWindow();
-    const result = await client.getJson("/api/achievements", {
-      filter_id: memberId,
-      pageNumber: 1,
-      pageSize: 100,
-    });
+    const achievementRows = [];
+    const pageSize = 100;
 
-    if (!result.ok) {
-      throw new Error(
-        `Golden Records returned ${result.status} while loading achievements.`,
-      );
+    for (let pageNumber = 1; pageNumber <= DEFAULT_MAX_PAGES; pageNumber += 1) {
+      await waitForQuotaWindow();
+      const result = await client.getJson("/api/achievements", {
+        filter_id: memberId,
+        pageNumber,
+        pageSize,
+      });
+
+      if (!result.ok) {
+        throw new Error(
+          `Golden Records returned ${result.status} while loading achievements.`,
+        );
+      }
+
+      const pageRows = Array.isArray(result.body) ? result.body : [];
+      achievementRows.push(...pageRows);
+
+      if (pageRows.length < pageSize) {
+        break;
+      }
     }
 
-    return (Array.isArray(result.body) ? result.body : [])
+    return achievementRows
       .map(normalizeAchievementRow)
       .filter((entry) => entry.memberId === memberId)
       .sort((left, right) => right.achieved.localeCompare(left.achieved));
@@ -406,11 +418,9 @@ export function createGoldenRecordsCurrentHandicapService({
     memberId,
   }) {
     const fetchedAt = new Date().toISOString();
-    const [handicapRows, achievementRows, classificationRows] = await Promise.all([
-      getCurrentHandicapsByMemberId(memberId),
-      getAchievementsByMemberId(memberId),
-      getCurrentClassificationsByMemberId(memberId),
-    ]);
+    const handicapRows = await getCurrentHandicapsByMemberId(memberId);
+    const achievementRows = await getAchievementsByMemberId(memberId);
+    const classificationRows = await getCurrentClassificationsByMemberId(memberId);
     const handicaps = handicapRows.sort((left, right) => {
       const byType = left.type.localeCompare(right.type);
 

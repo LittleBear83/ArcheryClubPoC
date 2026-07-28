@@ -38,6 +38,7 @@ import {
   listMyEventBookings,
   listMyTournamentReminders,
 } from "../../api/homeApi";
+import { listCommitteeRoles } from "../../api/committeeApi";
 import {
   bookOnSiteWithMobileApp,
   listRangeMembers,
@@ -46,13 +47,27 @@ import {
   listActiveAnnouncements,
   type AnnouncementRecord,
 } from "../../api/announcementApi";
+import {
+  getBeginnersCoursesDashboard,
+  getHaveAGoSessionsDashboard,
+} from "../../api/beginnersCoursesApi";
 import { listTournaments } from "../../api/tournamentApi";
 import { listMyLostArrowNotices, listOpenLostArrows } from "../../api/lostArrowApi";
+import { listCoachingSessions, listEvents } from "../../api/scheduleApi";
 import { useTheme } from "../../theme/useTheme";
-import type { HomeMember, LostArrowRecord, UserProfile } from "../../types/app";
+import type {
+  ApprovalEvent,
+  HomeMember,
+  LostArrowRecord,
+  UserProfile,
+} from "../../types/app";
 import type { AppDependencies } from "../../bootstrap/createAppDependencies";
 import { useMobileGeofence } from "../hooks/useMobileGeofence";
 import { useIsMobile } from "../hooks/useIsMobile";
+import {
+  canViewCommitteeApprovalsCard as canViewCommitteeApprovalsCardForUser,
+  hasCommitteeApprovalAccess,
+} from "./home/committeeApprovalsCardUtils";
 import {
   formatMemberDisplayName,
   formatRangeMemberDisplayName,
@@ -145,6 +160,24 @@ type BeginnerCoachAssignment = {
   coordinatorName: string;
   beginnerCount: number;
 };
+type CommitteeRole = {
+  id: number;
+  roleKey: string;
+  assignedMember?: {
+    username: string;
+  } | null;
+};
+type PendingCourseApproval = {
+  approvalStatus: string;
+};
+type CommitteeApprovalSummary = {
+  totalPendingCount: number;
+  calendarItemsCount: number;
+  beginnersCoursesCount: number;
+  haveAGoSessionsCount: number;
+  approvedBeginnersCoursesCount: number;
+  approvedHaveAGoSessionsCount: number;
+};
 type LostArrowNotice = LostArrowRecord;
 type LostArrowToast = {
   id: string;
@@ -161,6 +194,9 @@ const homeQueryKeys = {
     ["active-announcements", username] as const,
   lostArrowNotices: (username: string) =>
     ["my-lost-arrow-notices", username] as const,
+  committeeRoles: (username: string) => ["committee-roles", username] as const,
+  committeeApprovalSummary: (username: string) =>
+    ["committee-approval-summary", username] as const,
 };
 
 const TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS = 2;
@@ -523,6 +559,69 @@ async function fetchLostArrowNotices(actor: UserProfile | null) {
   return result.notices ?? [];
 }
 
+async function fetchCommitteeApprovalSummary({
+  actor,
+  canManageBeginnersCourses,
+  canManageHaveAGoSessions,
+  canApproveBeginnersCourses,
+  canApproveCoaching,
+  canApproveEvents,
+  canApproveHaveAGoSessions,
+}: {
+  actor: UserProfile;
+  canManageBeginnersCourses: boolean;
+  canManageHaveAGoSessions: boolean;
+  canApproveBeginnersCourses: boolean;
+  canApproveCoaching: boolean;
+  canApproveEvents: boolean;
+  canApproveHaveAGoSessions: boolean;
+}): Promise<CommitteeApprovalSummary> {
+  const [eventResult, coachingResult, beginnersResult, haveAGoResult] = await Promise.all([
+    canApproveEvents
+      ? listEvents<ApprovalEvent>(actor)
+      : Promise.resolve({ success: true, events: [] }),
+    canApproveCoaching
+      ? listCoachingSessions(actor)
+      : Promise.resolve({ success: true, sessions: [] }),
+    canManageBeginnersCourses || canApproveBeginnersCourses
+      ? getBeginnersCoursesDashboard(actor)
+      : Promise.resolve({ success: true, courses: [] }),
+    canManageHaveAGoSessions || canApproveHaveAGoSessions
+      ? getHaveAGoSessionsDashboard(actor)
+      : Promise.resolve({ success: true, courses: [] }),
+  ]);
+
+  const pendingEvents = (eventResult.events ?? []).filter(
+    (event) => event.isPendingApproval,
+  ).length;
+  const pendingSessions = (coachingResult.sessions ?? []).filter(
+    (session) => session.isPendingApproval,
+  ).length;
+  const pendingBeginnersCourses = (
+    (beginnersResult.courses ?? []) as PendingCourseApproval[]
+  ).filter((course) => course.approvalStatus === "pending").length;
+  const pendingHaveAGoSessions = (
+    (haveAGoResult.courses ?? []) as PendingCourseApproval[]
+  ).filter((course) => course.approvalStatus === "pending").length;
+  const approvedBeginnersCourses = (
+    (beginnersResult.courses ?? []) as PendingCourseApproval[]
+  ).filter((course) => course.approvalStatus === "approved").length;
+  const approvedHaveAGoSessions = (
+    (haveAGoResult.courses ?? []) as PendingCourseApproval[]
+  ).filter((course) => course.approvalStatus === "approved").length;
+  const calendarItemsCount = pendingEvents + pendingSessions;
+
+  return {
+    totalPendingCount:
+      calendarItemsCount + pendingBeginnersCourses + pendingHaveAGoSessions,
+    calendarItemsCount,
+    beginnersCoursesCount: pendingBeginnersCourses,
+    haveAGoSessionsCount: pendingHaveAGoSessions,
+    approvedBeginnersCoursesCount: approvedBeginnersCourses,
+    approvedHaveAGoSessionsCount: approvedHaveAGoSessions,
+  };
+}
+
 export function HomePage({
   currentUserProfile,
   onCurrentUserProfileUpdate,
@@ -546,6 +645,27 @@ export function HomePage({
   const canManageTournaments = hasPermission(
     currentUserProfile,
     "manage_tournaments",
+  );
+  const canManageBeginnersCourses = hasPermission(
+    currentUserProfile,
+    "manage_beginners_courses",
+  );
+  const canManageHaveAGoSessions = hasPermission(
+    currentUserProfile,
+    "manage_have_a_go_sessions",
+  );
+  const canApproveEvents = hasPermission(currentUserProfile, "approve_events");
+  const canApproveCoaching = hasPermission(
+    currentUserProfile,
+    "approve_coaching_sessions",
+  );
+  const canApproveBeginnersCourses = hasPermission(
+    currentUserProfile,
+    "approve_beginners_courses",
+  );
+  const canApproveHaveAGoSessions = hasPermission(
+    currentUserProfile,
+    "approve_have_a_go_sessions",
   );
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const isBeginnerMember = currentUserProfile?.membership?.role === "beginner";
@@ -571,6 +691,14 @@ export function HomePage({
     queryFn: () => fetchActiveAnnouncements(currentUserProfile),
     enabled: Boolean(actorUsername),
   });
+  const { data: committeeRolesData } = useQuery({
+    queryKey: homeQueryKeys.committeeRoles(actorUsername),
+    queryFn: () =>
+      listCommitteeRoles<{ success: true; roles?: CommitteeRole[] }>(
+        currentUserProfile,
+      ),
+    enabled: Boolean(actorUsername),
+  });
   const { data: lostArrowNotices = [] } = useQuery({
     queryKey: homeQueryKeys.lostArrowNotices(actorUsername),
     queryFn: () => fetchLostArrowNotices(currentUserProfile),
@@ -586,6 +714,38 @@ export function HomePage({
   const tournamentReminders = homeActivity?.tournamentReminders ?? [];
   const beginnerDashboard = homeActivity?.beginnerDashboard ?? null;
   const beginnerCoachAssignments = homeActivity?.beginnerCoachAssignments ?? [];
+  const canLoadCommitteeApprovalCounts = hasCommitteeApprovalAccess({
+    canManageBeginnersCourses,
+    canManageHaveAGoSessions,
+    canApproveBeginnersCourses,
+    canApproveCoaching,
+    canApproveEvents,
+    canApproveHaveAGoSessions,
+  });
+  const canViewCommitteeApprovalsCard = useMemo(() => {
+    return canViewCommitteeApprovalsCardForUser({
+      actorUsername,
+      committeeRoles: committeeRolesData?.roles ?? [],
+      userRole: currentUserProfile?.membership?.role ?? "",
+    });
+  }, [actorUsername, committeeRolesData?.roles, currentUserProfile?.membership?.role]);
+  const { data: committeeApprovalSummary = null } = useQuery({
+    queryKey: homeQueryKeys.committeeApprovalSummary(actorUsername),
+    queryFn: () =>
+      fetchCommitteeApprovalSummary({
+        actor: currentUserProfile as UserProfile,
+        canManageBeginnersCourses,
+        canManageHaveAGoSessions,
+        canApproveBeginnersCourses,
+        canApproveCoaching,
+        canApproveEvents,
+        canApproveHaveAGoSessions,
+      }),
+    enabled:
+      Boolean(currentUserProfile) &&
+      canViewCommitteeApprovalsCard &&
+      canLoadCommitteeApprovalCounts,
+  });
   const homeTickerMessage = useMemo(
     () => getHomeTickerMessage(currentUserProfile, beginnerDashboard),
     [beginnerDashboard, currentUserProfile],
@@ -624,7 +784,7 @@ export function HomePage({
       return null;
     }
 
-    const lastLoggedInMs = new Date(lastLoggedInAt).getTime();
+    const lastLoggedInMs = new Date(String(lastLoggedInAt)).getTime();
 
     if (Number.isNaN(lastLoggedInMs)) {
       return null;
@@ -1028,6 +1188,19 @@ export function HomePage({
                   members={rangeMembers}
                   signedUpEvents={signedUpEvents}
                   tournamentReminders={tournamentReminders}
+                  approvalSummary={
+                    canLoadCommitteeApprovalCounts
+                      ? committeeApprovalSummary
+                      : {
+                          totalPendingCount: 0,
+                          calendarItemsCount: 0,
+                          beginnersCoursesCount: 0,
+                          haveAGoSessionsCount: 0,
+                          approvedBeginnersCoursesCount: 0,
+                          approvedHaveAGoSessionsCount: 0,
+                          noApprovalAccess: true,
+                        }
+                  }
                   beginnerDashboard={beginnerDashboard}
                   beginnerCoachAssignments={beginnerCoachAssignments}
                   mobileOnSiteFeature={{
@@ -1041,6 +1214,7 @@ export function HomePage({
                   }}
                   hideEventPanels={isBeginnerMember}
                   lostArrows={openLostArrows}
+                  onOpenApprovals={() => navigate("/approvals")}
                   onOpenLostAndFound={() => navigate("/lost-and-found")}
                 />
               }

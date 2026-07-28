@@ -8,6 +8,7 @@ import { Button } from "./presentation/components/Button";
 import { HomePage } from "./presentation/pages/HomePage";
 import { LoginPage } from "./presentation/pages/LoginPage";
 import { Modal } from "./presentation/components/Modal";
+import { useIsMobile } from "./presentation/hooks/useIsMobile";
 import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
 import { useSseFallbackDiagnostics } from "./presentation/state/useSseFallbackDiagnostics";
@@ -27,7 +28,8 @@ const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
 const AUTH_MESSAGE_STORAGE_KEY = "archeryclubpoc-auth-message";
 const DEFAULT_USERNAME = "Cfleetham";
-const INACTIVITY_TIMEOUT_MS = 120000;
+const DESKTOP_INACTIVITY_TIMEOUT_MS = 120000;
+const MOBILE_INACTIVITY_TIMEOUT_MS = 300000;
 const RFID_SESSION_HANDOFF_IDLE_MS = 15000;
 const DEFAULT_PAYMENT_CARD_MESSAGE =
   "Thank you for your $5000 donation for the children of Namibia, this will go a long way to the PPE equipment they sorely need, your complementary Parker Pen will be dispatched in the next 3-5 business weeks.";
@@ -69,7 +71,10 @@ function eventTargetsActor({
     usernames?: unknown;
   };
 
-  if (typeof eventPayload.username === "string" && eventPayload.username === actorUsername) {
+  if (
+    typeof eventPayload.username === "string" &&
+    eventPayload.username === actorUsername
+  ) {
     return true;
   }
 
@@ -144,11 +149,7 @@ function PaymentCardModal({
   onClose: () => void;
 }) {
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={title}
-    >
+    <Modal open={open} onClose={onClose} title={title}>
       <div className="payment-card-modal">
         <img
           src={lawnmower}
@@ -181,17 +182,22 @@ function ServerEventsDiagnosticsBadge() {
   const stateLabel = diagnostics.connectionState.toUpperCase();
   const lastEventLabel = diagnostics.lastEventName ?? "None";
   const lastEventTime = formatDiagnosticsTimestamp(diagnostics.lastEventAt);
-  const fallbackLabel = fallbackDiagnostics.isFallbackActive ? "ACTIVE" : "Standby";
-  const fallbackSources = fallbackDiagnostics.activeSources.length > 0
-    ? fallbackDiagnostics.activeSources.join(", ")
-    : "None";
+  const fallbackLabel = fallbackDiagnostics.isFallbackActive
+    ? "ACTIVE"
+    : "Standby";
+  const fallbackSources =
+    fallbackDiagnostics.activeSources.length > 0
+      ? fallbackDiagnostics.activeSources.join(", ")
+      : "None";
 
   return (
     <aside
       className={[
         "server-events-diagnostics",
         `server-events-diagnostics--${diagnostics.connectionState}`,
-        isExpanded ? "server-events-diagnostics--expanded" : "server-events-diagnostics--collapsed",
+        isExpanded
+          ? "server-events-diagnostics--expanded"
+          : "server-events-diagnostics--collapsed",
       ].join(" ")}
       aria-live="polite"
     >
@@ -200,7 +206,9 @@ function ServerEventsDiagnosticsBadge() {
         className="server-events-diagnostics-toggle"
         onClick={() => setIsExpanded((current) => !current)}
         aria-expanded={isExpanded}
-        aria-label={isExpanded ? "Collapse SSE diagnostics" : "Expand SSE diagnostics"}
+        aria-label={
+          isExpanded ? "Collapse SSE diagnostics" : "Expand SSE diagnostics"
+        }
       >
         <span className="server-events-diagnostics-toggle-dot" />
         <span className="server-events-diagnostics-toggle-label">SSE</span>
@@ -249,12 +257,12 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   const inactivityTimeoutRef = useRef<number | null>(null);
   const lastActivityAtRef = useRef(Date.now());
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return safeLocalStorageGet(AUTH_STORAGE_KEY) === "true";
   });
-  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(() =>
-    loadStoredUserProfile(),
-  );
+  const [currentUserProfile, setCurrentUserProfile] =
+    useState<UserProfile | null>(() => loadStoredUserProfile());
   const [loginMessage, setLoginMessage] = useState(() => {
     return safeLocalStorageGet(AUTH_MESSAGE_STORAGE_KEY) ?? "";
   });
@@ -265,6 +273,9 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   });
   const authenticatedUsername = currentUserProfile?.auth?.username ?? "";
   const showServerEventDiagnostics = IS_DEV && isAuthenticated;
+  const inactivityTimeoutMs = isMobile
+    ? MOBILE_INACTIVITY_TIMEOUT_MS
+    : DESKTOP_INACTIVITY_TIMEOUT_MS;
 
   useServerEvents({
     actorUsername: authenticatedUsername,
@@ -309,7 +320,9 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     window.dispatchEvent(new Event("member-session-updated"));
   };
 
-  const handleCurrentUserProfileUpdate = (userProfile: UserProfile | unknown) => {
+  const handleCurrentUserProfileUpdate = (
+    userProfile: UserProfile | unknown,
+  ) => {
     persistAuthenticatedUser(userProfile);
     void queryClient.invalidateQueries();
   };
@@ -336,34 +349,38 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     } catch (error) {
       return {
         success: false,
-        message: error instanceof Error
-          ? error.message
-          : "Login service is unavailable. Make sure the local auth server is running.",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Login service is unavailable. Make sure the local auth server is running.",
       };
     }
   };
 
-  const handleLogout = useCallback((message = "") => {
-    if (inactivityTimeoutRef.current) {
-      window.clearTimeout(inactivityTimeoutRef.current);
-      inactivityTimeoutRef.current = null;
-    }
+  const handleLogout = useCallback(
+    (message = "") => {
+      if (inactivityTimeoutRef.current) {
+        window.clearTimeout(inactivityTimeoutRef.current);
+        inactivityTimeoutRef.current = null;
+      }
 
-    lastActivityAtRef.current = Date.now();
-    if (message) {
-      safeLocalStorageSet(AUTH_MESSAGE_STORAGE_KEY, message);
-      setLoginMessage(message);
-    } else {
-      safeLocalStorageRemove(AUTH_MESSAGE_STORAGE_KEY);
-      setLoginMessage("");
-    }
-    safeLocalStorageRemove(AUTH_STORAGE_KEY);
-    safeLocalStorageRemove(AUTH_USER_STORAGE_KEY);
-    void logoutSession().catch(() => undefined);
-    setIsAuthenticated(false);
-    setCurrentUserProfile(null);
-    void queryClient.invalidateQueries();
-  }, [queryClient]);
+      lastActivityAtRef.current = Date.now();
+      if (message) {
+        safeLocalStorageSet(AUTH_MESSAGE_STORAGE_KEY, message);
+        setLoginMessage(message);
+      } else {
+        safeLocalStorageRemove(AUTH_MESSAGE_STORAGE_KEY);
+        setLoginMessage("");
+      }
+      safeLocalStorageRemove(AUTH_STORAGE_KEY);
+      safeLocalStorageRemove(AUTH_USER_STORAGE_KEY);
+      void logoutSession().catch(() => undefined);
+      setIsAuthenticated(false);
+      setCurrentUserProfile(null);
+      void queryClient.invalidateQueries();
+    },
+    [queryClient],
+  );
 
   const handleRfidLogin = useCallback(async (rfidTag: string) => {
     try {
@@ -376,9 +393,10 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         username: result.userProfile.auth.username,
       };
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : "RFID service is unavailable. Make sure the local auth server is running.";
+      const message =
+        error instanceof Error
+          ? error.message
+          : "RFID service is unavailable. Make sure the local auth server is running.";
 
       return {
         success: false,
@@ -414,9 +432,10 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     } catch (error) {
       return {
         success: false,
-        message: error instanceof Error
-          ? error.message
-          : "Guest login service is unavailable. Make sure the local auth server is running.",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Guest login service is unavailable. Make sure the local auth server is running.",
       };
     }
   };
@@ -439,7 +458,11 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         const storedUsername = currentUserProfile?.auth?.username;
         const sessionUsername = sessionProfile?.auth?.username;
 
-        if (storedUsername && sessionUsername && storedUsername !== sessionUsername) {
+        if (
+          storedUsername &&
+          sessionUsername &&
+          storedUsername !== sessionUsername
+        ) {
           handleLogout("Your session has changed. Please sign in again.");
           return;
         }
@@ -540,7 +563,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
 
       inactivityTimeoutRef.current = window.setTimeout(() => {
         handleLogout();
-      }, INACTIVITY_TIMEOUT_MS);
+      }, inactivityTimeoutMs);
     };
 
     const activityEvents = [
@@ -568,7 +591,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         window.removeEventListener(eventName, resetInactivityTimeout);
       }
     };
-  }, [handleLogout, handleRfidLogin, isAuthenticated]);
+  }, [handleLogout, handleRfidLogin, inactivityTimeoutMs, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated || !authenticatedUsername) {
@@ -600,20 +623,30 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       }
     };
 
-    const unsubscribeMembers = subscribeToServerEvent("members.updated", (payload) => {
-      if (!eventTargetsActor({ actorUsername: authenticatedUsername, payload })) {
-        return;
-      }
+    const unsubscribeMembers = subscribeToServerEvent(
+      "members.updated",
+      (payload) => {
+        if (
+          !eventTargetsActor({ actorUsername: authenticatedUsername, payload })
+        ) {
+          return;
+        }
 
-      void refreshCurrentSessionProfile();
-    });
-    const unsubscribeRoles = subscribeToServerEvent("roles.updated", (payload) => {
-      if (!eventTargetsActor({ actorUsername: authenticatedUsername, payload })) {
-        return;
-      }
+        void refreshCurrentSessionProfile();
+      },
+    );
+    const unsubscribeRoles = subscribeToServerEvent(
+      "roles.updated",
+      (payload) => {
+        if (
+          !eventTargetsActor({ actorUsername: authenticatedUsername, payload })
+        ) {
+          return;
+        }
 
-      void refreshCurrentSessionProfile();
-    });
+        void refreshCurrentSessionProfile();
+      },
+    );
 
     return () => {
       isActive = false;

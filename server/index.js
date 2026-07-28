@@ -13,6 +13,8 @@ import {
   createMemberPersistenceService,
   getDeactivatedRfidTag,
 } from "./domain/services/memberPersistenceService.js";
+import { createGoldenRecordsMemberSyncService } from "./domain/services/goldenRecordsMemberSyncService.js";
+import { startGoldenRecordsSyncScheduler } from "./domain/services/goldenRecordsSyncScheduler.js";
 import { createServerEventBus } from "./domain/services/serverEventBus.js";
 import { createCsrfProtection } from "./security/csrf.js";
 import { createRateLimiter } from "./security/rateLimit.js";
@@ -61,6 +63,7 @@ import { createLostArrowGateway } from "./infrastructure/persistence/lostArrowGa
 import { createOutdoorTableGateway } from "./infrastructure/persistence/outdoorTableGateway.js";
 import { createRangeRulesGateway } from "./infrastructure/persistence/rangeRulesGateway.js";
 import { createGeneralInfoGateway } from "./infrastructure/persistence/generalInfoGateway.js";
+import { createGoldenRecordsSyncGateway } from "./infrastructure/persistence/goldenRecordsSyncGateway.js";
 import { createGoldenRecordsCurrentHandicapService } from "./infrastructure/golden-records/goldenRecordsCurrentHandicapService.js";
 import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
 import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
@@ -526,6 +529,11 @@ const generalInfoGateway = createGeneralInfoGateway({
   db,
   pool: db.pool,
 });
+const goldenRecordsSyncGateway = createGoldenRecordsSyncGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
+});
 const goldenRecordsCurrentHandicapService = createGoldenRecordsCurrentHandicapService(
   serverRuntime.goldenRecords,
 );
@@ -888,6 +896,21 @@ const memberDirectoryGateway = {
   updateGoldenRecordsId: (username, goldenRecordsId) =>
     memberAuthGateway.updateGoldenRecordsId(username, goldenRecordsId),
 };
+const goldenRecordsMemberSyncService = createGoldenRecordsMemberSyncService({
+  distanceSignOffYards: DISTANCE_SIGN_OFF_YARDS,
+  getUtcTimestampParts,
+  goldenRecordsCurrentHandicapService,
+  goldenRecordsSyncGateway,
+  memberDirectoryGateway,
+  memberDistanceSignOffRepository,
+  outdoorTableGateway,
+});
+
+startGoldenRecordsSyncScheduler({
+  hour: 1,
+  minute: 0,
+  syncAllMembers: () => goldenRecordsMemberSyncService.syncAllMembers(),
+});
 
 const beginnersCourseReadGateway = createBeginnersCourseReadGateway({
   databaseEngine: serverRuntime.databaseEngine,
@@ -3633,6 +3656,7 @@ registerAdminMemberRoutes({
   CURRENT_PERMISSION_KEY_SET,
   DISTANCE_SIGN_OFF_YARDS,
   goldenRecordsCurrentHandicapService,
+  goldenRecordsMemberSyncService,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,

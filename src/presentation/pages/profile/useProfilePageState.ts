@@ -50,10 +50,11 @@ function mapGoldenRecordsBowClassToBowType(bowClass: string) {
 
 function buildGoldenRecordsHandicapsByBowType(snapshot, type) {
   const entries = snapshot?.handicaps ?? [];
+  const normalizedType = String(type ?? "").trim().toLowerCase();
 
   return entries.reduce(
     (next, entry) => {
-      if (String(entry.type ?? "").trim().toLowerCase() !== type) {
+      if (String(entry.type ?? "").trim().toLowerCase() !== normalizedType) {
         return next;
       }
 
@@ -1124,7 +1125,7 @@ export function useProfilePageState({
 
       setGoldenRecordsSnapshot(result.goldenRecords ?? null);
       await loadOutdoorTableEntries(editableProfile.username, undefined);
-      setMessage(result.message ?? "Golden Records handicaps refreshed.");
+      setMessage(result.message ?? "Golden Records synced successfully.");
     } catch (refreshError) {
       if (refreshError instanceof ApiError) {
         const payload = refreshError.payload as {

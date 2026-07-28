@@ -10,6 +10,7 @@ export function registerAdminMemberRoutes({
   CURRENT_PERMISSION_KEY_SET,
   DISTANCE_SIGN_OFF_YARDS,
   goldenRecordsCurrentHandicapService,
+  goldenRecordsMemberSyncService,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,
@@ -254,6 +255,16 @@ export function registerAdminMemberRoutes({
     ["252 - 80 yds", "award25280"],
     ["252 - 100 yds", "award252100"],
   ]);
+  const GOLDEN_RECORDS_252_ACHIEVEMENT_DISTANCE_PATTERN = /^252@\s*(20|30|40|50|60|80|100)\s*yds\/[123]$/i;
+  const GOLDEN_RECORDS_252_SIGN_OFF_FIELD_BY_AWARD_KEY = new Map([
+    ["award25220", "award25220SignOffDates"],
+    ["award25230", "award25230SignOffDates"],
+    ["award25240", "award25240SignOffDates"],
+    ["award25250", "award25250SignOffDates"],
+    ["award25260", "award25260SignOffDates"],
+    ["award25280", "award25280SignOffDates"],
+    ["award252100", "award252100SignOffDates"],
+  ]);
   const GOLDEN_RECORDS_CLASSIFICATION_TO_FIELD = new Map([
     ["archer 3rd class", { flagKey: "archer3rd", dateKey: "archer3rdDate" }],
     ["archer 2nd class", { flagKey: "archer2nd", dateKey: "archer2ndDate" }],
@@ -276,9 +287,59 @@ export function registerAdminMemberRoutes({
     return String(value ?? "").trim().slice(0, 10);
   }
 
+  function getGoldenRecords252AwardKey({
+    achievementName,
+    roundName,
+  }) {
+    const directRoundMatch = GOLDEN_RECORDS_252_ROUND_TO_FIELD.get(roundName);
+
+    if (directRoundMatch) {
+      return directRoundMatch;
+    }
+
+    const achievementDistanceMatch = String(achievementName ?? "")
+      .trim()
+      .match(GOLDEN_RECORDS_252_ACHIEVEMENT_DISTANCE_PATTERN);
+
+    if (!achievementDistanceMatch) {
+      return null;
+    }
+
+    return GOLDEN_RECORDS_252_ROUND_TO_FIELD.get(
+      `252 - ${achievementDistanceMatch[1]} yds`,
+    ) ?? null;
+  }
+
+  function normalizeGoldenRecordsSignOffDates(value) {
+    const dates = Array.isArray(value)
+      ? value
+          .map((entry) => normalizeGoldenRecordsDate(entry))
+          .filter(Boolean)
+      : [];
+
+    return [...new Set(dates)].sort((left, right) => left.localeCompare(right)).slice(0, 3);
+  }
+
+  function buildGoldenRecordsManagedOutdoorFieldReset(entry) {
+    let nextEntry = { ...entry };
+
+    for (const mapping of GOLDEN_RECORDS_OUTDOOR_ACHIEVEMENT_MAPPINGS) {
+      nextEntry[mapping.flagKey] = false;
+      nextEntry[mapping.dateKey] = "";
+    }
+
+    for (const [awardKey, signOffKey] of GOLDEN_RECORDS_252_SIGN_OFF_FIELD_BY_AWARD_KEY.entries()) {
+      nextEntry[awardKey] = false;
+      nextEntry[signOffKey] = ["", "", ""];
+    }
+
+    return nextEntry;
+  }
+
   function applyGoldenRecordsAchievementsToEntry(entry, achievements = []) {
     let nextEntry = { ...entry };
     let hasChanges = false;
+    const signOffDatesByAwardKey = new Map();
 
     for (const achievement of achievements) {
       const achievementName = String(achievement.achievement ?? "").trim();
@@ -305,12 +366,41 @@ export function registerAdminMemberRoutes({
         continue;
       }
 
-      const awardKey = GOLDEN_RECORDS_252_ROUND_TO_FIELD.get(roundName);
+      const awardKey = getGoldenRecords252AwardKey({
+        achievementName,
+        roundName,
+      });
 
-      if (awardKey && !nextEntry[awardKey]) {
+      if (awardKey && achievedDate) {
+        const currentDates = signOffDatesByAwardKey.get(awardKey) ?? [];
+        currentDates.push(achievedDate);
+        signOffDatesByAwardKey.set(awardKey, currentDates);
+      }
+    }
+
+    for (const [awardKey, dates] of signOffDatesByAwardKey.entries()) {
+      const signOffKey = GOLDEN_RECORDS_252_SIGN_OFF_FIELD_BY_AWARD_KEY.get(awardKey);
+
+      if (!signOffKey) {
+        continue;
+      }
+
+      const nextDates = normalizeGoldenRecordsSignOffDates(dates);
+      const paddedDates = [...nextDates];
+
+      while (paddedDates.length < 3) {
+        paddedDates.push("");
+      }
+
+      const nextAwardComplete = nextDates.length >= 3;
+      const signOffDatesChanged =
+        JSON.stringify(nextEntry[signOffKey] ?? []) !== JSON.stringify(paddedDates);
+
+      if (signOffDatesChanged || nextEntry[awardKey] !== nextAwardComplete) {
         nextEntry = {
           ...nextEntry,
-          [awardKey]: true,
+          [awardKey]: nextAwardComplete,
+          [signOffKey]: paddedDates,
         };
         hasChanges = true;
       }
@@ -391,7 +481,12 @@ export function registerAdminMemberRoutes({
       }
 
       return (
-        GOLDEN_RECORDS_252_ROUND_TO_FIELD.has(roundName) ||
+        Boolean(
+          getGoldenRecords252AwardKey({
+            achievementName: entry.achievement,
+            roundName,
+          }),
+        ) ||
         GOLDEN_RECORDS_OUTDOOR_ACHIEVEMENT_MAPPINGS.some(
           (candidate) => candidate.achievement.toLowerCase() === achievementName,
         )
@@ -481,13 +576,15 @@ export function registerAdminMemberRoutes({
       const existingEntry = memberEntriesByBowType.get(bowType);
 
       if (existingEntry) {
-        let nextEntry = existingEntry;
-        let hasChanges = false;
+        let nextEntry = buildGoldenRecordsManagedOutdoorFieldReset(existingEntry);
+        let hasChanges =
+          JSON.stringify(buildGoldenRecordsManagedOutdoorFieldReset(existingEntry)) !==
+          JSON.stringify(existingEntry);
 
-        if (handicapEntry && existingEntry.handicap !== handicapEntry.handicap) {
+        if (nextEntry.handicap !== (handicapEntry?.handicap ?? nextEntry.handicap)) {
           nextEntry = {
             ...nextEntry,
-            handicap: handicapEntry.handicap,
+            handicap: handicapEntry?.handicap ?? nextEntry.handicap,
           };
           hasChanges = true;
         }
@@ -551,6 +648,43 @@ export function registerAdminMemberRoutes({
       updatedCount,
     };
   }
+
+  const resolvedGoldenRecordsMemberSyncService = goldenRecordsMemberSyncService ?? {
+    async getStoredSnapshotForUser(user) {
+      return buildGoldenRecordsSnapshotForUser(user);
+    },
+    async syncMember(user, { updatedByUsername } = {}) {
+      const disciplines = await listMemberDisciplines(user.username);
+      const goldenRecords = await buildGoldenRecordsSnapshotForUser(user);
+
+      if (
+        goldenRecords.enabled &&
+        !goldenRecords.error &&
+        goldenRecords.matchSource !== "ambiguous" &&
+        goldenRecords.matchSource !== "not-found"
+      ) {
+        const syncSummary = await syncOutdoorTableFromGoldenRecords({
+          disciplines,
+          goldenRecordsSnapshot: goldenRecords,
+          user,
+        });
+
+        return {
+          ...syncSummary,
+          goldenRecords,
+          signOffCount: 0,
+        };
+      }
+
+      return {
+        createdCount: 0,
+        goldenRecords,
+        signOffCount: 0,
+        syncedCount: 0,
+        updatedCount: 0,
+      };
+    },
+  };
 
   async function buildRoleDefinitionPayload(role) {
     const [assignedUserCount, permissions] = await Promise.all([
@@ -1326,24 +1460,7 @@ export function registerAdminMemberRoutes({
     const disciplines = await listMemberDisciplines(user.username);
     const loanBow = await findMemberLoanBow(user.username);
 
-    const goldenRecords = await buildGoldenRecordsSnapshotForUser(user);
-
-    try {
-      await syncOutdoorTableFromGoldenRecords({
-        disciplines,
-        goldenRecordsSnapshot: goldenRecords,
-        user,
-      });
-    } catch (syncError) {
-      console.error(
-        "Failed to sync Golden Records outdoor handicaps for profile load",
-        {
-          error: syncError instanceof Error ? syncError.message : syncError,
-          matchSource: goldenRecords?.matchSource ?? "unknown",
-          username: user.username,
-        },
-      );
-    }
+    const goldenRecords = await resolvedGoldenRecordsMemberSyncService.getStoredSnapshotForUser(user);
 
     res.json({
       success: true,
@@ -1375,7 +1492,7 @@ export function registerAdminMemberRoutes({
     if (!actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
       res.status(403).json({
         success: false,
-        message: "You do not have permission to refresh Golden Records handicaps.",
+        message: "You do not have permission to sync Golden Records.",
       });
       return;
     }
@@ -1390,8 +1507,10 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const disciplines = await listMemberDisciplines(user.username);
-    const goldenRecords = await buildGoldenRecordsSnapshotForUser(user);
+    const syncSummary = await resolvedGoldenRecordsMemberSyncService.syncMember(user, {
+      updatedByUsername: actor.username,
+    });
+    const goldenRecords = syncSummary.goldenRecords;
 
     if (!goldenRecords.enabled) {
       res.status(400).json({
@@ -1431,28 +1550,24 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const syncSummary = await syncOutdoorTableFromGoldenRecords({
-      disciplines,
-      goldenRecordsSnapshot: goldenRecords,
-      user,
-    });
-
     serverEventBus?.broadcastToAll("outdoor-table.updated", {
       changedAt: new Date().toISOString(),
-      scope: "golden-records-handicap-refresh",
+      scope: "golden-records-sync",
       username: user.username,
     });
-    broadcastMembersUpdated("members.golden-records-handicap-refresh", user.username);
+    broadcastMembersUpdated("members.golden-records-sync", user.username);
 
     res.json({
       success: true,
       goldenRecords,
       message:
-        syncSummary.syncedCount > 0
-          ? `Golden Records refreshed. ${syncSummary.syncedCount} outdoor field ${
+        syncSummary.syncedCount > 0 || syncSummary.signOffCount > 0
+          ? `Golden Records synced. ${syncSummary.syncedCount} outdoor field ${
               syncSummary.syncedCount === 1 ? "change was" : "changes were"
-            } synced.`
-          : "Golden Records refreshed. No outdoor field changes were needed.",
+            } synced and ${syncSummary.signOffCount} distance sign-off ${
+              syncSummary.signOffCount === 1 ? "was" : "were"
+            } refreshed.`
+          : "Golden Records synced. No local data changes were needed.",
       syncedHandicapCount: syncSummary.syncedCount,
       updatedHandicapCount: syncSummary.updatedCount,
       createdHandicapCount: syncSummary.createdCount,
@@ -1501,8 +1616,10 @@ export function registerAdminMemberRoutes({
     await memberDirectoryGateway.updateGoldenRecordsId(user.username, goldenRecordsId);
     user.gr_id = goldenRecordsId;
 
-    const disciplines = await listMemberDisciplines(user.username);
-    const goldenRecords = await buildGoldenRecordsSnapshotForUser(user);
+    const syncSummary = await resolvedGoldenRecordsMemberSyncService.syncMember(user, {
+      updatedByUsername: actor.username,
+    });
+    const goldenRecords = syncSummary.goldenRecords;
 
     if (!goldenRecords.enabled) {
       res.status(400).json({
@@ -1520,12 +1637,6 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const syncSummary = await syncOutdoorTableFromGoldenRecords({
-      disciplines,
-      goldenRecordsSnapshot: goldenRecords,
-      user,
-    });
-
     serverEventBus?.broadcastToAll("outdoor-table.updated", {
       changedAt: new Date().toISOString(),
       scope: "golden-records-match-assigned",
@@ -1537,11 +1648,13 @@ export function registerAdminMemberRoutes({
       success: true,
       goldenRecords,
       message:
-        syncSummary.syncedCount > 0
+        syncSummary.syncedCount > 0 || syncSummary.signOffCount > 0
           ? `Golden Records account assigned and refreshed. ${syncSummary.syncedCount} outdoor field ${
               syncSummary.syncedCount === 1 ? "change was" : "changes were"
-            } synced.`
-          : "Golden Records account assigned and refreshed. No outdoor field changes were needed.",
+            } synced and ${syncSummary.signOffCount} distance sign-off ${
+              syncSummary.signOffCount === 1 ? "was" : "were"
+            } refreshed.`
+          : "Golden Records account assigned and refreshed. No local data changes were needed.",
       syncedHandicapCount: syncSummary.syncedCount,
       updatedHandicapCount: syncSummary.updatedCount,
       createdHandicapCount: syncSummary.createdCount,
@@ -1726,7 +1839,7 @@ export function registerAdminMemberRoutes({
       firstName,
       surname,
       goldenRecordsId: canManageMembers ? goldenRecordsId : existingUser.gr_id,
-      archeryGbMembershipNumber: canManageMembers
+      archeryGbMembershipNumber: canManageMembers || isSelf
         ? archeryGbMembershipNumber
         : existingUser.archery_gb_membership_number,
       emailAddress,

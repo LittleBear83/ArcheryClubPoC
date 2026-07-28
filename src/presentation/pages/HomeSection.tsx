@@ -277,12 +277,125 @@ function BeginnerCoachAssignmentsCard({ assignments }) {
   );
 }
 
+function CommitteeApprovalsCard({ approvalSummary, onOpenApprovals }) {
+  if (!approvalSummary) {
+    return null;
+  }
+
+  const {
+    beginnersCoursesCount,
+    calendarItemsCount,
+    haveAGoSessionsCount,
+    noApprovalAccess,
+    totalPendingCount,
+  } = approvalSummary;
+
+  return (
+    <button
+      type="button"
+      className="home-panel home-panel--interactive"
+      onClick={onOpenApprovals}
+      aria-label="Open the approvals page"
+    >
+      <h3 className="home-panel-title">Committee Approvals</h3>
+      {noApprovalAccess ? (
+        <div className="home-panel-copy">
+          <p>
+            This account can see the committee approvals card, but it does not
+            currently have any approval permissions assigned.
+          </p>
+          <p>
+            Assign one or more approval permissions to load live counts here.
+          </p>
+        </div>
+      ) : (
+        <>
+      <div className="home-panel-copy">
+        <p className="home-panel-stat">{totalPendingCount}</p>
+        <p>
+          {totalPendingCount === 1
+            ? "item is currently waiting for approval."
+            : "items are currently waiting for approval."}
+        </p>
+      </div>
+      <div className="home-approval-summary-list">
+        <p>
+          <strong>{calendarItemsCount}</strong> calendar items need approval
+        </p>
+        <p>
+          <strong>{beginnersCoursesCount}</strong> beginners courses need approval
+        </p>
+        <p>
+          <strong>{haveAGoSessionsCount}</strong> Have a Go sessions need approval
+        </p>
+      </div>
+        </>
+      )}
+      <p className="home-panel-link-copy">Open Approvals Page</p>
+    </button>
+  );
+}
+
+function CommitteeApprovedCoursesCard({ approvalSummary }) {
+  if (!approvalSummary) {
+    return null;
+  }
+
+  const {
+    approvedBeginnersCoursesCount,
+    approvedHaveAGoSessionsCount,
+    noApprovalAccess,
+  } = approvalSummary;
+  const totalApprovedCount =
+    approvedBeginnersCoursesCount + approvedHaveAGoSessionsCount;
+
+  return (
+    <section className="home-panel">
+      <h3 className="home-panel-title">Approved Courses</h3>
+      {noApprovalAccess ? (
+        <div className="home-panel-copy">
+          <p>
+            This account can see the approved courses card, but it does not
+            currently have any approval permissions assigned.
+          </p>
+          <p>
+            Assign one or more approval permissions to load live counts here.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="home-panel-copy">
+            <p className="home-panel-stat">{totalApprovedCount}</p>
+            <p>
+              {totalApprovedCount === 1
+                ? "approved session may need Insurance oversite."
+                : "approved sessions may need Insurance oversite."}
+            </p>
+          </div>
+          <div className="home-approval-summary-list">
+            <p>
+              <strong>{approvedBeginnersCoursesCount}</strong> approved beginners
+              courses
+            </p>
+            <p>
+              <strong>{approvedHaveAGoSessionsCount}</strong> approved Have a Go
+              sessions
+            </p>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function HomeSection({
   members,
   signedUpEvents,
   tournamentReminders,
   lostArrows,
   onOpenLostAndFound,
+  onOpenApprovals,
+  approvalSummary = null,
   beginnerDashboard,
   beginnerCoachAssignments,
   mobileOnSiteFeature = null,
@@ -299,6 +412,11 @@ export function HomeSection({
       {hideEventPanels ? null : (
         <TournamentRemindersList reminders={tournamentReminders} />
       )}
+      <CommitteeApprovalsCard
+        approvalSummary={approvalSummary}
+        onOpenApprovals={onOpenApprovals}
+      />
+      <CommitteeApprovedCoursesCard approvalSummary={approvalSummary} />
       <BeginnerTodayCard dashboard={beginnerDashboard} />
       <BeginnerCoachAssignmentsCard assignments={beginnerCoachAssignments} />
       <MobileOnSiteFeatureCard mobileOnSiteFeature={mobileOnSiteFeature} />

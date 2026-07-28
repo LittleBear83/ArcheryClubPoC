@@ -10,6 +10,8 @@ const files = [
   "src/api/client.test.ts",
   "src/api/memberProfileApi.ts",
   "src/api/memberProfileApi.test.ts",
+  "src/presentation/pages/home/committeeApprovalsCardUtils.ts",
+  "src/presentation/pages/home/committeeApprovalsCardUtils.test.ts",
   "src/data/repositories/RoleRepositoryImpl.ts",
   "src/data/repositories/RoleRepositoryImpl.test.ts",
   "src/domain/repositories/RoleRepository.ts",
@@ -55,6 +57,11 @@ for (const file of files) {
 
 await import(pathToFileURL(path.join(outDir, "src/api/client.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));
+await import(
+  pathToFileURL(
+    path.join(outDir, "src/presentation/pages/home/committeeApprovalsCardUtils.test.js"),
+  )
+);
 await import(
   pathToFileURL(path.join(outDir, "src/data/repositories/RoleRepositoryImpl.test.js"))
 );

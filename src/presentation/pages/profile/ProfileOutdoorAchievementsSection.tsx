@@ -151,8 +151,8 @@ export function ProfileOutdoorAchievementsSection({
             disabled={isRefreshingGoldenRecordsHandicap}
           >
             {isRefreshingGoldenRecordsHandicap
-              ? "Updating handicap..."
-              : "Update handicap"}
+              ? "Syncing Golden Records..."
+              : "Sync Golden Records"}
           </Button>
         </div>
       ) : null}

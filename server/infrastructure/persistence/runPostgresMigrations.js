@@ -239,6 +239,17 @@ function buildInitialSchemaSql() {
       UNIQUE (season_year, archer_username, bow_type)
     );
 
+    CREATE TABLE IF NOT EXISTS golden_records_member_sync (
+      username TEXT PRIMARY KEY REFERENCES users(username) ON DELETE CASCADE,
+      snapshot_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      fetched_at TEXT NOT NULL DEFAULT '',
+      synced_at_date TEXT NOT NULL,
+      synced_at_time TEXT NOT NULL,
+      updated_by_username TEXT REFERENCES users(username),
+      user_id BIGINT REFERENCES users(id),
+      updated_by_user_id BIGINT REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS login_events (
       id BIGSERIAL PRIMARY KEY,
       username TEXT NOT NULL REFERENCES users(username),

@@ -362,6 +362,7 @@ export function ApprovalsPage({ currentUserProfile }) {
         | "approve-course"
         | "reject-course";
       courseType?: CourseApprovalType;
+      eventName?: string;
       id: string | number;
       successMessage: string;
       processingValue: string;

@@ -74,6 +74,17 @@ function createSqliteMemberDistanceSignOffRepository(
       signed_off_at_date = excluded.signed_off_at_date,
       signed_off_at_time = excluded.signed_off_at_time
   `);
+  const deleteDistanceSignOffsByUsernameAndDiscipline = db.prepare(`
+    DELETE FROM member_distance_sign_offs
+    WHERE username = ? AND discipline = ?
+  `);
+  const replaceDistanceSignOffsTransaction = db.transaction(({ discipline, signOffs, username }) => {
+    deleteDistanceSignOffsByUsernameAndDiscipline.run(username, discipline);
+
+    for (const signOff of signOffs) {
+      upsertDistanceSignOff.run(signOff);
+    }
+  });
 
   function listByUsername(username) {
     return listDistanceSignOffsByUsername.all(username).map(buildDistanceSignOff);
@@ -94,6 +105,13 @@ function createSqliteMemberDistanceSignOffRepository(
     },
     async upsert(signOff) {
       upsertDistanceSignOff.run(signOff);
+    },
+    async replaceForDiscipline(username, discipline, signOffs) {
+      replaceDistanceSignOffsTransaction({
+        username,
+        discipline,
+        signOffs,
+      });
     },
   };
 }
@@ -179,6 +197,62 @@ function createPostgresMemberDistanceSignOffRepository(
           signOff.signedOffAtTime,
         ],
       );
+    },
+    async replaceForDiscipline(username, discipline, signOffs) {
+      const client = await db.pool.connect();
+
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `
+            DELETE FROM member_distance_sign_offs
+            WHERE LOWER(username) = LOWER($1) AND discipline = $2
+          `,
+          [username, discipline],
+        );
+
+        for (const signOff of signOffs) {
+          await client.query(
+            `
+              INSERT INTO member_distance_sign_offs (
+                username,
+                discipline,
+                distance_yards,
+                signed_off_by_username,
+                signed_off_at_date,
+                signed_off_at_time,
+                user_id,
+                signed_off_by_user_id
+              )
+              VALUES (
+                $1,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6,
+                (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1),
+                (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1)
+              )
+            `,
+            [
+              signOff.username,
+              signOff.discipline,
+              signOff.distanceYards,
+              signOff.signedOffByUsername,
+              signOff.signedOffAtDate,
+              signOff.signedOffAtTime,
+            ],
+          );
+        }
+
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     },
   };
 }

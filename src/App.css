@@ -3024,6 +3024,23 @@ button:disabled {
   font-weight: 700;
 }
 
+.home-approval-summary-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.home-approval-summary-list p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.home-approval-summary-list strong {
+  color: var(--accent);
+  font-size: 1.1rem;
+}
+
 .home-info-list {
   margin: 0;
   padding-left: 22px;

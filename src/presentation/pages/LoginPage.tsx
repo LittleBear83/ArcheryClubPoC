@@ -66,16 +66,23 @@ export function LoginPage({
   const guestInviterOptionsQuery = useQuery({
     queryKey: ["guest-inviter-options"],
     queryFn: async () => {
-      const [rangeMembersResult, allMembersResult] = await Promise.all([
+      const [rangeMembersResult, allMembersResult] = await Promise.allSettled([
         listRangeMembers(),
         listGuestInviterMembers(),
       ]);
 
+      if (allMembersResult.status !== "fulfilled") {
+        throw allMembersResult.reason;
+      }
+
       return {
-        rangeMembers: ((rangeMembersResult.members ?? []) as RangeMember[]).filter(
-          (member) => member.accountType === "member",
-        ),
-        allMembers: (allMembersResult.members ?? []) as ClubMember[],
+        rangeMembers:
+          rangeMembersResult.status === "fulfilled"
+            ? ((rangeMembersResult.value.members ?? []) as RangeMember[]).filter(
+                (member) => member.accountType === "member",
+              )
+            : [],
+        allMembers: (allMembersResult.value.members ?? []) as ClubMember[],
       };
     },
     enabled: false,

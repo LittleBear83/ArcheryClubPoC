@@ -715,6 +715,17 @@ export function bootstrapSqliteBaseSchema({
     db.exec(`ALTER TABLE outdoor_table_entries ADD COLUMN elite_master_bowman_date TEXT NOT NULL DEFAULT ''`);
   }
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS golden_records_member_sync (
+      username TEXT PRIMARY KEY REFERENCES users(username),
+      snapshot_json TEXT NOT NULL DEFAULT '{}',
+      fetched_at TEXT NOT NULL DEFAULT '',
+      synced_at_date TEXT NOT NULL,
+      synced_at_time TEXT NOT NULL,
+      updated_by_username TEXT REFERENCES users(username)
+    )
+  `);
+
   db.exec(COACHING_SESSIONS_TABLE_SQL);
   db.exec(COACHING_SESSION_BOOKINGS_TABLE_SQL);
   db.exec(CLUB_EVENTS_TABLE_SQL);

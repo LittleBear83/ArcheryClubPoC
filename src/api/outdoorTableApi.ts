@@ -108,3 +108,17 @@ export function deleteOutdoorTableEntry(actor: unknown, entryId: number) {
     headers: buildActorHeaders(actor, true),
   });
 }
+
+export function triggerGoldenRecordsOutdoorTableSync(actor: unknown) {
+  return fetchApi<{
+    success: true;
+    attemptedCount: number;
+    syncedCount: number;
+    errorCount: number;
+    errors?: Array<{ username: string; message: string }>;
+    message: string;
+  }>("/api/golden-records/sync-outdoor-table", {
+    method: "POST",
+    headers: buildActorHeaders(actor, true),
+  });
+}

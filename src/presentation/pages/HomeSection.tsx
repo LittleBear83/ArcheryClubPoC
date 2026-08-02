@@ -26,14 +26,19 @@ function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
     activeRangePresenceEndsAtText,
     distanceMeters,
     error,
+    activeRangePresenceHours,
     isBookingOnSite,
     isCheckInWindowOpen,
     isLocating,
+    isSavingRangePresence,
     isSupported,
     isWithinGeofence,
+    onChangeRangePresenceHours,
     onBookOnSite,
+    onUpdateRangePresence,
     permissionState,
     radiusMeters,
+    rangePresenceHourOptions,
     requestLocation,
     statusMessage,
   } = mobileOnSiteFeature;
@@ -70,10 +75,41 @@ function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
         {error ? <p className="profile-error">{error}</p> : null}
         {statusMessage ? <p>{statusMessage}</p> : null}
         {isCheckInWindowOpen && activeRangePresenceEndsAtText ? (
-          <p>
-            You are already booked on site. The button will unlock again after{" "}
-            {activeRangePresenceEndsAtText}.
-          </p>
+          <div className="home-range-presence-editor">
+            <p>
+              You have been marked as being at the range until{" "}
+              {activeRangePresenceEndsAtText}. If you wish to extend this,
+              change it here.
+            </p>
+            <div className="home-range-presence-controls">
+              <label className="home-range-presence-field">
+                <span>Hours from now</span>
+                <select
+                  value={String(activeRangePresenceHours ?? 2)}
+                  onChange={(event) =>
+                    onChangeRangePresenceHours?.(
+                      Number.parseInt(event.target.value, 10),
+                    )
+                  }
+                  disabled={isSavingRangePresence}
+                >
+                  {(rangePresenceHourOptions ?? []).map((hours) => (
+                    <option key={hours} value={hours}>
+                      {hours} hours
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                type="button"
+                onClick={onUpdateRangePresence}
+                disabled={isSavingRangePresence}
+                variant="secondary"
+              >
+                {isSavingRangePresence ? "Saving..." : "Update time"}
+              </Button>
+            </div>
+          </div>
         ) : null}
       </div>
       {isSupported ? (
@@ -100,7 +136,7 @@ function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
               {isBookingOnSite
                 ? "Booking on site..."
                 : isCheckInWindowOpen
-                  ? "Already booked on site"
+                  ? "Checked in on site"
                   : "Book On Site"}
             </Button>
           ) : null}

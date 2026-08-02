@@ -198,7 +198,11 @@ export function ProfileDesktopView({
                             {signOff?.signedOffAt ? (
                               <span className="profile-distance-signoff-cell">
                                 <strong>{formatDate(signOff.signedOffAt)}</strong>
-                                <span>{signOff.signedOffByName}</span>
+                                <span>
+                                  {signOff.source === "golden-records"
+                                    ? "Imported from Golden Records"
+                                    : signOff.signedOffByName}
+                                </span>
                               </span>
                             ) : canSignOffSelectedMember ? (
                               <div className="profile-distance-signoff-action">

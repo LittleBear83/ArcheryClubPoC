@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "./Button";
 import { DatePicker } from "./DatePicker";
 
@@ -32,6 +33,7 @@ export function MemberProfileForm({
   onSubmit,
   submitLabel,
 }) {
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const isProfileLocked = isSaving || !canEditProfile;
   const areDisciplinesLocked = isSaving || !canEditDisciplines;
   const sortedRoleOptions = sortRolesAlphabetically(roleOptions);
@@ -105,13 +107,25 @@ export function MemberProfileForm({
 
         <label>
           Password {isCreatingNew ? "" : "(leave blank to keep current)"}
-          <input
-            type="password"
-            value={editableProfile.password}
-            onChange={handleChange("password")}
-            disabled={isProfileLocked}
-            autoComplete="new-password"
-          />
+          <span className="profile-password-field">
+            <input
+              type={isPasswordVisible ? "text" : "password"}
+              value={editableProfile.password}
+              onChange={handleChange("password")}
+              disabled={isProfileLocked}
+              autoComplete="new-password"
+            />
+            <button
+              type="button"
+              className="profile-password-toggle"
+              onClick={() => setIsPasswordVisible((current) => !current)}
+              disabled={isProfileLocked}
+              aria-label={isPasswordVisible ? "Hide password" : "Show password"}
+              aria-pressed={isPasswordVisible}
+            >
+              {isPasswordVisible ? "Hide" : "Show"}
+            </button>
+          </span>
         </label>
 
         {canViewRfidTag ? (

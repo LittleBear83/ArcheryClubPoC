@@ -238,3 +238,41 @@ test("Golden Records sync updates an existing outdoor table row for the current 
   assert.deepEqual(updatedEntries[0].award25220SignOffDates, ["", "", ""]);
   assert.equal(updatedEntries[0].updatedByUsername, "robin");
 });
+
+test("Golden Records sync accepts descriptive outdoor handicap type labels", async () => {
+  const snapshot = {
+    achievements: [],
+    candidateMatches: [],
+    classifications: [],
+    enabled: true,
+    fetchedAt: "2026-07-28T12:00:00Z",
+    handicaps: [
+      {
+        bowClass: "Recurve",
+        handicap: 28,
+        type: "Outdoor Handicap",
+      },
+      {
+        bowClass: "Recurve",
+        handicap: 19,
+        type: "Indoor Handicap",
+      },
+    ],
+    matchedMemberId: "gr-123",
+    matchedMemberName: "Robin Archer",
+    matchSource: "matched-id",
+  };
+  const { createdEntries, service } = buildTestService({ snapshot });
+
+  const result = await service.syncMember({
+    archery_gb_membership_number: "123456",
+    first_name: "Robin",
+    gr_id: "gr-123",
+    surname: "Archer",
+    username: "robin",
+  });
+
+  assert.equal(result.createdCount, 1);
+  assert.equal(createdEntries.length, 1);
+  assert.equal(createdEntries[0].handicap, 28);
+});

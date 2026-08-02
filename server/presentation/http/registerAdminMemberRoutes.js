@@ -2240,6 +2240,7 @@ export function registerAdminMemberRoutes({
       username: member.username,
       discipline,
       distanceYards,
+      source: "manual",
       signedOffByUsername: actor.username,
       signedOffAtDate,
       signedOffAtTime,

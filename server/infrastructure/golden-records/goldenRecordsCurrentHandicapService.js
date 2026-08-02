@@ -21,6 +21,20 @@ function mapGoldenRecordsBowClassToDiscipline(bowClass) {
   }
 }
 
+function normalizeGoldenRecordsHandicapType(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (normalized.includes("outdoor")) {
+    return "outdoor";
+  }
+
+  if (normalized.includes("indoor")) {
+    return "indoor";
+  }
+
+  return normalized;
+}
+
 function normalizeNamePart(value) {
   return String(value ?? "")
     .trim()
@@ -54,7 +68,7 @@ function normalizeHandicapRow(row) {
       row?.handicap === null || row?.handicap === undefined ? null : Number(row.handicap),
     memberId: row?.member_id ?? "",
     name: row?.name ?? "",
-    type: row?.type ?? "",
+    type: normalizeGoldenRecordsHandicapType(row?.type),
     updated: row?.updated ?? "",
   };
 }

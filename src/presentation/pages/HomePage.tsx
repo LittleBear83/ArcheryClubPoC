@@ -42,6 +42,7 @@ import {
 import { listCommitteeRoles } from "../../api/committeeApi";
 import {
   bookOnSiteWithMobileApp,
+  extendRangePresence,
   listRangeMembers,
 } from "../../api/memberApi";
 import {
@@ -215,6 +216,7 @@ const MOBILE_ON_SITE_FEATURE_TARGET = {
 } as const;
 const LOST_ARROW_SEEN_TOASTS_STORAGE_KEY = "archeryclubpoc-seen-lost-arrow-toasts";
 const ON_SITE_BOOKING_WINDOW_MS = 2 * 60 * 60 * 1000;
+const RANGE_PRESENCE_HOUR_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12] as const;
 
 const pageTitleMap = {
   home: "Home",
@@ -779,6 +781,8 @@ export function HomePage({
   const [mobileOnSiteStatus, setMobileOnSiteStatus] = useState("");
   const [mobileOnSiteError, setMobileOnSiteError] = useState("");
   const [isBookingOnSite, setIsBookingOnSite] = useState(false);
+  const [isSavingRangePresence, setIsSavingRangePresence] = useState(false);
+  const [selectedRangePresenceHours, setSelectedRangePresenceHours] = useState(2);
   const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
   const [lostArrowToasts, setLostArrowToasts] = useState<LostArrowToast[]>([]);
   const previousOpenLostArrowIdsRef = useRef<number[] | null>(null);
@@ -792,6 +796,17 @@ export function HomePage({
     [actorUsername, rangeMembers],
   );
   const activeRangePresenceEndsAt = useMemo(() => {
+    const explicitActiveRangePresenceEndsAt =
+      activeRangeMemberEntry?.meta?.activeRangePresenceEndsAt;
+
+    if (explicitActiveRangePresenceEndsAt) {
+      const explicitMs = new Date(String(explicitActiveRangePresenceEndsAt)).getTime();
+
+      if (!Number.isNaN(explicitMs)) {
+        return explicitMs;
+      }
+    }
+
     const lastLoggedInAt = activeRangeMemberEntry?.meta?.lastLoggedInAt;
 
     if (!lastLoggedInAt) {
@@ -819,6 +834,36 @@ export function HomePage({
       minute: "2-digit",
     });
   }, [activeRangePresenceEndsAt, nowTimestamp]);
+  const activeRangePresenceSummaryText = useMemo(() => {
+    if (!activeRangePresenceEndsAt || activeRangePresenceEndsAt <= nowTimestamp) {
+      return "";
+    }
+
+    const remainingHours = Math.max(
+      2,
+      Math.ceil((activeRangePresenceEndsAt - nowTimestamp) / (60 * 60 * 1000)),
+    );
+
+    return `${Math.min(remainingHours, 12)}`;
+  }, [activeRangePresenceEndsAt, nowTimestamp]);
+
+  useEffect(() => {
+    if (!isOnSiteBookingWindowOpen) {
+      setSelectedRangePresenceHours(2);
+      return;
+    }
+
+    const nextSelectedHours = Number.parseInt(activeRangePresenceSummaryText, 10);
+
+    if (
+      Number.isInteger(nextSelectedHours) &&
+      RANGE_PRESENCE_HOUR_OPTIONS.includes(
+        nextSelectedHours as (typeof RANGE_PRESENCE_HOUR_OPTIONS)[number],
+      )
+    ) {
+      setSelectedRangePresenceHours(nextSelectedHours);
+    }
+  }, [activeRangePresenceSummaryText, isOnSiteBookingWindowOpen]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -959,6 +1004,32 @@ export function HomePage({
       );
     } finally {
       setIsBookingOnSite(false);
+    }
+  };
+
+  const handleUpdateRangePresence = async () => {
+    setIsSavingRangePresence(true);
+    setMobileOnSiteError("");
+    setMobileOnSiteStatus("");
+
+    try {
+      const result = await extendRangePresence(selectedRangePresenceHours);
+
+      setMobileOnSiteStatus(
+        result.message ??
+          `Your range presence has been extended for the next ${selectedRangePresenceHours} hours.`,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: homeQueryKeys.rangeMembers(),
+      });
+    } catch (error) {
+      setMobileOnSiteError(
+        error instanceof Error
+          ? error.message
+          : "We could not extend your range presence.",
+      );
+    } finally {
+      setIsSavingRangePresence(false);
     }
   };
 
@@ -1220,10 +1291,15 @@ export function HomePage({
                   mobileOnSiteFeature={{
                     ...mobileOnSiteFeature,
                     activeRangePresenceEndsAtText,
+                    activeRangePresenceHours: selectedRangePresenceHours,
                     error: mobileOnSiteError || mobileOnSiteFeature.error,
                     isBookingOnSite,
                     isCheckInWindowOpen: isOnSiteBookingWindowOpen,
+                    isSavingRangePresence,
+                    onChangeRangePresenceHours: setSelectedRangePresenceHours,
                     onBookOnSite: handleBookOnSite,
+                    onUpdateRangePresence: handleUpdateRangePresence,
+                    rangePresenceHourOptions: [...RANGE_PRESENCE_HOUR_OPTIONS],
                     statusMessage: mobileOnSiteStatus,
                   }}
                   hideEventPanels={isBeginnerMember}

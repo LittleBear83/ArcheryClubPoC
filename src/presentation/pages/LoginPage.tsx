@@ -45,11 +45,10 @@ export function LoginPage({
   onLogin,
   onRfidLogin,
   initialMessage = "",
-  seededUsername,
 }) {
   const isMobile = useIsMobile();
   const INVITING_MEMBER_NOT_LISTED = "__inviting-member-not-listed__";
-  const [username, setUsername] = useState(seededUsername);
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [guestFirstName, setGuestFirstName] = useState("");
   const [guestSurname, setGuestSurname] = useState("");
@@ -352,7 +351,7 @@ export function LoginPage({
                 <p className="section-title">RFID Access</p>
                 <p className="rfid-copy">
                   Tap your club card to sign in. For now, use the simulator below
-                  for the {seededUsername} account.
+                  to test RFID sign-in.
                 </p>
                 <Button
                   type="button"

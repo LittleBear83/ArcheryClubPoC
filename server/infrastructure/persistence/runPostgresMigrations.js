@@ -143,6 +143,7 @@ function buildInitialSchemaSql() {
       discipline TEXT NOT NULL,
       distance_yards INTEGER NOT NULL,
       signed_off_by_username TEXT NOT NULL REFERENCES users(username),
+      source TEXT NOT NULL DEFAULT 'manual',
       signed_off_at_date TEXT NOT NULL,
       signed_off_at_time TEXT NOT NULL,
       signed_off_by_user_id BIGINT REFERENCES users(id),
@@ -288,6 +289,15 @@ function buildInitialSchemaSql() {
       logged_in_date TEXT NOT NULL,
       logged_in_time TEXT NOT NULL,
       invited_by_user_id BIGINT REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS range_presence_extensions (
+      username TEXT PRIMARY KEY REFERENCES users(username) ON DELETE CASCADE,
+      active_until_date TEXT NOT NULL,
+      active_until_time TEXT NOT NULL,
+      updated_by_username TEXT NOT NULL REFERENCES users(username),
+      updated_at_date TEXT NOT NULL,
+      updated_at_time TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS coaching_sessions (
@@ -1066,6 +1076,16 @@ export async function runPostgresMigrations({
       ADD COLUMN IF NOT EXISTS junior_member INTEGER NOT NULL DEFAULT 0
     `);
     await client.query(`
+      CREATE TABLE IF NOT EXISTS range_presence_extensions (
+        username TEXT PRIMARY KEY REFERENCES users(username) ON DELETE CASCADE,
+        active_until_date TEXT NOT NULL,
+        active_until_time TEXT NOT NULL,
+        updated_by_username TEXT NOT NULL REFERENCES users(username),
+        updated_at_date TEXT NOT NULL,
+        updated_at_time TEXT NOT NULL
+      )
+    `);
+    await client.query(`
       ALTER TABLE suggestions
       ADD COLUMN IF NOT EXISTS submitted_by_user_id BIGINT REFERENCES users(id)
     `);
@@ -1084,6 +1104,10 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE member_distance_sign_offs
       ADD COLUMN IF NOT EXISTS signed_off_by_user_id BIGINT REFERENCES users(id)
+    `);
+    await client.query(`
+      ALTER TABLE member_distance_sign_offs
+      ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual'
     `);
     await client.query(`
       ALTER TABLE announcements

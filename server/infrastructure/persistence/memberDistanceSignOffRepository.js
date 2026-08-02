@@ -3,6 +3,7 @@ function buildDistanceSignOff(row) {
     username: row.username,
     discipline: row.discipline,
     distanceYards: Number(row.distance_yards),
+    source: row.source ?? "manual",
     signedOffByUsername: row.signed_off_by_username,
     signedOffByName:
       `${row.signed_off_by_first_name ?? ""} ${row.signed_off_by_surname ?? ""}`.trim() ||
@@ -40,6 +41,7 @@ function createSqliteMemberDistanceSignOffRepository(
       member_distance_sign_offs.discipline,
       member_distance_sign_offs.distance_yards,
       member_distance_sign_offs.signed_off_by_username,
+      member_distance_sign_offs.source,
       member_distance_sign_offs.signed_off_at_date,
       member_distance_sign_offs.signed_off_at_time,
       users.first_name AS signed_off_by_first_name,
@@ -58,6 +60,7 @@ function createSqliteMemberDistanceSignOffRepository(
       discipline,
       distance_yards,
       signed_off_by_username,
+      source,
       signed_off_at_date,
       signed_off_at_time
     )
@@ -66,11 +69,13 @@ function createSqliteMemberDistanceSignOffRepository(
       @discipline,
       @distanceYards,
       @signedOffByUsername,
+      @source,
       @signedOffAtDate,
       @signedOffAtTime
     )
     ON CONFLICT(username, discipline, distance_yards) DO UPDATE SET
       signed_off_by_username = excluded.signed_off_by_username,
+      source = excluded.source,
       signed_off_at_date = excluded.signed_off_at_date,
       signed_off_at_time = excluded.signed_off_at_time
   `);
@@ -128,6 +133,7 @@ function createPostgresMemberDistanceSignOffRepository(
           member_distance_sign_offs.discipline,
           member_distance_sign_offs.distance_yards,
           member_distance_sign_offs.signed_off_by_username,
+          member_distance_sign_offs.source,
           member_distance_sign_offs.signed_off_at_date,
           member_distance_sign_offs.signed_off_at_time,
           users.first_name AS signed_off_by_first_name,
@@ -166,6 +172,7 @@ function createPostgresMemberDistanceSignOffRepository(
             discipline,
             distance_yards,
             signed_off_by_username,
+            source,
             signed_off_at_date,
             signed_off_at_time,
             user_id,
@@ -178,11 +185,13 @@ function createPostgresMemberDistanceSignOffRepository(
             $4,
             $5,
             $6,
+            $7,
             (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1),
             (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1)
           )
           ON CONFLICT(username, discipline, distance_yards) DO UPDATE SET
             signed_off_by_username = EXCLUDED.signed_off_by_username,
+            source = EXCLUDED.source,
             signed_off_at_date = EXCLUDED.signed_off_at_date,
             signed_off_at_time = EXCLUDED.signed_off_at_time,
             user_id = EXCLUDED.user_id,
@@ -193,6 +202,7 @@ function createPostgresMemberDistanceSignOffRepository(
           signOff.discipline,
           signOff.distanceYards,
           signOff.signedOffByUsername,
+          signOff.source ?? "manual",
           signOff.signedOffAtDate,
           signOff.signedOffAtTime,
         ],
@@ -219,6 +229,7 @@ function createPostgresMemberDistanceSignOffRepository(
                 discipline,
                 distance_yards,
                 signed_off_by_username,
+                source,
                 signed_off_at_date,
                 signed_off_at_time,
                 user_id,
@@ -231,6 +242,7 @@ function createPostgresMemberDistanceSignOffRepository(
                 $4,
                 $5,
                 $6,
+                $7,
                 (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1),
                 (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1)
               )
@@ -240,6 +252,7 @@ function createPostgresMemberDistanceSignOffRepository(
               signOff.discipline,
               signOff.distanceYards,
               signOff.signedOffByUsername,
+              signOff.source ?? "manual",
               signOff.signedOffAtDate,
               signOff.signedOffAtTime,
             ],

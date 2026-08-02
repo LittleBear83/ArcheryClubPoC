@@ -84,6 +84,7 @@ function createSqliteActivityReportingGateway({
   countMemberLoginsInRange,
   findMemberCoachingBookingsByUserId,
   findMemberEventBookingsByUserId,
+  findLatestRangeMembers,
   findRecentGuestLogins,
   findRecentRangeMembers,
   guestLoginsByDateInRange,
@@ -116,6 +117,9 @@ function createSqliteActivityReportingGateway({
     },
     async findMemberEventBookingsByUserId(userId) {
       return findMemberEventBookingsByUserId.all(userId);
+    },
+    async findLatestRangeMembers() {
+      return normalizeUserRows(findLatestRangeMembers.all());
     },
     async findRecentGuestLogins(cutoff) {
       return findRecentGuestLogins.all(cutoff);
@@ -240,6 +244,27 @@ function createPostgresActivityReportingGateway({ pool }) {
         [userId],
       );
       return result.rows;
+    },
+    async findLatestRangeMembers() {
+      const result = await pool.query(
+        `SELECT
+          users.username,
+          users.first_name,
+          users.surname,
+          users.rfid_tag,
+          users.active_member,
+          users.junior_member,
+          users.membership_fees_due,
+          user_types.user_type,
+          MAX(login_events.logged_in_date::text || 'T' || login_events.logged_in_time::text) AS last_logged_in_at
+        FROM login_events
+        INNER JOIN users ON users.id = login_events.user_id
+        INNER JOIN user_types ON user_types.user_id = users.id
+        WHERE login_events.login_method IN ('rfid', 'mobile-app')
+        GROUP BY users.id, users.username, users.first_name, users.surname, users.rfid_tag, users.active_member, users.junior_member, users.membership_fees_due, user_types.user_type
+        ORDER BY users.surname ASC, users.first_name ASC`,
+      );
+      return normalizeUserRows(result.rows);
     },
     async findRecentGuestLogins(cutoff) {
       const result = await pool.query(

@@ -26,6 +26,19 @@ export const GUEST_LOGIN_EVENTS_TABLE_SQL = `
   )
 `;
 
+export const RANGE_PRESENCE_EXTENSIONS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS range_presence_extensions (
+    username TEXT PRIMARY KEY,
+    active_until_date TEXT NOT NULL,
+    active_until_time TEXT NOT NULL,
+    updated_by_username TEXT NOT NULL,
+    updated_at_date TEXT NOT NULL,
+    updated_at_time TEXT NOT NULL,
+    FOREIGN KEY (username) REFERENCES users(username),
+    FOREIGN KEY (updated_by_username) REFERENCES users(username)
+  )
+`;
+
 export const COACHING_SESSIONS_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS coaching_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -401,6 +414,7 @@ export function bootstrapSqliteBaseSchema({
   `);
 
   db.exec(GUEST_LOGIN_EVENTS_TABLE_SQL);
+  db.exec(RANGE_PRESENCE_EXTENSIONS_TABLE_SQL);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_disciplines (
@@ -433,6 +447,7 @@ export function bootstrapSqliteBaseSchema({
         distance_yards IN (20, 30, 40, 50, 60, 80, 100)
       ),
       signed_off_by_username TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'manual',
       signed_off_at_date TEXT NOT NULL,
       signed_off_at_time TEXT NOT NULL,
       PRIMARY KEY (username, discipline, distance_yards),

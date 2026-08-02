@@ -27,7 +27,6 @@ import type { AppDependencies } from "./bootstrap/createAppDependencies";
 const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
 const AUTH_MESSAGE_STORAGE_KEY = "archeryclubpoc-auth-message";
-const DEFAULT_USERNAME = "Cfleetham";
 const DESKTOP_INACTIVITY_TIMEOUT_MS = 120000;
 const MOBILE_INACTIVITY_TIMEOUT_MS = 300000;
 const RFID_SESSION_HANDOFF_IDLE_MS = 15000;
@@ -706,7 +705,6 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
           onLogin={handleLogin}
           onRfidLogin={handleRfidLogin}
           initialMessage={loginMessage}
-          seededUsername={DEFAULT_USERNAME}
         />
         <PaymentCardModal
           open={paymentCardModal.open}

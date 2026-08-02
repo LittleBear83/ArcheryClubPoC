@@ -176,6 +176,16 @@ export function bootstrapSqliteLegacyDateSupport({
   tournamentRegistrationsTableSql,
   tournamentScoresTableSql,
 }) {
+  const memberDistanceSignOffColumns = db
+    .prepare(`PRAGMA table_info(member_distance_sign_offs)`)
+    .all();
+
+  if (!memberDistanceSignOffColumns.some((column) => column.name === "source")) {
+    db.exec(
+      `ALTER TABLE member_distance_sign_offs ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`,
+    );
+  }
+
   migrateCombinedDateTimeColumn({
     createTableSql: loginEventsTableSql.trim(),
     db,

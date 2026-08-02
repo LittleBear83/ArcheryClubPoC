@@ -15,3 +15,17 @@ export async function bookOnSiteWithMobileApp() {
     },
   );
 }
+
+export async function extendRangePresence(hours: number) {
+  return fetchApi<{
+    success: true;
+    activeRangePresenceEndsAt?: string;
+    message?: string;
+  }>("/api/range-members/presence-extension", {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ hours }),
+  });
+}

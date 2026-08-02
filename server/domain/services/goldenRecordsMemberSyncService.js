@@ -13,6 +13,20 @@ function mapGoldenRecordsBowClassToOutdoorBowType(bowClass) {
   }
 }
 
+function normalizeGoldenRecordsHandicapType(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (normalized.includes("outdoor")) {
+    return "outdoor";
+  }
+
+  if (normalized.includes("indoor")) {
+    return "indoor";
+  }
+
+  return normalized;
+}
+
 function mapGoldenRecordsBowClassToDiscipline(bowClass) {
   switch (String(bowClass ?? "").trim().toLowerCase()) {
     case "recurve":
@@ -402,7 +416,7 @@ export function createGoldenRecordsMemberSyncService({
   async function syncOutdoorTableFromGoldenRecords({ disciplines, goldenRecordsSnapshot, updatedByUsername, user }) {
     const outdoorHandicaps = (goldenRecordsSnapshot?.handicaps ?? []).filter(
       (entry) =>
-        String(entry.type ?? "").trim().toLowerCase() === "outdoor" &&
+        normalizeGoldenRecordsHandicapType(entry.type) === "outdoor" &&
         Number.isInteger(entry.handicap),
     );
     const matchedMemberId = String(goldenRecordsSnapshot?.matchedMemberId ?? "").trim();
@@ -612,6 +626,7 @@ export function createGoldenRecordsMemberSyncService({
         username: user.username,
         discipline,
         distanceYards,
+        source: "golden-records",
         signedOffAtDate: achievedDate,
         signedOffAtTime: normalizeGoldenRecordsTime(achievement.achieved),
         signedOffByUsername: updatedByUsername,

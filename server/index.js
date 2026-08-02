@@ -857,6 +857,21 @@ const activityReportingGateway = createActivityReportingGateway({
 const memberAuthGateway = createMemberAuthGateway({
   databaseEngine: serverRuntime.databaseEngine,
   findDisciplinesByUsername,
+  findRangePresenceExtensionByUsername:
+    serverRuntime.databaseEngine === "sqlite"
+      ? db.prepare(`
+          SELECT
+            username,
+            active_until_date,
+            active_until_time,
+            updated_by_username,
+            updated_at_date,
+            updated_at_time
+          FROM range_presence_extensions
+          WHERE LOWER(username) = LOWER(?)
+          LIMIT 1
+        `)
+      : null,
   findUserByCredentials,
   findUserByRfid,
   findUserByUsername,
@@ -864,6 +879,26 @@ const memberAuthGateway = createMemberAuthGateway({
   insertLoginEvent,
   listAllUsers,
   pool: db.pool,
+  upsertRangePresenceExtension:
+    serverRuntime.databaseEngine === "sqlite"
+      ? db.prepare(`
+          INSERT INTO range_presence_extensions (
+            username,
+            active_until_date,
+            active_until_time,
+            updated_by_username,
+            updated_at_date,
+            updated_at_time
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(username) DO UPDATE SET
+            active_until_date = excluded.active_until_date,
+            active_until_time = excluded.active_until_time,
+            updated_by_username = excluded.updated_by_username,
+            updated_at_date = excluded.updated_at_date,
+            updated_at_time = excluded.updated_at_time
+        `)
+      : null,
   updateGoldenRecordsId,
   updateUserMembershipStatus,
   updateUserPassword,

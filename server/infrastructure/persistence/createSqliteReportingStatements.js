@@ -81,6 +81,31 @@ export function createSqliteReportingStatements(db) {
     ORDER BY users.surname ASC, users.first_name ASC
   `);
 
+  const findLatestRangeMembers = db.prepare(`
+    SELECT
+      users.id,
+      users.username,
+      users.first_name,
+      users.surname,
+      users.password,
+      users.rfid_tag,
+      users.active_member,
+      users.junior_member,
+      users.membership_fees_due,
+      users.coaching_volunteer,
+      user_types.user_type,
+      MAX(login_events.logged_in_date || 'T' || login_events.logged_in_time) AS last_logged_in_at
+    FROM login_events
+    INNER JOIN users
+      ON users.id = login_events.user_id
+    INNER JOIN user_types
+      ON user_types.user_id = users.id
+    WHERE login_events.login_method IN ('rfid', 'mobile-app')
+    GROUP BY users.id, users.username, users.first_name, users.surname, users.password,
+      users.rfid_tag, users.active_member, users.junior_member, users.membership_fees_due, users.coaching_volunteer, user_types.user_type
+    ORDER BY users.surname ASC, users.first_name ASC
+  `);
+
   const findDisciplinesByUsername = db.prepare(`
     SELECT discipline
     FROM user_disciplines
@@ -243,6 +268,7 @@ export function createSqliteReportingStatements(db) {
     countMemberLoginsForUserInRange,
     countMemberLoginsInRange,
     findDisciplinesByUsername,
+    findLatestRangeMembers,
     findRecentGuestLogins,
     findRecentRangeMembers,
     guestLoginsByDateInRange,

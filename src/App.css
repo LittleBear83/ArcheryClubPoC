@@ -8149,6 +8149,24 @@ button:disabled {
   gap: 0.75rem;
 }
 
+.outdoor-table-sync-panel {
+  width: 100%;
+}
+
+.outdoor-table-sync-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.outdoor-table-sync-copy {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.78);
+  max-width: 52rem;
+}
+
 .outdoor-table-form {
   gap: 1.25rem;
 }

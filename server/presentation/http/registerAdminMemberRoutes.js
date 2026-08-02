@@ -1661,6 +1661,57 @@ export function registerAdminMemberRoutes({
     });
   });
 
+  app.post("/api/golden-records/sync-outdoor-table", async (req, res) => {
+    const actor = getActorUser(req);
+    const allowedRoleKeys = new Set(["records-officer", "admin", "developer"]);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    if (!allowedRoleKeys.has(String(actor.user_type ?? "").trim().toLowerCase())) {
+      res.status(403).json({
+        success: false,
+        message:
+          "Only the records officer, admins, and developers can run the Golden Records sync.",
+      });
+      return;
+    }
+
+    const syncSummary = await resolvedGoldenRecordsMemberSyncService.syncAllMembers({
+      updatedByUsername: actor.username,
+    });
+
+    serverEventBus?.broadcastToAll("outdoor-table.updated", {
+      changedAt: new Date().toISOString(),
+      scope: "golden-records-sync-all",
+      username: actor.username,
+    });
+    broadcastMembersUpdated("members.golden-records-sync-all", actor.username);
+
+    res.json({
+      success: true,
+      attemptedCount: syncSummary.attemptedCount,
+      syncedCount: syncSummary.syncedCount,
+      errorCount: syncSummary.errorCount,
+      errors: syncSummary.errors,
+      message:
+        syncSummary.errorCount > 0
+          ? `Golden Records sync finished. ${syncSummary.syncedCount} member ${
+              syncSummary.syncedCount === 1 ? "was" : "were"
+            } processed successfully and ${syncSummary.errorCount} ${
+              syncSummary.errorCount === 1 ? "member failed" : "members failed"
+            }.`
+          : `Golden Records sync finished successfully for ${syncSummary.syncedCount} member ${
+              syncSummary.syncedCount === 1 ? "record" : "records"
+            }.`,
+    });
+  });
+
   app.post("/api/user-profiles/:username/golden-records/assign-match", async (req, res) => {
     const actor = getActorUser(req);
     const requestedUsername = req.params.username;

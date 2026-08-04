@@ -70,6 +70,13 @@ function formatAuditAction(event: AuditEventRecord) {
   const metadata = event.metadata;
 
   if (isEntityChangeMetadata(metadata)) {
+    if (
+      metadata.entityType === "golden_records_sync" &&
+      metadata.action === "handicap_refreshed"
+    ) {
+      return "handicap refreshed";
+    }
+
     if (metadata.entityType === "auth_activity") {
       const changes = metadata.changes ?? [];
       const activityType = changes.find((change) => change.path === "activityType")?.after;
@@ -187,6 +194,22 @@ function formatAuditAction(event: AuditEventRecord) {
     return matchedFallbackAction[1];
   }
 
+  if (/^(post|put|patch|delete|get)\s+\/api\//.test(normalizedAction)) {
+    if (normalizedAction.startsWith("delete ")) {
+      return "delete completed";
+    }
+
+    if (normalizedAction.startsWith("put ") || normalizedAction.startsWith("patch ")) {
+      return "update completed";
+    }
+
+    if (normalizedAction.startsWith("post ")) {
+      return "action completed";
+    }
+
+    return "request completed";
+  }
+
   return event.action.split("_").join(" ").toLowerCase();
 }
 
@@ -227,6 +250,10 @@ function getActivityChangeValue(
   path: string,
 ) {
   return (metadata.changes ?? []).find((change) => change.path === path)?.after;
+}
+
+function isGenericRequestAuditEvent(event: AuditEventRecord) {
+  return !isEntityChangeMetadata(event.metadata);
 }
 
 function formatIncorrectFieldLabel(field: string) {
@@ -355,6 +382,31 @@ function formatMetadataPreview(metadata: unknown) {
     entityChangeMetadata.auditKind === "entity_change" &&
     Array.isArray(entityChangeMetadata.changes)
   ) {
+    if (entityChangeMetadata.entityType === "member_activity") {
+      return "";
+    }
+
+    if (entityChangeMetadata.entityType === "guest_activity") {
+      const invitedByName = getActivityChangeValue(entityChangeMetadata, "invitedByName");
+      return typeof invitedByName === "string" && invitedByName
+        ? `Invited by ${invitedByName}`
+        : "";
+    }
+
+    if (
+      entityChangeMetadata.entityType === "golden_records_sync" &&
+      entityChangeMetadata.action === "handicap_refreshed"
+    ) {
+      const syncedCount = Number(getActivityChangeValue(entityChangeMetadata, "syncedCount") ?? 0);
+      const signOffCount = Number(getActivityChangeValue(entityChangeMetadata, "signOffCount") ?? 0);
+
+      if (syncedCount === 0 && signOffCount === 0) {
+        return "No local handicap changes were needed.";
+      }
+
+      return `${syncedCount} handicap ${syncedCount === 1 ? "field" : "fields"} updated, ${signOffCount} distance sign-${signOffCount === 1 ? "off" : "offs"} refreshed.`;
+    }
+
     if (entityChangeMetadata.entityType === "auth_activity") {
       return formatAuthFailureSummary(entityChangeMetadata);
     }
@@ -529,6 +581,36 @@ function AuditMetadataDetails({ metadata }: { metadata: unknown }) {
   return <GenericAuditMetadataDetails metadata={metadata as Record<string, unknown>} />;
 }
 
+function dedupeAuditEvents(events: AuditEventRecord[]) {
+  const explicitKeys = new Set(
+    events
+      .filter((event) => isEntityChangeMetadata(event.metadata))
+      .map((event) =>
+        [
+          event.actorUsername || "",
+          event.createdAtDate || "",
+          event.createdAtTime || "",
+          formatAuditAction(event),
+        ].join("|"),
+      ),
+  );
+
+  return events.filter((event) => {
+    if (!isGenericRequestAuditEvent(event)) {
+      return true;
+    }
+
+    const key = [
+      event.actorUsername || "",
+      event.createdAtDate || "",
+      event.createdAtTime || "",
+      formatAuditAction(event),
+    ].join("|");
+
+    return !explicitKeys.has(key);
+  });
+}
+
 function AuditLogDesktopTable({ events }: { events: AuditEventRecord[] }) {
   if (events.length === 0) {
     return <p className="usage-empty-state">No audit events match the selected filters.</p>;
@@ -623,33 +705,37 @@ export function AuditLogPage({ currentUserProfile }: AuditLogPageProps) {
     enabled: canViewAuditLog && Boolean(actorUsername),
   });
 
+  const normalizedEvents = useMemo(() => {
+    return dedupeAuditEvents(queryResult.data ?? []);
+  }, [queryResult.data]);
+
   const actionOptions = useMemo(() => {
     const options = new Set(
-      (queryResult.data ?? []).map((event) => toSentenceCase(formatAuditAction(event))),
+      normalizedEvents.map((event) => toSentenceCase(formatAuditAction(event))),
     );
 
     return [...options].sort((left, right) => left.localeCompare(right));
-  }, [queryResult.data]);
+  }, [normalizedEvents]);
 
   const actorOptions = useMemo(() => {
     const options = new Set(
-      (queryResult.data ?? [])
+      normalizedEvents
         .map((event) => event.actorUsername?.trim())
         .filter((value): value is string => Boolean(value)),
     );
 
     return [...options].sort((left, right) => left.localeCompare(right));
-  }, [queryResult.data]);
+  }, [normalizedEvents]);
 
   const filteredEvents = useMemo(() => {
     if (!actionFilter) {
-      return queryResult.data ?? [];
+      return normalizedEvents;
     }
 
-    return (queryResult.data ?? []).filter(
+    return normalizedEvents.filter(
       (event) => toSentenceCase(formatAuditAction(event)) === actionFilter,
     );
-  }, [actionFilter, queryResult.data]);
+  }, [actionFilter, normalizedEvents]);
 
   const summaryLabel = useMemo(() => {
     const count = filteredEvents.length;

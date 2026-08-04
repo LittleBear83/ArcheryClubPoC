@@ -1642,6 +1642,31 @@ export function registerAdminMemberRoutes({
       scope: "golden-records-sync",
       username: user.username,
     });
+    const [refreshedAtDate, refreshedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "handicap_refreshed",
+        actorUsername: actor.username,
+        after: {
+          signOffCount: syncSummary.signOffCount,
+          syncedCount: syncSummary.syncedCount,
+          updatedByUsername: actor.username,
+          username: user.username,
+        },
+        before: null,
+        changedAtDate: refreshedAtDate,
+        changedAtTime: refreshedAtTime,
+        entityId: user.username,
+        entityLabel: `${user.first_name} ${user.surname}`.trim() || user.username,
+        entityType: "golden_records_sync",
+        req,
+        statusCode: 200,
+        target: `/api/user-profiles/${user.username}/golden-records/refresh-handicap`,
+      }).catch((auditError) => {
+        console.error("Failed to record Golden Records handicap refresh audit event", auditError);
+      });
+    }
     broadcastMembersUpdated("members.golden-records-sync", user.username);
 
     res.json({

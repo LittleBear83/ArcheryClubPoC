@@ -433,22 +433,33 @@ export function registerAuthRoutes({
   });
 
   app.post("/api/auth/guest-login", async (req, res) => {
-    const { firstName, surname, archeryGbMembershipNumber, invitedByUsername } =
-      req.body ?? {};
+    const {
+      firstName,
+      surname,
+      archeryGbMembershipNumber,
+      invitedByUsername,
+      paymentMethod,
+    } = req.body ?? {};
+    const sessionUsername = getSessionUsername(req)?.trim?.() ?? "";
     const trimmedMembershipNumber = archeryGbMembershipNumber?.trim() ?? "";
     const membershipDigits = trimmedMembershipNumber.replace(/\D/g, "");
-    const trimmedInvitedByUsername = invitedByUsername?.trim() ?? "";
+    const trimmedInvitedByUsername =
+      sessionUsername || invitedByUsername?.trim() || "";
+    const normalizedPaymentMethod = String(paymentMethod ?? "")
+      .trim()
+      .toLowerCase();
 
     if (
       !firstName ||
       !surname ||
       !archeryGbMembershipNumber ||
-      !trimmedInvitedByUsername
+      !trimmedInvitedByUsername ||
+      !normalizedPaymentMethod
     ) {
       res.status(400).json({
         success: false,
         message:
-          "First name, surname, Archery GB membership number, and inviting member are required.",
+          "First name, surname, Archery GB membership number, inviting member, and payment method are required.",
       });
       return;
     }
@@ -457,6 +468,17 @@ export function registerAuthRoutes({
       res.status(400).json({
         success: false,
         message: "Archery GB membership number must contain at least 7 digits.",
+      });
+      return;
+    }
+
+    if (
+      normalizedPaymentMethod !== "paypal" &&
+      normalizedPaymentMethod !== "cash"
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Payment method must be either PayPal or Cash.",
       });
       return;
     }
@@ -480,6 +502,7 @@ export function registerAuthRoutes({
       firstName: firstName.trim(),
       invitedByName: `${invitingMember.first_name} ${invitingMember.surname}`,
       invitedByUsername: invitingMember.username,
+      paymentMethod: normalizedPaymentMethod,
       surname: surname.trim(),
       timestampParts,
     });
@@ -496,6 +519,7 @@ export function registerAuthRoutes({
           surname: surname.trim(),
           invitedByUsername: invitingMember.username,
           invitedByName: `${invitingMember.first_name} ${invitingMember.surname}`,
+          paymentMethod: normalizedPaymentMethod,
         },
         before: null,
         changedAtDate: loggedAtDate,
@@ -520,6 +544,7 @@ export function registerAuthRoutes({
         archeryGbMembershipNumber: trimmedMembershipNumber,
         invitedByUsername: invitingMember.username,
         invitedByName: `${invitingMember.first_name} ${invitingMember.surname}`,
+        paymentMethod: normalizedPaymentMethod,
       }),
     });
   });

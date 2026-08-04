@@ -409,21 +409,22 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     surname,
     archeryGbMembershipNumber,
     invitedByUsername,
+    paymentMethod,
   }: {
     firstName: string;
     surname: string;
     archeryGbMembershipNumber: string;
     invitedByUsername: string;
+    paymentMethod: "paypal" | "cash";
   }) => {
     try {
-      const result = await loginAsGuest({
+      await loginAsGuest({
         firstName,
         surname,
         archeryGbMembershipNumber,
         invitedByUsername,
+        paymentMethod,
       });
-
-      persistAuthenticatedUser(result.userProfile);
 
       return {
         success: true,
@@ -701,7 +702,6 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     return (
       <>
         <LoginPage
-          onGuestLogin={handleGuestLogin}
           onLogin={handleLogin}
           onRfidLogin={handleRfidLogin}
           initialMessage={loginMessage}
@@ -726,6 +726,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
             element={
               <HomePage
                 currentUserProfile={currentUserProfile}
+                onGuestLogin={handleGuestLogin}
                 onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
                 onLogout={handleLogout}
                 memberProfileCrud={dependencies}

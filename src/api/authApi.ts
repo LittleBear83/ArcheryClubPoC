@@ -44,6 +44,7 @@ export async function loginAsGuest(guestDetails: {
   surname: string;
   archeryGbMembershipNumber: string;
   invitedByUsername: string;
+  paymentMethod: "paypal" | "cash";
 }) {
   return fetchApi<{ success: true; userProfile: unknown }>("/api/auth/guest-login", {
     method: "POST",

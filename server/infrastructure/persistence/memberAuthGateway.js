@@ -90,6 +90,7 @@ function createSqliteMemberAuthGateway({
       firstName,
       invitedByName,
       invitedByUsername,
+      paymentMethod,
       surname,
       timestampParts,
     }) {
@@ -99,6 +100,7 @@ function createSqliteMemberAuthGateway({
         archeryGbMembershipNumber,
         invitedByUsername,
         invitedByName,
+        paymentMethod,
         ...timestampParts,
       );
     },
@@ -292,6 +294,7 @@ function createPostgresMemberAuthGateway({ pool }) {
       firstName,
       invitedByName,
       invitedByUsername,
+      paymentMethod,
       surname,
       timestampParts,
     }) {
@@ -303,11 +306,12 @@ function createPostgresMemberAuthGateway({ pool }) {
             archery_gb_membership_number,
             invited_by_username,
             invited_by_name,
+            payment_method,
             invited_by_user_id,
             logged_in_date,
             logged_in_time
           )
-          VALUES ($1, $2, $3, $4, $5, (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1), $6, $7)
+          VALUES ($1, $2, $3, $4, $5, $6, (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1), $7, $8)
         `,
         [
           firstName,
@@ -315,6 +319,7 @@ function createPostgresMemberAuthGateway({ pool }) {
           archeryGbMembershipNumber,
           invitedByUsername,
           invitedByName,
+          paymentMethod,
           ...timestampParts,
         ],
       );

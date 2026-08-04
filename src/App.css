@@ -149,12 +149,16 @@ canvas {
 .login-card {
   position: relative;
   z-index: 1;
-  width: min(1120px, 100%);
-  padding: clamp(20px, 3vw, 36px);
+  width: min(760px, 100%);
+  padding: clamp(24px, 4vw, 40px);
   border: 1px solid var(--panel-border);
-  border-radius: var(--card-radius);
-  background: var(--surface-strong);
-  box-shadow: var(--card-shadow);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top center, color-mix(in srgb, var(--accent) 10%, transparent), transparent 42%),
+    color-mix(in srgb, var(--surface-strong) 92%, black);
+  box-shadow:
+    0 30px 80px rgb(0 0 0 / 0.42),
+    inset 0 1px 0 rgb(255 255 255 / 0.04);
   text-align: left;
 }
 
@@ -163,14 +167,14 @@ canvas {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 32px;
 }
 
 .login-logo {
-  width: clamp(84px, 10vw, 120px);
-  height: clamp(84px, 10vw, 120px);
+  width: clamp(84px, 10vw, 108px);
+  height: clamp(84px, 10vw, 108px);
   display: block;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .login-eyebrow {
@@ -182,15 +186,16 @@ canvas {
 }
 
 .login-title {
-  margin: 0 0 20px;
+  margin: 0 0 12px;
   color: var(--text-h);
-  font-size: clamp(2rem, 4vw, 2.8rem);
+  font-size: clamp(2.2rem, 4vw, 3.2rem);
+  line-height: 1;
 }
 
 .login-copy {
-  margin: 0 0 24px;
+  margin: 0;
   color: var(--muted);
-  max-width: 60ch;
+  max-width: 36ch;
   line-height: 1.5;
 }
 
@@ -456,7 +461,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .login-error-banner {
-  margin-bottom: 20px;
+  width: min(100%, 480px);
+  margin-top: 18px;
+  margin-bottom: 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
 .login-submit {
@@ -469,7 +480,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .login-submit {
-  padding: 12px 18px;
+  width: 100%;
+  padding: 14px 18px;
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .login-submit:hover {
@@ -483,11 +496,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: wait;
 }
 
-.login-sections {
+.login-stage {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(18px, 2vw, 28px);
-  align-items: start;
+  gap: 20px;
+  width: min(100%, 520px);
+  margin-inline: auto;
 }
 
 .member-panel,
@@ -508,15 +521,37 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   align-content: start;
 }
 
+.login-form-panel {
+  padding: clamp(22px, 3vw, 28px);
+  border-radius: 24px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.02), transparent),
+    color-mix(in srgb, var(--surface) 94%, black);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.03);
+}
+
+.login-panel-header {
+  display: grid;
+  gap: 8px;
+}
+
+.login-panel-copy {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .rfid-panel {
-  padding: clamp(16px, 1.8vw, 20px);
+  padding: clamp(18px, 2vw, 22px);
   border: 1px solid var(--panel-border);
-  border-radius: 18px;
-  background: var(--surface-deep);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.02), transparent),
+    var(--surface-deep);
 }
 
 .section-title {
-  margin: 0 0 8px;
+  margin: 0;
   color: var(--text-h);
   font-weight: 700;
 }
@@ -528,17 +563,18 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 .rfid-simulate-button {
   width: 100%;
-  padding: 12px 18px;
+  padding: 13px 18px;
   border: 1px solid var(--panel-border-strong);
   border-radius: 999px;
-  background: transparent;
-  color: var(--accent);
+  background: rgb(255 255 255 / 0.02);
+  color: var(--text-h);
   cursor: pointer;
   font-weight: 700;
 }
 
 .rfid-simulate-button:hover {
   background: var(--surface-selected);
+  border-color: var(--accent);
 }
 
 .guest-submit-button {
@@ -628,11 +664,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 @media (max-width: 960px) {
   .login-card {
-    width: min(760px, 100%);
-  }
-
-  .login-sections {
-    grid-template-columns: 1fr;
+    width: min(680px, 100%);
   }
 }
 
@@ -643,6 +675,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .login-card {
     padding: 18px 14px;
+    border-radius: 20px;
   }
 
   .login-header {
@@ -654,6 +687,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     font-size: 0.95rem;
   }
 
+  .login-form-panel,
+  .login-access-card,
   .rfid-panel {
     padding: 14px;
     border-radius: 14px;
@@ -5195,6 +5230,11 @@ button:disabled {
   color: var(--success);
 }
 
+.suggestion-status-pill--answered {
+  background: rgba(64, 179, 120, 0.14);
+  color: var(--success);
+}
+
 .suggestion-status-pill--declined {
   background: rgba(210, 90, 90, 0.16);
   color: #ff9c9c;
@@ -8846,5 +8886,312 @@ button:disabled {
   .outdoor-table-mark-count {
     min-width: 1.7rem;
     font-size: 0.7rem;
+  }
+}
+
+.committee-hub-shell {
+  gap: 1.1rem;
+}
+
+.committee-hub-content {
+  display: grid;
+  gap: 1.25rem;
+  padding-top: 1.2rem;
+}
+
+.committee-hub-section-title {
+  margin: 0 0 0.25rem;
+}
+
+.committee-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 0.25rem;
+  padding-bottom: 0;
+}
+
+.committee-tabs[role="tablist"] {
+  position: relative;
+  border-bottom: 1px solid rgba(255, 215, 0, 0.28);
+  padding-bottom: 0;
+}
+
+.committee-tab {
+  min-width: 10rem;
+  border-radius: 0.95rem 0.95rem 0 0;
+  border: 1px solid rgba(255, 215, 0, 0.24);
+  border-bottom-color: transparent;
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(255, 255, 255, 0.78);
+  padding-block: 0.8rem 0.9rem;
+  margin-bottom: -1px;
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.committee-tab:hover {
+  color: rgba(255, 255, 255, 0.96);
+  border-color: rgba(255, 215, 0, 0.4);
+  border-bottom-color: transparent;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.committee-tab.is-active {
+  position: relative;
+  color: #161202;
+  background: linear-gradient(180deg, #ffe45c 0%, #ffd800 100%);
+  border-color: rgba(255, 226, 94, 0.95);
+  border-bottom-color: #151515;
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, 0.22),
+    0 6px 16px rgba(255, 216, 0, 0.12);
+  transform: none;
+  z-index: 1;
+}
+
+.committee-tab.is-active::after {
+  display: none;
+}
+
+.committee-minutes-add-button {
+  margin-left: auto;
+}
+
+.committee-minutes-panel {
+  gap: 1.25rem;
+}
+
+.committee-minutes-empty {
+  display: grid;
+  gap: 1rem;
+  justify-items: start;
+}
+
+.committee-minutes-layout {
+  display: grid;
+  grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.committee-minutes-layout--mobile {
+  grid-template-columns: 1fr;
+}
+
+.committee-minutes-rail {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.committee-minutes-rail-item {
+  border: 1px solid rgba(255, 215, 0, 0.45);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  border-radius: 1rem;
+  padding: 0.9rem 1rem;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+}
+
+.committee-minutes-rail-item:hover,
+.committee-minutes-rail-item.is-selected {
+  border-color: rgba(255, 215, 0, 0.95);
+  background: rgba(255, 215, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+.committee-minutes-detail {
+  display: grid;
+  gap: 1rem;
+  border: 1px solid rgba(255, 215, 0, 0.35);
+  border-radius: 1.25rem;
+  background:
+    linear-gradient(180deg, rgba(255, 215, 0, 0.06), rgba(255, 255, 255, 0.02)),
+    rgba(0, 0, 0, 0.2);
+  padding: 1.35rem;
+}
+
+.committee-minutes-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+}
+
+.committee-minutes-header h3 {
+  margin: 0.2rem 0 0;
+}
+
+.committee-minutes-date {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 0.8rem;
+  color: rgba(255, 215, 0, 0.85);
+}
+
+.committee-minutes-sections {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.committee-minutes-section {
+  border: 1px solid rgba(255, 215, 0, 0.24);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.committee-minutes-section summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 1rem 1.1rem;
+  font-weight: 700;
+}
+
+.committee-minutes-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.committee-minutes-section summary::after {
+  content: "+";
+  float: right;
+  color: rgba(255, 215, 0, 0.85);
+}
+
+.committee-minutes-section[open] summary::after {
+  content: "−";
+}
+
+.committee-minutes-section-body {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0 1.1rem 1.1rem;
+}
+
+.committee-minutes-section-body p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.committee-minutes-actions-card {
+  border: 1px solid rgba(255, 215, 0, 0.24);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 1.1rem;
+  display: grid;
+  gap: 0.95rem;
+}
+
+.committee-minutes-actions-header h4,
+.committee-minutes-form-group-header h4 {
+  margin: 0;
+}
+
+.committee-minutes-actions-header p {
+  margin: 0.25rem 0 0;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.committee-minutes-actions-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.committee-minutes-action-item {
+  border: 1px solid rgba(255, 215, 0, 0.18);
+  border-radius: 0.9rem;
+  padding: 0.9rem 1rem;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.committee-minutes-action-text,
+.committee-minutes-action-owner,
+.committee-minutes-actions-empty {
+  margin: 0;
+}
+
+.committee-minutes-action-owner {
+  margin-top: 0.5rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.committee-minutes-form {
+  gap: 1rem;
+  width: 100%;
+}
+
+.committee-minutes-form-group {
+  display: grid;
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.committee-minutes-form-group-header,
+.committee-minutes-form-inline-actions,
+.committee-minutes-form-submit {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.committee-minutes-form-card {
+  display: grid;
+  gap: 0.85rem;
+  width: 100%;
+  padding: 1rem;
+  border: 1px solid rgba(255, 215, 0, 0.2);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  box-sizing: border-box;
+}
+
+.committee-minutes-form > label,
+.committee-minutes-form-card > label {
+  display: grid;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.committee-minutes-form input,
+.committee-minutes-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 720px) {
+  .committee-minutes-add-button {
+    margin-left: 0;
+  }
+
+  .committee-tab {
+    border-radius: 0.9rem 0.9rem 0 0;
+  }
+
+  .committee-tab.is-active {
+    transform: none;
+  }
+
+  .committee-tab.is-active::after {
+    display: none;
+  }
+
+  .committee-minutes-rail {
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  }
+
+  .committee-minutes-detail,
+  .committee-minutes-actions-card,
+  .committee-minutes-form-card {
+    padding: 1rem;
   }
 }

@@ -223,6 +223,20 @@ function CurrentLostArrowsCard({ lostArrows, onOpenLostAndFound }) {
   );
 }
 
+function GuestSignInCard({ onOpenGuestLogin }) {
+  return (
+    <section className="home-panel">
+      <h3 className="home-panel-title">Guest Sign In</h3>
+      <div className="home-panel-copy">
+        <p>Open the guest sign-in form and record a visiting archer.</p>
+      </div>
+      <Button type="button" onClick={onOpenGuestLogin}>
+        Open Guest Form
+      </Button>
+    </section>
+  );
+}
+
 function MembersAtRangeList({ members }) {
   return (
     <section className="home-panel">
@@ -429,6 +443,7 @@ export function HomeSection({
   signedUpEvents,
   tournamentReminders,
   lostArrows,
+  onOpenGuestLogin,
   onOpenLostAndFound,
   onOpenApprovals,
   approvalSummary = null,
@@ -440,6 +455,7 @@ export function HomeSection({
   return (
     <div className="home-split-view">
       <MembersAtRangeList members={members} />
+      <GuestSignInCard onOpenGuestLogin={onOpenGuestLogin} />
       <CurrentLostArrowsCard
         lostArrows={lostArrows}
         onOpenLostAndFound={onOpenLostAndFound}

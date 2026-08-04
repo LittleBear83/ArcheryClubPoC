@@ -37,7 +37,14 @@ const pages = [
     disabledForRoles: ["beginner"],
   },
   { id: "range-rules", label: "Range Rules", path: "/range-rules" },
+  { id: "ask-a-question", label: "Ask A Question", path: "/ask-a-question" },
   { id: "feedback-form", label: "Suggestion Box", path: "/feedback-form" },
+  {
+    id: "question-inbox",
+    label: "Question Inbox",
+    path: "/question-inbox",
+    adminSection: true,
+  },
   {
     id: "suggestions-admin",
     label: "Suggestion Inbox",
@@ -174,11 +181,16 @@ export function SideDrawer({
   }, [currentUserProfile]);
   const memberPages = useMemo(
     () =>
-      visiblePages.filter((page) => !page.permission && !page.permissionAny),
+      visiblePages.filter(
+        (page) => !page.permission && !page.permissionAny && !page.adminSection,
+      ),
     [visiblePages],
   );
   const adminPages = useMemo(
-    () => visiblePages.filter((page) => page.permission || page.permissionAny),
+    () =>
+      visiblePages.filter(
+        (page) => page.permission || page.permissionAny || page.adminSection,
+      ),
     [visiblePages],
   );
   const isPageDisabled = (page) =>

@@ -103,6 +103,39 @@ function buildInitialSchemaSql() {
       updated_by_user_id BIGINT REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS member_questions (
+      id BIGSERIAL PRIMARY KEY,
+      submitted_by_username TEXT NOT NULL REFERENCES users(username),
+      question_title TEXT NOT NULL,
+      question_body TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'new',
+      response_text TEXT NOT NULL DEFAULT '',
+      member_seen_response BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      responded_at_date TEXT,
+      responded_at_time TEXT,
+      responded_by_username TEXT REFERENCES users(username),
+      updated_at_date TEXT,
+      updated_at_time TEXT,
+      submitted_by_user_id BIGINT REFERENCES users(id),
+      responded_by_user_id BIGINT REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS committee_meeting_minutes (
+      id BIGSERIAL PRIMARY KEY,
+      meeting_date TEXT NOT NULL,
+      title TEXT NOT NULL,
+      sections_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      actions_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      updated_at_date TEXT NOT NULL,
+      updated_at_time TEXT NOT NULL,
+      updated_by_username TEXT REFERENCES users(username),
+      updated_by_user_id BIGINT REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS range_rules_content (
       content_key TEXT PRIMARY KEY,
       indoor_rules_json JSONB NOT NULL,
@@ -286,6 +319,7 @@ function buildInitialSchemaSql() {
       archery_gb_membership_number TEXT NOT NULL,
       invited_by_username TEXT REFERENCES users(username),
       invited_by_name TEXT,
+      payment_method TEXT NOT NULL DEFAULT 'cash',
       logged_in_date TEXT NOT NULL,
       logged_in_time TEXT NOT NULL,
       invited_by_user_id BIGINT REFERENCES users(id)
@@ -771,6 +805,12 @@ function buildUserReferenceSyncStatements() {
       ],
     },
     {
+      tableName: "committee_meeting_minutes",
+      references: [
+        { usernameColumn: "updated_by_username", userIdColumn: "updated_by_user_id" },
+      ],
+    },
+    {
       tableName: "user_types",
       references: [{ usernameColumn: "username", userIdColumn: "user_id" }],
     },
@@ -1096,6 +1136,10 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE suggestions
       ADD COLUMN IF NOT EXISTS resolution_note TEXT NOT NULL DEFAULT ''
+    `);
+    await client.query(`
+      ALTER TABLE guest_login_events
+      ADD COLUMN IF NOT EXISTS payment_method TEXT NOT NULL DEFAULT 'cash'
     `);
     await client.query(`
       ALTER TABLE member_distance_sign_offs

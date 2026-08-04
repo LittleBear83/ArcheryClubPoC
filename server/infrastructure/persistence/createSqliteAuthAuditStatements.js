@@ -16,10 +16,11 @@ export function createSqliteAuthAuditStatements(db) {
       archery_gb_membership_number,
       invited_by_username,
       invited_by_name,
+      payment_method,
       logged_in_date,
       logged_in_time
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const insertAuditEvent = db.prepare(`

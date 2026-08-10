@@ -6945,6 +6945,49 @@ button:disabled {
   gap: 4px;
 }
 
+.side-drawer .drawer-tree {
+  gap: 8px;
+}
+
+.side-drawer .drawer-tree-group {
+  display: grid;
+  gap: 4px;
+}
+
+.side-drawer .drawer-tree-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.side-drawer .drawer-tree-toggle-open {
+  background: var(--surface-hover);
+}
+
+.side-drawer .drawer-tree-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4rem;
+  min-width: 1.4rem;
+  color: var(--accent);
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.side-drawer .drawer-tree-children {
+  margin-left: 12px;
+  padding-left: 10px;
+  border-left: 1px solid var(--drawer-divider);
+}
+
+.side-drawer .drawer-tree-link {
+  padding-left: 14px;
+  font-weight: 600;
+}
+
 .side-drawer button {
   width: 100%;
   text-align: left;

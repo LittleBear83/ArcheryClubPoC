@@ -20,9 +20,60 @@ export const GUEST_LOGIN_EVENTS_TABLE_SQL = `
     archery_gb_membership_number TEXT NOT NULL,
     invited_by_username TEXT,
     invited_by_name TEXT,
+    payment_method TEXT NOT NULL DEFAULT 'cash' CHECK (payment_method IN ('paypal', 'cash')),
     logged_in_date TEXT NOT NULL,
     logged_in_time TEXT NOT NULL,
     FOREIGN KEY (invited_by_username) REFERENCES users(username)
+  )
+`;
+
+export const MEMBER_QUESTIONS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS member_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    submitted_by_username TEXT NOT NULL,
+    question_title TEXT NOT NULL,
+    question_body TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'answered')),
+    response_text TEXT NOT NULL DEFAULT '',
+    member_seen_response INTEGER NOT NULL DEFAULT 1,
+    created_at_date TEXT NOT NULL,
+    created_at_time TEXT NOT NULL,
+    responded_at_date TEXT,
+    responded_at_time TEXT,
+    responded_by_username TEXT,
+    updated_at_date TEXT,
+    updated_at_time TEXT,
+    FOREIGN KEY (submitted_by_username) REFERENCES users(username),
+    FOREIGN KEY (responded_by_username) REFERENCES users(username)
+  )
+`;
+
+export const COMMITTEE_MEETING_MINUTES_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS committee_meeting_minutes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    meeting_date TEXT NOT NULL,
+    title TEXT NOT NULL,
+    sections_json TEXT NOT NULL DEFAULT '[]',
+    actions_json TEXT NOT NULL DEFAULT '[]',
+    created_at_date TEXT NOT NULL,
+    created_at_time TEXT NOT NULL,
+    updated_at_date TEXT NOT NULL,
+    updated_at_time TEXT NOT NULL,
+    updated_by_username TEXT,
+    FOREIGN KEY (updated_by_username) REFERENCES users(username)
+  )
+`;
+
+export const RANGE_PRESENCE_EXTENSIONS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS range_presence_extensions (
+    username TEXT PRIMARY KEY,
+    active_until_date TEXT NOT NULL,
+    active_until_time TEXT NOT NULL,
+    updated_by_username TEXT NOT NULL,
+    updated_at_date TEXT NOT NULL,
+    updated_at_time TEXT NOT NULL,
+    FOREIGN KEY (username) REFERENCES users(username),
+    FOREIGN KEY (updated_by_username) REFERENCES users(username)
   )
 `;
 
@@ -401,6 +452,9 @@ export function bootstrapSqliteBaseSchema({
   `);
 
   db.exec(GUEST_LOGIN_EVENTS_TABLE_SQL);
+  db.exec(MEMBER_QUESTIONS_TABLE_SQL);
+  db.exec(COMMITTEE_MEETING_MINUTES_TABLE_SQL);
+  db.exec(RANGE_PRESENCE_EXTENSIONS_TABLE_SQL);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_disciplines (
@@ -433,6 +487,7 @@ export function bootstrapSqliteBaseSchema({
         distance_yards IN (20, 30, 40, 50, 60, 80, 100)
       ),
       signed_off_by_username TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'manual',
       signed_off_at_date TEXT NOT NULL,
       signed_off_at_time TEXT NOT NULL,
       PRIMARY KEY (username, discipline, distance_yards),

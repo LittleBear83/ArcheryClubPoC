@@ -21,6 +21,36 @@ export function registerMemberActivityRoutes({
 }) {
   const RANGE_USAGE_MAX_DAYS = 366;
   const REPORTING_MAX_DAYS = 366;
+  const RANGE_PRESENCE_DEFAULT_WINDOW_MS = 2 * 60 * 60 * 1000;
+  const RANGE_PRESENCE_MIN_EXTENSION_HOURS = 2;
+  const RANGE_PRESENCE_MAX_EXTENSION_HOURS = 12;
+
+  const getDefaultPresenceEndsAt = (lastLoggedInAt) => {
+    const lastLoggedInMs = new Date(String(lastLoggedInAt)).getTime();
+
+    if (Number.isNaN(lastLoggedInMs)) {
+      return null;
+    }
+
+    return new Date(lastLoggedInMs + RANGE_PRESENCE_DEFAULT_WINDOW_MS).toISOString();
+  };
+
+  const getActivePresenceEndsAt = (lastLoggedInAt, extension) => {
+    const defaultEndsAt = getDefaultPresenceEndsAt(lastLoggedInAt);
+    const extensionEndsAt = extension?.active_until_at ?? null;
+
+    if (!defaultEndsAt) {
+      return extensionEndsAt;
+    }
+
+    if (!extensionEndsAt) {
+      return defaultEndsAt;
+    }
+
+    return new Date(extensionEndsAt).getTime() > new Date(defaultEndsAt).getTime()
+      ? extensionEndsAt
+      : defaultEndsAt;
+  };
 
   const getInclusiveDayCount = (startDate, endDate) => {
     return Math.floor((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
@@ -207,15 +237,44 @@ export function registerMemberActivityRoutes({
       disciplinesByUsername.set(row.username, current);
     }
 
-    const members = (await activityReportingGateway.findRecentRangeMembers(cutoff)).map((member) =>
-      buildMemberUserProfile(
-        member,
-        disciplinesByUsername.get(member.username) ?? [],
-        {
-          lastLoggedInAt: member.last_logged_in_at,
-        },
-      ),
-    );
+    const latestMembers = await activityReportingGateway.findLatestRangeMembers();
+    const memberExtensions = new Map();
+
+    for (const member of latestMembers) {
+      const extension = await memberAuthGateway.findRangePresenceExtensionByUsername(
+        member.username,
+      );
+
+      if (extension) {
+        memberExtensions.set(member.username.toLowerCase(), extension);
+      }
+    }
+
+    const members = latestMembers
+      .map((member) => {
+        const extension = memberExtensions.get(member.username.toLowerCase()) ?? null;
+        const activeRangePresenceEndsAt = getActivePresenceEndsAt(
+          member.last_logged_in_at,
+          extension,
+        );
+
+        if (
+          !activeRangePresenceEndsAt ||
+          new Date(activeRangePresenceEndsAt).getTime() <= Date.now()
+        ) {
+          return null;
+        }
+
+        return buildMemberUserProfile(
+          member,
+          disciplinesByUsername.get(member.username) ?? [],
+          {
+            activeRangePresenceEndsAt,
+            lastLoggedInAt: member.last_logged_in_at,
+          },
+        );
+      })
+      .filter(Boolean);
     const guests = (await activityReportingGateway.findRecentGuestLogins(cutoff)).map((guest) =>
       buildGuestUserProfile(guest, {
         lastLoggedInAt: guest.last_logged_in_at,
@@ -293,6 +352,111 @@ export function registerMemberActivityRoutes({
     res.json({
       success: true,
       message: "Your on-site mobile check-in has been recorded.",
+    });
+  });
+
+  app.put("/api/range-members/presence-extension", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    const requestedHours = Number.parseInt(String(req.body?.hours ?? ""), 10);
+
+    if (
+      !Number.isInteger(requestedHours) ||
+      requestedHours < RANGE_PRESENCE_MIN_EXTENSION_HOURS ||
+      requestedHours > RANGE_PRESENCE_MAX_EXTENSION_HOURS
+    ) {
+      res.status(400).json({
+        success: false,
+        message: `Choose a duration between ${RANGE_PRESENCE_MIN_EXTENSION_HOURS} and ${RANGE_PRESENCE_MAX_EXTENSION_HOURS} hours.`,
+      });
+      return;
+    }
+
+    const latestRangeMembers = await activityReportingGateway.findLatestRangeMembers();
+    const actorEntry =
+      latestRangeMembers.find(
+        (member) => member.username.toLowerCase() === actor.username.toLowerCase(),
+      ) ?? null;
+
+    if (!actorEntry?.last_logged_in_at) {
+      res.status(400).json({
+        success: false,
+        message: "Check in on site before extending your range presence.",
+      });
+      return;
+    }
+
+    const existingExtension =
+      await memberAuthGateway.findRangePresenceExtensionByUsername(actor.username);
+    const activePresenceEndsAt = getActivePresenceEndsAt(
+      actorEntry.last_logged_in_at,
+      existingExtension,
+    );
+
+    if (
+      !activePresenceEndsAt ||
+      new Date(activePresenceEndsAt).getTime() <= Date.now()
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Your current range presence has expired. Please check in again first.",
+      });
+      return;
+    }
+
+    const activeUntil = new Date(Date.now() + requestedHours * 60 * 60 * 1000);
+    const [activeUntilDate, activeUntilTime] = getUtcTimestampParts(activeUntil);
+    const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+
+    await memberAuthGateway.upsertRangePresenceExtension({
+      activeUntilParts: [activeUntilDate, activeUntilTime],
+      timestampParts: [updatedAtDate, updatedAtTime],
+      updatedByUsername: actor.username,
+      username: actor.username,
+    });
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "updated",
+        actorUsername: actor.username,
+        after: {
+          activeRangePresenceEndsAt: `${activeUntilDate}T${activeUntilTime}`,
+          hours: requestedHours,
+          username: actor.username,
+        },
+        before: existingExtension
+          ? {
+              activeRangePresenceEndsAt: existingExtension.active_until_at,
+              username: actor.username,
+            }
+          : null,
+        changedAtDate: updatedAtDate,
+        changedAtTime: updatedAtTime,
+        entityId: actor.username,
+        entityLabel: `${actor.first_name} ${actor.surname}`.trim() || actor.username,
+        entityType: "range_presence_extension",
+        req,
+        statusCode: 200,
+        target: "/api/range-members/presence-extension",
+      }).catch((auditError) => {
+        console.error("Failed to record range presence extension audit event", auditError);
+      });
+    }
+
+    broadcastRangeMembersUpdated("range-members.presence-extension");
+
+    res.json({
+      success: true,
+      activeRangePresenceEndsAt: `${activeUntilDate}T${activeUntilTime}`,
+      message: `Your range presence has been extended for the next ${requestedHours} hours.`,
     });
   });
 

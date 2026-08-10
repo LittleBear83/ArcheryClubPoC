@@ -386,6 +386,62 @@ test("guest inviter members are available before login", async () => {
   }
 });
 
+test("guest login records payment method and uses the signed-in member as inviter", async () => {
+  const app = express();
+  app.use(express.json());
+  const recordedGuestLogins = [];
+
+  registerAuthTestRoutes(app, () => "signed-in-member", {
+    buildGuestUserProfile: (guest) => guest,
+    memberAuthGateway: {
+      findUserByUsername: async (username) =>
+        username === "signed-in-member"
+          ? {
+              first_name: "Signed",
+              surname: "In Member",
+              username: "signed-in-member",
+            }
+          : null,
+      recordGuestLoginEvent: async (payload) => {
+        recordedGuestLogins.push(payload);
+      },
+    },
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/guest-login", {
+      body: {
+        firstName: "Guest",
+        surname: "Archer",
+        archeryGbMembershipNumber: "1234567",
+        invitedByUsername: "someone-else",
+        paymentMethod: "PayPal",
+      },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(recordedGuestLogins, [
+      {
+        archeryGbMembershipNumber: "1234567",
+        firstName: "Guest",
+        invitedByName: "Signed In Member",
+        invitedByUsername: "signed-in-member",
+        paymentMethod: "paypal",
+        surname: "Archer",
+        timestampParts: ["2026-04-21", "10:00:00"],
+      },
+    ]);
+    assert.equal(response.body.success, true);
+    assert.equal(response.body.userProfile.paymentMethod, "paypal");
+    assert.equal(response.body.userProfile.invitedByUsername, "signed-in-member");
+  } finally {
+    server.close();
+  }
+});
+
 test("auth routes expose RFID reader detection status for the login page", async () => {
   const csrf = createCsrfProtection({
     secret: "auth-route-csrf-secret",

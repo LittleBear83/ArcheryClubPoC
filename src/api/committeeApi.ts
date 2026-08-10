@@ -63,3 +63,27 @@ export async function deleteCommitteeRole(
     },
   );
 }
+
+export async function listCommitteeMinutes<TResponse>(
+  actor: ActorIdentity | string,
+) {
+  return fetchApi<TResponse & { success: true }>("/api/committee-minutes", {
+    headers: buildActorHeaders(actor, true),
+    cache: "no-store",
+  });
+}
+
+export async function createCommitteeMinutes<TMinute>(
+  actor: ActorIdentity | string,
+  draft: Record<string, unknown>,
+) {
+  return fetchApi<{ success: true; minute: TMinute; message?: string }>(
+    "/api/committee-minutes",
+    {
+      method: "POST",
+      headers: buildActorHeaders(actor, true),
+      cache: "no-store",
+      body: JSON.stringify(draft),
+    },
+  );
+}

@@ -176,6 +176,10 @@ export function createAuditChangeLogger({ recordAuditEvent }) {
         return false;
       }
 
+      if (req && typeof req === "object") {
+        req.__skipGenericAuditEvent = true;
+      }
+
       const metadata = buildEntityAuditMetadata({
         action,
         after,

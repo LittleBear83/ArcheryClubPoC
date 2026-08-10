@@ -276,7 +276,6 @@ test("Golden Records sync accepts descriptive outdoor handicap type labels", asy
   assert.equal(createdEntries.length, 1);
   assert.equal(createdEntries[0].handicap, 28);
 });
-
 test("Golden Records sync treats 252 White and 252 Black as 20yd and 30yd awards", async () => {
   const snapshot = {
     achievements: [

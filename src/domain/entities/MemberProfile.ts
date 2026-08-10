@@ -18,6 +18,7 @@ export type DistanceSignOff = {
   username: string;
   discipline: string;
   distanceYards: number;
+  source?: string;
   signedOffByUsername: string;
   signedOffByName: string;
   signedOffAt: string;

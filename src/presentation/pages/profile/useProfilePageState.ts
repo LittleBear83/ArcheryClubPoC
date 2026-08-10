@@ -48,13 +48,27 @@ function mapGoldenRecordsBowClassToBowType(bowClass: string) {
   }
 }
 
+function normalizeGoldenRecordsHandicapType(value: string) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (normalized.includes("outdoor")) {
+    return "outdoor";
+  }
+
+  if (normalized.includes("indoor")) {
+    return "indoor";
+  }
+
+  return normalized;
+}
+
 function buildGoldenRecordsHandicapsByBowType(snapshot, type) {
   const entries = snapshot?.handicaps ?? [];
-  const normalizedType = String(type ?? "").trim().toLowerCase();
+  const normalizedType = normalizeGoldenRecordsHandicapType(String(type ?? ""));
 
   return entries.reduce(
     (next, entry) => {
-      if (String(entry.type ?? "").trim().toLowerCase() !== normalizedType) {
+      if (normalizeGoldenRecordsHandicapType(entry.type) !== normalizedType) {
         return next;
       }
 

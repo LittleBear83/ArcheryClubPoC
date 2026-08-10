@@ -27,7 +27,6 @@ import type { AppDependencies } from "./bootstrap/createAppDependencies";
 const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
 const AUTH_MESSAGE_STORAGE_KEY = "archeryclubpoc-auth-message";
-const DEFAULT_USERNAME = "Cfleetham";
 const DESKTOP_INACTIVITY_TIMEOUT_MS = 120000;
 const MOBILE_INACTIVITY_TIMEOUT_MS = 300000;
 const RFID_SESSION_HANDOFF_IDLE_MS = 15000;
@@ -410,21 +409,22 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     surname,
     archeryGbMembershipNumber,
     invitedByUsername,
+    paymentMethod,
   }: {
     firstName: string;
     surname: string;
     archeryGbMembershipNumber: string;
     invitedByUsername: string;
+    paymentMethod: "paypal" | "cash";
   }) => {
     try {
-      const result = await loginAsGuest({
+      await loginAsGuest({
         firstName,
         surname,
         archeryGbMembershipNumber,
         invitedByUsername,
+        paymentMethod,
       });
-
-      persistAuthenticatedUser(result.userProfile);
 
       return {
         success: true,
@@ -702,11 +702,9 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     return (
       <>
         <LoginPage
-          onGuestLogin={handleGuestLogin}
           onLogin={handleLogin}
           onRfidLogin={handleRfidLogin}
           initialMessage={loginMessage}
-          seededUsername={DEFAULT_USERNAME}
         />
         <PaymentCardModal
           open={paymentCardModal.open}
@@ -728,6 +726,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
             element={
               <HomePage
                 currentUserProfile={currentUserProfile}
+                onGuestLogin={handleGuestLogin}
                 onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
                 onLogout={handleLogout}
                 memberProfileCrud={dependencies}

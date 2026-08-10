@@ -23,7 +23,9 @@ function formatSignOffValue(signOff) {
     return "Not signed off";
   }
 
-  return `${formatDate(signOff.signedOffAt)} by ${signOff.signedOffByName}`;
+  return signOff.source === "golden-records"
+    ? `${formatDate(signOff.signedOffAt)} imported from Golden Records`
+    : `${formatDate(signOff.signedOffAt)} by ${signOff.signedOffByName}`;
 }
 
 export function ProfileMobileView({

@@ -68,6 +68,8 @@ import { createGoldenRecordsCurrentHandicapService } from "./infrastructure/gold
 import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
 import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
 import { createSuggestionGateway } from "./infrastructure/persistence/suggestionGateway.js";
+import { createMemberQuestionGateway } from "./infrastructure/persistence/memberQuestionGateway.js";
+import { createCommitteeMinutesGateway } from "./infrastructure/persistence/committeeMinutesGateway.js";
 import { createTournamentGateway } from "./infrastructure/persistence/tournamentGateway.js";
 import { createMemberDistanceSignOffRepository } from "./infrastructure/persistence/memberDistanceSignOffRepository.js";
 import {
@@ -89,6 +91,8 @@ import { registerRangeRulesRoutes } from "./presentation/http/registerRangeRules
 import { registerGeneralInfoRoutes } from "./presentation/http/registerGeneralInfoRoutes.js";
 import { registerSseRoutes } from "./presentation/http/registerSseRoutes.js";
 import { registerSuggestionRoutes } from "./presentation/http/registerSuggestionRoutes.js";
+import { registerMemberQuestionRoutes } from "./presentation/http/registerMemberQuestionRoutes.js";
+import { registerCommitteeMinutesRoutes } from "./presentation/http/registerCommitteeMinutesRoutes.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
@@ -373,6 +377,10 @@ function createAuditMiddleware(recordAuditEvent) {
     const startedAt = Date.now();
 
     res.on("finish", () => {
+      if (req.__skipGenericAuditEvent) {
+        return;
+      }
+
       const [loggedInDate, loggedInTime] = getUtcTimestampParts();
 
       try {
@@ -517,6 +525,16 @@ const announcementGateway = createAnnouncementGateway({
   updateAnnouncementById: sqliteAnnouncementStatements?.updateAnnouncementById,
 });
 const suggestionGateway = createSuggestionGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
+});
+const memberQuestionGateway = createMemberQuestionGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
+});
+const committeeMinutesGateway = createCommitteeMinutesGateway({
   databaseEngine: serverRuntime.databaseEngine,
   db,
   pool: db.pool,
@@ -857,6 +875,21 @@ const activityReportingGateway = createActivityReportingGateway({
 const memberAuthGateway = createMemberAuthGateway({
   databaseEngine: serverRuntime.databaseEngine,
   findDisciplinesByUsername,
+  findRangePresenceExtensionByUsername:
+    serverRuntime.databaseEngine === "sqlite"
+      ? db.prepare(`
+          SELECT
+            username,
+            active_until_date,
+            active_until_time,
+            updated_by_username,
+            updated_at_date,
+            updated_at_time
+          FROM range_presence_extensions
+          WHERE LOWER(username) = LOWER(?)
+          LIMIT 1
+        `)
+      : null,
   findUserByCredentials,
   findUserByRfid,
   findUserByUsername,
@@ -864,6 +897,26 @@ const memberAuthGateway = createMemberAuthGateway({
   insertLoginEvent,
   listAllUsers,
   pool: db.pool,
+  upsertRangePresenceExtension:
+    serverRuntime.databaseEngine === "sqlite"
+      ? db.prepare(`
+          INSERT INTO range_presence_extensions (
+            username,
+            active_until_date,
+            active_until_time,
+            updated_by_username,
+            updated_at_date,
+            updated_at_time
+          )
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(username) DO UPDATE SET
+            active_until_date = excluded.active_until_date,
+            active_until_time = excluded.active_until_time,
+            updated_by_username = excluded.updated_by_username,
+            updated_at_date = excluded.updated_at_date,
+            updated_at_time = excluded.updated_at_time
+        `)
+      : null,
   updateGoldenRecordsId,
   updateUserMembershipStatus,
   updateUserPassword,
@@ -3727,6 +3780,28 @@ registerSuggestionRoutes({
   getUtcTimestampParts,
   PERMISSIONS,
   suggestionGateway,
+});
+registerMemberQuestionRoutes({
+  actorHasPermission,
+  app,
+  auditChangeLogger,
+  getActorUser,
+  getUtcTimestampParts,
+  memberQuestionGateway,
+  PERMISSIONS,
+  roleCommitteeGateway,
+  serverEventBus,
+});
+registerCommitteeMinutesRoutes({
+  actorHasPermission,
+  app,
+  auditChangeLogger,
+  committeeMinutesGateway,
+  getActorUser,
+  getUtcTimestampParts,
+  PERMISSIONS,
+  roleCommitteeGateway,
+  serverEventBus,
 });
 registerAuditRoutes({
   actorHasPermission,

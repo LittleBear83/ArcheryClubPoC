@@ -170,6 +170,10 @@ export function ProfileOutdoorAchievementsSection({
               goldenRecordsOutdoorHandicapsByBowType[entry.bowType] ?? null;
             const goldenRecordsIndoorHandicap =
               goldenRecordsIndoorHandicapsByBowType[entry.bowType] ?? null;
+            const displayedOutdoorHandicap =
+              goldenRecordsOutdoorHandicap?.handicap ?? entry.handicap ?? null;
+            const displayedOutdoorHandicapAchieved =
+              goldenRecordsOutdoorHandicap?.achieved ?? "";
             return (
               <article key={entry.bowType} className="profile-outdoor-card">
                 <div className="profile-outdoor-card-header">
@@ -200,11 +204,15 @@ export function ProfileOutdoorAchievementsSection({
                   <div className="profile-outdoor-handicap-summary">
                     <div className="profile-outdoor-handicap-row">
                       <span>Outdoor Handicap</span>
-                      <strong>{formatHandicapValue(goldenRecordsOutdoorHandicap?.handicap)}</strong>
+                      <strong>{formatHandicapValue(displayedOutdoorHandicap)}</strong>
                     </div>
-                    {goldenRecordsOutdoorHandicap?.achieved ? (
+                    {displayedOutdoorHandicapAchieved ? (
                       <small className="profile-outdoor-handicap-source">
-                        Achived on {formatAchievedDate(goldenRecordsOutdoorHandicap.achieved)}
+                        Achieved on {formatAchievedDate(displayedOutdoorHandicapAchieved)}
+                      </small>
+                    ) : entry.handicap !== null && entry.handicap !== undefined ? (
+                      <small className="profile-outdoor-handicap-source">
+                        Synced to the current outdoor table row.
                       </small>
                     ) : null}
                     <div className="profile-outdoor-handicap-row">
@@ -213,7 +221,7 @@ export function ProfileOutdoorAchievementsSection({
                     </div>
                     {goldenRecordsIndoorHandicap?.achieved ? (
                       <small className="profile-outdoor-handicap-source">
-                        Achived on {formatAchievedDate(goldenRecordsIndoorHandicap.achieved)}
+                        Achieved on {formatAchievedDate(goldenRecordsIndoorHandicap.achieved)}
                       </small>
                     ) : null}
                   </div>

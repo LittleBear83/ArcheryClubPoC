@@ -176,6 +176,16 @@ export function bootstrapSqliteLegacyDateSupport({
   tournamentRegistrationsTableSql,
   tournamentScoresTableSql,
 }) {
+  const memberDistanceSignOffColumns = db
+    .prepare(`PRAGMA table_info(member_distance_sign_offs)`)
+    .all();
+
+  if (!memberDistanceSignOffColumns.some((column) => column.name === "source")) {
+    db.exec(
+      `ALTER TABLE member_distance_sign_offs ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`,
+    );
+  }
+
   migrateCombinedDateTimeColumn({
     createTableSql: loginEventsTableSql.trim(),
     db,
@@ -244,6 +254,14 @@ export function bootstrapSqliteLegacyDateSupport({
     !guestLoginEventColumns.some((column) => column.name === "invited_by_name")
   ) {
     db.exec(`ALTER TABLE guest_login_events ADD COLUMN invited_by_name TEXT`);
+  }
+
+  if (
+    !guestLoginEventColumns.some((column) => column.name === "payment_method")
+  ) {
+    db.exec(
+      `ALTER TABLE guest_login_events ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'cash' CHECK (payment_method IN ('paypal', 'cash'))`,
+    );
   }
 
   const coachingSessionsColumns = db

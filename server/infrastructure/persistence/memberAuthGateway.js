@@ -43,12 +43,14 @@ function mapUserPayloadToSqliteProfile(user) {
 
 function createSqliteMemberAuthGateway({
   findDisciplinesByUsername,
+  findRangePresenceExtensionByUsername,
   findUserByCredentials,
   findUserByRfid,
   findUserByUsername,
   insertGuestLoginEvent,
   insertLoginEvent,
   listAllUsers,
+  upsertRangePresenceExtension,
   updateUserMembershipStatus,
   updateGoldenRecordsId,
   updateUserPassword,
@@ -66,6 +68,20 @@ function createSqliteMemberAuthGateway({
     async findUserByUsername(username) {
       return normalizeUserRow(findUserByUsername.get(username));
     },
+    async findRangePresenceExtensionByUsername(username) {
+      const row = findRangePresenceExtensionByUsername.get(username);
+
+      if (!row) {
+        return null;
+      }
+
+      return {
+        username: row.username,
+        active_until_at: `${row.active_until_date}T${row.active_until_time}`,
+        updated_by_username: row.updated_by_username,
+        updated_at: `${row.updated_at_date}T${row.updated_at_time}`,
+      };
+    },
     async listAllUsers() {
       return listAllUsers.all().map(normalizeUserRow);
     },
@@ -74,6 +90,7 @@ function createSqliteMemberAuthGateway({
       firstName,
       invitedByName,
       invitedByUsername,
+      paymentMethod,
       surname,
       timestampParts,
     }) {
@@ -83,11 +100,25 @@ function createSqliteMemberAuthGateway({
         archeryGbMembershipNumber,
         invitedByUsername,
         invitedByName,
+        paymentMethod,
         ...timestampParts,
       );
     },
     async recordLoginEvent({ method, timestampParts, username }) {
       insertLoginEvent.run(username, method, ...timestampParts);
+    },
+    async upsertRangePresenceExtension({
+      activeUntilParts,
+      timestampParts,
+      updatedByUsername,
+      username,
+    }) {
+      upsertRangePresenceExtension.run(
+        username,
+        ...activeUntilParts,
+        updatedByUsername,
+        ...timestampParts,
+      );
     },
     async updateUserMembershipStatus(username, activeMember, rfidTag) {
       updateUserMembershipStatus.run(activeMember, rfidTag, username);
@@ -203,6 +234,35 @@ function createPostgresMemberAuthGateway({ pool }) {
 
       return normalizeUserRow(result.rows[0] ?? null);
     },
+    async findRangePresenceExtensionByUsername(username) {
+      const result = await pool.query(
+        `
+          SELECT
+            username,
+            active_until_date,
+            active_until_time,
+            updated_by_username,
+            updated_at_date,
+            updated_at_time
+          FROM range_presence_extensions
+          WHERE LOWER(username) = LOWER($1)
+          LIMIT 1
+        `,
+        [username],
+      );
+      const row = result.rows[0] ?? null;
+
+      if (!row) {
+        return null;
+      }
+
+      return {
+        username: row.username,
+        active_until_at: `${row.active_until_date}T${row.active_until_time}`,
+        updated_by_username: row.updated_by_username,
+        updated_at: `${row.updated_at_date}T${row.updated_at_time}`,
+      };
+    },
     async listAllUsers() {
       const result = await pool.query(
         `
@@ -234,6 +294,7 @@ function createPostgresMemberAuthGateway({ pool }) {
       firstName,
       invitedByName,
       invitedByUsername,
+      paymentMethod,
       surname,
       timestampParts,
     }) {
@@ -245,11 +306,12 @@ function createPostgresMemberAuthGateway({ pool }) {
             archery_gb_membership_number,
             invited_by_username,
             invited_by_name,
+            payment_method,
             invited_by_user_id,
             logged_in_date,
             logged_in_time
           )
-          VALUES ($1, $2, $3, $4, $5, (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1), $6, $7)
+          VALUES ($1, $2, $3, $4, $5, $6, (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1), $7, $8)
         `,
         [
           firstName,
@@ -257,6 +319,7 @@ function createPostgresMemberAuthGateway({ pool }) {
           archeryGbMembershipNumber,
           invitedByUsername,
           invitedByName,
+          paymentMethod,
           ...timestampParts,
         ],
       );
@@ -274,6 +337,33 @@ function createPostgresMemberAuthGateway({ pool }) {
           VALUES ($1, (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1), $2, $3, $4)
         `,
         [username, method, ...timestampParts],
+      );
+    },
+    async upsertRangePresenceExtension({
+      activeUntilParts,
+      timestampParts,
+      updatedByUsername,
+      username,
+    }) {
+      await pool.query(
+        `
+          INSERT INTO range_presence_extensions (
+            username,
+            active_until_date,
+            active_until_time,
+            updated_by_username,
+            updated_at_date,
+            updated_at_time
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
+          ON CONFLICT (username) DO UPDATE SET
+            active_until_date = EXCLUDED.active_until_date,
+            active_until_time = EXCLUDED.active_until_time,
+            updated_by_username = EXCLUDED.updated_by_username,
+            updated_at_date = EXCLUDED.updated_at_date,
+            updated_at_time = EXCLUDED.updated_at_time
+        `,
+        [username, ...activeUntilParts, updatedByUsername, ...timestampParts],
       );
     },
     async updateUserMembershipStatus(username, activeMember, rfidTag) {

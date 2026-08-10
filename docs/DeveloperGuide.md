@@ -12,7 +12,7 @@ Use it to understand:
 - where realtime updates, auth, and persistence now live
 - which docs are still active versus historical
 
-This guide reflects the codebase as it exists on `2026-07-03`.
+This guide reflects the codebase as it exists on `2026-08-04`.
 
 ## Application Snapshot
 
@@ -33,12 +33,15 @@ Implemented areas include:
 - home dashboards for members, beginners, and coaches
 - mobile-only on-site geofenced check-in
 - event and coaching scheduling with approvals and bookings
+- approval queues for events, coaching sessions, beginners courses, and Have a
+  Go sessions
 - tournament setup, registration, scoring, and competitor export
 - profile management and member administration
 - RFID assignment, loan bow return, and distance sign-off workflows
 - role and permission administration
 - audit log review
 - committee role management and org chart display
+- grouped admin navigation with collapsible sections in the side drawer
 - equipment inventory, storage, assignment, returns, and decommissioning
 - loan bow management
 - beginners course administration
@@ -191,6 +194,7 @@ The home screen aggregates:
 - personal event and coaching bookings
 - tournament reminders
 - active announcements
+- committee approval summary cards for users with approval access
 - beginner dashboards for enrolled beginners
 - coaching assignments for coaches
 - mobile-only on-site location-based booking/check-in
@@ -211,6 +215,8 @@ The scheduling area now covers:
 - coaching sessions
 - bookings
 - approval/rejection workflows
+- approval queue filtering that excludes cancelled beginners courses and
+  cancelled Have a Go sessions
 
 Relevant files:
 
@@ -247,6 +253,8 @@ Admin workflows include:
 - returning loan bows
 - managing role definitions and permission sets
 - managing committee roles and photos
+- managing range rules and general information content
+- reviewing submitted questions and suggestion inbox items
 
 Relevant files:
 
@@ -321,9 +329,14 @@ The authenticated shell currently routes to these main page areas:
 - `/tournament-setup`
 - `/records`
 - `/outdoor-table`
+- `/range-rules`
+- `/range-rules-admin`
+- `/general-info-admin`
 - `/committee-org-chart`
 - `/committee-admin`
 - `/announcements`
+- `/question-inbox`
+- `/suggestions-admin`
 - `/general-info`
 - `/feedback-form`
 - `/ideas-form`
@@ -332,8 +345,11 @@ The authenticated shell currently routes to these main page areas:
 Notes:
 
 - `/coaching-calendar` currently redirects to `/event-calendar`
+- `/ideas-form` currently redirects to `/feedback-form`
 - `LoanBowRegisterPage.tsx` exists in the codebase but is not currently routed
   from the authenticated shell
+- navigation in the drawer is split into general member pages plus grouped,
+  collapsible admin sections
 
 The route-to-page mapping is owned by:
 
@@ -449,6 +465,13 @@ npm run typecheck
 npm test
 ```
 
+Useful data/bootstrap commands:
+
+```bash
+npm run seed:live-showcase
+npm run seed:runtime-showcase
+```
+
 ## Database And Environment Notes
 
 Current runtime support:
@@ -537,7 +560,7 @@ Check:
 
 - the current user profile
 - permission checks in `src/utils/userProfile.js`
-- relevant page-level gating
+- relevant page-level gating and drawer grouping in `SideDrawer.tsx`
 - backend permission checks in the relevant route module
 
 Typical causes:

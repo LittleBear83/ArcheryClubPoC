@@ -231,6 +231,7 @@ type CourseApprovalType = "beginners" | "have-a-go";
 type PendingCourseApproval = {
   id: number;
   approvalStatus: string;
+  isCancelled?: boolean;
   beginnerCapacity: number;
   coordinatorName: string;
   firstLessonDate: string;
@@ -325,14 +326,14 @@ export function ApprovalsPage({ currentUserProfile }) {
   const beginnersCourses = useMemo(
     () =>
       (approvalsQuery.data?.beginnersCourses ?? []).filter(
-        (course) => course.approvalStatus === "pending",
+        (course) => course.approvalStatus === "pending" && !course.isCancelled,
       ),
     [approvalsQuery.data?.beginnersCourses],
   );
   const haveAGoSessions = useMemo(
     () =>
       (approvalsQuery.data?.haveAGoSessions ?? []).filter(
-        (course) => course.approvalStatus === "pending",
+        (course) => course.approvalStatus === "pending" && !course.isCancelled,
       ),
     [approvalsQuery.data?.haveAGoSessions],
   );

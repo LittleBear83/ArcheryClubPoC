@@ -255,6 +255,10 @@ export function registerAdminMemberRoutes({
     ["252 - 80 yds", "award25280"],
     ["252 - 100 yds", "award252100"],
   ]);
+  const GOLDEN_RECORDS_252_ACHIEVEMENT_ALIAS_TO_FIELD = new Map([
+    ["252 white", "award25220"],
+    ["252 black", "award25230"],
+  ]);
   const GOLDEN_RECORDS_252_ACHIEVEMENT_DISTANCE_PATTERN = /^252@\s*(20|30|40|50|60|80|100)\s*yds\/[123]$/i;
   const GOLDEN_RECORDS_252_SIGN_OFF_FIELD_BY_AWARD_KEY = new Map([
     ["award25220", "award25220SignOffDates"],
@@ -295,6 +299,14 @@ export function registerAdminMemberRoutes({
 
     if (directRoundMatch) {
       return directRoundMatch;
+    }
+
+    const achievementAliasMatch = GOLDEN_RECORDS_252_ACHIEVEMENT_ALIAS_TO_FIELD.get(
+      String(achievementName ?? "").trim().toLowerCase(),
+    );
+
+    if (achievementAliasMatch) {
+      return achievementAliasMatch;
     }
 
     const achievementDistanceMatch = String(achievementName ?? "")
@@ -1642,6 +1654,31 @@ export function registerAdminMemberRoutes({
       scope: "golden-records-sync",
       username: user.username,
     });
+    const [refreshedAtDate, refreshedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "handicap_refreshed",
+        actorUsername: actor.username,
+        after: {
+          signOffCount: syncSummary.signOffCount,
+          syncedCount: syncSummary.syncedCount,
+          updatedByUsername: actor.username,
+          username: user.username,
+        },
+        before: null,
+        changedAtDate: refreshedAtDate,
+        changedAtTime: refreshedAtTime,
+        entityId: user.username,
+        entityLabel: `${user.first_name} ${user.surname}`.trim() || user.username,
+        entityType: "golden_records_sync",
+        req,
+        statusCode: 200,
+        target: `/api/user-profiles/${user.username}/golden-records/refresh-handicap`,
+      }).catch((auditError) => {
+        console.error("Failed to record Golden Records handicap refresh audit event", auditError);
+      });
+    }
     broadcastMembersUpdated("members.golden-records-sync", user.username);
 
     res.json({
@@ -2240,6 +2277,7 @@ export function registerAdminMemberRoutes({
       username: member.username,
       discipline,
       distanceYards,
+      source: "manual",
       signedOffByUsername: actor.username,
       signedOffAtDate,
       signedOffAtTime,

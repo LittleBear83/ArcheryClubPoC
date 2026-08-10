@@ -5,6 +5,7 @@ const DEFAULT_MEMBER_LIST_CACHE_TTL_MS = 10 * 60_000;
 const DEFAULT_PAGE_SIZES = [250, 100, 50, 25];
 const DEFAULT_MAX_PAGES = 20;
 const MIN_REQUEST_GAP_MS = 1_100;
+const DEFAULT_ACHIEVEMENT_PAGE_SIZE = 100;
 
 function mapGoldenRecordsBowClassToDiscipline(bowClass) {
   switch (String(bowClass ?? "").trim().toLowerCase()) {
@@ -19,6 +20,20 @@ function mapGoldenRecordsBowClassToDiscipline(bowClass) {
     default:
       return "";
   }
+}
+
+function normalizeGoldenRecordsHandicapType(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (normalized.includes("outdoor")) {
+    return "outdoor";
+  }
+
+  if (normalized.includes("indoor")) {
+    return "indoor";
+  }
+
+  return normalized;
 }
 
 function normalizeNamePart(value) {
@@ -54,7 +69,7 @@ function normalizeHandicapRow(row) {
       row?.handicap === null || row?.handicap === undefined ? null : Number(row.handicap),
     memberId: row?.member_id ?? "",
     name: row?.name ?? "",
-    type: row?.type ?? "",
+    type: normalizeGoldenRecordsHandicapType(row?.type),
     updated: row?.updated ?? "",
   };
 }
@@ -362,9 +377,10 @@ export function createGoldenRecordsCurrentHandicapService({
 
   async function getAchievementsByMemberId(memberId) {
     const achievementRows = [];
-    const pageSize = 100;
+    const pageSize = DEFAULT_ACHIEVEMENT_PAGE_SIZE;
+    let pageNumber = 1;
 
-    for (let pageNumber = 1; pageNumber <= DEFAULT_MAX_PAGES; pageNumber += 1) {
+    while (true) {
       await waitForQuotaWindow();
       const result = await client.getJson("/api/achievements", {
         filter_id: memberId,
@@ -384,6 +400,8 @@ export function createGoldenRecordsCurrentHandicapService({
       if (pageRows.length < pageSize) {
         break;
       }
+
+      pageNumber += 1;
     }
 
     return achievementRows

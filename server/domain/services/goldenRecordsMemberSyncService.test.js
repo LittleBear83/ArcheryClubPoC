@@ -238,3 +238,128 @@ test("Golden Records sync updates an existing outdoor table row for the current 
   assert.deepEqual(updatedEntries[0].award25220SignOffDates, ["", "", ""]);
   assert.equal(updatedEntries[0].updatedByUsername, "robin");
 });
+
+test("Golden Records sync accepts descriptive outdoor handicap type labels", async () => {
+  const snapshot = {
+    achievements: [],
+    candidateMatches: [],
+    classifications: [],
+    enabled: true,
+    fetchedAt: "2026-07-28T12:00:00Z",
+    handicaps: [
+      {
+        bowClass: "Recurve",
+        handicap: 28,
+        type: "Outdoor Handicap",
+      },
+      {
+        bowClass: "Recurve",
+        handicap: 19,
+        type: "Indoor Handicap",
+      },
+    ],
+    matchedMemberId: "gr-123",
+    matchedMemberName: "Robin Archer",
+    matchSource: "matched-id",
+  };
+  const { createdEntries, service } = buildTestService({ snapshot });
+
+  const result = await service.syncMember({
+    archery_gb_membership_number: "123456",
+    first_name: "Robin",
+    gr_id: "gr-123",
+    surname: "Archer",
+    username: "robin",
+  });
+
+  assert.equal(result.createdCount, 1);
+  assert.equal(createdEntries.length, 1);
+  assert.equal(createdEntries[0].handicap, 28);
+});
+
+test("Golden Records sync treats 252 White and 252 Black as 20yd and 30yd awards", async () => {
+  const snapshot = {
+    achievements: [
+      {
+        achievement: "252 White",
+        achieved: "2026-05-01T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+      {
+        achievement: "252 White",
+        achieved: "2026-05-08T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+      {
+        achievement: "252 White",
+        achieved: "2026-05-15T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+      {
+        achievement: "252 Black",
+        achieved: "2026-06-01T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+      {
+        achievement: "252 Black",
+        achieved: "2026-06-08T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+      {
+        achievement: "252 Black",
+        achieved: "2026-06-15T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+    ],
+    candidateMatches: [],
+    classifications: [],
+    enabled: true,
+    fetchedAt: "2026-07-28T12:00:00Z",
+    handicaps: [
+      {
+        bowClass: "Recurve",
+        handicap: 41,
+        type: "Outdoor",
+      },
+    ],
+    matchedMemberId: "gr-123",
+    matchedMemberName: "Robin Archer",
+    matchSource: "matched-id",
+  };
+  const { createdEntries, service } = buildTestService({ snapshot });
+
+  const result = await service.syncMember({
+    archery_gb_membership_number: "123456",
+    first_name: "Robin",
+    gr_id: "gr-123",
+    surname: "Archer",
+    username: "robin",
+  });
+
+  assert.equal(result.createdCount, 1);
+  assert.equal(createdEntries.length, 1);
+  assert.equal(createdEntries[0].award25220, true);
+  assert.equal(createdEntries[0].award25230, true);
+  assert.deepEqual(createdEntries[0].award25220SignOffDates, [
+    "2026-05-01",
+    "2026-05-08",
+    "2026-05-15",
+  ]);
+  assert.deepEqual(createdEntries[0].award25230SignOffDates, [
+    "2026-06-01",
+    "2026-06-08",
+    "2026-06-15",
+  ]);
+});

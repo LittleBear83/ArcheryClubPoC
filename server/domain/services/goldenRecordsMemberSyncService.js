@@ -13,6 +13,20 @@ function mapGoldenRecordsBowClassToOutdoorBowType(bowClass) {
   }
 }
 
+function normalizeGoldenRecordsHandicapType(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (normalized.includes("outdoor")) {
+    return "outdoor";
+  }
+
+  if (normalized.includes("indoor")) {
+    return "indoor";
+  }
+
+  return normalized;
+}
+
 function mapGoldenRecordsBowClassToDiscipline(bowClass) {
   switch (String(bowClass ?? "").trim().toLowerCase()) {
     case "recurve":
@@ -56,6 +70,10 @@ const GOLDEN_RECORDS_252_ROUND_TO_FIELD = new Map([
   ["252 - 60 yds", "award25260"],
   ["252 - 80 yds", "award25280"],
   ["252 - 100 yds", "award252100"],
+]);
+const GOLDEN_RECORDS_252_ACHIEVEMENT_ALIAS_TO_FIELD = new Map([
+  ["252 white", "award25220"],
+  ["252 black", "award25230"],
 ]);
 
 const GOLDEN_RECORDS_252_ACHIEVEMENT_DISTANCE_PATTERN = /^252@\s*(20|30|40|50|60|80|100)\s*yds\/[123]$/i;
@@ -116,6 +134,14 @@ function getGoldenRecords252AwardKey({ achievementName, roundName }) {
 
   if (directRoundMatch) {
     return directRoundMatch;
+  }
+
+  const achievementAliasMatch = GOLDEN_RECORDS_252_ACHIEVEMENT_ALIAS_TO_FIELD.get(
+    String(achievementName ?? "").trim().toLowerCase(),
+  );
+
+  if (achievementAliasMatch) {
+    return achievementAliasMatch;
   }
 
   const achievementDistanceMatch = String(achievementName ?? "")
@@ -402,7 +428,7 @@ export function createGoldenRecordsMemberSyncService({
   async function syncOutdoorTableFromGoldenRecords({ disciplines, goldenRecordsSnapshot, updatedByUsername, user }) {
     const outdoorHandicaps = (goldenRecordsSnapshot?.handicaps ?? []).filter(
       (entry) =>
-        String(entry.type ?? "").trim().toLowerCase() === "outdoor" &&
+        normalizeGoldenRecordsHandicapType(entry.type) === "outdoor" &&
         Number.isInteger(entry.handicap),
     );
     const matchedMemberId = String(goldenRecordsSnapshot?.matchedMemberId ?? "").trim();
@@ -612,6 +638,7 @@ export function createGoldenRecordsMemberSyncService({
         username: user.username,
         discipline,
         distanceYards,
+        source: "golden-records",
         signedOffAtDate: achievedDate,
         signedOffAtTime: normalizeGoldenRecordsTime(achievement.achieved),
         signedOffByUsername: updatedByUsername,

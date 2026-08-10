@@ -1,0 +1,734 @@
+{
+  "info": {
+    "_postman_id": "8b89f56d-f2d5-4ac2-afde-faa9984651f5",
+    "name": "Golden Records API",
+    "description": "Postman collection for the Golden Records endpoints used and planned by ArcheryClubPoC.\n\nAuth modes supported:\n- api-key: sends `Authorization: Basic {{apiKey}}`\n- member-credentials: sends `Authorization: Basic <base64(username:password)>`\n\nThis matches the behavior implemented in `server/infrastructure/golden-records/goldenRecordsAuth.js` and `server/infrastructure/golden-records/goldenRecordsHttpClient.js`.\n\nPlanned endpoints are included for discovery and manual testing, based on `docs/GoldenRecordsIntegrationTodo.md`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const authMode = (pm.variables.get('authMode') || 'api-key').trim().toLowerCase();",
+          "const apiKey = (pm.variables.get('apiKey') || '').trim();",
+          "const username = (pm.variables.get('username') || '').trim();",
+          "const password = pm.variables.get('password') || '';",
+          "",
+          "if (authMode === 'member-credentials') {",
+          "  if (!username || !password) {",
+          "    throw new Error('member-credentials authMode requires username and password variables.');",
+          "  }",
+          "",
+          "  const encoded = CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(`${username}:${password}`));",
+          "  pm.variables.set('grAuthorization', `Basic ${encoded}`);",
+          "} else {",
+          "  if (!apiKey) {",
+          "    throw new Error('api-key authMode requires an apiKey variable.');",
+          "  }",
+          "",
+          "  pm.variables.set('grAuthorization', `Basic ${apiKey}`);",
+          "}",
+          "",
+          "pm.variables.set('effectiveUserAgent', (pm.variables.get('userAgent') || 'ArcheryClubPoC/1.0').trim() || 'ArcheryClubPoC/1.0');"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api2.archery-records.net"
+    },
+    {
+      "key": "authMode",
+      "value": "api-key"
+    },
+    {
+      "key": "apiKey",
+      "value": ""
+    },
+    {
+      "key": "username",
+      "value": ""
+    },
+    {
+      "key": "password",
+      "value": ""
+    },
+    {
+      "key": "userAgent",
+      "value": "ArcheryClubPoC/1.0"
+    },
+    {
+      "key": "pageNumber",
+      "value": "1"
+    },
+    {
+      "key": "pageSize",
+      "value": "25"
+    },
+    {
+      "key": "memberId",
+      "value": ""
+    },
+    {
+      "key": "recordId",
+      "value": ""
+    },
+    {
+      "key": "grAuthorization",
+      "value": ""
+    },
+    {
+      "key": "effectiveUserAgent",
+      "value": "ArcheryClubPoC/1.0"
+    }
+  ],
+  "item": [
+    {
+      "name": "Connection",
+      "item": [
+        {
+          "name": "List Members (smoke test)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('JSON array response', function () {",
+                  "  pm.expect(pm.response.json()).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/members?pageNumber=1&pageSize=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members"
+              ],
+              "query": [
+                {
+                  "key": "pageNumber",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Equivalent to `scripts/testGoldenRecordsAuth.mjs`. Use this first to confirm credentials and outbound connectivity."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Read-Only Endpoints",
+      "item": [
+        {
+          "name": "Members",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/members?pageNumber={{pageNumber}}&pageSize={{pageSize}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members"
+              ],
+              "query": [
+                {
+                  "key": "pageNumber",
+                  "value": "{{pageNumber}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}"
+                }
+              ]
+            },
+            "description": "Paged member listing. This is the primary lookup endpoint used by the current integration."
+          },
+          "response": []
+        },
+        {
+          "name": "Achievements By Member",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/achievements?filter_id={{memberId}}&pageNumber={{pageNumber}}&pageSize=100",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "achievements"
+              ],
+              "query": [
+                {
+                  "key": "filter_id",
+                  "value": "{{memberId}}"
+                },
+                {
+                  "key": "pageNumber",
+                  "value": "{{pageNumber}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "100"
+                }
+              ]
+            },
+            "description": "Paged achievements for a matched member. This is used to sync outdoor achievements and sightmark sign-offs."
+          },
+          "response": []
+        },
+        {
+          "name": "Current Handicaps By Member",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/currenthandicaps?id={{memberId}}&pageNumber=1&pageSize=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "currenthandicaps"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{memberId}}"
+                },
+                {
+                  "key": "pageNumber",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Current handicaps for a member id. The current service normalizes these into indoor/outdoor handicaps."
+          },
+          "response": []
+        },
+        {
+          "name": "Current Classifications By Member",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/currentclassifications?id={{memberId}}&pageNumber=1&pageSize=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "currentclassifications"
+              ],
+              "query": [
+                {
+                  "key": "id",
+                  "value": "{{memberId}}"
+                },
+                {
+                  "key": "pageNumber",
+                  "value": "1"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Current classifications for a member id. The current integration uses this alongside handicaps and achievements."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Planned Endpoints",
+      "description": "These endpoints are listed in `docs/GoldenRecordsIntegrationTodo.md` as planned next steps. They are included here so the collection is ready for broader manual testing.",
+      "item": [
+        {
+          "name": "Scores",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/scores?pageNumber={{pageNumber}}&pageSize={{pageSize}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scores"
+              ],
+              "query": [
+                {
+                  "key": "pageNumber",
+                  "value": "{{pageNumber}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}"
+                }
+              ]
+            },
+            "description": "Planned score import endpoint."
+          },
+          "response": []
+        },
+        {
+          "name": "Club Records",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/clubrecords?pageNumber={{pageNumber}}&pageSize={{pageSize}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "clubrecords"
+              ],
+              "query": [
+                {
+                  "key": "pageNumber",
+                  "value": "{{pageNumber}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}"
+                }
+              ]
+            },
+            "description": "Planned club records import endpoint."
+          },
+          "response": []
+        },
+        {
+          "name": "Personal Bests",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/personalbests?pageNumber={{pageNumber}}&pageSize={{pageSize}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "personalbests"
+              ],
+              "query": [
+                {
+                  "key": "pageNumber",
+                  "value": "{{pageNumber}}"
+                },
+                {
+                  "key": "pageSize",
+                  "value": "{{pageSize}}"
+                }
+              ]
+            },
+            "description": "Optional planned personal bests import endpoint."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Score",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"member_id\": \"{{memberId}}\",\n  \"round_id\": \"\",\n  \"shot_date\": \"2026-08-10\",\n  \"score\": 0,\n  \"hits\": 0,\n  \"golds\": 0,\n  \"xs\": 0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/scores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scores"
+              ]
+            },
+            "description": "Planned first write-back endpoint. Body shape is a starter template and may need to be adjusted to the live API contract."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Score",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"member_id\": \"{{memberId}}\",\n  \"round_id\": \"\",\n  \"shot_date\": \"2026-08-10\",\n  \"score\": 0,\n  \"hits\": 0,\n  \"golds\": 0,\n  \"xs\": 0\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/scores?record_id={{recordId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "scores"
+              ],
+              "query": [
+                {
+                  "key": "record_id",
+                  "value": "{{recordId}}"
+                }
+              ]
+            },
+            "description": "Planned score update endpoint. Query parameter naming comes from the repo integration notes."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Scoresheet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Scoresheets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "Scoresheets"
+              ]
+            },
+            "description": "Planned later-stage scoresheet upload endpoint. The exact multipart fields should be confirmed against the live API."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Scoresheet",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/Scoresheets?record_id={{recordId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "Scoresheets"
+              ],
+              "query": [
+                {
+                  "key": "record_id",
+                  "value": "{{recordId}}"
+                }
+              ]
+            },
+            "description": "Planned later-stage scoresheet update endpoint. Query parameter shape may need to be confirmed."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Member",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"membership_id\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/members",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members"
+              ]
+            },
+            "description": "Planned future member create endpoint. Template body is intentionally minimal until the live contract is confirmed."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Member",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{grAuthorization}}"
+              },
+              {
+                "key": "User-Agent",
+                "value": "{{effectiveUserAgent}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"membership_id\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/members?member_id={{memberId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "members"
+              ],
+              "query": [
+                {
+                  "key": "member_id",
+                  "value": "{{memberId}}"
+                }
+              ]
+            },
+            "description": "Planned future member update endpoint. Query parameter naming comes from the repo integration notes."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

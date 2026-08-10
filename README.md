@@ -25,11 +25,14 @@ The application currently includes:
 - audit log viewing with filter and sort controls
 - announcement seen-tracking and audience email sending
 - event and coaching scheduling with approvals and bookings
+- approval queues for events, coaching, beginners courses, and Have a Go
+  sessions, with cancelled course/session items excluded from approval actions
 - tournament setup, registration, score submission, and competitor export
 - member profile administration and RFID assignment
 - member distance sign-offs and loan bow return workflows
 - role and permission management
 - committee role administration and org chart display
+- grouped admin tooling in the side drawer with collapsible admin sections
 - equipment inventory, assignment, storage, returns, and decommissioning
 - loan bow management
 - beginners course administration
@@ -122,6 +125,8 @@ Useful alternatives:
 - `npm run lint`
 - `npm run typecheck`
 - `npm run migrate:postgres`
+- `npm run seed:live-showcase`
+- `npm run seed:runtime-showcase`
 - `npm test`
 
 ## Database And Runtime Notes
@@ -189,3 +194,5 @@ yet a finished production platform, and the biggest active platform-level work
 items remain deployment hardening, PostgreSQL verification coverage, and
 continued modularization of some large backend areas such as the
 beginners-course logic.
+
+Last reviewed: `2026-08-04`

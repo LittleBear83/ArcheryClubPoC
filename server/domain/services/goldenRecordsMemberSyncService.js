@@ -71,6 +71,10 @@ const GOLDEN_RECORDS_252_ROUND_TO_FIELD = new Map([
   ["252 - 80 yds", "award25280"],
   ["252 - 100 yds", "award252100"],
 ]);
+const GOLDEN_RECORDS_252_ACHIEVEMENT_ALIAS_TO_FIELD = new Map([
+  ["252 white", "award25220"],
+  ["252 black", "award25230"],
+]);
 
 const GOLDEN_RECORDS_252_ACHIEVEMENT_DISTANCE_PATTERN = /^252@\s*(20|30|40|50|60|80|100)\s*yds\/[123]$/i;
 const GOLDEN_RECORDS_SIGHTMARK_DISTANCE_PATTERN = /sight\s*mark\s*(20|30|40|50|60|80|100)\s*yds?/i;
@@ -130,6 +134,14 @@ function getGoldenRecords252AwardKey({ achievementName, roundName }) {
 
   if (directRoundMatch) {
     return directRoundMatch;
+  }
+
+  const achievementAliasMatch = GOLDEN_RECORDS_252_ACHIEVEMENT_ALIAS_TO_FIELD.get(
+    String(achievementName ?? "").trim().toLowerCase(),
+  );
+
+  if (achievementAliasMatch) {
+    return achievementAliasMatch;
   }
 
   const achievementDistanceMatch = String(achievementName ?? "")

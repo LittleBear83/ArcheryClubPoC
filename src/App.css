@@ -4775,6 +4775,8 @@ button:disabled {
 }
 
 .audit-log-table {
+  width: 100%;
+  min-width: 100%;
   table-layout: fixed;
 }
 
@@ -8602,7 +8604,7 @@ button:disabled {
   padding-bottom: 0.5rem;
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x pinch-zoom;
+  touch-action: auto;
   scrollbar-gutter: stable both-edges;
 }
 

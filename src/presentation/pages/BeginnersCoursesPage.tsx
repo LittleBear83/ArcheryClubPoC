@@ -451,9 +451,14 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     courseForm.coordinatorUsername || defaultCoordinatorUsername;
 
   const refreshDashboard = async () => {
-    await queryClient.invalidateQueries({
-      queryKey: [copy.queryKey, actorUsername],
-    });
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: [copy.queryKey, actorUsername],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["committee-approval-summary", actorUsername],
+      }),
+    ]);
   };
 
   const mutation = useMutation({

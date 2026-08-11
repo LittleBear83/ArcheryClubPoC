@@ -387,9 +387,14 @@ export function ApprovalsPage({ currentUserProfile }) {
       return { successMessage };
     },
     onSuccess: async ({ successMessage }) => {
-      await queryClient.invalidateQueries({
-        queryKey: approvalsQueryKeys.list(actorUsername),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: approvalsQueryKeys.list(actorUsername),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["committee-approval-summary", actorUsername],
+        }),
+      ]);
       setMessage(successMessage);
     },
     onError: (approvalError: Error) => {

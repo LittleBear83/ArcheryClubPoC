@@ -45,6 +45,9 @@ export function useServerEvents({
     void queryClient.invalidateQueries({
       queryKey: ["approvals", actorUsername],
     });
+    void queryClient.invalidateQueries({
+      queryKey: ["committee-approval-summary", actorUsername],
+    });
   };
 
   const invalidateRoleQueries = () => {
@@ -95,6 +98,9 @@ export function useServerEvents({
     });
     void queryClient.invalidateQueries({
       queryKey: ["have-a-go-sessions-dashboard", actorUsername],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["committee-approval-summary", actorUsername],
     });
     void queryClient.invalidateQueries({
       queryKey: ["beginners-course-calendar"],

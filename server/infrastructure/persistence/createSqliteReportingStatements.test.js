@@ -15,7 +15,9 @@ function seedBaseSchema(db) {
       active_member INTEGER NOT NULL,
       junior_member INTEGER NOT NULL,
       membership_fees_due TEXT NOT NULL,
-      coaching_volunteer INTEGER NOT NULL
+      coaching_volunteer INTEGER NOT NULL,
+      membership_status TEXT NOT NULL DEFAULT 'member',
+      programme_type TEXT NOT NULL DEFAULT 'none'
     );
 
     CREATE TABLE user_types (

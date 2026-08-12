@@ -55,14 +55,13 @@ export function useMobileGeofence({
 }: MobileGeofenceOptions) {
   const isMobile = useIsMobile();
   const watchIdRef = useRef<number | null>(null);
+  const isSupported =
+    typeof window !== "undefined" && "geolocation" in window.navigator;
   const [permissionState, setPermissionState] =
-    useState<GeolocationPermissionState>("unknown");
+    useState<GeolocationPermissionState>(isSupported ? "unknown" : "unsupported");
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [error, setError] = useState("");
   const [isLocating, setIsLocating] = useState(false);
-
-  const isSupported =
-    typeof window !== "undefined" && "geolocation" in window.navigator;
 
   const distanceMeters = useMemo(() => {
     if (!coordinates) {
@@ -131,9 +130,6 @@ export function useMobileGeofence({
 
   useEffect(() => {
     if (!isMobile || !isSupported || !("permissions" in navigator)) {
-      if (!isSupported) {
-        setPermissionState("unsupported");
-      }
       return undefined;
     }
 

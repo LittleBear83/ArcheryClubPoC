@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "../../components/Button";
 import { SectionPanel } from "../../components/SectionPanel";
 import { formatDate } from "../../../utils/dateTime";
@@ -100,20 +100,6 @@ export function ProfileOutdoorAchievementsSection({
     );
   }, [entries]);
 
-  useEffect(() => {
-    if (!hasMultipleDisciplines) {
-      setCollapsedBowTypes({});
-      return;
-    }
-
-    setCollapsedBowTypes((current) =>
-      entriesByPreferredOrder.reduce<Record<string, boolean>>((next, entry) => {
-        next[entry.bowType] = current[entry.bowType] ?? true;
-        return next;
-      }, {}),
-    );
-  }, [entriesByPreferredOrder, hasMultipleDisciplines]);
-
   return (
     <SectionPanel className="profile-form" title="Outdoor Achievements">
       <div className="profile-outdoor-section-copy">
@@ -164,7 +150,8 @@ export function ProfileOutdoorAchievementsSection({
       ) : (
         <div className="profile-outdoor-grid">
           {entriesByPreferredOrder.map((entry) => {
-            const isCollapsed = hasMultipleDisciplines && collapsedBowTypes[entry.bowType];
+            const isCollapsed =
+              hasMultipleDisciplines && (collapsedBowTypes[entry.bowType] ?? true);
             const bowLabel = bowLabelsByType.get(entry.bowType) ?? entry.discipline;
             const goldenRecordsOutdoorHandicap =
               goldenRecordsOutdoorHandicapsByBowType[entry.bowType] ?? null;

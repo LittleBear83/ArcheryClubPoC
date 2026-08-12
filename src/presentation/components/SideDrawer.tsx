@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import {
   formatMemberDisplayName,
@@ -201,6 +201,10 @@ const adminGroups = [
   },
 ];
 
+type VisiblePage = (typeof pages)[number];
+type AdminGroup = (typeof adminGroups)[number];
+type GroupedAdminPageGroup = AdminGroup & { pages: VisiblePage[] };
+
 function getDefaultExpandedGroups(selectedPage, groupedAdminPages) {
   const selectedGroup = groupedAdminPages.find((group) =>
     group.pages.some((page) => page.id === selectedPage),
@@ -256,12 +260,12 @@ export function SideDrawer({
     [visiblePages],
   );
   const groupedAdminPages = useMemo(() => {
-    const grouped = adminGroups
+    const grouped: GroupedAdminPageGroup[] = adminGroups
       .map((group) => ({
         ...group,
         pages: group.pageIds
           .map((pageId) => adminPages.find((page) => page.id === pageId))
-          .filter(Boolean),
+          .filter((page): page is VisiblePage => Boolean(page)),
       }))
       .filter((group) => group.pages.length > 0);
 
@@ -274,55 +278,43 @@ export function SideDrawer({
       grouped.push({
         id: "other-admin",
         label: "Other Admin",
+        pageIds: [],
         pages: ungroupedPages,
       });
     }
 
     return grouped;
   }, [adminPages]);
-  const [expandedAdminGroups, setExpandedAdminGroups] = useState(() =>
-    getDefaultExpandedGroups(selectedPage, groupedAdminPages),
-  );
+  const [expandedAdminGroups, setExpandedAdminGroups] = useState<Record<string, boolean>>({});
+  const resolvedExpandedAdminGroups = useMemo(() => {
+    const availableGroupIds = new Set(groupedAdminPages.map((group) => group.id));
+    const normalizedGroups = Object.fromEntries(
+      Object.entries(expandedAdminGroups).filter(([groupId]) =>
+        availableGroupIds.has(groupId),
+      ),
+    ) as Record<string, boolean>;
 
-  useEffect(() => {
-    setExpandedAdminGroups((current) => {
-      const next = { ...current };
-      let hasChanges = false;
-
-      groupedAdminPages.forEach((group) => {
-        if (!(group.id in next)) {
-          next[group.id] = false;
-          hasChanges = true;
-        }
-      });
-
-      Object.keys(next).forEach((groupId) => {
-        if (!groupedAdminPages.some((group) => group.id === groupId)) {
-          delete next[groupId];
-          hasChanges = true;
-        }
-      });
-
-      const selectedGroup = groupedAdminPages.find((group) =>
-        group.pages.some((page) => page.id === selectedPage),
-      );
-
-      if (selectedGroup && !next[selectedGroup.id]) {
-        next[selectedGroup.id] = true;
-        hasChanges = true;
+    for (const group of groupedAdminPages) {
+      if (!(group.id in normalizedGroups)) {
+        normalizedGroups[group.id] = false;
       }
+    }
 
-      if (!hasChanges && Object.keys(next).length > 0) {
-        return current;
-      }
+    const selectedGroup = groupedAdminPages.find((group) =>
+      group.pages.some((page) => page.id === selectedPage),
+    );
 
-      if (Object.keys(next).length === 0) {
-        return getDefaultExpandedGroups(selectedPage, groupedAdminPages);
-      }
+    if (selectedGroup) {
+      normalizedGroups[selectedGroup.id] = true;
+      return normalizedGroups;
+    }
 
-      return next;
-    });
-  }, [groupedAdminPages, selectedPage]);
+    if (Object.keys(normalizedGroups).length === 0) {
+      return getDefaultExpandedGroups(selectedPage, groupedAdminPages);
+    }
+
+    return normalizedGroups;
+  }, [expandedAdminGroups, groupedAdminPages, selectedPage]);
   const isPageDisabled = (page) =>
     Boolean(page.restrictedForProgrammeUsers) &&
     !canAccessMemberPage(page.id, currentUserProfile);
@@ -388,7 +380,7 @@ export function SideDrawer({
               <p className="drawer-section-label">Admin Tools</p>
               <ul className="drawer-tree">
                 {groupedAdminPages.map((group) => {
-                  const isExpanded = expandedAdminGroups[group.id];
+                  const isExpanded = resolvedExpandedAdminGroups[group.id];
 
                   return (
                     <li key={group.id} className="drawer-tree-group">

@@ -35,7 +35,6 @@ export function ProfileMobileView({
   canManageOutdoorAchievements,
   canSelectMembers,
   canSignOffSelectedMember,
-  canSignOffDistances,
   currentUserProfile,
   deleteConfirmationUsername,
   deleteError,

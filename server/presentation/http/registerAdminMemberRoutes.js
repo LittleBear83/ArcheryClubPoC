@@ -665,7 +665,7 @@ export function registerAdminMemberRoutes({
     async getStoredSnapshotForUser(user) {
       return buildGoldenRecordsSnapshotForUser(user);
     },
-    async syncMember(user, { updatedByUsername } = {}) {
+    async syncMember(user) {
       const disciplines = await listMemberDisciplines(user.username);
       const goldenRecords = await buildGoldenRecordsSnapshotForUser(user);
 

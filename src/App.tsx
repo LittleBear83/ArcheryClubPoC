@@ -1,12 +1,10 @@
 import "./App.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import lawnmower from "./assets/lawnmower.svg";
 import { subscribeToServerEvent } from "./lib/serverEvents";
 import { Button } from "./presentation/components/Button";
-import { HomePage } from "./presentation/pages/HomePage";
-import { LoginPage } from "./presentation/pages/LoginPage";
 import { Modal } from "./presentation/components/Modal";
 import { useIsMobile } from "./presentation/hooks/useIsMobile";
 import { normalizeUserProfile } from "./utils/userProfile";
@@ -23,6 +21,17 @@ import {
 } from "./api/authApi";
 import type { UserProfile } from "./types/app";
 import type { AppDependencies } from "./bootstrap/createAppDependencies";
+
+const HomePage = lazy(() =>
+  import("./presentation/pages/HomePage").then((module) => ({
+    default: module.HomePage,
+  })),
+);
+const LoginPage = lazy(() =>
+  import("./presentation/pages/LoginPage").then((module) => ({
+    default: module.LoginPage,
+  })),
+);
 
 const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
@@ -247,6 +256,14 @@ function ServerEventsDiagnosticsBadge() {
         </div>
       ) : null}
     </aside>
+  );
+}
+
+function AppLoadingFallback() {
+  return (
+    <div className="profile-form">
+      <p>Loading...</p>
+    </div>
   );
 }
 
@@ -701,11 +718,13 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   if (!isAuthenticated) {
     return (
       <>
-        <LoginPage
-          onLogin={handleLogin}
-          onRfidLogin={handleRfidLogin}
-          initialMessage={loginMessage}
-        />
+        <Suspense fallback={<AppLoadingFallback />}>
+          <LoginPage
+            onLogin={handleLogin}
+            onRfidLogin={handleRfidLogin}
+            initialMessage={loginMessage}
+          />
+        </Suspense>
         <PaymentCardModal
           open={paymentCardModal.open}
           cardBrand={paymentCardModal.cardBrand}
@@ -719,25 +738,27 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
 
   return (
     <>
-      <Router>
-        <Routes>
-          <Route
-            path="/*"
-            element={
-              <HomePage
-                currentUserProfile={currentUserProfile}
-                onGuestLogin={handleGuestLogin}
-                onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
-                onLogout={handleLogout}
-                memberProfileCrud={dependencies}
-                roleCrud={dependencies}
-                tournamentCrud={dependencies}
-                equipmentCrud={dependencies}
-              />
-            }
-          />
-        </Routes>
-      </Router>
+      <Suspense fallback={<AppLoadingFallback />}>
+        <Router>
+          <Routes>
+            <Route
+              path="/*"
+              element={
+                <HomePage
+                  currentUserProfile={currentUserProfile}
+                  onGuestLogin={handleGuestLogin}
+                  onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
+                  onLogout={handleLogout}
+                  memberProfileCrud={dependencies}
+                  roleCrud={dependencies}
+                  tournamentCrud={dependencies}
+                  equipmentCrud={dependencies}
+                />
+              }
+            />
+          </Routes>
+        </Router>
+      </Suspense>
       <PaymentCardModal
         open={paymentCardModal.open}
         cardBrand={paymentCardModal.cardBrand}

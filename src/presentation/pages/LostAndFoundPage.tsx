@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { ColourDropdown, ColourPreview } from "../components/ColourDropdown";
@@ -149,27 +149,12 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
     [lostArrowsQuery.data?.lostArrows],
   );
 
-  useEffect(() => {
-    setDraft((current) =>
-      current.archerUsername
-        ? current
-        : {
-            ...current,
-            archerUsername: actorUsername,
-          },
-    );
-    setFoundDraft((current) =>
-      current.foundByUsername
-        ? current
-        : {
-            ...current,
-            foundByUsername: actorUsername,
-          },
-    );
-  }, [actorUsername]);
-
   const createMutation = useMutation({
-    mutationFn: () => createLostArrow(currentUserProfile, draft),
+    mutationFn: () =>
+      createLostArrow(currentUserProfile, {
+        ...draft,
+        archerUsername: draft.archerUsername || actorUsername,
+      }),
     onMutate: () => {
       setError("");
       setSuccess("");
@@ -300,7 +285,7 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
               <label>
                 Name of Archer
                 <select
-                  value={draft.archerUsername}
+                  value={draft.archerUsername || actorUsername}
                   onChange={handleDraftChange("archerUsername")}
                 >
                   <option value="">Select member</option>
@@ -560,7 +545,7 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
             <label>
               Who Found Arrow
               <select
-                value={foundDraft.foundByUsername}
+                value={foundDraft.foundByUsername || actorUsername}
                 onChange={handleFoundDraftChange("foundByUsername")}
                 required
               >

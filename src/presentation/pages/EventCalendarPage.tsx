@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import "./EventCalendarPage.css";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
@@ -509,9 +510,15 @@ export function EventCalendarPage({
     queryKey: ["beginners-course-calendar"],
     queryFn: fetchBeginnersCourseLessons,
   });
-  const events = eventsQuery.data ?? [];
-  const coachingSessions = coachingSessionsQuery.data ?? [];
-  const beginnersLessons = beginnersLessonsQuery.data ?? [];
+  const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
+  const coachingSessions = useMemo(
+    () => coachingSessionsQuery.data ?? [],
+    [coachingSessionsQuery.data],
+  );
+  const beginnersLessons = useMemo(
+    () => beginnersLessonsQuery.data ?? [],
+    [beginnersLessonsQuery.data],
+  );
   const calendarLoadError =
     eventsQuery.error instanceof Error
       ? eventsQuery.error.message

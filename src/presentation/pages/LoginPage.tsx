@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import "./LoginPage.css";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Button } from "../components/Button";
 import { useIsMobile } from "../hooks/useIsMobile";

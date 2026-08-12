@@ -21,7 +21,6 @@ export function ProfileDesktopView({
   canManageOutdoorAchievements,
   canSelectMembers,
   canSignOffSelectedMember,
-  canSignOffDistances,
   currentUserProfile,
   deleteConfirmationUsername,
   deleteError,

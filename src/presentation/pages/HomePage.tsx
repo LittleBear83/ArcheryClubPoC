@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
@@ -9,34 +9,6 @@ import { GuestLoginForm } from "../components/GuestLoginForm";
 import archeryBanner from "../../assets/archery_banner.svg";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { HomeSection } from "./HomeSection";
-import { LostAndFoundPage } from "./LostAndFoundPage";
-import { FeedbackFormPage } from "./FeedbackFormPage";
-import { AskQuestionPage } from "./AskQuestionPage";
-import { EventCalendarPage } from "./EventCalendarPage";
-import { TournamentsPage } from "./TournamentsPage";
-import { RangeUsagePage } from "./RangeUsagePage";
-import { PlaceholderPage } from "./PlaceholderPage";
-import { ProfilePage } from "./ProfilePage";
-import { UserCreationPage } from "./UserCreationPage";
-import { EquipmentPage } from "./EquipmentPage";
-import { BeginnersCoursesPage } from "./BeginnersCoursesPage";
-import { HaveAGoSessionsPage } from "./HaveAGoSessionsPage";
-import { TasterSessionsPage } from "./TasterSessionsPage";
-import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
-import { CommitteeAdminPage } from "./CommitteeAdminPage";
-import { RolePermissionsPage } from "./RolePermissionsPage";
-import { ReportingPage } from "./ReportingPage";
-import { ApprovalsPage } from "./ApprovalsPage";
-import { GeneralInfoPage } from "./GeneralInfoPage";
-import { GeneralInfoAdminPage } from "./GeneralInfoAdminPage";
-import { RecordsPage } from "./RecordsPage";
-import { OutdoorTablePage } from "./OutdoorTablePage";
-import { AnnouncementsPage } from "./AnnouncementsPage";
-import { AuditLogPage } from "./AuditLogPage";
-import { RangeRulesAdminPage } from "./RangeRulesAdminPage";
-import { RangeRulesPage } from "./RangeRulesPage";
-import { SuggestionsAdminPage } from "./SuggestionsAdminPage";
-import { QuestionInboxPage } from "./QuestionInboxPage";
 import { formatDate } from "../../utils/dateTime";
 import {
   getMyBeginnerDashboard,
@@ -89,6 +61,127 @@ import {
   normalizeUserProfile,
 } from "../../utils/userProfile";
 import { canAccessMemberPage } from "../navigation/memberPageAccess";
+
+const ProfilePage = lazy(() =>
+  import("./ProfilePage").then((module) => ({ default: module.ProfilePage })),
+);
+const UserCreationPage = lazy(() =>
+  import("./UserCreationPage").then((module) => ({
+    default: module.UserCreationPage,
+  })),
+);
+const RolePermissionsPage = lazy(() =>
+  import("./RolePermissionsPage").then((module) => ({
+    default: module.RolePermissionsPage,
+  })),
+);
+const ReportingPage = lazy(() =>
+  import("./ReportingPage").then((module) => ({ default: module.ReportingPage })),
+);
+const AuditLogPage = lazy(() =>
+  import("./AuditLogPage").then((module) => ({ default: module.AuditLogPage })),
+);
+const ApprovalsPage = lazy(() =>
+  import("./ApprovalsPage").then((module) => ({ default: module.ApprovalsPage })),
+);
+const EquipmentPage = lazy(() =>
+  import("./EquipmentPage").then((module) => ({ default: module.EquipmentPage })),
+);
+const BeginnersCoursesPage = lazy(() =>
+  import("./BeginnersCoursesPage").then((module) => ({
+    default: module.BeginnersCoursesPage,
+  })),
+);
+const HaveAGoSessionsPage = lazy(() =>
+  import("./HaveAGoSessionsPage").then((module) => ({
+    default: module.HaveAGoSessionsPage,
+  })),
+);
+const TasterSessionsPage = lazy(() =>
+  import("./TasterSessionsPage").then((module) => ({
+    default: module.TasterSessionsPage,
+  })),
+);
+const AskQuestionPage = lazy(() =>
+  import("./AskQuestionPage").then((module) => ({ default: module.AskQuestionPage })),
+);
+const EventCalendarPage = lazy(() =>
+  import("./EventCalendarPage").then((module) => ({
+    default: module.EventCalendarPage,
+  })),
+);
+const RangeUsagePage = lazy(() =>
+  import("./RangeUsagePage").then((module) => ({ default: module.RangeUsagePage })),
+);
+const TournamentsPage = lazy(() =>
+  import("./TournamentsPage").then((module) => ({ default: module.TournamentsPage })),
+);
+const RecordsPage = lazy(() =>
+  import("./RecordsPage").then((module) => ({ default: module.RecordsPage })),
+);
+const OutdoorTablePage = lazy(() =>
+  import("./OutdoorTablePage").then((module) => ({
+    default: module.OutdoorTablePage,
+  })),
+);
+const RangeRulesPage = lazy(() =>
+  import("./RangeRulesPage").then((module) => ({ default: module.RangeRulesPage })),
+);
+const RangeRulesAdminPage = lazy(() =>
+  import("./RangeRulesAdminPage").then((module) => ({
+    default: module.RangeRulesAdminPage,
+  })),
+);
+const GeneralInfoAdminPage = lazy(() =>
+  import("./GeneralInfoAdminPage").then((module) => ({
+    default: module.GeneralInfoAdminPage,
+  })),
+);
+const CommitteeOrgChartPage = lazy(() =>
+  import("./CommitteeOrgChartPage").then((module) => ({
+    default: module.CommitteeOrgChartPage,
+  })),
+);
+const CommitteeAdminPage = lazy(() =>
+  import("./CommitteeAdminPage").then((module) => ({
+    default: module.CommitteeAdminPage,
+  })),
+);
+const AnnouncementsPage = lazy(() =>
+  import("./AnnouncementsPage").then((module) => ({
+    default: module.AnnouncementsPage,
+  })),
+);
+const SuggestionsAdminPage = lazy(() =>
+  import("./SuggestionsAdminPage").then((module) => ({
+    default: module.SuggestionsAdminPage,
+  })),
+);
+const QuestionInboxPage = lazy(() =>
+  import("./QuestionInboxPage").then((module) => ({
+    default: module.QuestionInboxPage,
+  })),
+);
+const FeedbackFormPage = lazy(() =>
+  import("./FeedbackFormPage").then((module) => ({
+    default: module.FeedbackFormPage,
+  })),
+);
+const LostAndFoundPage = lazy(() =>
+  import("./LostAndFoundPage").then((module) => ({
+    default: module.LostAndFoundPage,
+  })),
+);
+const GeneralInfoPage = lazy(() =>
+  import("./GeneralInfoPage").then((module) => ({
+    default: module.GeneralInfoPage,
+  })),
+);
+const PlaceholderPage = lazy(() =>
+  import("./PlaceholderPage").then((module) => ({
+    default: module.PlaceholderPage,
+  })),
+);
 
 type HomePageProps = {
   currentUserProfile: UserProfile | null;
@@ -485,6 +578,14 @@ function getHomeWelcomeName(currentUserProfile: UserProfile | null) {
   );
 }
 
+function PageLoadingFallback() {
+  return (
+    <div className="profile-form">
+      <p>Loading page...</p>
+    </div>
+  );
+}
+
 function readSeenLostArrowToastIds(username: string) {
   if (!username || typeof window === "undefined") {
     return new Set<string>();
@@ -866,7 +967,10 @@ export function HomePage({
     }
 
     return lastLoggedInMs + ON_SITE_BOOKING_WINDOW_MS;
-  }, [activeRangeMemberEntry?.meta?.lastLoggedInAt]);
+  }, [
+    activeRangeMemberEntry?.meta?.activeRangePresenceEndsAt,
+    activeRangeMemberEntry?.meta?.lastLoggedInAt,
+  ]);
   const isOnSiteBookingWindowOpen = Boolean(
     activeRangePresenceEndsAt && activeRangePresenceEndsAt > nowTimestamp,
   );
@@ -1276,7 +1380,8 @@ export function HomePage({
             </h1>
           ) : null}
 
-          <Routes>
+          <Suspense fallback={<PageLoadingFallback />}>
+            <Routes>
             <Route
               path="/profile"
               element={
@@ -1530,7 +1635,8 @@ export function HomePage({
                 />
               }
             />
-          </Routes>
+            </Routes>
+          </Suspense>
         </section>
       </main>
 

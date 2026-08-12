@@ -18,6 +18,9 @@ function ReportingTable({ rows }: { rows: AttendanceReportRow[] }) {
             <th>Date</th>
             <th>Time</th>
             <th>Type</th>
+            <th>Status</th>
+            <th>Programme</th>
+            <th>Role</th>
             <th>Name</th>
             <th>Archery GB</th>
             <th>Attending With</th>
@@ -29,6 +32,9 @@ function ReportingTable({ rows }: { rows: AttendanceReportRow[] }) {
               <td>{formatDate(row.date)}</td>
               <td>{formatClockTime(row.time)}</td>
               <td>{row.type}</td>
+              <td>{row.membershipStatus || "-"}</td>
+              <td>{row.programmeType || "-"}</td>
+              <td>{row.role || "-"}</td>
               <td>{row.name}</td>
               <td>{row.archeryGbMembershipNumber || "-"}</td>
               <td>{row.attendingWith || "-"}</td>
@@ -47,8 +53,29 @@ function ReportingTable({ rows }: { rows: AttendanceReportRow[] }) {
 
 type ReportingPageState = ReturnType<typeof useReportingPageState>;
 
+function BreakdownList({
+  items,
+}: {
+  items: Array<{ key: string; label: string; count: number }>;
+}) {
+  if (!items.length) {
+    return <p className="reporting-breakdown-empty">No grouped data available.</p>;
+  }
+
+  return (
+    <div className="reporting-breakdown-list">
+      {items.map((item) => (
+        <p key={item.key}>
+          <strong>{item.count}</strong> {item.label}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export function ReportingDesktopView({
   aggregatedMonthRows,
+  attendanceBreakdown,
   data,
   endDate,
   error,
@@ -154,6 +181,14 @@ export function ReportingDesktopView({
                 </div>
               </div>
             </div>
+            <div className="usage-card reporting-summary-card">
+              <p className="usage-card-title">Membership Status Breakdown</p>
+              <BreakdownList items={attendanceBreakdown.membershipStatuses} />
+            </div>
+            <div className="usage-card reporting-summary-card">
+              <p className="usage-card-title">Programme Breakdown</p>
+              <BreakdownList items={attendanceBreakdown.programmeTypes} />
+            </div>
           </div>
 
           <section className="usage-hourly-panel reporting-panel">
@@ -180,7 +215,7 @@ export function ReportingDesktopView({
           <section className="usage-hourly-panel reporting-panel">
             <div className="usage-hourly-header">
               <h3>Report Rows</h3>
-              <p>Guest rows include Archery GB number and attending with details.</p>
+              <p>Rows now include membership status, programme type, role, and guest attendance details.</p>
             </div>
             <ReportingTable rows={data.rows} />
           </section>

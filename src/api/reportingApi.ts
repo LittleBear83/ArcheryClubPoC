@@ -8,6 +8,9 @@ export type AttendanceReportRow = {
   name: string;
   username: string;
   loginMethod: string;
+  membershipStatus: string;
+  programmeType: string;
+  role: string;
   archeryGbMembershipNumber: string;
   attendingWith: string;
   attendingWithUsername: string;

@@ -22,7 +22,9 @@ function buildInitialSchemaSql() {
       affiliate_member INTEGER NOT NULL DEFAULT 0,
       junior_member INTEGER NOT NULL DEFAULT 0,
       membership_fees_due TEXT,
-      coaching_volunteer INTEGER NOT NULL DEFAULT 0
+      coaching_volunteer INTEGER NOT NULL DEFAULT 0,
+      membership_status TEXT NOT NULL DEFAULT 'member',
+      programme_type TEXT NOT NULL DEFAULT 'none'
     );
 
     CREATE TABLE IF NOT EXISTS audit_events (
@@ -735,9 +737,11 @@ function buildRolePermissionSeedSql({
           affiliate_member,
           junior_member,
           membership_fees_due,
-          coaching_volunteer
+          coaching_volunteer,
+          membership_status,
+          programme_type
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         ON CONFLICT(username) DO UPDATE SET
           first_name = EXCLUDED.first_name,
           surname = EXCLUDED.surname,
@@ -749,7 +753,9 @@ function buildRolePermissionSeedSql({
           affiliate_member = EXCLUDED.affiliate_member,
           junior_member = EXCLUDED.junior_member,
           membership_fees_due = EXCLUDED.membership_fees_due,
-          coaching_volunteer = EXCLUDED.coaching_volunteer
+          coaching_volunteer = EXCLUDED.coaching_volunteer,
+          membership_status = EXCLUDED.membership_status,
+          programme_type = EXCLUDED.programme_type
       `,
       values: [
         user.username,
@@ -764,6 +770,16 @@ function buildRolePermissionSeedSql({
         user.juniorMember ? 1 : 0,
         user.membershipFeesDue,
         user.coachingVolunteer ? 1 : 0,
+        user.membershipStatus ??
+          (user.userType === "beginner" || user.userType === "have-a-go"
+            ? "non-member"
+            : "member"),
+        user.programmeType ??
+          (user.userType === "beginner"
+            ? "beginners"
+            : user.userType === "have-a-go"
+              ? "have-a-go"
+              : "none"),
       ],
     });
     statements.push({
@@ -1114,6 +1130,52 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS junior_member INTEGER NOT NULL DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS membership_status TEXT NOT NULL DEFAULT 'member'
+    `);
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS programme_type TEXT NOT NULL DEFAULT 'none'
+    `);
+    await client.query(`
+      UPDATE users
+      SET membership_status = CASE
+        WHEN membership_status IS NULL OR BTRIM(membership_status) = '' THEN
+          CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM user_types
+              WHERE user_types.username = users.username
+                AND user_types.user_type IN ('beginner', 'have-a-go')
+            ) THEN 'non-member'
+            ELSE 'member'
+          END
+        ELSE membership_status
+      END
+    `);
+    await client.query(`
+      UPDATE users
+      SET programme_type = CASE
+        WHEN programme_type IS NULL OR BTRIM(programme_type) = '' THEN
+          CASE
+            WHEN EXISTS (
+              SELECT 1
+              FROM user_types
+              WHERE user_types.username = users.username
+                AND user_types.user_type = 'beginner'
+            ) THEN 'beginners'
+            WHEN EXISTS (
+              SELECT 1
+              FROM user_types
+              WHERE user_types.username = users.username
+                AND user_types.user_type = 'have-a-go'
+            ) THEN 'have-a-go'
+            ELSE 'none'
+          END
+        ELSE programme_type
+      END
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS range_presence_extensions (

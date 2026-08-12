@@ -1,3 +1,25 @@
+import {
+  getMembershipStatus,
+  getProgrammeType,
+  isBeginnersProgrammeUser,
+  isGuestUser,
+  isHaveAGoProgrammeUser,
+  isNonMemberUser,
+  isProgrammeUser,
+  isTasterProgrammeUser,
+} from "../../shared/membershipClassification.js";
+
+export {
+  getMembershipStatus,
+  getProgrammeType,
+  isBeginnersProgrammeUser,
+  isGuestUser,
+  isHaveAGoProgrammeUser,
+  isNonMemberUser,
+  isProgrammeUser,
+  isTasterProgrammeUser,
+};
+
 const ROLE_PERMISSION_FALLBACKS = {
   guest: [],
   general: [],
@@ -55,9 +77,10 @@ const ROLE_PERMISSION_FALLBACKS = {
 };
 
 const SYSTEM_PERMISSION_FALLBACK_ROLES = new Set(["admin", "developer"]);
-const ROLE_DISPLAY_SUFFIXES = {
-  beginner: " - (beginner)",
-  "have-a-go": " - (HAGS)",
+const PROGRAMME_DISPLAY_SUFFIXES = {
+  beginners: " - (Beginners / Non-member)",
+  "have-a-go": " - (Have a Go / Non-member)",
+  "taster-session": " - (Taster Session / Non-member)",
 };
 
 // User profile helpers accept both old server row shapes and newer normalized
@@ -67,16 +90,39 @@ export function isBeginnerRole(role) {
 }
 
 export function getRoleDisplaySuffix(role) {
-  return ROLE_DISPLAY_SUFFIXES[role] ?? "";
+  return getMembershipDisplaySuffix({ userType: role });
+}
+
+export function getMembershipDisplaySuffix(value) {
+  const membershipStatus = getMembershipStatus(value);
+  const programmeType = getProgrammeType(value);
+
+  if (programmeType && programmeType !== "none") {
+    return PROGRAMME_DISPLAY_SUFFIXES[programmeType] ?? " - (Programme / Non-member)";
+  }
+
+  if (membershipStatus === "non-member") {
+    return " - (Non-member)";
+  }
+
+  if (membershipStatus === "guest") {
+    return " - (Guest)";
+  }
+
+  return "";
 }
 
 export function withRoleDisplaySuffix(value, role) {
+  return withMembershipDisplaySuffix(value, { userType: role });
+}
+
+export function withMembershipDisplaySuffix(value, profile) {
   if (!value) {
     return "";
   }
 
   const displayValue = String(value);
-  const suffix = getRoleDisplaySuffix(role);
+  const suffix = getMembershipDisplaySuffix(profile);
 
   if (!suffix || displayValue.endsWith(suffix)) {
     return displayValue;
@@ -98,13 +144,12 @@ export function formatMemberDisplayName(value) {
     return "";
   }
 
-  const role = getDisplayRole(value);
   const fullName =
     value.personal?.fullName ??
     value.fullName ??
     `${value.firstName ?? value.first_name ?? ""} ${value.surname ?? ""}`.trim();
 
-  return withRoleDisplaySuffix(fullName, role);
+  return withMembershipDisplaySuffix(fullName, value);
 }
 
 export function formatRangeMemberDisplayName(value) {
@@ -112,11 +157,10 @@ export function formatRangeMemberDisplayName(value) {
     return "";
   }
 
-  const role = getDisplayRole(value);
   const isJuniorMember = isJuniorMemberProfile(value);
 
   if (isJuniorMember) {
-    return withRoleDisplaySuffix("Jnr", role);
+    return withMembershipDisplaySuffix("Jnr", value);
   }
 
   const firstName =
@@ -125,7 +169,7 @@ export function formatRangeMemberDisplayName(value) {
     value.first_name ??
     "";
 
-  return withRoleDisplaySuffix(firstName, role);
+  return withMembershipDisplaySuffix(firstName, value);
 }
 
 export function isJuniorMemberProfile(value) {
@@ -141,10 +185,9 @@ export function formatMemberDisplayUsername(value) {
     return "";
   }
 
-  const role = getDisplayRole(value);
   const username = value.auth?.username ?? value.username ?? "";
 
-  return withRoleDisplaySuffix(username, role);
+  return withMembershipDisplaySuffix(username, value);
 }
 
 function normalizePermissions(permissions, role) {
@@ -169,6 +212,9 @@ export function normalizeUserProfile(profile) {
 
   if (profile.personal && profile.membership && profile.auth) {
     const role = profile.membership.role ?? "guest";
+    const membershipStatus = profile.membership.status ?? getMembershipStatus(profile);
+    const programmeType =
+      profile.membership.programmeType ?? getProgrammeType(profile);
     const fullName =
       profile.personal.fullName ??
       `${profile.personal.firstName ?? ""} ${profile.personal.surname ?? ""}`.trim();
@@ -183,12 +229,20 @@ export function normalizeUserProfile(profile) {
       personal: {
         firstName: profile.personal.firstName ?? "",
         surname: profile.personal.surname ?? "",
-        fullName: withRoleDisplaySuffix(fullName, role),
+        fullName: withMembershipDisplaySuffix(fullName, {
+          membership: {
+            role,
+            status: membershipStatus,
+            programmeType,
+          },
+        }),
         archeryGbMembershipNumber:
           profile.personal.archeryGbMembershipNumber ?? null,
       },
       membership: {
         role,
+        status: membershipStatus,
+        programmeType,
         permissions: normalizePermissions(
           profile.membership.permissions,
           profile.membership.role ?? "guest",
@@ -211,6 +265,8 @@ export function normalizeUserProfile(profile) {
   const username = profile.username ?? null;
   const role = profile.userType ?? "guest";
   const accountType = username ? "member" : "guest";
+  const membershipStatus = getMembershipStatus(profile);
+  const programmeType = getProgrammeType(profile);
 
   return {
     id: profile.id ?? username ?? `guest:${archeryGbMembershipNumber ?? `${firstName}-${surname}`}`,
@@ -222,11 +278,17 @@ export function normalizeUserProfile(profile) {
     personal: {
       firstName,
       surname,
-      fullName: withRoleDisplaySuffix(`${firstName} ${surname}`.trim(), role),
+      fullName: withMembershipDisplaySuffix(`${firstName} ${surname}`.trim(), {
+        ...profile,
+        membershipStatus,
+        programmeType,
+      }),
       archeryGbMembershipNumber,
     },
     membership: {
       role,
+      status: membershipStatus,
+      programmeType,
       permissions: normalizePermissions(
         profile.permissions ?? profile.membership?.permissions,
         role,

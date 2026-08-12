@@ -23,7 +23,9 @@ export function bootstrapSqliteUserData({
       affiliate_member,
       junior_member,
       membership_fees_due,
-      coaching_volunteer
+      coaching_volunteer,
+      membership_status,
+      programme_type
     )
     VALUES (
       @username,
@@ -38,7 +40,9 @@ export function bootstrapSqliteUserData({
       @affiliateMember,
       @juniorMember,
       @membershipFeesDue,
-      @coachingVolunteer
+      @coachingVolunteer,
+      @membershipStatus,
+      @programmeType
     )
     ON CONFLICT(username) DO UPDATE SET
       first_name = excluded.first_name,
@@ -52,7 +56,9 @@ export function bootstrapSqliteUserData({
       affiliate_member = excluded.affiliate_member,
       junior_member = excluded.junior_member,
       membership_fees_due = excluded.membership_fees_due,
-      coaching_volunteer = excluded.coaching_volunteer
+      coaching_volunteer = excluded.coaching_volunteer,
+      membership_status = excluded.membership_status,
+      programme_type = excluded.programme_type
   `);
 
   const updateUserMembershipStatus = db.prepare(`
@@ -123,6 +129,18 @@ export function bootstrapSqliteUserData({
         juniorMember: user.juniorMember ? 1 : 0,
         membershipFeesDue: user.membershipFeesDue ?? "",
         coachingVolunteer: user.coachingVolunteer ? 1 : 0,
+        membershipStatus:
+          user.membershipStatus ??
+          (user.userType === "beginner" || user.userType === "have-a-go"
+            ? "non-member"
+            : "member"),
+        programmeType:
+          user.programmeType ??
+          (user.userType === "beginner"
+            ? "beginners"
+            : user.userType === "have-a-go"
+              ? "have-a-go"
+              : "none"),
       });
       upsertUserType.run(user);
       deleteUserDisciplines.run(user.username);
@@ -160,6 +178,8 @@ export function bootstrapSqliteUserData({
       users.junior_member,
       users.membership_fees_due,
       users.coaching_volunteer,
+      users.membership_status,
+      users.programme_type,
       user_types.user_type
     FROM users
     INNER JOIN user_types ON user_types.user_id = users.id
@@ -211,6 +231,8 @@ export function bootstrapSqliteUserData({
       users.junior_member,
       users.membership_fees_due,
       users.coaching_volunteer,
+      users.membership_status,
+      users.programme_type,
       user_types.user_type
     FROM users
     INNER JOIN user_types ON user_types.user_id = users.id
@@ -233,6 +255,8 @@ export function bootstrapSqliteUserData({
       users.junior_member,
       users.membership_fees_due,
       users.coaching_volunteer,
+      users.membership_status,
+      users.programme_type,
       user_types.user_type
     FROM users
     INNER JOIN user_types ON user_types.user_id = users.id
@@ -254,6 +278,8 @@ export function bootstrapSqliteUserData({
       users.junior_member,
       users.membership_fees_due,
       users.coaching_volunteer,
+      users.membership_status,
+      users.programme_type,
       user_types.user_type
     FROM users
     INNER JOIN user_types ON user_types.user_id = users.id

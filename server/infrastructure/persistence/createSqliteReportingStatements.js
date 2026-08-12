@@ -236,12 +236,17 @@ export function createSqliteReportingStatements(db) {
       users.username,
       users.first_name,
       users.surname,
+      users.membership_status,
+      users.programme_type,
+      user_types.user_type,
       login_events.login_method,
       login_events.logged_in_date,
       login_events.logged_in_time
     FROM login_events
     INNER JOIN users
       ON users.id = login_events.user_id
+    INNER JOIN user_types
+      ON user_types.user_id = users.id
     WHERE login_events.logged_in_date || 'T' || login_events.logged_in_time >= ?
       AND login_events.logged_in_date || 'T' || login_events.logged_in_time < ?
     ORDER BY login_events.logged_in_date ASC, login_events.logged_in_time ASC, users.surname ASC, users.first_name ASC

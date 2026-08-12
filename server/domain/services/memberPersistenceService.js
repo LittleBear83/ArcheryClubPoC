@@ -1,3 +1,5 @@
+import { normalizeMembershipClassification } from "../../../shared/membershipClassificationRules.js";
+
 export function getDeactivatedRfidTag(rfidTag, deactivatedRfidSuffix) {
   if (typeof rfidTag !== "string") {
     return null;
@@ -52,11 +54,53 @@ export function createMemberPersistenceService({
   buildMemberUserProfile,
   deactivatedRfidSuffix,
   hashPassword,
+  membershipStatusOptions = ["member", "non-member", "guest"],
   memberAuthGateway,
   memberProfileGateway,
+  programmeTypeOptions = ["none", "beginners", "have-a-go", "taster-session"],
   sanitizeDisciplines,
   sanitizeLoanBow,
 }) {
+  const inferMembershipStatus = (membershipStatus, userType) => {
+    const normalizedStatus = String(membershipStatus ?? "").trim().toLowerCase();
+
+    if (membershipStatusOptions.includes(normalizedStatus)) {
+      return normalizedStatus;
+    }
+
+    const normalizedRole = String(userType ?? "").trim().toLowerCase();
+
+    if (normalizedRole === "beginner" || normalizedRole === "have-a-go") {
+      return "non-member";
+    }
+
+    if (normalizedRole === "guest") {
+      return "guest";
+    }
+
+    return "member";
+  };
+
+  const inferProgrammeType = (programmeType, userType) => {
+    const normalizedProgrammeType = String(programmeType ?? "").trim().toLowerCase();
+
+    if (programmeTypeOptions.includes(normalizedProgrammeType)) {
+      return normalizedProgrammeType;
+    }
+
+    const normalizedRole = String(userType ?? "").trim().toLowerCase();
+
+    if (normalizedRole === "beginner") {
+      return "beginners";
+    }
+
+    if (normalizedRole === "have-a-go") {
+      return "have-a-go";
+    }
+
+    return "none";
+  };
+
   return {
     async saveMemberProfile({
       activeMember,
@@ -70,8 +114,10 @@ export function createMemberPersistenceService({
       firstName,
       goldenRecordsId,
       loanBow,
+      membershipStatus,
       membershipFeesDue,
       password,
+      programmeType,
       rfidTag,
       surname,
       userType,
@@ -92,6 +138,21 @@ export function createMemberPersistenceService({
       const normalizedDisciplines = sanitizeDisciplines(disciplines);
       const normalizedLoanBow = sanitizeLoanBow(loanBow);
       const normalizedGoldenRecordsId = String(goldenRecordsId ?? "").trim();
+      const inferredMembershipStatus = inferMembershipStatus(
+        membershipStatus ?? existingUser?.membership_status,
+        userType ?? existingUser?.user_type,
+      );
+      const inferredProgrammeType = inferProgrammeType(
+        programmeType ?? existingUser?.programme_type,
+        userType ?? existingUser?.user_type,
+      );
+      const {
+        membershipStatus: normalizedMembershipStatus,
+        programmeType: normalizedProgrammeType,
+      } = normalizeMembershipClassification({
+        membershipStatus: inferredMembershipStatus,
+        programmeType: inferredProgrammeType,
+      });
 
       if (!trimmedUsername || !trimmedFirstName || !trimmedSurname) {
         return {
@@ -148,6 +209,8 @@ export function createMemberPersistenceService({
         juniorMember: normalizedUser.junior_member,
         membershipFeesDue: normalizedUser.membership_fees_due,
         coachingVolunteer: normalizedUser.coaching_volunteer,
+        membershipStatus: normalizedMembershipStatus,
+        programmeType: normalizedProgrammeType,
       };
 
       try {

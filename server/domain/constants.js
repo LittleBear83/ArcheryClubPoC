@@ -204,6 +204,19 @@ export const SYSTEM_ROLE_DEFINITIONS = [
   },
 ];
 
+export const MEMBERSHIP_STATUS_OPTIONS = [
+  "member",
+  "non-member",
+  "guest",
+];
+
+export const PROGRAMME_TYPE_OPTIONS = [
+  "none",
+  "beginners",
+  "have-a-go",
+  "taster-session",
+];
+
 export const ALLOWED_DISCIPLINES = [
   "Long Bow",
   "Bare Bow",

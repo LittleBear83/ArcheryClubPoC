@@ -90,6 +90,97 @@ export function bootstrapSqliteCourseScheduleCompatibility({
     );
   }
 
+  const beginnersCoursesTable = db
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'beginners_courses'`,
+    )
+    .get();
+
+  if (
+    beginnersCoursesTable?.sql &&
+    !beginnersCoursesTable.sql.includes("'taster-session'")
+  ) {
+    db.exec(`
+      ALTER TABLE beginners_courses RENAME TO beginners_courses_old;
+      CREATE TABLE beginners_courses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_type TEXT NOT NULL DEFAULT 'beginners' CHECK (
+          course_type IN ('beginners', 'have-a-go', 'taster-session')
+        ),
+        coordinator_username TEXT NOT NULL,
+        submitted_by_username TEXT NOT NULL,
+        first_lesson_date TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        lesson_count INTEGER NOT NULL,
+        beginner_capacity INTEGER NOT NULL,
+        approval_status TEXT NOT NULL DEFAULT 'pending',
+        rejection_reason TEXT,
+        approved_by_username TEXT,
+        approved_at_date TEXT,
+        approved_at_time TEXT,
+        created_at_date TEXT NOT NULL,
+        created_at_time TEXT NOT NULL,
+        is_cancelled INTEGER NOT NULL DEFAULT 0,
+        cancellation_reason TEXT,
+        cancelled_by_username TEXT,
+        cancelled_at_date TEXT,
+        cancelled_at_time TEXT,
+        FOREIGN KEY (coordinator_username) REFERENCES users(username),
+        FOREIGN KEY (submitted_by_username) REFERENCES users(username),
+        FOREIGN KEY (approved_by_username) REFERENCES users(username),
+        FOREIGN KEY (cancelled_by_username) REFERENCES users(username)
+      );
+      INSERT INTO beginners_courses (
+        id,
+        course_type,
+        coordinator_username,
+        submitted_by_username,
+        first_lesson_date,
+        start_time,
+        end_time,
+        lesson_count,
+        beginner_capacity,
+        approval_status,
+        rejection_reason,
+        approved_by_username,
+        approved_at_date,
+        approved_at_time,
+        created_at_date,
+        created_at_time,
+        is_cancelled,
+        cancellation_reason,
+        cancelled_by_username,
+        cancelled_at_date,
+        cancelled_at_time
+      )
+      SELECT
+        id,
+        course_type,
+        coordinator_username,
+        submitted_by_username,
+        first_lesson_date,
+        start_time,
+        end_time,
+        lesson_count,
+        beginner_capacity,
+        approval_status,
+        rejection_reason,
+        approved_by_username,
+        approved_at_date,
+        approved_at_time,
+        created_at_date,
+        created_at_time,
+        is_cancelled,
+        cancellation_reason,
+        cancelled_by_username,
+        cancelled_at_date,
+        cancelled_at_time
+      FROM beginners_courses_old;
+      DROP TABLE beginners_courses_old;
+    `);
+  }
+
   const beginnersCourseCancellationColumns = [
     ["is_cancelled", "INTEGER NOT NULL DEFAULT 0"],
     ["cancellation_reason", "TEXT"],

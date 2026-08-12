@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MemberProfileForm } from "../components/MemberProfileForm";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
+import { normalizeMembershipClassification } from "../../utils/memberClassification";
 import { hasPermission } from "../../utils/userProfile";
 
 function buildGeneratedUsername(firstName, surname) {
@@ -32,6 +33,8 @@ const EMPTY_PROFILE = {
   membershipFeesDue: new Date().toISOString().slice(0, 10),
   coachingVolunteer: false,
   userType: "general",
+  membershipStatus: "member",
+  programmeType: "none",
   disciplines: [],
   loanBow: {
     hasLoanBow: false,
@@ -81,6 +84,14 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
     () => optionsQuery.data?.disciplines ?? [],
     [optionsQuery.data?.disciplines],
   );
+  const membershipStatusOptions = useMemo(
+    () => optionsQuery.data?.membershipStatuses ?? ["member", "non-member", "guest"],
+    [optionsQuery.data?.membershipStatuses],
+  );
+  const programmeTypeOptions = useMemo(
+    () => optionsQuery.data?.programmeTypes ?? ["none", "beginners", "have-a-go", "taster-session"],
+    [optionsQuery.data?.programmeTypes],
+  );
   const isLoading = optionsQuery.isLoading;
   const defaultRole = useMemo(
     () =>
@@ -122,7 +133,16 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
         };
       }
 
-      return { ...current, [field]: value };
+      const nextProfile = { ...current, [field]: value };
+
+      if (field === "membershipStatus" || field === "programmeType") {
+        return {
+          ...nextProfile,
+          ...normalizeMembershipClassification(nextProfile, field),
+        };
+      }
+
+      return nextProfile;
     });
   };
 
@@ -153,7 +173,10 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
     mutationFn: async () =>
       memberProfileCrud.createMemberProfileUseCase.execute({
         actorUsername,
-        profile: effectiveEditableProfile,
+        profile: {
+          ...effectiveEditableProfile,
+          ...normalizeMembershipClassification(effectiveEditableProfile),
+        },
       }),
     onMutate: () => {
       setIsSaving(true);
@@ -183,12 +206,12 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
   };
 
   if (!canManageMembers) {
-    return <p>You do not have permission to create member accounts.</p>;
+    return <p>You do not have permission to create people accounts.</p>;
   }
 
   return (
     <div className="profile-page">
-      <p>Create a new member account for the system.</p>
+      <p>Create a new account for a member, non-member participant, or guest.</p>
       <StatusMessagePanel
         error={error}
         loading={isLoading && roleOptions.length === 0}
@@ -205,6 +228,8 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
           toggleDiscipline={toggleDiscipline}
           disciplineOptions={disciplineOptions}
           roleOptions={roleOptions}
+          membershipStatusOptions={membershipStatusOptions}
+          programmeTypeOptions={programmeTypeOptions}
           isAdmin={canManageMembers}
           isCreatingNew
           isSaving={isSaving || isLoading}

@@ -10,11 +10,36 @@ export function createSqliteBeginnersCourseStatements(db) {
       approved_by.surname AS approved_by_surname
     FROM beginners_courses
     INNER JOIN users AS coordinator
-      ON coordinator.id = beginners_courses.coordinator_user_id
+      ON (
+        (
+          beginners_courses.coordinator_user_id IS NOT NULL AND
+          coordinator.id = beginners_courses.coordinator_user_id
+        ) OR (
+          beginners_courses.coordinator_user_id IS NULL AND
+          LOWER(coordinator.username) = LOWER(beginners_courses.coordinator_username)
+        )
+      )
     INNER JOIN users AS submitted_by
-      ON submitted_by.id = beginners_courses.submitted_by_user_id
+      ON (
+        (
+          beginners_courses.submitted_by_user_id IS NOT NULL AND
+          submitted_by.id = beginners_courses.submitted_by_user_id
+        ) OR (
+          beginners_courses.submitted_by_user_id IS NULL AND
+          LOWER(submitted_by.username) = LOWER(beginners_courses.submitted_by_username)
+        )
+      )
     LEFT JOIN users AS approved_by
-      ON approved_by.id = beginners_courses.approved_by_user_id
+      ON (
+        (
+          beginners_courses.approved_by_user_id IS NOT NULL AND
+          approved_by.id = beginners_courses.approved_by_user_id
+        ) OR (
+          beginners_courses.approved_by_user_id IS NULL AND
+          beginners_courses.approved_by_username IS NOT NULL AND
+          LOWER(approved_by.username) = LOWER(beginners_courses.approved_by_username)
+        )
+      )
     ORDER BY beginners_courses.first_lesson_date ASC, beginners_courses.start_time ASC, beginners_courses.id ASC
   `);
 
@@ -271,7 +296,15 @@ export function createSqliteBeginnersCourseStatements(db) {
     INNER JOIN beginners_courses
       ON beginners_courses.id = beginners_course_lessons.course_id
     INNER JOIN users AS coordinator
-      ON coordinator.id = beginners_courses.coordinator_user_id
+      ON (
+        (
+          beginners_courses.coordinator_user_id IS NOT NULL AND
+          coordinator.id = beginners_courses.coordinator_user_id
+        ) OR (
+          beginners_courses.coordinator_user_id IS NULL AND
+          LOWER(coordinator.username) = LOWER(beginners_courses.coordinator_username)
+        )
+      )
     WHERE beginners_course_lesson_coaches.coach_user_id = ?
       AND beginners_courses.is_cancelled = 0
       AND beginners_courses.approval_status = 'approved'

@@ -240,7 +240,7 @@ function GuestSignInCard({ onOpenGuestLogin }) {
 function MembersAtRangeList({ members }) {
   return (
     <section className="home-panel">
-      <h3 className="home-panel-title">Current Members At The Range</h3>
+      <h3 className="home-panel-title">Current Archers At The Range</h3>
       <ul className="home-info-list home-info-list--members">
         {members.length > 0 ? (
           members.map((member) => {
@@ -258,7 +258,7 @@ function MembersAtRangeList({ members }) {
             );
           })
         ) : (
-          <li>No members have logged in within the last 2 hours</li>
+          <li>No archers have logged in within the last 2 hours</li>
         )}
       </ul>
     </section>
@@ -336,6 +336,7 @@ function CommitteeApprovalsCard({ approvalSummary, onOpenApprovals }) {
     beginnersCoursesCount,
     calendarItemsCount,
     haveAGoSessionsCount,
+    tasterSessionsCount,
     noApprovalAccess,
     totalPendingCount,
   } = approvalSummary;
@@ -378,6 +379,9 @@ function CommitteeApprovalsCard({ approvalSummary, onOpenApprovals }) {
         <p>
           <strong>{haveAGoSessionsCount}</strong> Have a Go sessions need approval
         </p>
+        <p>
+          <strong>{tasterSessionsCount}</strong> Taster Sessions need approval
+        </p>
       </div>
         </>
       )}
@@ -394,10 +398,13 @@ function CommitteeApprovedCoursesCard({ approvalSummary }) {
   const {
     approvedBeginnersCoursesCount,
     approvedHaveAGoSessionsCount,
+    approvedTasterSessionsCount,
     noApprovalAccess,
   } = approvalSummary;
   const totalApprovedCount =
-    approvedBeginnersCoursesCount + approvedHaveAGoSessionsCount;
+    approvedBeginnersCoursesCount +
+    approvedHaveAGoSessionsCount +
+    approvedTasterSessionsCount;
 
   return (
     <section className="home-panel">
@@ -430,6 +437,10 @@ function CommitteeApprovedCoursesCard({ approvalSummary }) {
             <p>
               <strong>{approvedHaveAGoSessionsCount}</strong> approved Have a Go
               sessions
+            </p>
+            <p>
+              <strong>{approvedTasterSessionsCount}</strong> approved Taster
+              Sessions
             </p>
           </div>
         </>

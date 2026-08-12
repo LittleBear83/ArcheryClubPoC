@@ -1,8 +1,12 @@
 import { buildActorHeaders, fetchApi, type ActorIdentity } from "./client";
+import {
+  buildCoursePayload,
+  getDashboardPathForCourseType,
+} from "./beginnersCourseTypeSupport.js";
 
 export async function getBeginnersCoursesDashboard(actor: ActorIdentity | string) {
   return fetchApi<{ success: true } & Record<string, unknown>>(
-    "/api/beginners-courses/dashboard",
+    getDashboardPathForCourseType("beginners"),
     {
       headers: buildActorHeaders(actor, true),
       cache: "no-store",
@@ -12,7 +16,17 @@ export async function getBeginnersCoursesDashboard(actor: ActorIdentity | string
 
 export async function getHaveAGoSessionsDashboard(actor: ActorIdentity | string) {
   return fetchApi<{ success: true } & Record<string, unknown>>(
-    "/api/beginners-courses/dashboard?courseType=have-a-go",
+    getDashboardPathForCourseType("have-a-go"),
+    {
+      headers: buildActorHeaders(actor, true),
+      cache: "no-store",
+    },
+  );
+}
+
+export async function getTasterSessionsDashboard(actor: ActorIdentity | string) {
+  return fetchApi<{ success: true } & Record<string, unknown>>(
+    getDashboardPathForCourseType("taster-session"),
     {
       headers: buildActorHeaders(actor, true),
       cache: "no-store",
@@ -36,10 +50,14 @@ export async function createHaveAGoSession(
   actor: ActorIdentity | string,
   session: Record<string, unknown>,
 ) {
-  return createBeginnersCourse(actor, {
-    ...session,
-    courseType: "have-a-go",
-  });
+  return createBeginnersCourse(actor, buildCoursePayload("have-a-go", session));
+}
+
+export async function createTasterSession(
+  actor: ActorIdentity | string,
+  session: Record<string, unknown>,
+) {
+  return createBeginnersCourse(actor, buildCoursePayload("taster-session", session));
 }
 
 export async function addBeginnerToCourse(

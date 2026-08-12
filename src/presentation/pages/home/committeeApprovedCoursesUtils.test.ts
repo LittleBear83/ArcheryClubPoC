@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { countActiveApprovedCourses } from "./committeeApprovedCoursesUtils";
+import { countActiveApprovedCourses } from "./committeeApprovedCoursesUtils.ts";
 
 test("counts only active approved courses", () => {
   const now = new Date("2026-07-28T12:00:00.000Z");

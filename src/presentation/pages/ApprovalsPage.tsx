@@ -20,6 +20,7 @@ import {
   approveBeginnersCourse,
   getBeginnersCoursesDashboard,
   getHaveAGoSessionsDashboard,
+  getTasterSessionsDashboard,
   rejectBeginnersCourse,
 } from "../../api/beginnersCoursesApi";
 import type { ApprovalEvent, CoachingSession, UserProfile } from "../../types/app";
@@ -226,7 +227,7 @@ const approvalsQueryKeys = {
   list: (actorUsername) => ["approvals", actorUsername] as const,
 };
 
-type CourseApprovalType = "beginners" | "have-a-go";
+type CourseApprovalType = "beginners" | "have-a-go" | "taster-session";
 
 type PendingCourseApproval = {
   id: number;
@@ -282,7 +283,7 @@ export function ApprovalsPage({ currentUserProfile }) {
   const approvalsQuery = useQuery({
     queryKey: approvalsQueryKeys.list(actorUsername),
     queryFn: async () => {
-      const [eventResult, coachingResult, beginnersResult, haveAGoResult] = await Promise.all([
+      const [eventResult, coachingResult, beginnersResult, haveAGoResult, tasterResult] = await Promise.all([
         canApproveEvents
           ? listEvents<ApprovalEvent>(currentUserProfile)
           : Promise.resolve({ success: true, events: [] }),
@@ -295,6 +296,9 @@ export function ApprovalsPage({ currentUserProfile }) {
         canApproveHaveAGoSessions
           ? getHaveAGoSessionsDashboard(currentUserProfile)
           : Promise.resolve({ success: true, courses: [] }),
+        canApproveHaveAGoSessions
+          ? getTasterSessionsDashboard(currentUserProfile)
+          : Promise.resolve({ success: true, courses: [] }),
       ]);
 
       return {
@@ -302,6 +306,7 @@ export function ApprovalsPage({ currentUserProfile }) {
         sessions: coachingResult.sessions ?? [],
         beginnersCourses: (beginnersResult.courses ?? []) as PendingCourseApproval[],
         haveAGoSessions: (haveAGoResult.courses ?? []) as PendingCourseApproval[],
+        tasterSessions: (tasterResult.courses ?? []) as PendingCourseApproval[],
       };
     },
     enabled: canApproveAnything,
@@ -337,12 +342,23 @@ export function ApprovalsPage({ currentUserProfile }) {
       ),
     [approvalsQuery.data?.haveAGoSessions],
   );
+  const tasterSessions = useMemo(
+    () =>
+      (approvalsQuery.data?.tasterSessions ?? []).filter(
+        (course) => course.approvalStatus === "pending" && !course.isCancelled,
+      ),
+    [approvalsQuery.data?.tasterSessions],
+  );
   const conflictWarningsByKey = useMemo(
     () => buildConflictWarnings(allEvents, allSessions),
     [allEvents, allSessions],
   );
   const pendingCount =
-    events.length + sessions.length + beginnersCourses.length + haveAGoSessions.length;
+    events.length +
+    sessions.length +
+    beginnersCourses.length +
+    haveAGoSessions.length +
+    tasterSessions.length;
 
   const mutateApproval = useMutation({
     mutationFn: async ({
@@ -418,7 +434,7 @@ export function ApprovalsPage({ currentUserProfile }) {
         .filter(Boolean)
         .join(" ")}
     >
-      <p>Review submitted events, coaching sessions, beginners courses, and Have a Go sessions before they are published to members.</p>
+      <p>Review submitted events, coaching sessions, beginners courses, Have a Go sessions, and Taster Sessions before they are published to members.</p>
       <StatusMessagePanel
         error={error}
         loading={approvalsQuery.isLoading}
@@ -722,6 +738,79 @@ export function ApprovalsPage({ currentUserProfile }) {
             )}
           </section>
         ) : null}
+
+        {canApproveHaveAGoSessions ? (
+          <section
+            className={[
+              "approvals-panel",
+              isMobile ? "approvals-panel--mobile" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {isMobile ? (
+              <MobileSectionHeader
+                title="Pending Taster Sessions"
+                description={`${tasterSessions.length} awaiting review`}
+              />
+            ) : (
+              <h3>Pending Taster Sessions</h3>
+            )}
+            {tasterSessions.length === 0 ? (
+              <p>No Taster Sessions are waiting for approval.</p>
+            ) : (
+              <div className="approvals-list">
+                {tasterSessions.map((session) => (
+                  <ApprovalCard
+                    key={session.id}
+                    title={`Taster Session from ${formatDate(session.firstLessonDate)}`}
+                    isMobile={isMobile}
+                    actions={[
+                      {
+                        disabled: Boolean(processingKey),
+                        label:
+                          processingKey === `taster-session:approve:${session.id}`
+                            ? "Approving..."
+                            : "Approve session",
+                        onClick: () =>
+                          void mutateApproval.mutateAsync({
+                            action: "approve-course",
+                            courseType: "taster-session",
+                            id: session.id,
+                            successMessage: "Taster Session approved.",
+                            processingValue: `taster-session:approve:${session.id}`,
+                          }),
+                      },
+                      {
+                        disabled: Boolean(processingKey),
+                        label:
+                          processingKey === `taster-session:reject:${session.id}`
+                            ? "Rejecting..."
+                            : "Reject request",
+                        onClick: () => {
+                          setCourseRejectReason("");
+                          setRejectingCourse({
+                            course: session,
+                            courseType: "taster-session",
+                            itemLabel: "Taster Session",
+                          });
+                        },
+                        variant: "danger",
+                      },
+                    ]}
+                  >
+                    <p>
+                      Coordinator: {session.coordinatorName} | Sessions: {session.lessonCount}
+                    </p>
+                    <p>
+                      Places: {session.beginnerCapacity} | Submitted by: {session.submittedByName}
+                    </p>
+                  </ApprovalCard>
+                ))}
+              </div>
+            )}
+          </section>
+        ) : null}
       </section>
 
       <Modal
@@ -873,7 +962,9 @@ export function ApprovalsPage({ currentUserProfile }) {
         title={
           rejectingCourse?.courseType === "have-a-go"
             ? "Reject Have a Go Session"
-            : "Reject Beginners Course"
+            : rejectingCourse?.courseType === "taster-session"
+              ? "Reject Taster Session"
+              : "Reject Beginners Course"
         }
       >
         {rejectingCourse ? (
@@ -891,6 +982,8 @@ export function ApprovalsPage({ currentUserProfile }) {
                 successMessage:
                   rejectingCourse.courseType === "have-a-go"
                     ? "Have a Go session rejected."
+                    : rejectingCourse.courseType === "taster-session"
+                      ? "Taster Session rejected."
                     : "Beginners course rejected.",
                 processingValue: `${rejectingCourse.courseType}:reject:${rejectingCourse.course.id}`,
               }).then(() => {

@@ -1653,6 +1653,40 @@ button:disabled {
   gap: 16px;
 }
 
+.profile-classification-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: var(--surface-strong);
+}
+
+.profile-classification-title {
+  margin: 0;
+  color: var(--text-h);
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.profile-classification-copy,
+.profile-classification-summary {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.profile-classification-copy {
+  color: var(--muted);
+}
+
+.profile-classification-summary {
+  color: var(--text-h);
+  font-weight: 700;
+}
+
 .profile-discipline-fieldset {
   width: 100%;
   margin: 0;
@@ -9239,4 +9273,11 @@ button:disabled {
   .committee-minutes-form-card {
     padding: 1rem;
   }
+}
+.profile-field-helper {
+  display: block;
+  margin-top: 0.35rem;
+  color: #5b4d3a;
+  font-size: 0.85rem;
+  line-height: 1.4;
 }

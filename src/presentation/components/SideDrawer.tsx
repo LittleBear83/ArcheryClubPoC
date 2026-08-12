@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
-import { formatMemberDisplayName, hasPermission } from "../../utils/userProfile";
+import {
+  formatMemberDisplayName,
+  hasPermission,
+} from "../../utils/userProfile";
 import { Button } from "./Button";
+import {
+  canAccessMemberPage,
+  getRestrictedPageMessage,
+} from "../navigation/memberPageAccess";
 
 const pages = [
   { id: "home", label: "Home", path: "/" },
@@ -10,31 +17,31 @@ const pages = [
     id: "range-usage",
     label: "Range Usage",
     path: "/range-usage",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   {
     id: "event-calendar",
     label: "Calendar",
     path: "/event-calendar",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   {
     id: "tournaments",
     label: "Tournaments",
     path: "/tournaments",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   {
     id: "records",
     label: "Records",
     path: "/records",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   {
     id: "outdoor-table",
     label: "Outdoor Table",
     path: "/outdoor-table",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   { id: "range-rules", label: "Range Rules", path: "/range-rules" },
   { id: "ask-a-question", label: "Ask A Question", path: "/ask-a-question" },
@@ -55,7 +62,7 @@ const pages = [
     id: "lost-and-found",
     label: "Lost and Found",
     path: "/lost-and-found",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   {
     id: "committee-org-chart",
@@ -83,7 +90,7 @@ const pages = [
   { id: "general-info", label: "General Information", path: "/general-info" },
   {
     id: "user-creation",
-    label: "Member Creation",
+    label: "People & Access",
     path: "/user-creation",
     permission: "manage_members",
   },
@@ -147,6 +154,12 @@ const pages = [
     permissionAny: ["manage_have_a_go_sessions", "approve_have_a_go_sessions"],
   },
   {
+    id: "taster-sessions",
+    label: "Taster Sessions",
+    path: "/taster-sessions",
+    permissionAny: ["manage_have_a_go_sessions", "approve_have_a_go_sessions"],
+  },
+  {
     id: "tournament-setup",
     label: "Tournament Setup",
     path: "/tournament-setup",
@@ -177,6 +190,7 @@ const adminGroups = [
       "equipment",
       "beginners-courses",
       "have-a-go-sessions",
+      "taster-sessions",
       "tournament-setup",
     ],
   },
@@ -215,7 +229,6 @@ export function SideDrawer({
     formatMemberDisplayName(currentUserProfile) ||
     currentUserProfile?.auth?.username ||
     "Member";
-  const currentRole = currentUserProfile?.membership?.role ?? "";
 
   const visiblePages = useMemo(() => {
     return pages.filter(
@@ -311,7 +324,8 @@ export function SideDrawer({
     });
   }, [groupedAdminPages, selectedPage]);
   const isPageDisabled = (page) =>
-    Array.isArray(page.disabledForRoles) && page.disabledForRoles.includes(currentRole);
+    Boolean(page.restrictedForProgrammeUsers) &&
+    !canAccessMemberPage(page.id, currentUserProfile);
   const renderPageButton = (page, nested = false) => (
     <li key={page.id}>
       <Button
@@ -322,11 +336,7 @@ export function SideDrawer({
           .filter(Boolean)
           .join(" ")}
         disabled={isPageDisabled(page)}
-        title={
-          isPageDisabled(page)
-            ? "This area is not available for beginners."
-            : undefined
-        }
+        title={isPageDisabled(page) ? getRestrictedPageMessage(page.id, currentUserProfile) : undefined}
         onClick={() => {
           if (isPageDisabled(page)) {
             return;

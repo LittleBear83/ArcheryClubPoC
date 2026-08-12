@@ -36,8 +36,10 @@ import {
   EQUIPMENT_TYPE_LABELS,
   EQUIPMENT_TYPE_OPTIONS,
   EQUIPMENT_TYPES,
+  MEMBERSHIP_STATUS_OPTIONS,
   PERMISSION_DEFINITIONS,
   PERMISSIONS,
+  PROGRAMME_TYPE_OPTIONS,
   RFID_READER_NAMES,
   SYSTEM_ROLE_DEFINITIONS,
   TOURNAMENT_TYPE_OPTIONS,
@@ -441,6 +443,13 @@ function apiErrorHandler(error, req, res, next) {
 const COURSE_PARTICIPANT_USER_TYPES = {
   beginners: "beginner",
   "have-a-go": "have-a-go",
+  "taster-session": "have-a-go",
+};
+
+const COURSE_PARTICIPANT_PROGRAMME_TYPES = {
+  beginners: "beginners",
+  "have-a-go": "have-a-go",
+  "taster-session": "taster-session",
 };
 
 const {
@@ -1046,6 +1055,8 @@ function buildMemberUserProfile(user, disciplines = [], meta = {}) {
   // Server-facing rows are converted to the normalized profile contract used by
   // session storage, permissions checks, and presentation helpers.
   const permissions = getPermissionsForRole(user.user_type);
+  const membershipStatus = inferMembershipStatus(user);
+  const programmeType = inferProgrammeType(user);
 
   return {
     id: user.username,
@@ -1064,6 +1075,8 @@ function buildMemberUserProfile(user, disciplines = [], meta = {}) {
     },
     membership: {
       role: user.user_type,
+      status: membershipStatus,
+      programmeType,
       permissions,
       disciplines,
     },
@@ -1176,6 +1189,8 @@ function buildEditableMemberProfile(user, disciplines = [], loanBow = null) {
     membershipFeesDue: user.membership_fees_due ?? "",
     coachingVolunteer: Boolean(user.coaching_volunteer),
     userType: user.user_type,
+    membershipStatus: inferMembershipStatus(user),
+    programmeType: inferProgrammeType(user),
     disciplines,
     loanBow: buildLoanBowRecord(loanBow),
   };
@@ -1207,6 +1222,8 @@ function buildGuestUserProfile(guest, meta = {}) {
     },
     membership: {
       role: "guest",
+      status: "guest",
+      programmeType: "none",
       permissions: [],
       disciplines: [],
     },
@@ -1216,6 +1233,46 @@ function buildGuestUserProfile(guest, meta = {}) {
       ...meta,
     },
   };
+}
+
+function inferMembershipStatus(user) {
+  const normalizedStatus = String(user?.membership_status ?? "").trim().toLowerCase();
+
+  if (MEMBERSHIP_STATUS_OPTIONS.includes(normalizedStatus)) {
+    return normalizedStatus;
+  }
+
+  const normalizedRole = String(user?.user_type ?? "").trim().toLowerCase();
+
+  if (normalizedRole === "beginner" || normalizedRole === "have-a-go") {
+    return "non-member";
+  }
+
+  if (normalizedRole === "guest") {
+    return "guest";
+  }
+
+  return "member";
+}
+
+function inferProgrammeType(user) {
+  const normalizedProgrammeType = String(user?.programme_type ?? "").trim().toLowerCase();
+
+  if (PROGRAMME_TYPE_OPTIONS.includes(normalizedProgrammeType)) {
+    return normalizedProgrammeType;
+  }
+
+  const normalizedRole = String(user?.user_type ?? "").trim().toLowerCase();
+
+  if (normalizedRole === "beginner") {
+    return "beginners";
+  }
+
+  if (normalizedRole === "have-a-go") {
+    return "have-a-go";
+  }
+
+  return "none";
 }
 
 const memberPersistenceService = createMemberPersistenceService({
@@ -1349,10 +1406,11 @@ async function sanitizeBeginnersCoursePayload(payload) {
       ? payload.coordinatorUsername.trim()
       : "";
 
-  if (
-    !coordinatorUsername ||
-    !(await memberDirectoryGateway.findUserByUsername(coordinatorUsername))
-  ) {
+  const coordinatorUser = coordinatorUsername
+    ? await memberDirectoryGateway.findUserByUsername(coordinatorUsername)
+    : null;
+
+  if (!coordinatorUsername || !coordinatorUser) {
     return {
       success: false,
       status: 400,
@@ -1395,7 +1453,7 @@ async function sanitizeBeginnersCoursePayload(payload) {
   return {
     success: true,
     value: {
-      coordinatorUsername,
+      coordinatorUsername: coordinatorUser.username,
       firstLessonDate,
       startTime,
       endTime,
@@ -1481,8 +1539,34 @@ async function buildBeginnersUsername(firstName, surname) {
   return nextUsername;
 }
 
+async function resolveCanonicalUsername(username) {
+  const normalizedUsername = String(username ?? "").trim();
+
+  if (!normalizedUsername) {
+    return "";
+  }
+
+  const existingUser = await memberDirectoryGateway.findUserByUsername(
+    normalizedUsername,
+  );
+
+  return existingUser?.username ?? normalizedUsername;
+}
+
 function normalizeCourseType(value) {
-  return value === "have-a-go" ? "have-a-go" : "beginners";
+  if (value === "have-a-go" || value === "taster-session") {
+    return value;
+  }
+
+  return "beginners";
+}
+
+function getCourseParticipantMembershipStatus() {
+  return "non-member";
+}
+
+function getCourseParticipantProgrammeType(courseType) {
+  return COURSE_PARTICIPANT_PROGRAMME_TYPES[normalizeCourseType(courseType)] ?? "none";
 }
 
 function getRequestedCourseType(req) {
@@ -1508,7 +1592,7 @@ function requestMatchesCourseType(req, course) {
 }
 
 function getCourseTypePermissions(courseType) {
-  return normalizeCourseType(courseType) === "have-a-go"
+  return normalizeCourseType(courseType) !== "beginners"
     ? {
         manage: PERMISSIONS.MANAGE_HAVE_A_GO_SESSIONS,
         approve: PERMISSIONS.APPROVE_HAVE_A_GO_SESSIONS,
@@ -4012,9 +4096,10 @@ app.post("/api/beginners-courses", async (req, res) => {
     return;
   }
 
+  const actorUsername = await resolveCanonicalUsername(actor.username);
   const [date, time] = getUtcTimestampParts();
   const courseId = await beginnersCourseWriteGateway.createCourseWithLessons({
-    actorUsername: actor.username,
+    actorUsername,
     beginnerCapacity: sanitized.value.beginnerCapacity,
     coordinatorUsername: sanitized.value.coordinatorUsername,
     courseType,
@@ -4034,7 +4119,7 @@ app.post("/api/beginners-courses", async (req, res) => {
   if (auditChangeLogger && createdCourse) {
     void auditChangeLogger.recordEntityChange({
       action: "created",
-      actorUsername: actor.username,
+      actorUsername,
       after: createdCourse,
       before: null,
       changedAtDate: date,
@@ -4105,13 +4190,14 @@ app.post("/api/beginners-courses/:id/approve", async (req, res) => {
     return;
   }
 
+  const actorUsername = await resolveCanonicalUsername(actor.username);
   const [date, time] = getUtcTimestampParts();
   const previousCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
   await beginnersCourseWriteGateway.reviewCourse({
     approvalStatus: "approved",
     approvedAtDate: date,
     approvedAtTime: time,
-    approvedByUsername: actor.username,
+    approvedByUsername: actorUsername,
     courseId: course.id,
     rejectionReason: null,
   });
@@ -4120,7 +4206,7 @@ app.post("/api/beginners-courses/:id/approve", async (req, res) => {
   if (auditChangeLogger && approvedCourse) {
     void auditChangeLogger.recordEntityChange({
       action: "approved",
-      actorUsername: actor.username,
+      actorUsername,
       after: approvedCourse,
       before: previousCourse,
       changedAtDate: date,
@@ -4201,13 +4287,14 @@ app.post("/api/beginners-courses/:id/reject", async (req, res) => {
     return;
   }
 
+  const actorUsername = await resolveCanonicalUsername(actor.username);
   const [date, time] = getUtcTimestampParts();
   const previousCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
   await beginnersCourseWriteGateway.reviewCourse({
     approvalStatus: "rejected",
     approvedAtDate: date,
     approvedAtTime: time,
-    approvedByUsername: actor.username,
+    approvedByUsername: actorUsername,
     courseId: course.id,
     rejectionReason,
   });
@@ -4216,7 +4303,7 @@ app.post("/api/beginners-courses/:id/reject", async (req, res) => {
   if (auditChangeLogger && rejectedCourse) {
     void auditChangeLogger.recordEntityChange({
       action: "rejected",
-      actorUsername: actor.username,
+      actorUsername,
       after: rejectedCourse,
       before: previousCourse,
       changedAtDate: date,
@@ -4275,7 +4362,11 @@ app.delete("/api/beginners-courses/:id", async (req, res) => {
   const coursePermissions = getCourseTypePermissions(courseType);
   const canCancelCourse =
     actorHasPermission(actor, coursePermissions.approve) ||
-    actor.username === course.coordinator_username;
+    String(actor.username ?? "").localeCompare(
+      String(course.coordinator_username ?? ""),
+      undefined,
+      { sensitivity: "accent" },
+    ) === 0;
 
   if (!canCancelCourse) {
     res.status(403).json({
@@ -4304,10 +4395,11 @@ app.delete("/api/beginners-courses/:id", async (req, res) => {
     return;
   }
 
+  const actorUsername = await resolveCanonicalUsername(actor.username);
   const [date, time] = getUtcTimestampParts();
   const previousCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
   await beginnersCourseWriteGateway.cancelCourse({
-    actorUsername: actor.username,
+    actorUsername,
     cancelledAtDate: date,
     cancelledAtTime: time,
     courseId: course.id,
@@ -4318,7 +4410,7 @@ app.delete("/api/beginners-courses/:id", async (req, res) => {
   if (auditChangeLogger && cancelledCourse) {
     void auditChangeLogger.recordEntityChange({
       action: "cancelled",
-      actorUsername: actor.username,
+      actorUsername,
       after: cancelledCourse,
       before: previousCourse,
       changedAtDate: date,
@@ -4421,6 +4513,8 @@ app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
     membershipFeesDue: "",
     coachingVolunteer: false,
     userType: getCourseParticipantUserType(courseType),
+    membershipStatus: getCourseParticipantMembershipStatus(),
+    programmeType: getCourseParticipantProgrammeType(courseType),
     disciplines: [],
     loanBow: getDefaultLoanBowRecord(),
     existingUser: null,
@@ -4704,6 +4798,8 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
       membershipFeesDue: existingUser.membership_fees_due ?? "",
       coachingVolunteer: Boolean(existingUser.coaching_volunteer),
       userType: "general",
+      membershipStatus: "member",
+      programmeType: "none",
       disciplines: (
         await memberDirectoryGateway.findDisciplinesByUsername(
           existingUser.username,

@@ -759,6 +759,8 @@ export function registerAdminMemberRoutes({
         userType: user.user_type,
       })),
       userTypes: listAssignableRoleKeys(),
+      membershipStatuses: ["member", "non-member", "guest"],
+      programmeTypes: ["none", "beginners", "have-a-go", "taster-session"],
       disciplines: ALLOWED_DISCIPLINES,
     });
   });
@@ -1572,6 +1574,8 @@ export function registerAdminMemberRoutes({
       goldenRecords,
       userProfile: buildMemberUserProfile(user, disciplines),
       userTypes: listAssignableRoleKeys(),
+      membershipStatuses: ["member", "non-member", "guest"],
+      programmeTypes: ["none", "beginners", "have-a-go", "taster-session"],
       disciplines: ALLOWED_DISCIPLINES,
     });
   });
@@ -1862,6 +1866,8 @@ export function registerAdminMemberRoutes({
       membershipFeesDue,
       coachingVolunteer,
       userType,
+      membershipStatus,
+      programmeType,
       disciplines,
       loanBow,
     } = req.body ?? {};
@@ -1889,6 +1895,8 @@ export function registerAdminMemberRoutes({
       membershipFeesDue,
       coachingVolunteer,
       userType,
+      membershipStatus,
+      programmeType,
       disciplines,
       loanBow,
       existingUser: null,
@@ -1996,6 +2004,8 @@ export function registerAdminMemberRoutes({
       membershipFeesDue,
       coachingVolunteer,
       userType,
+      membershipStatus,
+      programmeType,
       disciplines,
       loanBow,
     } = req.body ?? {};
@@ -2034,6 +2044,12 @@ export function registerAdminMemberRoutes({
         ? coachingVolunteer
         : existingUser.coaching_volunteer,
       userType: canManageMembers ? userType : existingUser.user_type,
+      membershipStatus: canManageMembers
+        ? membershipStatus
+        : existingUser.membership_status,
+      programmeType: canManageMembers
+        ? programmeType
+        : existingUser.programme_type,
       disciplines: canManageMemberDisciplines
         ? disciplines
         : await listMemberDisciplines(existingUser.username),
@@ -2156,6 +2172,8 @@ export function registerAdminMemberRoutes({
       membershipFeesDue: existingUser.membership_fees_due,
       coachingVolunteer: existingUser.coaching_volunteer,
       userType: existingUser.user_type,
+      membershipStatus: existingUser.membership_status,
+      programmeType: existingUser.programme_type,
       disciplines: existingDisciplines,
       loanBow: buildLoanBowRecord(existingLoanBow),
       existingUser,
@@ -2379,6 +2397,8 @@ export function registerAdminMemberRoutes({
       membershipFeesDue: existingUser.membership_fees_due,
       coachingVolunteer: existingUser.coaching_volunteer,
       userType: existingUser.user_type,
+      membershipStatus: existingUser.membership_status,
+      programmeType: existingUser.programme_type,
       disciplines,
       loanBow,
       existingUser,

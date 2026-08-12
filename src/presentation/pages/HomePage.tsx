@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
 import { SideDrawer } from "../components/SideDrawer";
@@ -20,6 +21,7 @@ import { UserCreationPage } from "./UserCreationPage";
 import { EquipmentPage } from "./EquipmentPage";
 import { BeginnersCoursesPage } from "./BeginnersCoursesPage";
 import { HaveAGoSessionsPage } from "./HaveAGoSessionsPage";
+import { TasterSessionsPage } from "./TasterSessionsPage";
 import { CommitteeOrgChartPage } from "./CommitteeOrgChartPage";
 import { CommitteeAdminPage } from "./CommitteeAdminPage";
 import { RolePermissionsPage } from "./RolePermissionsPage";
@@ -56,6 +58,7 @@ import {
 import {
   getBeginnersCoursesDashboard,
   getHaveAGoSessionsDashboard,
+  getTasterSessionsDashboard,
 } from "../../api/beginnersCoursesApi";
 import { listTournaments } from "../../api/tournamentApi";
 import { listMyLostArrowNotices, listOpenLostArrows } from "../../api/lostArrowApi";
@@ -76,14 +79,16 @@ import {
   canViewCommitteeApprovalsCard as canViewCommitteeApprovalsCardForUser,
   hasCommitteeApprovalAccess,
 } from "./home/committeeApprovalsCardUtils";
-import { countActiveApprovedCourses } from "./home/committeeApprovedCoursesUtils";
+import { buildCommitteeApprovalSummary } from "./home/committeeApprovalSummaryUtils";
 import { filterHomeActivityCurrentOrUpcoming } from "./home/homeActivityFilters";
 import {
   formatMemberDisplayName,
   formatRangeMemberDisplayName,
   hasPermission,
+  isProgrammeUser,
   normalizeUserProfile,
 } from "../../utils/userProfile";
+import { canAccessMemberPage } from "../navigation/memberPageAccess";
 
 type HomePageProps = {
   currentUserProfile: UserProfile | null;
@@ -200,8 +205,10 @@ type CommitteeApprovalSummary = {
   calendarItemsCount: number;
   beginnersCoursesCount: number;
   haveAGoSessionsCount: number;
+  tasterSessionsCount: number;
   approvedBeginnersCoursesCount: number;
   approvedHaveAGoSessionsCount: number;
+  approvedTasterSessionsCount: number;
 };
 type LostArrowNotice = LostArrowRecord;
 type LostArrowToast = {
@@ -244,7 +251,7 @@ const RANGE_PRESENCE_HOUR_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12] as const;
 const pageTitleMap = {
   home: "Home",
   profile: "Profile",
-  "user-creation": "Member Creation",
+  "user-creation": "People & Access",
   "role-permissions": "Roles & Permissions",
   reporting: "Reporting",
   "audit-log": "Audit Log",
@@ -252,6 +259,7 @@ const pageTitleMap = {
   equipment: "Equipment",
   "beginners-courses": "Beginners Courses",
   "have-a-go-sessions": "Have a Go Sessions",
+  "taster-sessions": "Taster Sessions",
   "event-calendar": "Calendar",
   "range-usage": "Range Usage",
   "ask-a-question": "Ask A Question",
@@ -283,6 +291,7 @@ const pathToPageId = {
   "/equipment": "equipment",
   "/beginners-courses": "beginners-courses",
   "/have-a-go-sessions": "have-a-go-sessions",
+  "/taster-sessions": "taster-sessions",
   "/event-calendar": "event-calendar",
   "/range-usage": "range-usage",
   "/ask-a-question": "ask-a-question",
@@ -619,7 +628,7 @@ async function fetchCommitteeApprovalSummary({
   canApproveEvents: boolean;
   canApproveHaveAGoSessions: boolean;
 }): Promise<CommitteeApprovalSummary> {
-  const [eventResult, coachingResult, beginnersResult, haveAGoResult] = await Promise.all([
+  const [eventResult, coachingResult, beginnersResult, haveAGoResult, tasterResult] = await Promise.all([
     canApproveEvents
       ? listEvents<ApprovalEvent>(actor)
       : Promise.resolve({ success: true, events: [] }),
@@ -632,37 +641,18 @@ async function fetchCommitteeApprovalSummary({
     canManageHaveAGoSessions || canApproveHaveAGoSessions
       ? getHaveAGoSessionsDashboard(actor)
       : Promise.resolve({ success: true, courses: [] }),
+    canManageHaveAGoSessions || canApproveHaveAGoSessions
+      ? getTasterSessionsDashboard(actor)
+      : Promise.resolve({ success: true, courses: [] }),
   ]);
 
-  const pendingEvents = (eventResult.events ?? []).filter(
-    (event) => event.isPendingApproval,
-  ).length;
-  const pendingSessions = (coachingResult.sessions ?? []).filter(
-    (session) => session.isPendingApproval,
-  ).length;
-  const pendingBeginnersCourses = (
-    (beginnersResult.courses ?? []) as PendingCourseApproval[]
-  ).filter((course) => course.approvalStatus === "pending").length;
-  const pendingHaveAGoSessions = (
-    (haveAGoResult.courses ?? []) as PendingCourseApproval[]
-  ).filter((course) => course.approvalStatus === "pending").length;
-  const approvedBeginnersCourses = countActiveApprovedCourses(
-    (beginnersResult.courses ?? []) as PendingCourseApproval[],
-  );
-  const approvedHaveAGoSessions = countActiveApprovedCourses(
-    (haveAGoResult.courses ?? []) as PendingCourseApproval[],
-  );
-  const calendarItemsCount = pendingEvents + pendingSessions;
-
-  return {
-    totalPendingCount:
-      calendarItemsCount + pendingBeginnersCourses + pendingHaveAGoSessions,
-    calendarItemsCount,
-    beginnersCoursesCount: pendingBeginnersCourses,
-    haveAGoSessionsCount: pendingHaveAGoSessions,
-    approvedBeginnersCoursesCount: approvedBeginnersCourses,
-    approvedHaveAGoSessionsCount: approvedHaveAGoSessions,
-  };
+  return buildCommitteeApprovalSummary({
+    events: eventResult.events ?? [],
+    sessions: coachingResult.sessions ?? [],
+    beginnersCourses: (beginnersResult.courses ?? []) as PendingCourseApproval[],
+    haveAGoSessions: (haveAGoResult.courses ?? []) as PendingCourseApproval[],
+    tasterSessions: (tasterResult.courses ?? []) as PendingCourseApproval[],
+  });
 }
 
 export function HomePage({
@@ -715,8 +705,12 @@ export function HomePage({
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const invitingMemberName =
     formatMemberDisplayName(currentUserProfile) || actorUsername;
-  const isBeginnerMember = currentUserProfile?.membership?.role === "beginner";
+  const isProgrammeMember = isProgrammeUser(currentUserProfile);
   const activePage = pathToPageId[location.pathname] || "home";
+  const renderProgrammeRestrictedRoute = (pageId: string, element: ReactNode) =>
+    canAccessMemberPage(pageId, currentUserProfile)
+      ? element
+      : <Navigate to="/" replace />;
   const { data: rangeMembers = [] } = useQuery({
     queryKey: homeQueryKeys.rangeMembers(),
     queryFn: fetchRangeMembers,
@@ -1347,6 +1341,12 @@ export function HomePage({
               }
             />
             <Route
+              path="/taster-sessions"
+              element={
+                <TasterSessionsPage currentUserProfile={currentUserProfile} />
+              }
+            />
+            <Route
               path="/"
               element={
                 <HomeSection
@@ -1361,8 +1361,10 @@ export function HomePage({
                           calendarItemsCount: 0,
                           beginnersCoursesCount: 0,
                           haveAGoSessionsCount: 0,
+                          tasterSessionsCount: 0,
                           approvedBeginnersCoursesCount: 0,
                           approvedHaveAGoSessionsCount: 0,
+                          approvedTasterSessionsCount: 0,
                           noApprovalAccess: true,
                         }
                   }
@@ -1382,7 +1384,7 @@ export function HomePage({
                     rangePresenceHourOptions: [...RANGE_PRESENCE_HOUR_OPTIONS],
                     statusMessage: mobileOnSiteStatus,
                   }}
-                  hideEventPanels={isBeginnerMember}
+                  hideEventPanels={isProgrammeMember}
                   lostArrows={openLostArrows}
                   onOpenGuestLogin={() => setIsGuestLoginModalOpen(true)}
                   onOpenApprovals={() => navigate("/approvals")}
@@ -1396,7 +1398,8 @@ export function HomePage({
             />
             <Route
               path="/event-calendar"
-              element={
+              element={renderProgrammeRestrictedRoute(
+                "event-calendar",
                 <EventCalendarPage
                   currentUserProfile={currentUserProfile}
                   onBookingsChanged={() =>
@@ -1405,11 +1408,14 @@ export function HomePage({
                     })
                   }
                 />
-              }
+              )}
             />
             <Route
               path="/range-usage"
-              element={<RangeUsagePage currentUserProfile={currentUserProfile} />}
+              element={renderProgrammeRestrictedRoute(
+                "range-usage",
+                <RangeUsagePage currentUserProfile={currentUserProfile} />,
+              )}
             />
             <Route
               path="/coaching-calendar"
@@ -1417,7 +1423,8 @@ export function HomePage({
             />
             <Route
               path="/tournaments"
-              element={
+              element={renderProgrammeRestrictedRoute(
+                "tournaments",
                 <TournamentsPage
                   currentUserProfile={currentUserProfile}
                   onTournamentActivity={() =>
@@ -1427,12 +1434,18 @@ export function HomePage({
                   }
                   tournamentCrud={tournamentCrud}
                 />
-              }
+              )}
             />
-            <Route path="/records" element={<RecordsPage />} />
+            <Route
+              path="/records"
+              element={renderProgrammeRestrictedRoute("records", <RecordsPage />)}
+            />
             <Route
               path="/outdoor-table"
-              element={<OutdoorTablePage currentUserProfile={currentUserProfile} />}
+              element={renderProgrammeRestrictedRoute(
+                "outdoor-table",
+                <OutdoorTablePage currentUserProfile={currentUserProfile} />,
+              )}
             />
             <Route
               path="/range-rules"
@@ -1500,7 +1513,10 @@ export function HomePage({
             <Route path="/ideas-form" element={<Navigate to="/feedback-form" replace />} />
             <Route
               path="/lost-and-found"
-              element={<LostAndFoundPage currentUserProfile={currentUserProfile} />}
+              element={renderProgrammeRestrictedRoute(
+                "lost-and-found",
+                <LostAndFoundPage currentUserProfile={currentUserProfile} />,
+              )}
             />
             <Route
               path="/general-info"

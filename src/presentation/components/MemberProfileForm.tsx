@@ -1,13 +1,42 @@
 import { useState } from "react";
 import { Button } from "./Button";
 import { DatePicker } from "./DatePicker";
+import { describeMembershipClassification } from "../../utils/memberClassification";
 
 function formatRoleLabel(role) {
+  if (role === "beginner") {
+    return "Beginner (Legacy Role)";
+  }
+
+  if (role === "have-a-go") {
+    return "Have A Go (Legacy Role)";
+  }
+
   return String(role ?? "")
     .split("-")
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatMembershipStatusLabel(value) {
+  switch (value) {
+    case "non-member":
+      return "Non-member";
+    default:
+      return formatRoleLabel(value);
+  }
+}
+
+function formatProgrammeTypeLabel(value) {
+  switch (value) {
+    case "none":
+      return "None";
+    case "taster-session":
+      return "Taster Session";
+    default:
+      return formatRoleLabel(value);
+  }
 }
 
 function sortRolesAlphabetically(roles) {
@@ -24,6 +53,8 @@ export function MemberProfileForm({
   toggleDiscipline,
   disciplineOptions,
   roleOptions,
+  membershipStatusOptions = [],
+  programmeTypeOptions = [],
   isAdmin,
   isCreatingNew,
   isSaving,
@@ -37,9 +68,26 @@ export function MemberProfileForm({
   const isProfileLocked = isSaving || !canEditProfile;
   const areDisciplinesLocked = isSaving || !canEditDisciplines;
   const sortedRoleOptions = sortRolesAlphabetically(roleOptions);
+  const membershipSummary = describeMembershipClassification(editableProfile);
+  const visibleProgrammeTypeOptions =
+    editableProfile.membershipStatus === "guest"
+      ? programmeTypeOptions.filter((programmeType) => programmeType === "none")
+      : programmeTypeOptions;
 
   return (
     <form onSubmit={onSubmit} className="left-align-form profile-form">
+      {isAdmin ? (
+        <div className="profile-classification-panel">
+          <p className="profile-classification-title">Access and status</p>
+          <p className="profile-classification-copy">
+            Role controls portal permissions. Membership status reflects whether
+            the person is actually a club member. Programme type explains why a
+            non-member account exists.
+          </p>
+          <p className="profile-classification-summary">{membershipSummary}</p>
+        </div>
+      ) : null}
+
       <div className="profile-form-grid">
         <label>
           Username
@@ -64,6 +112,46 @@ export function MemberProfileForm({
               </option>
             ))}
           </select>
+        </label>
+
+        <label>
+          Membership status
+          <select
+            value={editableProfile.membershipStatus}
+            onChange={handleChange("membershipStatus")}
+            disabled={!isAdmin || isProfileLocked}
+          >
+            {membershipStatusOptions.map((status) => (
+              <option key={status} value={status}>
+                {formatMembershipStatusLabel(status)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Programme type
+          <select
+            value={editableProfile.programmeType}
+            onChange={handleChange("programmeType")}
+            disabled={
+              !isAdmin ||
+              isProfileLocked ||
+              editableProfile.membershipStatus === "guest"
+            }
+          >
+            {visibleProgrammeTypeOptions.map((programmeType) => (
+              <option key={programmeType} value={programmeType}>
+                {formatProgrammeTypeLabel(programmeType)}
+              </option>
+            ))}
+          </select>
+          {editableProfile.membershipStatus === "guest" ? (
+            <small className="profile-field-helper">
+              Guest accounts are kept separate from programme participants, so
+              programme type stays set to None.
+            </small>
+          ) : null}
         </label>
 
         <label>

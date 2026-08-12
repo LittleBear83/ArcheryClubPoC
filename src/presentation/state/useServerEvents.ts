@@ -100,6 +100,9 @@ export function useServerEvents({
       queryKey: ["have-a-go-sessions-dashboard", actorUsername],
     });
     void queryClient.invalidateQueries({
+      queryKey: ["taster-sessions-dashboard", actorUsername],
+    });
+    void queryClient.invalidateQueries({
       queryKey: ["committee-approval-summary", actorUsername],
     });
     void queryClient.invalidateQueries({

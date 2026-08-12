@@ -49,6 +49,8 @@ export type EditableMemberProfile = {
   membershipFeesDue: string;
   coachingVolunteer: boolean;
   userType: string;
+  membershipStatus: string;
+  programmeType: string;
   disciplines: string[];
   loanBow: LoanBow;
   distanceSignOffs?: DistanceSignOffDiscipline[];
@@ -125,6 +127,8 @@ export type MemberProfileFormInput = {
   membershipFeesDue?: string;
   coachingVolunteer?: boolean;
   userType?: string;
+  membershipStatus?: string;
+  programmeType?: string;
   disciplines?: string[];
   loanBow?: LoanBow;
 };
@@ -146,6 +150,8 @@ export type EquipmentLoan = {
 export type ProfileOptions = {
   members: MemberOption[];
   userTypes: string[];
+  membershipStatuses: string[];
+  programmeTypes: string[];
   disciplines: string[];
 };
 

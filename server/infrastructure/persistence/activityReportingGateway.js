@@ -22,6 +22,15 @@ function normalizeUserRows(rows) {
   }));
 }
 
+function normalizeReportingMemberRows(rows) {
+  return rows.map((row) => ({
+    ...row,
+    membership_status: row.membership_status ?? "member",
+    programme_type: row.programme_type ?? "none",
+    user_type: row.user_type ?? "",
+  }));
+}
+
 const POSTGRES_MEMBER_PRESENCE_EVENTS_CTE = `
   WITH RECURSIVE ordered_member_presence_events AS (
     SELECT
@@ -143,7 +152,9 @@ function createSqliteActivityReportingGateway({
       return listReportingGuestLogins.all(startIso, endIsoExclusive);
     },
     async listReportingMemberLogins(startIso, endIsoExclusive) {
-      return listReportingMemberLogins.all(startIso, endIsoExclusive);
+      return normalizeReportingMemberRows(
+        listReportingMemberLogins.all(startIso, endIsoExclusive),
+      );
     },
     async memberLoginsByDateForUserInRange(username, startIso, endIsoExclusive) {
       return normalizeRowsWithCount(
@@ -365,17 +376,21 @@ function createPostgresActivityReportingGateway({ pool }) {
           COALESCE(users.username, login_events.username) AS username,
           users.first_name,
           users.surname,
+          users.membership_status,
+          users.programme_type,
+          user_types.user_type,
           login_events.login_method,
           login_events.logged_in_date,
           login_events.logged_in_time
          FROM login_events
          LEFT JOIN users ON users.id = login_events.user_id
+         LEFT JOIN user_types ON user_types.user_id = users.id
          WHERE (login_events.logged_in_date::text || 'T' || login_events.logged_in_time::text) >= $1
            AND (login_events.logged_in_date::text || 'T' || login_events.logged_in_time::text) < $2
          ORDER BY login_events.logged_in_date ASC, login_events.logged_in_time ASC, surname ASC, first_name ASC`,
         [startIso, endIsoExclusive],
       );
-      return result.rows;
+      return normalizeReportingMemberRows(result.rows);
     },
     async memberLoginsByDateForUserInRange(username, startIso, endIsoExclusive) {
       const result = await pool.query(

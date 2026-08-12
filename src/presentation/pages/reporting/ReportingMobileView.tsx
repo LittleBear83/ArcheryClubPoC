@@ -11,8 +11,29 @@ import type { useReportingPageState } from "./useReportingPageState";
 
 type ReportingPageState = ReturnType<typeof useReportingPageState>;
 
+function BreakdownList({
+  items,
+}: {
+  items: Array<{ key: string; label: string; count: number }>;
+}) {
+  if (!items.length) {
+    return <p className="reporting-breakdown-empty">No grouped data available.</p>;
+  }
+
+  return (
+    <div className="reporting-breakdown-list">
+      {items.map((item) => (
+        <p key={item.key}>
+          <strong>{item.count}</strong> {item.label}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export function ReportingMobileView({
   aggregatedMonthRows,
+  attendanceBreakdown,
   data,
   endDate,
   error,
@@ -123,6 +144,14 @@ export function ReportingMobileView({
                 </div>
               </div>
             </div>
+            <div className="usage-card reporting-summary-card">
+              <p className="usage-card-title">Membership Status Breakdown</p>
+              <BreakdownList items={attendanceBreakdown.membershipStatuses} />
+            </div>
+            <div className="usage-card reporting-summary-card">
+              <p className="usage-card-title">Programme Breakdown</p>
+              <BreakdownList items={attendanceBreakdown.programmeTypes} />
+            </div>
           </div>
 
           <section className="usage-hourly-panel reporting-panel">
@@ -160,6 +189,9 @@ export function ReportingMobileView({
                         { label: "Date", value: formatDate(row.date) },
                         { label: "Time", value: formatClockTime(row.time) },
                         { label: "Type", value: row.type },
+                        { label: "Status", value: row.membershipStatus || "-" },
+                        { label: "Programme", value: row.programmeType || "-" },
+                        { label: "Role", value: row.role || "-" },
                         {
                           label: "Archery GB",
                           value: row.archeryGbMembershipNumber || "-",

@@ -3,7 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { getAttendanceReport } from "../../../api/reportingApi";
 import { hasPermission } from "../../../utils/userProfile";
 import type { UserProfile } from "../../../types/app";
-import { aggregateMonthDayRows, buildCsv, getMonthStartString, getRangeLabel, getTodayString, saveCsv } from "./reportingUtils";
+import {
+  aggregateMonthDayRows,
+  buildCsv,
+  getMonthStartString,
+  getRangeLabel,
+  getTodayString,
+  saveCsv,
+  summarizeAttendanceBreakdown,
+} from "./reportingUtils";
 
 export function useReportingPageState(currentUserProfile: UserProfile | null) {
   const [startDate, setStartDate] = useState(getMonthStartString());
@@ -45,6 +53,13 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
     () => (queryResult.data ? aggregateMonthDayRows(queryResult.data.daily) : []),
     [queryResult.data],
   );
+  const attendanceBreakdown = useMemo(
+    () =>
+      queryResult.data
+        ? summarizeAttendanceBreakdown(queryResult.data.rows)
+        : { membershipStatuses: [], programmeTypes: [] },
+    [queryResult.data],
+  );
 
   const handleExport = async () => {
     if (!queryResult.data) {
@@ -74,6 +89,7 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
   return {
     actorUsername,
     aggregatedMonthRows,
+    attendanceBreakdown,
     canViewReports,
     data: queryResult.data,
     endDate,

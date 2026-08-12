@@ -230,11 +230,22 @@ type CalendarFilterKey =
   | "beginners";
 
 function getCourseLessonLabel(lesson: BeginnersCourseCalendarLesson) {
-  return lesson.courseType === "have-a-go" ? "Session" : "Lesson";
+  return lesson.courseType === "beginners" ? "Lesson" : "Session";
 }
 
 function getCourseParticipantLabel(lesson: BeginnersCourseCalendarLesson) {
-  return lesson.courseType === "have-a-go" ? "Participants" : "Beginners";
+  return lesson.courseType === "beginners" ? "Beginners" : "Participants";
+}
+
+function getCourseTypeLabel(lesson: BeginnersCourseCalendarLesson) {
+  switch (lesson.courseType) {
+    case "have-a-go":
+      return "Have a Go";
+    case "taster-session":
+      return "Taster Session";
+    default:
+      return "Beginners";
+  }
 }
 
 function getCancelledSummary(reason?: string) {
@@ -1238,7 +1249,7 @@ export function EventCalendarPage({
           .filter(Boolean)
           .join(" ")}
       >
-        {item.courseType === "have-a-go" ? "Have a Go" : "Beginners"}{" "}
+        {getCourseTypeLabel(item)}{" "}
         {getCourseLessonLabel(item).slice(0, 1)}
         {item.lessonNumber}
       </span>
@@ -1474,9 +1485,9 @@ export function EventCalendarPage({
           {activeSelectedBeginnersLessons.length > 0 ? (
             <>
               {isMobile ? (
-                <MobileSectionHeader title="Beginners And Have a Go" />
+                <MobileSectionHeader title="Courses And Sessions" />
               ) : (
-                <h4>Beginners and Have a Go sessions</h4>
+                <h4>Beginners, Have a Go, and Taster Sessions</h4>
               )}
               <div className="event-summary-card-list">
                 {activeSelectedBeginnersLessons.map((lesson) => (

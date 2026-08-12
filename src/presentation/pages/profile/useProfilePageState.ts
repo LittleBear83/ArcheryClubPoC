@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "../../../api/client";
+import { normalizeMembershipClassification } from "../../../utils/memberClassification";
 import { hasPermission } from "../../../utils/userProfile";
 import { subscribeToRfidScans } from "../../../utils/rfidScanHub";
 import { subscribeToServerEvent } from "../../../lib/serverEvents";
@@ -106,6 +107,8 @@ export function useProfilePageState({
   );
   const [disciplineOptions, setDisciplineOptions] = useState([]);
   const [roleOptions, setRoleOptions] = useState([]);
+  const [membershipStatusOptions, setMembershipStatusOptions] = useState([]);
+  const [programmeTypeOptions, setProgrammeTypeOptions] = useState([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -325,6 +328,8 @@ export function useProfilePageState({
         setDisciplineOptions(result.disciplines ?? []);
         setGoldenRecordsSnapshot(result.goldenRecords ?? null);
         setRoleOptions(result.userTypes ?? []);
+        setMembershipStatusOptions(result.membershipStatuses ?? []);
+        setProgrammeTypeOptions(result.programmeTypes ?? []);
         setMessage("");
         hasLoadedProfileRef.current = true;
       } catch (loadError) {
@@ -368,6 +373,8 @@ export function useProfilePageState({
 
         setMemberOptions(result.members ?? []);
         setRoleOptions(result.userTypes ?? []);
+        setMembershipStatusOptions(result.membershipStatuses ?? []);
+        setProgrammeTypeOptions(result.programmeTypes ?? []);
         setDisciplineOptions(result.disciplines ?? []);
       } catch (loadError) {
         if (!signal?.aborted) {
@@ -659,7 +666,18 @@ export function useProfilePageState({
 
   const handleChange = (field) => (event) => {
     const value = event.target.value;
-    setEditableProfile((current) => ({ ...current, [field]: value }));
+    setEditableProfile((current) => {
+      const nextProfile = { ...current, [field]: value };
+
+      if (field === "membershipStatus" || field === "programmeType") {
+        return {
+          ...nextProfile,
+          ...normalizeMembershipClassification(nextProfile, field),
+        };
+      }
+
+      return nextProfile;
+    });
   };
 
   const handleBooleanSelectChange = (field, trueValue = "active") => (event) => {
@@ -705,8 +723,14 @@ export function useProfilePageState({
       membershipFeesDue: editableProfile.membershipFeesDue,
       coachingVolunteer: editableProfile.coachingVolunteer,
       userType: editableProfile.userType,
+      membershipStatus: editableProfile.membershipStatus,
+      programmeType: editableProfile.programmeType,
       disciplines: editableProfile.disciplines,
       loanBow: editableProfile.loanBow,
+    };
+    const normalizedRequestBody = {
+      ...requestBody,
+      ...normalizeMembershipClassification(requestBody),
     };
 
     const isSelfProfile =
@@ -716,7 +740,7 @@ export function useProfilePageState({
       const result = await memberProfileCrud.updateMemberProfileUseCase.execute({
         actorUsername,
         username: editableProfile.username,
-        profile: requestBody,
+        profile: normalizedRequestBody,
       });
 
       setEditableProfile(result.editableProfile);
@@ -1331,8 +1355,10 @@ export function useProfilePageState({
     isSavingReturn,
     memberOptions,
     message,
+    membershipStatusOptions,
     outdoorTableBowEntries,
     outdoorTableError,
+    programmeTypeOptions,
     returnError,
     roleOptions,
     selectedGoldenRecordsCandidate,

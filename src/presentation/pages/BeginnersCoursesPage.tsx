@@ -16,8 +16,10 @@ import {
   convertBeginnerToMember as convertBeginnerToMemberApi,
   createBeginnersCourse,
   createHaveAGoSession,
+  createTasterSession,
   getBeginnersCoursesDashboard,
   getHaveAGoSessionsDashboard,
+  getTasterSessionsDashboard,
   resetBeginnerPassword,
   updateBeginnerParticipant,
 } from "../../api/beginnersCoursesApi";
@@ -357,9 +359,65 @@ const HAVE_A_GO_COPY = {
   getDashboard: getHaveAGoSessionsDashboard,
 };
 
+const TASTER_SESSION_COPY = {
+  courseType: "taster-session",
+  participantPlural: "participants",
+  participantSingular: "participant",
+  participantLabel: "Participant",
+  participantListTitle: "Participants",
+  participantTypeLabel: "Participant type",
+  feePaidLabel: "Session fee paid",
+  pageDescription:
+    "Submit Taster Sessions for approval, enrol participants, assign equipment, and plan coaches in one place.",
+  submitTitle: "Submit Taster Session",
+  submitButton: "Submit session",
+  itemLabel: "Taster Session",
+  itemLowerLabel: "taster session",
+  coordinatorLabel: "Session coordinator",
+  firstDateLabel: "First session date",
+  countLabel: "Number of sessions",
+  capacityLabel: "Participant places",
+  countMetaLabel: "Sessions",
+  capacityMetaLabel: "Places",
+  remainingMetaLabel: "Remaining",
+  addParticipantTitle: "Add participant",
+  addParticipantButton: "Add participant",
+  emptyParticipantText: "No participants have been added to this session yet.",
+  planTitle: "Session coach plan",
+  lessonColumn: "Session",
+  assignCoachesTitle: "Assign coaches",
+  assignCoachesButton: "Assign coaches",
+  saveCoachesButton: "Save session coaches",
+  cancelButtonLabel: "Cancel session",
+  cancelledTitle: "Cancelled sessions",
+  hideCancelledLabel: "Hide cancelled sessions",
+  showCancelledLabel: "Show cancelled sessions",
+  noCancelledText: "No cancelled Taster Sessions yet.",
+  rejectPrompt: "Add a short reason for rejecting this session.",
+  cancelPrompt: "Add a short reason for cancelling this session.",
+  equipmentUpdated: "Session equipment updated.",
+  coachesUpdated: "Session coaches updated.",
+  participantUpdated: "Participant details updated.",
+  editParticipantTitle: "Edit participant",
+  saveParticipantButton: "Save participant",
+  courseApproved: "Taster Session approved.",
+  courseRejected: "Taster Session rejected.",
+  courseCancelled: "Taster Session cancelled.",
+  noPermission: "You do not have permission to manage Taster Sessions.",
+  loading: "Loading Taster Session setup...",
+  queryKey: "taster-sessions-dashboard",
+  createCourse: createTasterSession,
+  getDashboard: getTasterSessionsDashboard,
+};
+
 export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners" }) {
   const isMobile = useIsMobile();
-  const copy = variant === "have-a-go" ? HAVE_A_GO_COPY : BEGINNERS_COPY;
+  const copy =
+    variant === "have-a-go"
+      ? HAVE_A_GO_COPY
+      : variant === "taster-session"
+        ? TASTER_SESSION_COPY
+        : BEGINNERS_COPY;
   const usesEquipmentAssignment = copy.courseType === "beginners";
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const queryClient = useQueryClient();

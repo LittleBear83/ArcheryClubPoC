@@ -1,7 +1,7 @@
 import { Button } from "../../components/Button";
 import { DatePicker } from "../../components/DatePicker";
 import { formatClockTime, formatDate } from "../../../utils/dateTime";
-import type { AttendanceReportRow } from "../../../api/reportingApi";
+import type { AttendanceReportRow, MemberJourneyReportRow } from "../../../api/reportingApi";
 import { ReportingGraph } from "./ReportingGraph";
 import type { useReportingPageState } from "./useReportingPageState";
 
@@ -51,6 +51,46 @@ function ReportingTable({ rows }: { rows: AttendanceReportRow[] }) {
   );
 }
 
+function formatPercentage(value: number) {
+  return `${value.toFixed(1)}%`;
+}
+
+function MemberJourneyTable({ rows }: { rows: MemberJourneyReportRow[] }) {
+  if (!rows.length) {
+    return <p className="usage-empty-state">No participant journeys started in the selected date range.</p>;
+  }
+
+  return (
+    <div className="reporting-table-wrap">
+      <table className="committee-roles-table reporting-table">
+        <thead>
+          <tr>
+            <th>Joined</th>
+            <th>Name</th>
+            <th>Converted</th>
+            <th>Converted At</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 25).map((row) => (
+            <tr key={row.id}>
+              <td>{formatDate(row.joinedAtDate)}</td>
+              <td>{row.name}</td>
+              <td>{row.convertedToMember ? "Yes" : "No"}</td>
+              <td>{row.convertedAtDate ? formatDate(row.convertedAtDate) : "-"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {rows.length > 25 ? (
+        <p className="reporting-table-note">
+          Showing the first 25 journey rows from {rows.length} participants in this cohort.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 type ReportingPageState = ReturnType<typeof useReportingPageState>;
 
 function BreakdownList({
@@ -86,6 +126,9 @@ export function ReportingDesktopView({
   includeGuests,
   includeMembers,
   isFetching,
+  isLoadingMemberJourneys,
+  memberJourneyData,
+  memberJourneyError,
   rangeLabel,
   setEndDate,
   setIncludeGuests,
@@ -159,6 +202,13 @@ export function ReportingDesktopView({
         </p>
       ) : null}
       {exportError ? <p className="usage-error">{exportError}</p> : null}
+      {memberJourneyError ? (
+        <p className="usage-error">
+          {memberJourneyError instanceof Error
+            ? memberJourneyError.message
+            : "Unable to load member journey reporting."}
+        </p>
+      ) : null}
 
       {data ? (
         <>
@@ -218,6 +268,57 @@ export function ReportingDesktopView({
               <p>Rows now include membership status, programme type, role, and guest attendance details.</p>
             </div>
             <ReportingTable rows={data.rows} />
+          </section>
+
+          <section className="usage-hourly-panel reporting-panel">
+            <div className="usage-hourly-header">
+              <h3>New Member Journey Funnel</h3>
+              <p>
+                Cohort view based on participants who started between {formatDate(
+                  memberJourneyData?.startDate ?? startDate,
+                )} and {formatDate(memberJourneyData?.endDate ?? endDate)}.
+              </p>
+            </div>
+            {isLoadingMemberJourneys && !memberJourneyData ? (
+              <p>Loading member journey reporting...</p>
+            ) : memberJourneyData ? (
+              <>
+                <div className="usage-cards reporting-summary-cards">
+                  <div className="usage-card reporting-summary-card">
+                    <p className="usage-card-title">New Starters</p>
+                    <div className="reporting-breakdown-list">
+                      <p>
+                        <strong>{memberJourneyData.summary.totalParticipants}</strong> people
+                        started in this period
+                      </p>
+                    </div>
+                  </div>
+                  <div className="usage-card reporting-summary-card">
+                    <p className="usage-card-title">Full Member Conversions</p>
+                    <div className="reporting-breakdown-list">
+                      <p>
+                        <strong>{memberJourneyData.summary.convertedToMembers}</strong>{" "}
+                        converted to full members
+                      </p>
+                    </div>
+                  </div>
+                  <div className="usage-card reporting-summary-card">
+                    <p className="usage-card-title">Beginners To Member Rate</p>
+                    <div className="reporting-breakdown-list">
+                      <p>
+                        <strong>
+                          {formatPercentage(
+                            memberJourneyData.summary.beginnersCourseConversionRate,
+                          )}
+                        </strong>{" "}
+                        overall
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <MemberJourneyTable rows={memberJourneyData.rows} />
+              </>
+            ) : null}
           </section>
         </>
       ) : null}

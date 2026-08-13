@@ -6,10 +6,15 @@ import { MobileEmptyState } from "../../components/mobile/MobileEmptyState";
 import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { MobileSectionHeader } from "../../components/mobile/MobileSectionHeader";
 import { formatClockTime, formatDate } from "../../../utils/dateTime";
+import type { MemberJourneyReportRow } from "../../../api/reportingApi";
 import { ReportingGraph } from "./ReportingGraph";
 import type { useReportingPageState } from "./useReportingPageState";
 
 type ReportingPageState = ReturnType<typeof useReportingPageState>;
+
+function formatPercentage(value: number) {
+  return `${value.toFixed(1)}%`;
+}
 
 function BreakdownList({
   items,
@@ -44,6 +49,9 @@ export function ReportingMobileView({
   includeGuests,
   includeMembers,
   isFetching,
+  isLoadingMemberJourneys,
+  memberJourneyData,
+  memberJourneyError,
   rangeLabel,
   setEndDate,
   setIncludeGuests,
@@ -122,6 +130,13 @@ export function ReportingMobileView({
         </p>
       ) : null}
       {exportError ? <p className="usage-error">{exportError}</p> : null}
+      {memberJourneyError ? (
+        <p className="usage-error">
+          {memberJourneyError instanceof Error
+            ? memberJourneyError.message
+            : "Unable to load member journey reporting."}
+        </p>
+      ) : null}
 
       {data ? (
         <>
@@ -172,6 +187,80 @@ export function ReportingMobileView({
             <div className="reporting-mobile-graph-wrap">
               <ReportingGraph rows={aggregatedMonthRows} />
             </div>
+          </section>
+
+          <section className="usage-hourly-panel reporting-panel">
+            <MobileSectionHeader
+              title="New Member Journey Funnel"
+              description={`Participants who started between ${formatDate(
+                memberJourneyData?.startDate ?? startDate,
+              )} and ${formatDate(memberJourneyData?.endDate ?? endDate)}.`}
+            />
+            {isLoadingMemberJourneys && !memberJourneyData ? (
+              <p>Loading member journey reporting...</p>
+            ) : memberJourneyData ? (
+              <>
+                <div className="usage-cards reporting-summary-cards">
+                  <div className="usage-card reporting-summary-card">
+                    <p className="usage-card-title">New Starters</p>
+                    <div className="reporting-breakdown-list">
+                      <p>
+                        <strong>{memberJourneyData.summary.totalParticipants}</strong> people
+                        started in this period
+                      </p>
+                    </div>
+                  </div>
+                  <div className="usage-card reporting-summary-card">
+                    <p className="usage-card-title">Full Member Conversions</p>
+                    <div className="reporting-breakdown-list">
+                      <p>
+                        <strong>{memberJourneyData.summary.convertedToMembers}</strong>{" "}
+                        converted to full members
+                      </p>
+                    </div>
+                  </div>
+                  <div className="usage-card reporting-summary-card">
+                    <p className="usage-card-title">Beginners To Member Rate</p>
+                    <div className="reporting-breakdown-list">
+                      <p>
+                        <strong>
+                          {formatPercentage(
+                            memberJourneyData.summary.beginnersCourseConversionRate,
+                          )}
+                        </strong>{" "}
+                        overall
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {memberJourneyData.rows.length > 0 ? (
+                  <MobileCardList className="reporting-mobile-row-list">
+                    {memberJourneyData.rows.slice(0, 25).map((row: MemberJourneyReportRow) => (
+                      <article key={row.id} className="reporting-mobile-row-card">
+                        <p className="reporting-mobile-row-title">{row.name}</p>
+                        <MobileKeyValueList
+                          items={[
+                            { label: "Joined", value: formatDate(row.joinedAtDate) },
+                            {
+                              label: "Converted",
+                              value: row.convertedToMember ? "Yes" : "No",
+                            },
+                            {
+                              label: "Converted At",
+                              value: row.convertedAtDate
+                                ? formatDate(row.convertedAtDate)
+                                : "-",
+                            },
+                          ]}
+                        />
+                      </article>
+                    ))}
+                  </MobileCardList>
+                ) : (
+                  <MobileEmptyState message="No participant journeys started in the selected date range." />
+                )}
+              </>
+            ) : null}
           </section>
 
           <section className="usage-hourly-panel reporting-panel">

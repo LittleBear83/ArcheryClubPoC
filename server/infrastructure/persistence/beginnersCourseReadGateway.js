@@ -290,6 +290,7 @@ function createPostgresBeginnersCourseReadGateway({ pool }) {
             beginners_course_lessons.lesson_date,
             beginners_course_lessons.start_time,
             beginners_course_lessons.end_time,
+            beginners_courses.course_type,
             beginners_courses.first_lesson_date,
             coordinator.first_name AS coordinator_first_name,
             coordinator.surname AS coordinator_surname

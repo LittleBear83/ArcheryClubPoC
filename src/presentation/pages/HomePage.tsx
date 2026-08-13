@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useNavigate, Routes, Route, Navigate } from "react-router-dom";
@@ -18,11 +18,7 @@ import {
   listMyTournamentReminders,
 } from "../../api/homeApi";
 import { listCommitteeRoles } from "../../api/committeeApi";
-import {
-  bookOnSiteWithMobileApp,
-  extendRangePresence,
-  listRangeMembers,
-} from "../../api/memberApi";
+import { listRangeMembers } from "../../api/memberApi";
 import {
   listActiveAnnouncements,
   type AnnouncementRecord,
@@ -37,7 +33,6 @@ import { listMyLostArrowNotices, listOpenLostArrows } from "../../api/lostArrowA
 import { listMyMemberQuestions } from "../../api/questionApi";
 import { listCoachingSessions, listEvents } from "../../api/scheduleApi";
 import { useTheme } from "../../theme/useTheme";
-import { subscribeToServerEvent } from "../../lib/serverEvents";
 import type {
   ApprovalEvent,
   HomeMember,
@@ -45,7 +40,6 @@ import type {
   UserProfile,
 } from "../../types/app";
 import type { AppDependencies } from "../../bootstrap/createAppDependencies";
-import { useMobileGeofence } from "../hooks/useMobileGeofence";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
   canViewCommitteeApprovalsCard as canViewCommitteeApprovalsCardForUser,
@@ -53,6 +47,9 @@ import {
 } from "./home/committeeApprovalsCardUtils";
 import { buildCommitteeApprovalSummary } from "./home/committeeApprovalSummaryUtils";
 import { filterHomeActivityCurrentOrUpcoming } from "./home/homeActivityFilters";
+import { homeQueryKeys } from "./home/homeQueryKeys";
+import { useHomePageToasts } from "./home/useHomePageToasts";
+import { useRangePresenceFeature } from "./home/useRangePresenceFeature";
 import {
   formatMemberDisplayName,
   formatRangeMemberDisplayName,
@@ -271,6 +268,7 @@ type BeginnerHomeDashboard = {
 type BeginnerCoachAssignment = {
   id: string | number;
   courseId: string | number;
+  courseType?: "beginners" | "have-a-go" | "taster-session";
   lessonNumber: number;
   date: string;
   startTime: string;
@@ -304,42 +302,7 @@ type CommitteeApprovalSummary = {
   approvedTasterSessionsCount: number;
 };
 type LostArrowNotice = LostArrowRecord;
-type LostArrowToast = {
-  id: string;
-  message: string;
-  targetPath: string;
-};
-type MemberQuestionToast = {
-  id: string;
-  message: string;
-  targetPath: string;
-};
-
-const homeQueryKeys = {
-  rangeMembers: () => ["range-members"] as const,
-  activity: (username: string) => ["home-activity", username] as const,
-  adminWarnings: (username: string) =>
-    ["admin-tournament-warnings", username] as const,
-  activeAnnouncements: (username: string) =>
-    ["active-announcements", username] as const,
-  lostArrowNotices: (username: string) =>
-    ["my-lost-arrow-notices", username] as const,
-  memberQuestions: (username: string) =>
-    ["member-questions", "mine", username] as const,
-  committeeRoles: (username: string) => ["committee-roles", username] as const,
-  committeeApprovalSummary: (username: string) =>
-    ["committee-approval-summary", username] as const,
-};
-
 const TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS = 2;
-const MOBILE_ON_SITE_FEATURE_TARGET = {
-  latitude: 53.778213317518684,
-  longitude: -1.0966694674728845,
-  radiusMeters: 50,
-} as const;
-const LOST_ARROW_SEEN_TOASTS_STORAGE_KEY = "archeryclubpoc-seen-lost-arrow-toasts";
-const ON_SITE_BOOKING_WINDOW_MS = 2 * 60 * 60 * 1000;
-const RANGE_PRESENCE_HOUR_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12] as const;
 
 const pageTitleMap = {
   home: "Home",
@@ -586,45 +549,6 @@ function PageLoadingFallback() {
   );
 }
 
-function readSeenLostArrowToastIds(username: string) {
-  if (!username || typeof window === "undefined") {
-    return new Set<string>();
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(LOST_ARROW_SEEN_TOASTS_STORAGE_KEY);
-    const parsedValue = rawValue ? JSON.parse(rawValue) : {};
-    const storedIds = Array.isArray(parsedValue?.[username]) ? parsedValue[username] : [];
-
-    return new Set(
-      storedIds.filter((value: unknown) => typeof value === "string"),
-    );
-  } catch {
-    return new Set<string>();
-  }
-}
-
-function writeSeenLostArrowToastIds(username: string, seenIds: Set<string>) {
-  if (!username || typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    const rawValue = window.localStorage.getItem(LOST_ARROW_SEEN_TOASTS_STORAGE_KEY);
-    const parsedValue = rawValue ? JSON.parse(rawValue) : {};
-
-    window.localStorage.setItem(
-      LOST_ARROW_SEEN_TOASTS_STORAGE_KEY,
-      JSON.stringify({
-        ...parsedValue,
-        [username]: Array.from(seenIds),
-      }),
-    );
-  } catch {
-    return;
-  }
-}
-
 async function fetchRangeMembers(): Promise<HomeMember[]> {
   const result = await listRangeMembers();
 
@@ -769,11 +693,6 @@ export function HomePage({
   const { theme, themeName, toggleTheme } = useTheme();
   const isMobile = useIsMobile();
   const [isGuestLoginModalOpen, setIsGuestLoginModalOpen] = useState(false);
-  const mobileOnSiteFeature = useMobileGeofence({
-    targetLatitude: MOBILE_ON_SITE_FEATURE_TARGET.latitude,
-    targetLongitude: MOBILE_ON_SITE_FEATURE_TARGET.longitude,
-    radiusMeters: MOBILE_ON_SITE_FEATURE_TARGET.radiusMeters,
-  });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -852,7 +771,7 @@ export function HomePage({
     enabled: Boolean(actorUsername),
   });
   const { data: openLostArrowsResult } = useQuery({
-    queryKey: ["lost-arrows", actorUsername],
+    queryKey: homeQueryKeys.openLostArrows(actorUsername),
     queryFn: () => listOpenLostArrows(currentUserProfile),
     enabled: Boolean(actorUsername),
   });
@@ -914,301 +833,25 @@ export function HomePage({
       (question) => question.status === "answered" && !question.memberSeenResponse,
     );
   }, [memberQuestionsResult?.questions]);
-  const [mobileOnSiteStatus, setMobileOnSiteStatus] = useState("");
-  const [mobileOnSiteError, setMobileOnSiteError] = useState("");
-  const [isBookingOnSite, setIsBookingOnSite] = useState(false);
-  const [isSavingRangePresence, setIsSavingRangePresence] = useState(false);
-  const [selectedRangePresenceHours, setSelectedRangePresenceHours] = useState(2);
-  const [nowTimestamp, setNowTimestamp] = useState(() => Date.now());
-  const [lostArrowToasts, setLostArrowToasts] = useState<LostArrowToast[]>([]);
-  const [dismissedQuestionToastIds, setDismissedQuestionToastIds] = useState<string[]>([]);
-  const previousOpenLostArrowIdsRef = useRef<number[] | null>(null);
-  const seenLostArrowToastIdsRef = useRef<Set<string>>(new Set());
-  const questionResponseToasts = useMemo<MemberQuestionToast[]>(() => {
-    return unreadQuestionResponses
-      .map((question) => ({
-        id: `member-question-${question.id}`,
-        message: `The committee replied to "${question.questionTitle}".`,
-        targetPath: `/ask-a-question?questionId=${question.id}`,
-      }))
-      .filter((toast) => !dismissedQuestionToastIds.includes(toast.id))
-      .slice(0, 3);
-  }, [dismissedQuestionToastIds, unreadQuestionResponses]);
-  const activeRangeMemberEntry = useMemo(
-    () =>
-      rangeMembers.find(
-        (member) =>
-          member?.auth?.username?.toLowerCase() === actorUsername.toLowerCase(),
-      ) ?? null,
-    [actorUsername, rangeMembers],
-  );
-  const activeRangePresenceEndsAt = useMemo(() => {
-    const explicitActiveRangePresenceEndsAt =
-      activeRangeMemberEntry?.meta?.activeRangePresenceEndsAt;
-
-    if (explicitActiveRangePresenceEndsAt) {
-      const explicitMs = new Date(String(explicitActiveRangePresenceEndsAt)).getTime();
-
-      if (!Number.isNaN(explicitMs)) {
-        return explicitMs;
-      }
-    }
-
-    const lastLoggedInAt = activeRangeMemberEntry?.meta?.lastLoggedInAt;
-
-    if (!lastLoggedInAt) {
-      return null;
-    }
-
-    const lastLoggedInMs = new Date(String(lastLoggedInAt)).getTime();
-
-    if (Number.isNaN(lastLoggedInMs)) {
-      return null;
-    }
-
-    return lastLoggedInMs + ON_SITE_BOOKING_WINDOW_MS;
-  }, [
-    activeRangeMemberEntry?.meta?.activeRangePresenceEndsAt,
-    activeRangeMemberEntry?.meta?.lastLoggedInAt,
-  ]);
-  const isOnSiteBookingWindowOpen = Boolean(
-    activeRangePresenceEndsAt && activeRangePresenceEndsAt > nowTimestamp,
-  );
-  const activeRangePresenceEndsAtText = useMemo(() => {
-    if (!activeRangePresenceEndsAt || activeRangePresenceEndsAt <= nowTimestamp) {
-      return "";
-    }
-
-    return new Date(activeRangePresenceEndsAt).toLocaleTimeString("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }, [activeRangePresenceEndsAt, nowTimestamp]);
-  const activeRangePresenceSummaryText = useMemo(() => {
-    if (!activeRangePresenceEndsAt || activeRangePresenceEndsAt <= nowTimestamp) {
-      return "";
-    }
-
-    const remainingHours = Math.max(
-      2,
-      Math.ceil((activeRangePresenceEndsAt - nowTimestamp) / (60 * 60 * 1000)),
-    );
-
-    return `${Math.min(remainingHours, 12)}`;
-  }, [activeRangePresenceEndsAt, nowTimestamp]);
-
-  useEffect(() => {
-    if (!isOnSiteBookingWindowOpen) {
-      setSelectedRangePresenceHours(2);
-      return;
-    }
-
-    const nextSelectedHours = Number.parseInt(activeRangePresenceSummaryText, 10);
-
-    if (
-      Number.isInteger(nextSelectedHours) &&
-      RANGE_PRESENCE_HOUR_OPTIONS.includes(
-        nextSelectedHours as (typeof RANGE_PRESENCE_HOUR_OPTIONS)[number],
-      )
-    ) {
-      setSelectedRangePresenceHours(nextSelectedHours);
-    }
-  }, [activeRangePresenceSummaryText, isOnSiteBookingWindowOpen]);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setNowTimestamp(Date.now());
-    }, 60000);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!actorUsername) {
-      return undefined;
-    }
-
-    return subscribeToServerEvent("member-questions.updated", () => {
-      void queryClient.invalidateQueries({
-        queryKey: homeQueryKeys.memberQuestions(actorUsername),
-      });
-    });
-  }, [actorUsername, queryClient]);
-
-  useEffect(() => {
-    setDismissedQuestionToastIds((current) =>
-      current.filter((toastId) =>
-        unreadQuestionResponses.some(
-          (question) => `member-question-${question.id}` === toastId,
-        ),
-      ),
-    );
-  }, [unreadQuestionResponses]);
-
-  useEffect(() => {
-    if (!actorUsername) {
-      setLostArrowToasts([]);
-      previousOpenLostArrowIdsRef.current = null;
-      seenLostArrowToastIdsRef.current = new Set();
-      return undefined;
-    }
-
-    seenLostArrowToastIdsRef.current = readSeenLostArrowToastIds(actorUsername);
-  }, [actorUsername]);
-
-  useEffect(() => {
-    if (!actorUsername) {
-      previousOpenLostArrowIdsRef.current = null;
-      return;
-    }
-
-    const previousIds = previousOpenLostArrowIdsRef.current;
-    const currentIds = openLostArrows.map((arrow) => arrow.id);
-
-    if (!previousIds) {
-      previousOpenLostArrowIdsRef.current = currentIds;
-
-      if (openLostArrows.length > 0) {
-        const latestLostArrow = openLostArrows[0];
-        const initialToastId = `lost-arrow-${latestLostArrow.id}`;
-
-        if (!seenLostArrowToastIdsRef.current.has(initialToastId)) {
-          seenLostArrowToastIdsRef.current.add(initialToastId);
-          writeSeenLostArrowToastIds(actorUsername, seenLostArrowToastIdsRef.current);
-          setLostArrowToasts([
-            {
-              id: initialToastId,
-              message: `${latestLostArrow.archerName || latestLostArrow.archerUsername} currently has a lost ${latestLostArrow.arrowColour} ${latestLostArrow.arrowMaterial} arrow recorded.`,
-              targetPath: "/lost-and-found",
-            },
-          ]);
-        }
-      }
-
-      return;
-    }
-
-    const previousIdSet = new Set(previousIds);
-    const newLostArrows = openLostArrows.filter((arrow) => !previousIdSet.has(arrow.id));
-
-    previousOpenLostArrowIdsRef.current = currentIds;
-
-    if (newLostArrows.length === 0) {
-      return;
-    }
-
-    setLostArrowToasts((current) => {
-      const nextToasts = newLostArrows
-        .map((arrow) => ({
-          id: `lost-arrow-${arrow.id}`,
-          message: `${arrow.archerName || arrow.archerUsername} reported a lost ${arrow.arrowColour} ${arrow.arrowMaterial} arrow.`,
-          targetPath: "/lost-and-found",
-        }))
-        .filter((toast) => !seenLostArrowToastIdsRef.current.has(toast.id));
-
-      if (nextToasts.length === 0) {
-        return current;
-      }
-
-      for (const toast of nextToasts) {
-        seenLostArrowToastIdsRef.current.add(toast.id);
-      }
-
-      writeSeenLostArrowToastIds(actorUsername, seenLostArrowToastIdsRef.current);
-
-      const dedupedCurrent = current.filter(
-        (toast) => !nextToasts.some((nextToast) => nextToast.id === toast.id),
-      );
-
-      return [...dedupedCurrent, ...nextToasts].slice(-3);
-    });
-  }, [actorUsername, openLostArrows]);
-
-  useEffect(() => {
-    if (lostArrowToasts.length === 0) {
-      return undefined;
-    }
-
-    const timerIds = lostArrowToasts.map((toast) =>
-      setTimeout(() => {
-        setLostArrowToasts((current) => current.filter((item) => item.id !== toast.id));
-      }, 8000),
-    );
-
-    return () => {
-      for (const timerId of timerIds) {
-        clearTimeout(timerId);
-      }
-    };
-  }, [lostArrowToasts]);
-
-  const handleDismissLostArrowToast = (toastId: string) => {
-    setLostArrowToasts((current) => current.filter((toast) => toast.id !== toastId));
-  };
-
-  const handleDismissQuestionToast = (toastId: string) => {
-    setDismissedQuestionToastIds((current) =>
-      current.includes(toastId) ? current : [...current, toastId],
-    );
-  };
+  const mobileOnSiteFeature = useRangePresenceFeature({
+    actorUsername,
+    rangeMembers,
+    currentUserProfile,
+  });
+  const {
+    lostArrowToasts,
+    questionResponseToasts,
+    dismissLostArrowToast,
+    dismissQuestionToast,
+  } = useHomePageToasts({
+    actorUsername,
+    openLostArrows,
+    unreadQuestionResponses,
+  });
 
   const handleNavigate = (pageId) => {
     const target = pageIdToPath[pageId] || "/";
     navigate(target);
-  };
-
-  const handleBookOnSite = async () => {
-    setIsBookingOnSite(true);
-    setMobileOnSiteError("");
-    setMobileOnSiteStatus("");
-
-    try {
-      const result = await bookOnSiteWithMobileApp();
-
-      setMobileOnSiteStatus(
-        result.message ?? "Your on-site mobile check-in has been recorded.",
-      );
-      await queryClient.invalidateQueries({
-        queryKey: homeQueryKeys.rangeMembers(),
-      });
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (error) {
-      setMobileOnSiteError(
-        error instanceof Error
-          ? error.message
-          : "We could not record your on-site mobile check-in.",
-      );
-    } finally {
-      setIsBookingOnSite(false);
-    }
-  };
-
-  const handleUpdateRangePresence = async () => {
-    setIsSavingRangePresence(true);
-    setMobileOnSiteError("");
-    setMobileOnSiteStatus("");
-
-    try {
-      const result = await extendRangePresence(selectedRangePresenceHours);
-
-      setMobileOnSiteStatus(
-        result.message ??
-          `Your range presence has been extended for the next ${selectedRangePresenceHours} hours.`,
-      );
-      await queryClient.invalidateQueries({
-        queryKey: homeQueryKeys.rangeMembers(),
-      });
-    } catch (error) {
-      setMobileOnSiteError(
-        error instanceof Error
-          ? error.message
-          : "We could not extend your range presence.",
-      );
-    } finally {
-      setIsSavingRangePresence(false);
-    }
   };
 
   return (
@@ -1475,25 +1118,15 @@ export function HomePage({
                   }
                   beginnerDashboard={beginnerDashboard}
                   beginnerCoachAssignments={beginnerCoachAssignments}
-                  mobileOnSiteFeature={{
-                    ...mobileOnSiteFeature,
-                    activeRangePresenceEndsAtText,
-                    activeRangePresenceHours: selectedRangePresenceHours,
-                    error: mobileOnSiteError || mobileOnSiteFeature.error,
-                    isBookingOnSite,
-                    isCheckInWindowOpen: isOnSiteBookingWindowOpen,
-                    isSavingRangePresence,
-                    onChangeRangePresenceHours: setSelectedRangePresenceHours,
-                    onBookOnSite: handleBookOnSite,
-                    onUpdateRangePresence: handleUpdateRangePresence,
-                    rangePresenceHourOptions: [...RANGE_PRESENCE_HOUR_OPTIONS],
-                    statusMessage: mobileOnSiteStatus,
-                  }}
+                  mobileOnSiteFeature={mobileOnSiteFeature}
                   hideEventPanels={isProgrammeMember}
                   lostArrows={openLostArrows}
                   onOpenGuestLogin={() => setIsGuestLoginModalOpen(true)}
                   onOpenApprovals={() => navigate("/approvals")}
+                  onOpenBeginnersCourses={() => navigate("/beginners-courses")}
+                  onOpenHaveAGoSessions={() => navigate("/have-a-go-sessions")}
                   onOpenLostAndFound={() => navigate("/lost-and-found")}
+                  onOpenTasterSessions={() => navigate("/taster-sessions")}
                 />
               }
             />
@@ -1662,7 +1295,7 @@ export function HomePage({
                   size="sm"
                   variant="ghost"
                   className="lost-arrow-toast-dismiss"
-                  onClick={() => handleDismissLostArrowToast(toast.id)}
+                  onClick={() => dismissLostArrowToast(toast.id)}
                   aria-label="Dismiss lost arrow notification"
                 >
                   Close
@@ -1687,7 +1320,7 @@ export function HomePage({
                   variant="secondary"
                   onClick={() => {
                     navigate(toast.targetPath);
-                    handleDismissQuestionToast(toast.id);
+                    dismissQuestionToast(toast.id);
                   }}
                 >
                   Open response
@@ -1697,7 +1330,7 @@ export function HomePage({
                   size="sm"
                   variant="ghost"
                   className="lost-arrow-toast-dismiss"
-                  onClick={() => handleDismissQuestionToast(toast.id)}
+                  onClick={() => dismissQuestionToast(toast.id)}
                   aria-label="Dismiss question response notification"
                 >
                   Close

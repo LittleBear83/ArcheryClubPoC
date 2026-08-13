@@ -11,7 +11,10 @@ import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
 import { useSseFallbackDiagnostics } from "./presentation/state/useSseFallbackDiagnostics";
 import { useServerEventDiagnostics } from "./presentation/state/useServerEventDiagnostics";
-import { useServerEvents } from "./presentation/state/useServerEvents";
+import {
+  AUTHENTICATED_EVENT_QUERY_GROUPS,
+  useServerEvents,
+} from "./presentation/state/useServerEvents";
 import {
   getCurrentSession,
   loginAsGuest,
@@ -44,6 +47,30 @@ const DEFAULT_PAYMENT_CARD_MESSAGE =
 const PAYMENT_CARD_WARNING_MESSAGE =
   "No Monies have been taken, Please ensure not to use any other token or card other than the one that was issued to you";
 const IS_DEV = import.meta.env.DEV;
+const ADDITIONAL_AUTH_QUERY_ROOTS = new Set([
+  "member-questions",
+  "range-usage-dashboard",
+  "member-profiles",
+]);
+
+function getAuthenticatedQueryRoots() {
+  const roots = new Set<string>(ADDITIONAL_AUTH_QUERY_ROOTS);
+
+  for (const { queryKeys } of AUTHENTICATED_EVENT_QUERY_GROUPS) {
+    for (const buildQueryKey of queryKeys) {
+      const queryKey = buildQueryKey("");
+      const root = queryKey[0];
+
+      if (typeof root === "string") {
+        roots.add(root);
+      }
+    }
+  }
+
+  return roots;
+}
+
+const AUTHENTICATED_QUERY_ROOTS = getAuthenticatedQueryRoots();
 
 function formatDiagnosticsTimestamp(value: string | null) {
   if (!value) {
@@ -141,6 +168,11 @@ function loadStoredUserProfile() {
   } catch {
     return null;
   }
+}
+
+function isAuthenticatedQueryKey(queryKey: readonly unknown[]) {
+  const root = queryKey[0];
+  return typeof root === "string" && AUTHENTICATED_QUERY_ROOTS.has(root);
 }
 
 function PaymentCardModal({
@@ -317,6 +349,40 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     });
   };
 
+  const invalidateAuthenticatedQueries = useCallback((actorUsername: string) => {
+    const dynamicQueryKeys = new Map<string, readonly unknown[]>();
+
+    for (const { queryKeys } of AUTHENTICATED_EVENT_QUERY_GROUPS) {
+      for (const buildQueryKey of queryKeys) {
+        const queryKey = buildQueryKey(actorUsername);
+        dynamicQueryKeys.set(JSON.stringify(queryKey), queryKey);
+      }
+    }
+
+    dynamicQueryKeys.set(
+      JSON.stringify(["member-questions", "mine", actorUsername]),
+      ["member-questions", "mine", actorUsername],
+    );
+    dynamicQueryKeys.set(
+      JSON.stringify(["range-usage-dashboard", actorUsername]),
+      ["range-usage-dashboard", actorUsername],
+    );
+    dynamicQueryKeys.set(
+      JSON.stringify(["member-profiles"]),
+      ["member-profiles"],
+    );
+
+    for (const queryKey of dynamicQueryKeys.values()) {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+  }, [queryClient]);
+
+  const clearAuthenticatedQueries = useCallback(() => {
+    queryClient.removeQueries({
+      predicate: (query) => isAuthenticatedQueryKey(query.queryKey),
+    });
+  }, [queryClient]);
+
   const persistAuthenticatedUser = (userProfile: unknown) => {
     // Normalize before persisting so old API shapes and current API shapes are
     // read consistently by the rest of the frontend.
@@ -330,17 +396,17 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       AUTH_USER_STORAGE_KEY,
       JSON.stringify(storedUserProfile),
     );
-    window.history.replaceState({}, "", "/");
     setIsAuthenticated(true);
     setCurrentUserProfile(storedUserProfile);
     window.dispatchEvent(new Event("member-session-updated"));
+    return storedUserProfile;
   };
 
   const handleCurrentUserProfileUpdate = (
     userProfile: UserProfile | unknown,
   ) => {
-    persistAuthenticatedUser(userProfile);
-    void queryClient.invalidateQueries();
+    const storedUserProfile = persistAuthenticatedUser(userProfile);
+    invalidateAuthenticatedQueries(storedUserProfile?.auth?.username ?? "");
   };
 
   const handleLogin = async ({
@@ -393,9 +459,9 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       void logoutSession().catch(() => undefined);
       setIsAuthenticated(false);
       setCurrentUserProfile(null);
-      void queryClient.invalidateQueries();
+      clearAuthenticatedQueries();
     },
-    [queryClient],
+    [clearAuthenticatedQueries],
   );
 
   const handleRfidLogin = useCallback(async (rfidTag: string) => {

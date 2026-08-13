@@ -37,6 +37,46 @@ export type AttendanceReport = {
   rows: AttendanceReportRow[];
 };
 
+export type MemberJourneyReportRow = {
+  id: string;
+  username: string;
+  name: string;
+  joinedAtDate: string;
+  joinedAtTime: string;
+  originCourseType: string;
+  currentCourseType: string;
+  journey: string;
+  convertedToMember: boolean;
+  convertedAtDate: string;
+  convertedAtTime: string;
+  membershipStatus: string;
+  programmeType: string;
+  role: string;
+};
+
+export type MemberJourneyReportSummary = {
+  totalParticipants: number;
+  directBeginnersParticipants: number;
+  tasterParticipants: number;
+  haveAGoParticipants: number;
+  tasterToBeginnersParticipants: number;
+  convertedToMembers: number;
+  convertedFromDirectBeginners: number;
+  convertedFromTasterPath: number;
+  beginnersCourseCohortCount: number;
+  beginnersCourseConvertedCount: number;
+  beginnersCourseConversionRate: number;
+  directBeginnersConversionRate: number;
+  tasterPathConversionRate: number;
+};
+
+export type MemberJourneyReport = {
+  startDate: string;
+  endDate: string;
+  rows: MemberJourneyReportRow[];
+  summary: MemberJourneyReportSummary;
+};
+
 export async function getAttendanceReport(
   actorUsername: string,
   params: {
@@ -57,6 +97,27 @@ export async function getAttendanceReport(
     success: true;
     report: AttendanceReport;
   }>(`/api/reporting/attendance?${searchParams.toString()}`, {
+    headers: buildActorHeaders(actorUsername),
+    cache: "no-store",
+  });
+}
+
+export async function getMemberJourneyReport(
+  actorUsername: string,
+  params: {
+    startDate: string;
+    endDate: string;
+  },
+) {
+  const searchParams = new URLSearchParams({
+    start: params.startDate,
+    end: params.endDate,
+  });
+
+  return fetchApi<{
+    success: true;
+    report: MemberJourneyReport;
+  }>(`/api/reporting/member-journeys?${searchParams.toString()}`, {
     headers: buildActorHeaders(actorUsername),
     cache: "no-store",
   });

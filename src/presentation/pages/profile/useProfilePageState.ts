@@ -1,160 +1,26 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ApiError } from "../../../api/client";
+import { useMemo, useState } from "react";
 import { normalizeMembershipClassification } from "../../../utils/memberClassification";
 import { hasPermission } from "../../../utils/userProfile";
-import { subscribeToRfidScans } from "../../../utils/rfidScanHub";
-import { subscribeToServerEvent } from "../../../lib/serverEvents";
-import { useSseFallbackPolling } from "../../state/useSseFallbackPolling";
-import type {
-  GoldenRecordsCandidateMatch,
-  GoldenRecordsSnapshot,
-  LoanBowReturnPayload,
-} from "../../../domain/entities/MemberProfile";
+import type { LoanBowReturnPayload } from "../../../domain/entities/MemberProfile";
+import { useProfilePageDataState } from "./useProfilePageDataState";
 import {
-  createOutdoorTableEntry,
-  listOutdoorTableDashboard,
-  updateOutdoorTableEntry,
-} from "../../../api/outdoorTableApi";
-import type { OutdoorTableEntry } from "../../../types/app";
+  useProfileOutdoorTableState,
+} from "./useProfileOutdoorTableState";
+import { useProfileMemberActionsState } from "./useProfileMemberActionsState";
 import {
-  BOW_TYPE_DISCIPLINE_MAPPINGS,
-  CURRENT_OUTDOOR_SEASON_YEAR,
-  OUTDOOR_252_COLUMNS,
-  countCompletedSignOffs,
-  buildEmptyOutdoorTableDraft,
-  buildOutdoorTableDraftFromEntry,
-  toOutdoorTablePayload,
   type OutdoorAchievementDateFieldKey,
   type Outdoor252SignOffFieldKey,
-  type ProfileOutdoorTableDraft,
 } from "./outdoorTableProfileUtils";
-
-type LoadProfileOptions = {
-  signal?: AbortSignal;
-  isBackgroundRefresh?: boolean;
-};
-
-function mapGoldenRecordsBowClassToBowType(bowClass: string) {
-  switch (String(bowClass ?? "").trim().toLowerCase()) {
-    case "recurve":
-      return "Rec";
-    case "compound":
-      return "Comp";
-    case "barebow":
-      return "B/bow";
-    case "longbow":
-      return "L/bow";
-    default:
-      return "";
-  }
-}
-
-function normalizeGoldenRecordsHandicapType(value: string) {
-  const normalized = String(value ?? "").trim().toLowerCase();
-
-  if (normalized.includes("outdoor")) {
-    return "outdoor";
-  }
-
-  if (normalized.includes("indoor")) {
-    return "indoor";
-  }
-
-  return normalized;
-}
-
-function buildGoldenRecordsHandicapsByBowType(snapshot, type) {
-  const entries = snapshot?.handicaps ?? [];
-  const normalizedType = normalizeGoldenRecordsHandicapType(String(type ?? ""));
-
-  return entries.reduce(
-    (next, entry) => {
-      if (normalizeGoldenRecordsHandicapType(entry.type) !== normalizedType) {
-        return next;
-      }
-
-      const bowType = mapGoldenRecordsBowClassToBowType(entry.bowClass);
-
-      if (!bowType) {
-        return next;
-      }
-
-      next[bowType] = {
-        achieved: entry.achieved,
-        handicap: entry.handicap,
-      };
-
-      return next;
-    },
-    {} as Record<string, { achieved: string; handicap: number | null }>,
-  );
-}
 
 export function useProfilePageState({
   currentUserProfile,
   memberProfileCrud,
   onCurrentUserProfileUpdate,
 }) {
-  const hasLoadedProfileRef = useRef(false);
-  const isIssuingCardRef = useRef(false);
-  const isLoadingProfileRef = useRef(false);
-  const isLoadingProfileOptionsRef = useRef(false);
-  const isLoadingOutdoorTableRef = useRef(false);
-  const [editableProfile, setEditableProfile] = useState(null);
-  const [memberOptions, setMemberOptions] = useState([]);
-  const [selectedUsername, setSelectedUsername] = useState(
-    currentUserProfile?.auth?.username ?? "",
-  );
-  const [disciplineOptions, setDisciplineOptions] = useState([]);
-  const [roleOptions, setRoleOptions] = useState([]);
-  const [membershipStatusOptions, setMembershipStatusOptions] = useState([]);
-  const [programmeTypeOptions, setProgrammeTypeOptions] = useState([]);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
-  const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [returnError, setReturnError] = useState("");
   const [isSavingReturn, setIsSavingReturn] = useState(false);
-  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
-  const [cardIssueError, setCardIssueError] = useState("");
-  const [cardIssueStatus, setCardIssueStatus] = useState("");
-  const [cardIssueSuccess, setCardIssueSuccess] = useState("");
-  const [isIssuingCard, setIsIssuingCard] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [deleteConfirmationUsername, setDeleteConfirmationUsername] = useState("");
-  const [deleteError, setDeleteError] = useState("");
-  const [isDeletingMember, setIsDeletingMember] = useState(false);
-  const [equipmentLoans, setEquipmentLoans] = useState([]);
-  const [isDistanceSignOffModalOpen, setIsDistanceSignOffModalOpen] =
-    useState(false);
-  const [distanceSignOffForm, setDistanceSignOffForm] = useState({
-    discipline: "",
-    distanceYards: "20",
-    memberPasswordConfirmation: "",
-  });
-  const [distanceSignOffError, setDistanceSignOffError] = useState("");
-  const [isSavingDistanceSignOff, setIsSavingDistanceSignOff] = useState(false);
-  const [outdoorTableEntries, setOutdoorTableEntries] = useState<OutdoorTableEntry[]>([]);
-  const [outdoorTableDraftsByBowType, setOutdoorTableDraftsByBowType] = useState<
-    Record<string, ProfileOutdoorTableDraft>
-  >({});
-  const [outdoorTableError, setOutdoorTableError] = useState("");
-  const [isLoadingOutdoorTable, setIsLoadingOutdoorTable] = useState(false);
-  const [isSavingOutdoorTableByBowType, setIsSavingOutdoorTableByBowType] = useState<
-    Record<string, boolean>
-  >({});
-  const [goldenRecordsSnapshot, setGoldenRecordsSnapshot] = useState(null);
-  const [isRefreshingGoldenRecordsHandicap, setIsRefreshingGoldenRecordsHandicap] =
-    useState(false);
-  const [isGoldenRecordsMatchModalOpen, setIsGoldenRecordsMatchModalOpen] = useState(false);
-  const [isGoldenRecordsMatchConfirmModalOpen, setIsGoldenRecordsMatchConfirmModalOpen] =
-    useState(false);
-  const [selectedGoldenRecordsCandidateId, setSelectedGoldenRecordsCandidateId] =
-    useState("");
-  const [goldenRecordsMatchError, setGoldenRecordsMatchError] = useState("");
-  const [isSavingGoldenRecordsMatch, setIsSavingGoldenRecordsMatch] = useState(false);
 
   const canManageMembers = hasPermission(
     currentUserProfile,
@@ -170,15 +36,36 @@ export function useProfilePageState({
   const canSelectMembers = canManageMembers || canSignOffDistances;
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const isGuest = currentUserProfile?.accountType === "guest";
-  const activeUsername = useMemo(() => {
-    if (isGuest) {
-      return "";
-    }
-
-    return canSelectMembers
-      ? selectedUsername || currentUserProfile?.auth?.username || ""
-      : currentUserProfile?.auth?.username || "";
-  }, [canSelectMembers, currentUserProfile, isGuest, selectedUsername]);
+  const profileDataState = useProfilePageDataState({
+    actorUsername,
+    canSelectMembers,
+    currentUserProfile,
+    isGuest,
+    memberProfileCrud,
+  });
+  const {
+    activeUsername,
+    disciplineOptions,
+    editableProfile,
+    equipmentLoans,
+    error,
+    hasLoadedProfileRef,
+    isInitialLoading,
+    isRefreshingProfile,
+    loadProfile,
+    memberOptions,
+    membershipStatusOptions,
+    message,
+    programmeTypeOptions,
+    roleOptions,
+    selectedUsername,
+    setEditableProfile,
+    setEquipmentLoans,
+    setError,
+    setMemberOptions,
+    setMessage,
+    setSelectedUsername,
+  } = profileDataState;
   const canEditCurrentProfile =
     canManageMembers ||
     editableProfile?.username === currentUserProfile?.auth?.username;
@@ -199,466 +86,53 @@ export function useProfilePageState({
         .map((disciplineGroup) => disciplineGroup.discipline) ?? [],
     [editableProfile?.distanceSignOffs],
   );
-  const distanceSignOffOptions = useMemo(
-    () =>
-      editableProfile?.distanceSignOffs?.[0]?.distances.map(
-        (distance) => distance.distanceYards,
-      ) ?? [],
-    [editableProfile?.distanceSignOffs],
-  );
-  const availableDistanceSignOffOptions = useMemo(() => {
-    const selectedDisciplineGroup = editableProfile?.distanceSignOffs?.find(
-      (disciplineGroup) =>
-        disciplineGroup.discipline === distanceSignOffForm.discipline,
-    );
-
-    return selectedDisciplineGroup?.distances
-      .filter((distance) => !distance.signOff)
-      .map((distance) => distance.distanceYards) ?? [];
-  }, [distanceSignOffForm.discipline, editableProfile?.distanceSignOffs]);
-  const outdoorTableBowEntries = useMemo(
-    () => Object.values(outdoorTableDraftsByBowType),
-    [outdoorTableDraftsByBowType],
-  );
-  const goldenRecordsOutdoorHandicapsByBowType = useMemo(
-    () => buildGoldenRecordsHandicapsByBowType(goldenRecordsSnapshot, "outdoor"),
-    [goldenRecordsSnapshot],
-  );
-  const goldenRecordsIndoorHandicapsByBowType = useMemo(
-    () => buildGoldenRecordsHandicapsByBowType(goldenRecordsSnapshot, "indoor"),
-    [goldenRecordsSnapshot],
-  );
-  const goldenRecordsFetchedAt = goldenRecordsSnapshot?.fetchedAt ?? "";
-  const goldenRecordsCandidateMatches = useMemo<GoldenRecordsCandidateMatch[]>(
-    () => goldenRecordsSnapshot?.candidateMatches ?? [],
-    [goldenRecordsSnapshot],
-  );
-  const goldenRecordsMatchSource = goldenRecordsSnapshot?.matchSource ?? "";
-  const selectedGoldenRecordsCandidate = useMemo(
-    () =>
-      goldenRecordsCandidateMatches.find(
-        (candidate) => candidate.memberId === selectedGoldenRecordsCandidateId,
-      ) ?? null,
-    [goldenRecordsCandidateMatches, selectedGoldenRecordsCandidateId],
-  );
   const submitLabel = isSaving
     ? "Saving profile..."
     : isRefreshingProfile
       ? "Refreshing profile..."
       : "Save profile";
 
-  useEffect(() => {
-    hasLoadedProfileRef.current = false;
-    setEditableProfile(null);
-    setMemberOptions([]);
-    setSelectedUsername(currentUserProfile?.auth?.username ?? "");
-    setIsInitialLoading(true);
-    setIsRefreshingProfile(false);
-    setError("");
-    setMessage("");
-    setIsCardModalOpen(false);
-    setEquipmentLoans([]);
-    setCardIssueError("");
-    setCardIssueStatus("");
-    setCardIssueSuccess("");
-    setIsIssuingCard(false);
-    setIsDeleteModalOpen(false);
-    setDeleteConfirmationUsername("");
-    setDeleteError("");
-    setIsDeletingMember(false);
-    setIsDistanceSignOffModalOpen(false);
-    setDistanceSignOffError("");
-    setIsSavingDistanceSignOff(false);
-    setOutdoorTableEntries([]);
-    setOutdoorTableDraftsByBowType({});
-    setOutdoorTableError("");
-    setIsLoadingOutdoorTable(false);
-    setIsSavingOutdoorTableByBowType({});
-    setGoldenRecordsSnapshot(null);
-    setIsRefreshingGoldenRecordsHandicap(false);
-    setIsGoldenRecordsMatchModalOpen(false);
-    setIsGoldenRecordsMatchConfirmModalOpen(false);
-    setSelectedGoldenRecordsCandidateId("");
-    setGoldenRecordsMatchError("");
-    setIsSavingGoldenRecordsMatch(false);
-  }, [currentUserProfile?.auth?.username]);
-
-  useEffect(() => {
-    isIssuingCardRef.current = isIssuingCard;
-  }, [isIssuingCard]);
-
-  const loadProfile = useCallback(
-    async (
-      username,
-      { signal, isBackgroundRefresh = false }: LoadProfileOptions = {},
-    ) => {
-      if (isGuest || !username) {
-        setIsInitialLoading(false);
-        return;
-      }
-
-      if (isLoadingProfileRef.current) {
-        return;
-      }
-
-      isLoadingProfileRef.current = true;
-
-      if (isBackgroundRefresh) {
-        setIsRefreshingProfile(true);
-      } else {
-        setIsInitialLoading(true);
-      }
-
+  const outdoorTableState = useProfileOutdoorTableState({
+    activeUsername,
+    actorUsername,
+    canManageOutdoorAchievements,
+    currentUserProfile,
+    editableProfile,
+    hasLoadedProfileRef,
+    isGuest,
+    loadProfile,
+    memberProfileCrud,
+    onClearMessages: () => {
       setError("");
-
-      try {
-        const result =
-          await memberProfileCrud.getMemberProfilePageDataUseCase.execute({
-            actorUsername,
-            username,
-            signal,
-          });
-
-        if (signal?.aborted) {
-          return;
-        }
-
-        setEditableProfile(result.editableProfile);
-        setEquipmentLoans(result.equipmentLoans ?? []);
-        setDisciplineOptions(result.disciplines ?? []);
-        setGoldenRecordsSnapshot(result.goldenRecords ?? null);
-        setRoleOptions(result.userTypes ?? []);
-        setMembershipStatusOptions(result.membershipStatuses ?? []);
-        setProgrammeTypeOptions(result.programmeTypes ?? []);
-        setMessage("");
-        hasLoadedProfileRef.current = true;
-      } catch (loadError) {
-        if (!signal?.aborted) {
-          setError(loadError.message);
-        }
-      } finally {
-        isLoadingProfileRef.current = false;
-
-        if (!signal?.aborted) {
-          setIsInitialLoading(false);
-          setIsRefreshingProfile(false);
-        }
-      }
+      setMessage("");
     },
-    [actorUsername, isGuest, memberProfileCrud],
-  );
-
-  const loadProfileOptions = useCallback(
-    async (signal) => {
-      if (!canSelectMembers || isGuest) {
-        return;
-      }
-
-      if (isLoadingProfileOptionsRef.current) {
-        return;
-      }
-
-      isLoadingProfileOptionsRef.current = true;
-
-      try {
-        const result =
-          await memberProfileCrud.getMemberProfileOptionsUseCase.execute({
-            actorUsername,
-            signal,
-          });
-
-        if (signal?.aborted) {
-          return;
-        }
-
-        setMemberOptions(result.members ?? []);
-        setRoleOptions(result.userTypes ?? []);
-        setMembershipStatusOptions(result.membershipStatuses ?? []);
-        setProgrammeTypeOptions(result.programmeTypes ?? []);
-        setDisciplineOptions(result.disciplines ?? []);
-      } catch (loadError) {
-        if (!signal?.aborted) {
-          setError(loadError.message);
-        }
-      } finally {
-        isLoadingProfileOptionsRef.current = false;
-      }
-    },
-    [actorUsername, canSelectMembers, isGuest, memberProfileCrud],
-  );
-
-  const loadOutdoorTableEntries = useCallback(
-    async (username, signal?: AbortSignal) => {
-      if (isGuest || !username) {
-        setOutdoorTableEntries([]);
-        setIsLoadingOutdoorTable(false);
-        return;
-      }
-
-      if (isLoadingOutdoorTableRef.current) {
-        return;
-      }
-
-      isLoadingOutdoorTableRef.current = true;
-
-      setIsLoadingOutdoorTable(true);
-      setOutdoorTableError("");
-
-      try {
-        const result = await listOutdoorTableDashboard(
-          currentUserProfile,
-          CURRENT_OUTDOOR_SEASON_YEAR,
-        );
-
-        if (signal?.aborted) {
-          return;
-        }
-
-        setOutdoorTableEntries(
-          (result.rows ?? []).filter((entry) => entry.archerUsername === username),
-        );
-      } catch (loadError) {
-        if (!signal?.aborted) {
-          setOutdoorTableError(loadError.message);
-        }
-      } finally {
-        isLoadingOutdoorTableRef.current = false;
-
-        if (!signal?.aborted) {
-          setIsLoadingOutdoorTable(false);
-        }
-      }
-    },
-    [currentUserProfile, isGuest],
-  );
-
-  useEffect(() => {
-    if (!canSelectMembers || isGuest) {
-      return undefined;
-    }
-
-    const abortController = new AbortController();
-    const refreshOptions = () => {
-      loadProfileOptions(abortController.signal);
-    };
-
-    refreshOptions();
-    const unsubscribeMembers = subscribeToServerEvent("members.updated", refreshOptions);
-    const unsubscribeRoles = subscribeToServerEvent("roles.updated", refreshOptions);
-
-    return () => {
-      abortController.abort();
-      unsubscribeMembers();
-      unsubscribeRoles();
-    };
-  }, [canSelectMembers, isGuest, loadProfileOptions]);
-
-  useSseFallbackPolling({
-    callback: () => {
-      void loadProfileOptions(undefined);
-    },
-    enabled: canSelectMembers && !isGuest,
-    source: "profile-options",
+    onMessage: setMessage,
   });
-
-  useEffect(() => {
-    if (!activeUsername) {
-      return undefined;
-    }
-
-    const abortController = new AbortController();
-    const refreshProfile = () => {
-      loadProfile(activeUsername, {
-        signal: abortController.signal,
-        isBackgroundRefresh: hasLoadedProfileRef.current,
-      });
-    };
-
-    refreshProfile();
-    const unsubscribeMembers = subscribeToServerEvent("members.updated", refreshProfile);
-    const unsubscribeRoles = subscribeToServerEvent("roles.updated", refreshProfile);
-
-    return () => {
-      abortController.abort();
-      unsubscribeMembers();
-      unsubscribeRoles();
-    };
-  }, [activeUsername, loadProfile]);
-
-  useEffect(() => {
-    if (!activeUsername) {
-      return undefined;
-    }
-
-    const abortController = new AbortController();
-    const refreshOutdoorTable = () => {
-      void loadOutdoorTableEntries(activeUsername, abortController.signal);
-    };
-
-    refreshOutdoorTable();
-    const unsubscribeOutdoorTable = subscribeToServerEvent(
-      "outdoor-table.updated",
-      refreshOutdoorTable,
-    );
-    const unsubscribeMembers = subscribeToServerEvent("members.updated", refreshOutdoorTable);
-
-    return () => {
-      abortController.abort();
-      unsubscribeOutdoorTable();
-      unsubscribeMembers();
-    };
-  }, [activeUsername, loadOutdoorTableEntries]);
-
-  useSseFallbackPolling({
-    callback: () => {
-      if (!activeUsername) {
-        return;
-      }
-
-      void loadProfile(activeUsername, {
-        isBackgroundRefresh: hasLoadedProfileRef.current,
-      });
-    },
-    enabled: Boolean(activeUsername),
-    source: "profile-page",
-  });
-
-  useSseFallbackPolling({
-    callback: () => {
-      if (!activeUsername) {
-        return;
-      }
-
-      void loadOutdoorTableEntries(activeUsername, undefined);
-    },
-    enabled: Boolean(activeUsername),
-    source: "profile-outdoor-table",
-  });
-
-  useEffect(() => {
-    if (!editableProfile?.username) {
-      setOutdoorTableDraftsByBowType({});
-      return;
-    }
-
-    const rowsByBowType = new Map(
-      outdoorTableEntries.map((entry) => [entry.bowType, entry]),
-    );
-    const nextDrafts = BOW_TYPE_DISCIPLINE_MAPPINGS.filter((mapping) =>
-      editableProfile.disciplines.includes(mapping.discipline),
-    ).reduce<Record<string, ProfileOutdoorTableDraft>>((drafts, mapping) => {
-      const existingEntry = rowsByBowType.get(mapping.bowType);
-
-      drafts[mapping.bowType] = existingEntry
-        ? buildOutdoorTableDraftFromEntry(existingEntry, mapping.discipline)
-        : buildEmptyOutdoorTableDraft(
-            editableProfile.username,
-            mapping.bowType,
-            mapping.discipline,
-          );
-
-      return drafts;
-    }, {});
-
-    setOutdoorTableDraftsByBowType(nextDrafts);
-  }, [editableProfile?.disciplines, editableProfile?.username, outdoorTableEntries]);
-
-  useEffect(() => {
-    if (!isCardModalOpen || !canManageMembers || !editableProfile?.username) {
-      return undefined;
-    }
-
-    let isActive = true;
-
-    const assignPresentedTag = async (rfidTag) => {
-      if (!rfidTag || !isActive) {
-        return;
-      }
-
-      setIsIssuingCard(true);
-      setCardIssueError("");
-      setCardIssueSuccess("");
-      setCardIssueStatus(
-        `Registering tag ${rfidTag} to ${editableProfile.firstName} ${editableProfile.surname}...`,
-      );
-
-      try {
-        const result = await memberProfileCrud.assignMemberRfidTagUseCase.execute(
-          {
-            actorUsername,
-            username: editableProfile.username,
-            rfidTag,
-          },
-        );
-
-        if (!isActive) {
-          return;
-        }
-
-        setEditableProfile(result.editableProfile);
-        setMemberOptions((current) =>
-          current.map((member) =>
-            member.username === result.editableProfile.username
-              ? {
-                  ...member,
-                  fullName: `${result.editableProfile.firstName} ${result.editableProfile.surname}`,
-                  userType: result.editableProfile.userType,
-                }
-              : member,
-          ),
-        );
-        setMessage(
-          `Card ${result.editableProfile.rfidTag} registered to ${result.editableProfile.firstName} ${result.editableProfile.surname}.`,
-        );
-        setCardIssueStatus("");
-        setCardIssueSuccess(
-          `Tag ${result.editableProfile.rfidTag} registered to ${result.editableProfile.firstName} ${result.editableProfile.surname}.`,
-        );
-
-        if (
-          result.editableProfile.username === currentUserProfile?.auth?.username &&
-          onCurrentUserProfileUpdate
-        ) {
-          onCurrentUserProfileUpdate(result.userProfile);
-        }
-      } catch (assignError) {
-        if (isActive) {
-          setCardIssueError(assignError.message);
-          setCardIssueSuccess("");
-          setCardIssueStatus("Present a tag to try again.");
-        }
-      } finally {
-        if (isActive) {
-          setIsIssuingCard(false);
-        }
-      }
-    };
-
-    setCardIssueError("");
-    setCardIssueStatus("Waiting for a card to be presented...");
-
-    return subscribeToRfidScans(async (scan) => {
-      if (!isActive || isIssuingCardRef.current || !scan?.rfidTag) {
-        return;
-      }
-
-      try {
-        await assignPresentedTag(scan.rfidTag);
-      } catch {
-        if (isActive) {
-          setCardIssueStatus("Waiting for a card to be presented...");
-        }
-      }
-    });
-  }, [
+  const memberActionsState = useProfileMemberActionsState({
     actorUsername,
     canManageMembers,
-    currentUserProfile?.auth?.username,
+    canSignOffSelectedMember,
+    currentUserProfile,
+    distanceSignOffDisciplines,
     editableProfile,
-    isCardModalOpen,
+    memberOptions,
     memberProfileCrud,
     onCurrentUserProfileUpdate,
-  ]);
+    onProfileCleared: () => {
+      setEditableProfile(null);
+      setEquipmentLoans([]);
+      outdoorTableState.resetOutdoorTableState();
+    },
+    onProfileUpdated: setEditableProfile,
+    onClearMessages: () => {
+      setError("");
+      setMessage("");
+    },
+    onError: setError,
+    onMessage: setMessage,
+    setMemberOptions,
+    setSelectedUsername,
+  });
 
   const handleSelectMember = (event) => {
     setSelectedUsername(event.target.value);
@@ -811,474 +285,6 @@ export function useProfilePageState({
     }
   };
 
-  const handleOpenCardModal = () => {
-    setError("");
-    setMessage("");
-    setCardIssueError("");
-    setCardIssueStatus("");
-    setCardIssueSuccess("");
-    setIsIssuingCard(false);
-    setIsCardModalOpen(true);
-  };
-
-  const handleOpenDeleteModal = () => {
-    setError("");
-    setMessage("");
-    setDeleteError("");
-    setDeleteConfirmationUsername("");
-    setIsDeleteModalOpen(true);
-  };
-
-  const handleCloseCardModal = () => {
-    setIsCardModalOpen(false);
-    setIsIssuingCard(false);
-    setCardIssueError("");
-    setCardIssueStatus("");
-    setCardIssueSuccess("");
-  };
-
-  const handleCloseDeleteModal = () => {
-    if (!isDeletingMember) {
-      setIsDeleteModalOpen(false);
-      setDeleteConfirmationUsername("");
-      setDeleteError("");
-    }
-  };
-
-  const handleDeleteConfirmationUsernameChange = (event) => {
-    setDeleteConfirmationUsername(event.target.value);
-  };
-
-  const handleOpenDistanceSignOffModal = (nextSelection?: {
-    discipline?: string;
-    distanceYards?: number;
-  }) => {
-    if (!canSignOffSelectedMember) {
-      setError(
-        "Members cannot sign themselves off. Another authorised member must complete the sign-off.",
-      );
-      return;
-    }
-
-    if (!editableProfile?.disciplines?.length) {
-      setError("Add at least one discipline before signing off a distance.");
-      return;
-    }
-
-    if (!distanceSignOffDisciplines.length) {
-      setError("All available distances are already signed off for this member.");
-      return;
-    }
-
-    const selectedDiscipline =
-      nextSelection?.discipline &&
-      distanceSignOffDisciplines.includes(nextSelection.discipline)
-        ? nextSelection.discipline
-        : distanceSignOffDisciplines[0];
-    const selectedDisciplineGroup = editableProfile.distanceSignOffs?.find(
-      (disciplineGroup) => disciplineGroup.discipline === selectedDiscipline,
-    );
-    const unsignedDistances =
-      selectedDisciplineGroup?.distances
-        .filter((distance) => !distance.signOff)
-        .map((distance) => distance.distanceYards) ?? [];
-    const selectedDistance =
-      nextSelection?.distanceYards &&
-      unsignedDistances.includes(nextSelection.distanceYards)
-        ? nextSelection.distanceYards
-        : unsignedDistances[0];
-
-    setError("");
-    setMessage("");
-    setDistanceSignOffError("");
-    setDistanceSignOffForm({
-      discipline: selectedDiscipline,
-      distanceYards: String(selectedDistance ?? ""),
-      memberPasswordConfirmation: "",
-    });
-    setIsDistanceSignOffModalOpen(true);
-  };
-
-  const handleDeleteMember = async () => {
-    if (!editableProfile?.username) {
-      return;
-    }
-
-    setIsDeletingMember(true);
-    setDeleteError("");
-    setError("");
-    setMessage("");
-
-    try {
-      const result = await memberProfileCrud.deleteMemberProfileUseCase.execute({
-        actorUsername,
-        username: editableProfile.username,
-        confirmationUsername: deleteConfirmationUsername,
-      });
-      const remainingMembers = memberOptions.filter(
-        (member) => member.username !== result.deletedUsername,
-      );
-
-      setMemberOptions(remainingMembers);
-      setEditableProfile(null);
-      setEquipmentLoans([]);
-      setOutdoorTableEntries([]);
-      setOutdoorTableDraftsByBowType({});
-      setSelectedUsername(
-        remainingMembers[0]?.username ?? currentUserProfile?.auth?.username ?? "",
-      );
-      setMessage(result.message ?? `${result.deletedUsername} deleted successfully.`);
-      setIsDeleteModalOpen(false);
-      setDeleteConfirmationUsername("");
-    } catch (deleteMemberError) {
-      setDeleteError(deleteMemberError.message);
-    } finally {
-      setIsDeletingMember(false);
-    }
-  };
-
-  const handleCloseDistanceSignOffModal = () => {
-    if (!isSavingDistanceSignOff) {
-      setIsDistanceSignOffModalOpen(false);
-      setDistanceSignOffError("");
-    }
-  };
-
-  const handleDistanceSignOffChange = (field) => (event) => {
-    const nextValue = event.target.value;
-
-    setDistanceSignOffForm((current) => {
-      if (field !== "discipline") {
-        return {
-          ...current,
-          [field]: nextValue,
-        };
-      }
-
-      const nextDisciplineGroup = editableProfile?.distanceSignOffs?.find(
-        (disciplineGroup) => disciplineGroup.discipline === nextValue,
-      );
-      const nextUnsignedDistance =
-        nextDisciplineGroup?.distances.find((distance) => !distance.signOff)
-          ?.distanceYards ?? "";
-
-      return {
-        ...current,
-        discipline: nextValue,
-        distanceYards: String(nextUnsignedDistance),
-      };
-    });
-  };
-
-  const handleSignOffDistance = async (event) => {
-    event.preventDefault();
-
-    if (!editableProfile) {
-      return;
-    }
-
-    setIsSavingDistanceSignOff(true);
-    setDistanceSignOffError("");
-    setError("");
-    setMessage("");
-
-    try {
-      const result =
-        await memberProfileCrud.signOffMemberDistanceUseCase.execute({
-          actorUsername,
-          username: editableProfile.username,
-          signOff: {
-            discipline: distanceSignOffForm.discipline,
-            distanceYards: Number.parseInt(
-              distanceSignOffForm.distanceYards,
-              10,
-            ),
-            memberPasswordConfirmation:
-              distanceSignOffForm.memberPasswordConfirmation,
-          },
-        });
-
-      setEditableProfile(result.editableProfile);
-      setMessage(result.message ?? "Distance signed off successfully.");
-      setIsDistanceSignOffModalOpen(false);
-    } catch (signOffError) {
-      setDistanceSignOffError(signOffError.message);
-    } finally {
-      setIsSavingDistanceSignOff(false);
-    }
-  };
-
-  const handleOutdoorTableAchievementDateChange = (
-    bowType: string,
-    field: OutdoorAchievementDateFieldKey,
-    value: string,
-  ) => {
-    setOutdoorTableDraftsByBowType((current) => {
-      const existingDraft = current[bowType];
-
-      if (!existingDraft) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [bowType]: {
-          ...existingDraft,
-          [field]: value,
-          ...(field === "archer3rdDate" ? { archer3rd: Boolean(value) } : {}),
-          ...(field === "archer2ndDate" ? { archer2nd: Boolean(value) } : {}),
-          ...(field === "archer1stDate" ? { archer1st: Boolean(value) } : {}),
-          ...(field === "bowman3rdDate" ? { bowman3rd: Boolean(value) } : {}),
-          ...(field === "bowman2ndDate" ? { bowman2nd: Boolean(value) } : {}),
-          ...(field === "bowman1stDate" ? { bowman1st: Boolean(value) } : {}),
-          ...(field === "masterBowmanDate" ? { masterBowman: Boolean(value) } : {}),
-          ...(field === "grandMasterBowmanDate"
-            ? { grandMasterBowman: Boolean(value) }
-            : {}),
-          ...(field === "eliteMasterBowmanDate"
-            ? { eliteMasterBowman: Boolean(value) }
-            : {}),
-        },
-      };
-    });
-  };
-
-  const handleOutdoorTableHandicapChange = (bowType: string, value: string) => {
-    setOutdoorTableDraftsByBowType((current) => {
-      const existingDraft = current[bowType];
-
-      if (!existingDraft) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [bowType]: {
-          ...existingDraft,
-          handicapText: value,
-          handicap:
-            value.trim() === "" ? null : Number.parseInt(value, 10),
-        },
-      };
-    });
-  };
-
-  const handleOutdoorTableAward252SignOffDateChange = (
-    bowType: string,
-    field: Outdoor252SignOffFieldKey,
-    index: number,
-    value: string,
-  ) => {
-    setOutdoorTableDraftsByBowType((current) => {
-      const existingDraft = current[bowType];
-
-      if (!existingDraft) {
-        return current;
-      }
-
-      const nextDates = [...existingDraft[field]];
-      nextDates[index] = value;
-      const linkedAward =
-        OUTDOOR_252_COLUMNS.find((column) => column.signOffKey === field)?.awardKey ?? null;
-      const nextDraft: ProfileOutdoorTableDraft = {
-        ...existingDraft,
-        [field]: nextDates,
-      };
-
-      if (linkedAward) {
-        nextDraft[linkedAward] = countCompletedSignOffs(nextDates) >= 3;
-      }
-
-      return {
-        ...current,
-        [bowType]: nextDraft,
-      };
-    });
-  };
-
-  const handleSaveOutdoorTableEntry = async (bowType: string) => {
-    const draft = outdoorTableDraftsByBowType[bowType];
-
-    if (!draft) {
-      return;
-    }
-
-    setIsSavingOutdoorTableByBowType((current) => ({
-      ...current,
-      [bowType]: true,
-    }));
-    setOutdoorTableError("");
-    setError("");
-    setMessage("");
-
-    try {
-      if (!canManageOutdoorAchievements) {
-        setOutdoorTableError(
-          "Members cannot sign off their own outdoor achievements. Another authorised member must complete the sign-off.",
-        );
-        return;
-      }
-
-      const payload = toOutdoorTablePayload(draft);
-      const result =
-        draft.id === null
-          ? await createOutdoorTableEntry(currentUserProfile, payload)
-          : await updateOutdoorTableEntry(currentUserProfile, draft.id, payload);
-
-      setOutdoorTableEntries((current) => {
-        const nextEntries = current.filter((entry) => entry.bowType !== bowType);
-        nextEntries.push(result.entry);
-        return nextEntries.sort((left, right) => left.bowType.localeCompare(right.bowType));
-      });
-      setMessage(
-        `${draft.discipline} outdoor progress saved for ${editableProfile?.firstName} ${editableProfile?.surname}.`,
-      );
-    } catch (saveError) {
-      setOutdoorTableError(saveError.message);
-    } finally {
-      setIsSavingOutdoorTableByBowType((current) => ({
-        ...current,
-        [bowType]: false,
-      }));
-    }
-  };
-
-  const handleRefreshGoldenRecordsHandicap = async () => {
-    if (!editableProfile?.username) {
-      return;
-    }
-
-    setIsRefreshingGoldenRecordsHandicap(true);
-    setOutdoorTableError("");
-    setError("");
-    setMessage("");
-    setGoldenRecordsMatchError("");
-
-    try {
-      const result =
-        await memberProfileCrud.refreshGoldenRecordsHandicapUseCase.execute({
-          actorUsername,
-          username: editableProfile.username,
-        });
-
-      setGoldenRecordsSnapshot(result.goldenRecords ?? null);
-      await loadOutdoorTableEntries(editableProfile.username, undefined);
-      setMessage(
-        result.message
-          ? `Golden Records API sync successful. ${result.message}`
-          : "Golden Records API sync successful.",
-      );
-    } catch (refreshError) {
-      if (refreshError instanceof ApiError) {
-        const payload = refreshError.payload as {
-          candidateMatches?: GoldenRecordsCandidateMatch[];
-          goldenRecords?: GoldenRecordsSnapshot | null;
-        };
-        const candidateMatches = Array.isArray(payload?.candidateMatches)
-          ? payload.candidateMatches
-          : [];
-        const suggestedSnapshot = payload?.goldenRecords ?? null;
-
-        if (suggestedSnapshot) {
-          setGoldenRecordsSnapshot(suggestedSnapshot);
-        }
-
-        if (candidateMatches.length > 0) {
-          setSelectedGoldenRecordsCandidateId(candidateMatches[0].memberId ?? "");
-          setIsGoldenRecordsMatchModalOpen(true);
-        }
-      }
-
-      setOutdoorTableError(refreshError.message);
-    } finally {
-      setIsRefreshingGoldenRecordsHandicap(false);
-    }
-  };
-
-  const handleOpenGoldenRecordsMatchModal = () => {
-    if (!goldenRecordsCandidateMatches.length) {
-      setOutdoorTableError("No likely Golden Records matches are available for this member.");
-      return;
-    }
-
-    setGoldenRecordsMatchError("");
-    setSelectedGoldenRecordsCandidateId(
-      selectedGoldenRecordsCandidateId || goldenRecordsCandidateMatches[0]?.memberId || "",
-    );
-    setIsGoldenRecordsMatchModalOpen(true);
-  };
-
-  const handleCloseGoldenRecordsMatchModal = () => {
-    if (isSavingGoldenRecordsMatch) {
-      return;
-    }
-
-    setIsGoldenRecordsMatchModalOpen(false);
-    setGoldenRecordsMatchError("");
-  };
-
-  const handleGoldenRecordsCandidateSelectionChange = (event) => {
-    setSelectedGoldenRecordsCandidateId(event.target.value);
-  };
-
-  const handleContinueGoldenRecordsMatchAssignment = () => {
-    if (!selectedGoldenRecordsCandidateId) {
-      setGoldenRecordsMatchError("Choose a Golden Records account before continuing.");
-      return;
-    }
-
-    setGoldenRecordsMatchError("");
-    setIsGoldenRecordsMatchModalOpen(false);
-    setIsGoldenRecordsMatchConfirmModalOpen(true);
-  };
-
-  const handleCloseGoldenRecordsMatchConfirmModal = () => {
-    if (isSavingGoldenRecordsMatch) {
-      return;
-    }
-
-    setIsGoldenRecordsMatchConfirmModalOpen(false);
-    setGoldenRecordsMatchError("");
-  };
-
-  const handleAssignGoldenRecordsMatch = async () => {
-    if (!editableProfile?.username || !selectedGoldenRecordsCandidateId) {
-      setGoldenRecordsMatchError("Choose a Golden Records account before continuing.");
-      return;
-    }
-
-    setIsSavingGoldenRecordsMatch(true);
-    setGoldenRecordsMatchError("");
-    setOutdoorTableError("");
-    setError("");
-    setMessage("");
-
-    try {
-      const result = await memberProfileCrud.assignGoldenRecordsMatchUseCase.execute({
-        actorUsername,
-        goldenRecordsId: selectedGoldenRecordsCandidateId,
-        username: editableProfile.username,
-      });
-
-      setGoldenRecordsSnapshot(result.goldenRecords ?? null);
-      await loadProfile(editableProfile.username, {
-        isBackgroundRefresh: hasLoadedProfileRef.current,
-      });
-      await loadOutdoorTableEntries(editableProfile.username, undefined);
-      setMessage(
-        result.message
-          ? `Golden Records API sync successful. ${result.message}`
-          : "Golden Records API sync successful.",
-      );
-      setIsGoldenRecordsMatchConfirmModalOpen(false);
-      setIsGoldenRecordsMatchModalOpen(false);
-    } catch (assignError) {
-      setGoldenRecordsMatchError(assignError.message);
-    } finally {
-      setIsSavingGoldenRecordsMatch(false);
-    }
-  };
-
   return {
     canEditCurrentProfile,
     canManageMemberDisciplines,
@@ -1287,85 +293,101 @@ export function useProfilePageState({
     canSelectMembers,
     canSignOffSelectedMember,
     canSignOffDistances,
-    cardIssueError,
-    cardIssueStatus,
-    cardIssueSuccess,
-    deleteConfirmationUsername,
-    deleteError,
+    cardIssueError: memberActionsState.cardIssueError,
+    cardIssueStatus: memberActionsState.cardIssueStatus,
+    cardIssueSuccess: memberActionsState.cardIssueSuccess,
+    deleteConfirmationUsername: memberActionsState.deleteConfirmationUsername,
+    deleteError: memberActionsState.deleteError,
     currentUserProfile,
-    availableDistanceSignOffOptions,
+    availableDistanceSignOffOptions: memberActionsState.availableDistanceSignOffOptions,
     disciplineOptions,
     distanceSignOffDisciplines,
-    distanceSignOffForm,
-    distanceSignOffError,
-    distanceSignOffOptions,
+    distanceSignOffForm: memberActionsState.distanceSignOffForm,
+    distanceSignOffError: memberActionsState.distanceSignOffError,
+    distanceSignOffOptions: memberActionsState.distanceSignOffOptions,
     editableProfile,
     equipmentLoans,
     error,
-    goldenRecordsCandidateMatches,
-    goldenRecordsFetchedAt,
-    goldenRecordsMatchError,
-    goldenRecordsMatchSource,
-    goldenRecordsOutdoorHandicapsByBowType,
-    goldenRecordsIndoorHandicapsByBowType,
-    handleAssignGoldenRecordsMatch,
+    goldenRecordsCandidateMatches: outdoorTableState.goldenRecordsCandidateMatches,
+    goldenRecordsFetchedAt: outdoorTableState.goldenRecordsFetchedAt,
+    goldenRecordsMatchError: outdoorTableState.goldenRecordsMatchError,
+    goldenRecordsMatchSource: outdoorTableState.goldenRecordsMatchSource,
+    goldenRecordsOutdoorHandicapsByBowType:
+      outdoorTableState.goldenRecordsOutdoorHandicapsByBowType,
+    goldenRecordsIndoorHandicapsByBowType:
+      outdoorTableState.goldenRecordsIndoorHandicapsByBowType,
+    handleAssignGoldenRecordsMatch: outdoorTableState.handleAssignGoldenRecordsMatch,
     handleBooleanChange,
     handleBooleanSelectChange,
     handleChange,
-    handleCloseCardModal,
-    handleCloseDeleteModal,
-    handleCloseDistanceSignOffModal,
-    handleCloseGoldenRecordsMatchConfirmModal,
-    handleCloseGoldenRecordsMatchModal,
+    handleCloseCardModal: memberActionsState.handleCloseCardModal,
+    handleCloseDeleteModal: memberActionsState.handleCloseDeleteModal,
+    handleCloseDistanceSignOffModal:
+      memberActionsState.handleCloseDistanceSignOffModal,
+    handleCloseGoldenRecordsMatchConfirmModal:
+      outdoorTableState.handleCloseGoldenRecordsMatchConfirmModal,
+    handleCloseGoldenRecordsMatchModal:
+      outdoorTableState.handleCloseGoldenRecordsMatchModal,
     handleCloseReturnModal,
-    handleDeleteConfirmationUsernameChange,
-    handleDeleteMember,
-    handleDistanceSignOffChange,
-    handleGoldenRecordsCandidateSelectionChange,
-    handleContinueGoldenRecordsMatchAssignment,
-    handleOpenCardModal,
-    handleOpenDeleteModal,
-    handleOpenDistanceSignOffModal,
-    handleOpenGoldenRecordsMatchModal,
-    handleOutdoorTableAward252SignOffDateChange,
-    handleOutdoorTableAchievementDateChange,
-    handleOutdoorTableHandicapChange,
-    handleRefreshGoldenRecordsHandicap,
+    handleDeleteConfirmationUsernameChange:
+      memberActionsState.handleDeleteConfirmationUsernameChange,
+    handleDeleteMember: memberActionsState.handleDeleteMember,
+    handleDistanceSignOffChange: memberActionsState.handleDistanceSignOffChange,
+    handleGoldenRecordsCandidateSelectionChange:
+      outdoorTableState.handleGoldenRecordsCandidateSelectionChange,
+    handleContinueGoldenRecordsMatchAssignment:
+      outdoorTableState.handleContinueGoldenRecordsMatchAssignment,
+    handleOpenCardModal: memberActionsState.handleOpenCardModal,
+    handleOpenDeleteModal: memberActionsState.handleOpenDeleteModal,
+    handleOpenDistanceSignOffModal:
+      memberActionsState.handleOpenDistanceSignOffModal,
+    handleOpenGoldenRecordsMatchModal:
+      outdoorTableState.handleOpenGoldenRecordsMatchModal,
+    handleOutdoorTableAward252SignOffDateChange:
+      outdoorTableState.handleOutdoorTableAward252SignOffDateChange,
+    handleOutdoorTableAchievementDateChange:
+      outdoorTableState.handleOutdoorTableAchievementDateChange,
+    handleOutdoorTableHandicapChange:
+      outdoorTableState.handleOutdoorTableHandicapChange,
+    handleRefreshGoldenRecordsHandicap:
+      outdoorTableState.handleRefreshGoldenRecordsHandicap,
     handleReturnLoanBow,
     handleSave,
-    handleSaveOutdoorTableEntry,
+    handleSaveOutdoorTableEntry: outdoorTableState.handleSaveOutdoorTableEntry,
     handleSelectMember,
-    handleSignOffDistance,
-    isCardModalOpen,
-    isDeleteModalOpen,
-    isDistanceSignOffModalOpen,
+    handleSignOffDistance: memberActionsState.handleSignOffDistance,
+    isCardModalOpen: memberActionsState.isCardModalOpen,
+    isDeleteModalOpen: memberActionsState.isDeleteModalOpen,
+    isDistanceSignOffModalOpen: memberActionsState.isDistanceSignOffModalOpen,
     isGuest,
     isInitialLoading,
-    isDeletingMember,
-    isGoldenRecordsMatchConfirmModalOpen,
-    isGoldenRecordsMatchModalOpen,
-    isIssuingCard,
-    isRefreshingGoldenRecordsHandicap,
+    isDeletingMember: memberActionsState.isDeletingMember,
+    isGoldenRecordsMatchConfirmModalOpen:
+      outdoorTableState.isGoldenRecordsMatchConfirmModalOpen,
+    isGoldenRecordsMatchModalOpen: outdoorTableState.isGoldenRecordsMatchModalOpen,
+    isIssuingCard: memberActionsState.isIssuingCard,
+    isRefreshingGoldenRecordsHandicap:
+      outdoorTableState.isRefreshingGoldenRecordsHandicap,
     isRefreshingProfile,
     isReturnModalOpen,
     isSaving,
-    isSavingDistanceSignOff,
-    isSavingGoldenRecordsMatch,
-    isSavingOutdoorTableByBowType,
+    isSavingDistanceSignOff: memberActionsState.isSavingDistanceSignOff,
+    isSavingGoldenRecordsMatch: outdoorTableState.isSavingGoldenRecordsMatch,
+    isSavingOutdoorTableByBowType: outdoorTableState.isSavingOutdoorTableByBowType,
     isSavingReturn,
     memberOptions,
     message,
     membershipStatusOptions,
-    outdoorTableBowEntries,
-    outdoorTableError,
+    outdoorTableBowEntries: outdoorTableState.outdoorTableBowEntries,
+    outdoorTableError: outdoorTableState.outdoorTableError,
     programmeTypeOptions,
     returnError,
     roleOptions,
-    selectedGoldenRecordsCandidate,
-    selectedGoldenRecordsCandidateId,
+    selectedGoldenRecordsCandidate: outdoorTableState.selectedGoldenRecordsCandidate,
+    selectedGoldenRecordsCandidateId: outdoorTableState.selectedGoldenRecordsCandidateId,
     selectedUsername,
     submitLabel,
     toggleDiscipline,
-    isLoadingOutdoorTable,
+    isLoadingOutdoorTable: outdoorTableState.isLoadingOutdoorTable,
   };
 }

@@ -441,9 +441,9 @@ function apiErrorHandler(error, req, res, next) {
 }
 
 const COURSE_PARTICIPANT_USER_TYPES = {
-  beginners: "beginner",
-  "have-a-go": "have-a-go",
-  "taster-session": "have-a-go",
+  beginners: "non-member",
+  "have-a-go": "non-member",
+  "taster-session": "non-member",
 };
 
 const COURSE_PARTICIPANT_PROGRAMME_TYPES = {
@@ -577,6 +577,7 @@ const publicServerEventBus = createServerEventBus();
 let cachedAssignableRoleKeys = [];
 let cachedKnownRoleKeys = new Set();
 let cachedRolePermissionsByKey = new Map();
+const LEGACY_NON_MEMBER_ROLE_KEYS = new Set(["beginner", "have-a-go", "non-member"]);
 
 async function refreshRoleAccessSnapshot() {
   const roles = await roleCommitteeGateway.listRoleDefinitions();
@@ -725,6 +726,7 @@ const {
   listBeginnersLessonCoachesByLessonId,
   listCoachBeginnersLessonsByUserId,
   markBeginnersCourseParticipantConverted,
+  transferBeginnersCourseParticipant,
   updateBeginnersCourseApproval,
   updateBeginnersCourseParticipant,
   updateBeginnersCourseParticipantCase,
@@ -841,12 +843,14 @@ const {
   countMemberLoginsForUserInRange,
   countMemberLoginsInRange,
   findDisciplinesByUsername,
+  findLatestRangeMembers,
   findRecentGuestLogins,
   findRecentRangeMembers,
   guestLoginsByDateInRange,
   guestLoginsByHourInRange,
   guestLoginsByWeekdayInRange,
   listAllUserDisciplines,
+  listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
   memberLoginsByDateForUserInRange,
@@ -864,12 +868,14 @@ const activityReportingGateway = createActivityReportingGateway({
   databaseEngine: serverRuntime.databaseEngine,
   findMemberCoachingBookingsByUserId,
   findMemberEventBookingsByUserId,
+  findLatestRangeMembers,
   findRecentGuestLogins,
   findRecentRangeMembers,
   guestLoginsByDateInRange,
   guestLoginsByHourInRange,
   guestLoginsByWeekdayInRange,
   listAllUserDisciplines,
+  listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
   memberLoginsByDateForUserInRange,
@@ -1009,6 +1015,7 @@ const beginnersCourseWriteGateway = createBeginnersCourseWriteGateway({
   insertBeginnersCourseParticipant,
   insertBeginnersLessonCoach,
   markBeginnersCourseParticipantConverted,
+  transferBeginnersCourseParticipant,
   pool: db.pool,
   updateBeginnersCourseApproval,
   updateBeginnersCourseParticipant,
@@ -1244,7 +1251,7 @@ function inferMembershipStatus(user) {
 
   const normalizedRole = String(user?.user_type ?? "").trim().toLowerCase();
 
-  if (normalizedRole === "beginner" || normalizedRole === "have-a-go") {
+  if (LEGACY_NON_MEMBER_ROLE_KEYS.has(normalizedRole)) {
     return "non-member";
   }
 
@@ -1485,7 +1492,7 @@ function sanitizeBeginnersParticipantPayload(payload) {
     return {
       success: false,
       status: 400,
-      message: "First name and surname are required for each beginner.",
+      message: "First name and surname are required for each attendee.",
     };
   }
 
@@ -1604,7 +1611,7 @@ function getCourseTypePermissions(courseType) {
 }
 
 function getCourseParticipantUserType(courseType) {
-  return COURSE_PARTICIPANT_USER_TYPES[normalizeCourseType(courseType)] ?? "beginner";
+  return COURSE_PARTICIPANT_USER_TYPES[normalizeCourseType(courseType)] ?? "non-member";
 }
 
 async function buildBeginnersCourseDashboard(courseType = "beginners") {
@@ -1675,7 +1682,9 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
       ],
       convertedToMember:
         Boolean(participant.converted_to_member) ||
-        participant.participant_user_type !== "beginner",
+        !LEGACY_NON_MEMBER_ROLE_KEYS.has(
+          String(participant.participant_user_type ?? "").trim().toLowerCase(),
+        ),
       assignedCaseId: participant.assigned_case_id ?? null,
       assignedCaseNumber: participant.assigned_case_number ?? "",
     }));
@@ -1831,6 +1840,23 @@ async function hasBeginnersCourseCompleted(course) {
   })[lessons.length - 1];
 
   return hasScheduleEntryEnded(lastLesson.lesson_date, lastLesson.end_time);
+}
+
+function hasScheduleEntryStarted(date, startTime) {
+  if (!date || !startTime) {
+    return false;
+  }
+
+  const normalizedStartTime = /^\d{2}:\d{2}$/.test(startTime)
+    ? `${startTime}:00`
+    : startTime;
+  const entryStart = new Date(`${date}T${normalizedStartTime}`);
+
+  if (Number.isNaN(entryStart.getTime())) {
+    return false;
+  }
+
+  return entryStart.getTime() <= Date.now();
 }
 
 async function buildBeginnersCourseCalendarLessons(courseType = null) {
@@ -3400,11 +3426,13 @@ function parseUtcTimestampParts(datePart, timePart) {
 }
 
 function isBeginnerVisibleInProfileOptions(user, participant, now = new Date()) {
-  if (!user || user.user_type !== "beginner") {
+  if (!user || !participant) {
     return true;
   }
 
-  if (!participant) {
+  const normalizedRole = String(user.user_type ?? "").trim().toLowerCase();
+
+  if (!LEGACY_NON_MEMBER_ROLE_KEYS.has(normalizedRole)) {
     return true;
   }
 
@@ -4029,7 +4057,12 @@ app.get("/api/beginners-courses/dashboard", async (req, res) => {
     .map((item) => buildEquipmentCaseResponse(item, maps));
   const users = (await memberDirectoryGateway
     .listAllUsers())
-    .filter((user) => !["beginner", "have-a-go"].includes(user.user_type))
+    .filter(
+      (user) =>
+        !LEGACY_NON_MEMBER_ROLE_KEYS.has(
+          String(user.user_type ?? "").trim().toLowerCase(),
+        ),
+    )
     .map((user) => ({
       username: user.username,
       fullName: `${user.first_name} ${user.surname}`.trim(),
@@ -4530,6 +4563,7 @@ app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
     courseId: course.id,
     createdAtDate: date,
     createdAtTime: time,
+    originCourseType: courseType,
     participant: sanitized.value,
     username,
   });
@@ -4733,6 +4767,180 @@ app.put("/api/beginners-course-participants/:id", async (req, res) => {
   });
 });
 
+app.post("/api/beginners-course-participants/:id/transfer-to-beginners-course", async (req, res) => {
+  const actor = getActorUser(req);
+
+  const participant = await beginnersCourseReadGateway.findParticipantById(req.params.id);
+
+  if (!participant) {
+    res.status(404).json({
+      success: false,
+      message: "Participant record not found.",
+    });
+    return;
+  }
+
+  const sourceCourse = await beginnersCourseReadGateway.findCourseById(participant.course_id);
+  const sourceCourseType = normalizeCourseType(sourceCourse?.course_type);
+
+  if (!actor || !actorHasPermission(actor, getCourseTypePermissions(sourceCourseType).manage)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to transfer taster participants.",
+    });
+    return;
+  }
+
+  if (sourceCourseType !== "taster-session") {
+    res.status(400).json({
+      success: false,
+      message: "Only Taster Session participants can be transferred to a beginners course.",
+    });
+    return;
+  }
+
+  const targetCourseId = Number.parseInt(String(req.body?.targetCourseId ?? ""), 10);
+  if (!Number.isInteger(targetCourseId)) {
+    res.status(400).json({
+      success: false,
+      message: "Choose a beginners course to transfer this participant onto.",
+    });
+    return;
+  }
+
+  const targetCourse = await beginnersCourseReadGateway.findCourseById(targetCourseId);
+  const targetCourseType = normalizeCourseType(targetCourse?.course_type);
+
+  if (!targetCourse || targetCourseType !== "beginners") {
+    res.status(404).json({
+      success: false,
+      message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  if (targetCourse.is_cancelled) {
+    res.status(400).json({
+      success: false,
+      message: "Cancelled beginners courses cannot accept transfers.",
+    });
+    return;
+  }
+
+  if (targetCourse.approval_status !== "approved") {
+    res.status(400).json({
+      success: false,
+      message: "Approve the beginners course before transferring participants onto it.",
+    });
+    return;
+  }
+
+  if (hasScheduleEntryStarted(targetCourse.first_lesson_date, targetCourse.start_time)) {
+    res.status(400).json({
+      success: false,
+      message:
+        "Only future beginners courses can accept transfers from a Taster Session.",
+    });
+    return;
+  }
+
+  if (
+    (await beginnersCourseReadGateway.listParticipantsByCourseId(targetCourse.id)).length >=
+    targetCourse.beginner_capacity
+  ) {
+    res.status(400).json({
+      success: false,
+      message: "This beginners course is already full.",
+    });
+    return;
+  }
+
+  const existingUser = await memberDirectoryGateway.findUserByUsername(participant.username);
+  if (!existingUser) {
+    res.status(404).json({
+      success: false,
+      message: "The participant account could not be found.",
+    });
+    return;
+  }
+
+  const previousParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    sourceCourseType,
+  );
+  const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+
+  const saveUserResult = await memberPersistenceService.saveMemberProfile({
+    username: existingUser.username,
+    firstName: existingUser.first_name,
+    surname: existingUser.surname,
+    archeryGbMembershipNumber: existingUser.archery_gb_membership_number ?? "",
+    emailAddress: existingUser.email_address ?? "",
+    password: null,
+    rfidTag: existingUser.rfid_tag ?? "",
+    activeMember: Boolean(existingUser.active_member),
+    affiliateMember: Boolean(existingUser.affiliate_member),
+    juniorMember: Boolean(existingUser.junior_member),
+    membershipFeesDue: existingUser.membership_fees_due ?? "",
+    coachingVolunteer: Boolean(existingUser.coaching_volunteer),
+    userType: getCourseParticipantUserType("beginners"),
+    membershipStatus: getCourseParticipantMembershipStatus(),
+    programmeType: getCourseParticipantProgrammeType("beginners"),
+    disciplines: (
+      await memberDirectoryGateway.findDisciplinesByUsername(existingUser.username)
+    ).map((entry) => entry.discipline),
+    loanBow: buildLoanBowRecord(
+      await memberDirectoryGateway.findLoanBowByUsername(existingUser.username),
+    ),
+    existingUser,
+  });
+
+  if (!saveUserResult.success) {
+    res.status(saveUserResult.status).json(saveUserResult);
+    return;
+  }
+
+  await beginnersCourseWriteGateway.transferParticipantToCourse({
+    courseId: targetCourse.id,
+    participantId: participant.id,
+  });
+
+  const transferredParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    "beginners",
+  );
+
+  if (auditChangeLogger && transferredParticipant) {
+    void auditChangeLogger.recordEntityChange({
+      action: "updated",
+      actorUsername: actor.username,
+      after: transferredParticipant,
+      before: previousParticipant,
+      changedAtDate: updatedAtDate,
+      changedAtTime: updatedAtTime,
+      entityId: String(participant.id),
+      entityLabel: buildBeginnersParticipantAuditLabel(transferredParticipant),
+      entityType: "beginners_participant",
+      req,
+      target: `/api/beginners-course-participants/${participant.id}/transfer-to-beginners-course`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners participant transfer audit event", auditError);
+    });
+  }
+
+  broadcastBeginnersUpdated(sourceCourseType, "beginners.participant-transfer");
+  broadcastBeginnersUpdated("beginners", "beginners.participant-transfer");
+  broadcastMembersUpdated("beginners.participant-transfer", participant.username);
+
+  res.json({
+    success: true,
+    course:
+      (await buildBeginnersCourseDashboard("beginners")).find(
+        (entry) => entry.id === targetCourse.id,
+      ) ?? null,
+  });
+});
+
 app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
   const actor = getActorUser(req);
 
@@ -4784,7 +4992,11 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     return;
   }
 
-  if (existingUser.user_type === "beginner") {
+  if (
+    LEGACY_NON_MEMBER_ROLE_KEYS.has(
+      String(existingUser.user_type ?? "").trim().toLowerCase(),
+    )
+  ) {
     const conversionResult = await memberPersistenceService.saveMemberProfile({
       username: existingUser.username,
       firstName: existingUser.first_name,
@@ -4824,12 +5036,17 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     participant.id,
     courseType,
   );
-  await beginnersCourseWriteGateway.markParticipantConverted(participant.id);
+  const [convertedAtDate, convertedAtTime] = getUtcTimestampParts();
+  await beginnersCourseWriteGateway.markParticipantConverted({
+    actorUsername: actor.username,
+    convertedAtDate,
+    convertedAtTime,
+    participantId: participant.id,
+  });
   const convertedParticipant = await findBeginnersParticipantAuditSnapshot(
     participant.id,
     courseType,
   );
-  const [convertedAtDate, convertedAtTime] = getUtcTimestampParts();
 
   if (auditChangeLogger && convertedParticipant) {
     void auditChangeLogger.recordEntityChange({
@@ -5253,6 +5470,7 @@ app.get("/api/my-beginner-coaching-assignments", async (req, res) => {
   const lessons = (await beginnersCourseReadGateway.listCoachLessonsByUserId(actor.id)).map((lesson) => ({
     id: lesson.id,
     courseId: lesson.course_id,
+    courseType: normalizeCourseType(lesson.course_type),
     lessonNumber: lesson.lesson_number,
     date: lesson.lesson_date,
     startTime: lesson.start_time,

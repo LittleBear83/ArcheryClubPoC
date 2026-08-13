@@ -3,15 +3,9 @@ import { Button } from "./Button";
 import { DatePicker } from "./DatePicker";
 import { describeMembershipClassification } from "../../utils/memberClassification";
 
+const HIDDEN_LEGACY_ROLE_KEYS = new Set(["beginner", "have-a-go"]);
+
 function formatRoleLabel(role) {
-  if (role === "beginner") {
-    return "Beginner (Legacy Role)";
-  }
-
-  if (role === "have-a-go") {
-    return "Have A Go (Legacy Role)";
-  }
-
   return String(role ?? "")
     .split("-")
     .filter(Boolean)
@@ -28,17 +22,6 @@ function formatMembershipStatusLabel(value) {
   }
 }
 
-function formatProgrammeTypeLabel(value) {
-  switch (value) {
-    case "none":
-      return "None";
-    case "taster-session":
-      return "Taster Session";
-    default:
-      return formatRoleLabel(value);
-  }
-}
-
 function sortRolesAlphabetically(roles) {
   return [...roles].sort((left, right) =>
     formatRoleLabel(left).localeCompare(formatRoleLabel(right)),
@@ -48,13 +31,16 @@ function sortRolesAlphabetically(roles) {
 export function MemberProfileForm({
   editableProfile,
   handleChange,
+  handleJoiningRouteChange = undefined,
   handleBooleanChange = undefined,
   handleBooleanSelectChange,
+  joiningRoute = "",
+  joiningRouteOptions = [],
+  joiningRouteSummary = "",
   toggleDiscipline,
   disciplineOptions,
   roleOptions,
   membershipStatusOptions = [],
-  programmeTypeOptions = [],
   isAdmin,
   isCreatingNew,
   isSaving,
@@ -67,12 +53,13 @@ export function MemberProfileForm({
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const isProfileLocked = isSaving || !canEditProfile;
   const areDisciplinesLocked = isSaving || !canEditDisciplines;
-  const sortedRoleOptions = sortRolesAlphabetically(roleOptions);
+  const visibleRoleOptions = roleOptions.filter(
+    (role) =>
+      !HIDDEN_LEGACY_ROLE_KEYS.has(String(role ?? "").trim().toLowerCase()) ||
+      role === editableProfile.userType,
+  );
+  const sortedRoleOptions = sortRolesAlphabetically(visibleRoleOptions);
   const membershipSummary = describeMembershipClassification(editableProfile);
-  const visibleProgrammeTypeOptions =
-    editableProfile.membershipStatus === "guest"
-      ? programmeTypeOptions.filter((programmeType) => programmeType === "none")
-      : programmeTypeOptions;
 
   return (
     <form onSubmit={onSubmit} className="left-align-form profile-form">
@@ -81,10 +68,34 @@ export function MemberProfileForm({
           <p className="profile-classification-title">Access and status</p>
           <p className="profile-classification-copy">
             Role controls portal permissions. Membership status reflects whether
-            the person is actually a club member. Programme type explains why a
-            non-member account exists.
+            the person is actually a club member.
           </p>
           <p className="profile-classification-summary">{membershipSummary}</p>
+        </div>
+      ) : null}
+
+      {isAdmin && isCreatingNew && joiningRouteOptions.length > 0 ? (
+        <div className="profile-classification-panel">
+          <p className="profile-classification-title">Joining route</p>
+          <p className="profile-classification-copy">
+            Choose how this person is entering the club so the account starts
+            with the right membership and programme settings.
+          </p>
+          <label>
+            Joining route
+            <select
+              value={joiningRoute}
+              onChange={handleJoiningRouteChange}
+              disabled={isProfileLocked}
+            >
+              {joiningRouteOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="profile-classification-summary">{joiningRouteSummary}</p>
         </div>
       ) : null}
 
@@ -127,31 +138,6 @@ export function MemberProfileForm({
               </option>
             ))}
           </select>
-        </label>
-
-        <label>
-          Programme type
-          <select
-            value={editableProfile.programmeType}
-            onChange={handleChange("programmeType")}
-            disabled={
-              !isAdmin ||
-              isProfileLocked ||
-              editableProfile.membershipStatus === "guest"
-            }
-          >
-            {visibleProgrammeTypeOptions.map((programmeType) => (
-              <option key={programmeType} value={programmeType}>
-                {formatProgrammeTypeLabel(programmeType)}
-              </option>
-            ))}
-          </select>
-          {editableProfile.membershipStatus === "guest" ? (
-            <small className="profile-field-helper">
-              Guest accounts are kept separate from programme participants, so
-              programme type stays set to None.
-            </small>
-          ) : null}
         </label>
 
         <label>

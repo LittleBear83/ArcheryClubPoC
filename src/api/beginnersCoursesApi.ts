@@ -122,6 +122,22 @@ export async function convertBeginnerToMember(
   );
 }
 
+export async function transferParticipantToBeginnersCourse(
+  actor: ActorIdentity | string,
+  participantId: string | number,
+  targetCourseId: string | number,
+) {
+  return fetchApi<{ success: true }>(
+    `/api/beginners-course-participants/${participantId}/transfer-to-beginners-course`,
+    {
+      method: "POST",
+      headers: buildActorHeaders(actor, true),
+      body: JSON.stringify({ targetCourseId }),
+      cache: "no-store",
+    },
+  );
+}
+
 export async function approveBeginnersCourse(
   actor: ActorIdentity | string,
   courseId: string | number,

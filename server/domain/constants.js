@@ -198,6 +198,11 @@ export const SYSTEM_ROLE_DEFINITIONS = [
     permissions: [],
   },
   {
+    roleKey: "non-member",
+    title: "Non-member",
+    permissions: [],
+  },
+  {
     roleKey: "associate-member",
     title: "Associate Member",
     permissions: [],

@@ -131,7 +131,9 @@ export function bootstrapSqliteUserData({
         coachingVolunteer: user.coachingVolunteer ? 1 : 0,
         membershipStatus:
           user.membershipStatus ??
-          (user.userType === "beginner" || user.userType === "have-a-go"
+          (user.userType === "beginner" ||
+          user.userType === "have-a-go" ||
+          user.userType === "non-member"
             ? "non-member"
             : "member"),
         programmeType:

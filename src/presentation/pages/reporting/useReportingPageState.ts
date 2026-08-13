@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getAttendanceReport } from "../../../api/reportingApi";
+import { getAttendanceReport, getMemberJourneyReport } from "../../../api/reportingApi";
 import { hasPermission } from "../../../utils/userProfile";
 import type { UserProfile } from "../../../types/app";
 import {
@@ -43,6 +43,18 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
       return result.report;
     },
     enabled: canViewReports && Boolean(actorUsername) && hasDataSource,
+  });
+  const memberJourneyQuery = useQuery({
+    queryKey: ["member-journey-report", actorUsername, startDate, endDate],
+    queryFn: async () => {
+      const result = await getMemberJourneyReport(actorUsername, {
+        startDate,
+        endDate,
+      });
+
+      return result.report;
+    },
+    enabled: canViewReports && Boolean(actorUsername),
   });
 
   const rangeLabel = useMemo(
@@ -101,6 +113,9 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
     includeGuests,
     includeMembers,
     isFetching: queryResult.isFetching,
+    isLoadingMemberJourneys: memberJourneyQuery.isFetching,
+    memberJourneyData: memberJourneyQuery.data,
+    memberJourneyError: memberJourneyQuery.error,
     rangeLabel,
     setEndDate,
     setIncludeGuests,

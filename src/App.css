@@ -2312,6 +2312,28 @@ button:disabled {
   line-height: 1.45;
 }
 
+.home-approval-summary-link {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.home-approval-summary-link:hover {
+  color: var(--accent);
+}
+
+.home-approval-summary-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
 .home-approval-summary-list strong {
   color: var(--accent);
   font-size: 1.1rem;
@@ -5900,6 +5922,10 @@ button:disabled {
   gap: 10px;
 }
 
+.beginners-course-collapse-button {
+  min-width: 140px;
+}
+
 .beginners-course-header {
   display: flex;
   justify-content: space-between;
@@ -5956,7 +5982,10 @@ button:disabled {
 
 .beginners-course-row-action-button {
   width: 100%;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.2;
 }
 
 .beginners-course-row-action-button--edit {
@@ -6017,6 +6046,17 @@ button:disabled {
 .beginners-course-coach-modal {
   display: grid;
   gap: 12px;
+}
+
+.beginners-course-coach-modal .beginners-course-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.beginners-course-coach-modal .beginners-course-checkbox input[type="checkbox"] {
+  order: 0;
 }
 
 .beginners-course-cancelled-header {

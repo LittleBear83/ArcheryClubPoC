@@ -49,6 +49,26 @@ function seedBaseSchema(db) {
       logged_in_date TEXT NOT NULL,
       logged_in_time TEXT NOT NULL
     );
+
+    CREATE TABLE beginners_courses (
+      id INTEGER PRIMARY KEY,
+      course_type TEXT NOT NULL
+    );
+
+    CREATE TABLE beginners_course_participants (
+      id INTEGER PRIMARY KEY,
+      course_id INTEGER NOT NULL,
+      username TEXT NOT NULL,
+      first_name TEXT NOT NULL,
+      surname TEXT NOT NULL,
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      origin_course_type TEXT NOT NULL DEFAULT 'beginners',
+      converted_to_member INTEGER NOT NULL DEFAULT 0,
+      converted_at_date TEXT,
+      converted_at_time TEXT,
+      user_id INTEGER NOT NULL
+    );
   `);
 }
 
@@ -159,6 +179,105 @@ test("member range usage collapses repeated on-site logins inside the two-hour w
         { hour: "11", count: 1 },
       ],
     );
+  } finally {
+    db.close();
+  }
+});
+
+test("member journey reporting keeps origin and conversion timestamps", () => {
+  const db = new Database(":memory:");
+
+  try {
+    seedBaseSchema(db);
+    insertMember(db, 1, "member-one");
+    insertMember(db, 2, "member-two");
+    db.prepare(
+      `INSERT INTO beginners_courses (id, course_type) VALUES (?, ?)`,
+    ).run(10, "beginners");
+    db.prepare(
+      `INSERT INTO beginners_courses (id, course_type) VALUES (?, ?)`,
+    ).run(11, "taster-session");
+    db.prepare(
+      `INSERT INTO beginners_course_participants (
+        id, course_id, username, first_name, surname,
+        created_at_date, created_at_time, origin_course_type,
+        converted_to_member, converted_at_date, converted_at_time, user_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      1,
+      10,
+      "member-one",
+      "Member",
+      "One",
+      "2026-08-01",
+      "18:00:00",
+      "beginners",
+      1,
+      "2026-08-12",
+      "19:00:00",
+      1,
+    );
+    db.prepare(
+      `INSERT INTO beginners_course_participants (
+        id, course_id, username, first_name, surname,
+        created_at_date, created_at_time, origin_course_type,
+        converted_to_member, converted_at_date, converted_at_time, user_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      2,
+      10,
+      "member-two",
+      "Member",
+      "Two",
+      "2026-08-05",
+      "18:30:00",
+      "taster-session",
+      0,
+      null,
+      null,
+      2,
+    );
+
+    const statements = createSqliteReportingStatements(db);
+    const rows = statements.listMemberJourneyParticipants.all(
+      "2026-08-01",
+      "2026-08-31",
+    );
+
+    assert.deepEqual(rows, [
+      {
+        id: 1,
+        username: "member-one",
+        first_name: "Member",
+        surname: "One",
+        created_at_date: "2026-08-01",
+        created_at_time: "18:00:00",
+        origin_course_type: "beginners",
+        converted_to_member: 1,
+        converted_at_date: "2026-08-12",
+        converted_at_time: "19:00:00",
+        current_course_type: "beginners",
+        membership_status: "member",
+        programme_type: "none",
+        user_type: "general",
+      },
+      {
+        id: 2,
+        username: "member-two",
+        first_name: "Member",
+        surname: "Two",
+        created_at_date: "2026-08-05",
+        created_at_time: "18:30:00",
+        origin_course_type: "taster-session",
+        converted_to_member: 0,
+        converted_at_date: null,
+        converted_at_time: null,
+        current_course_type: "beginners",
+        membership_status: "member",
+        programme_type: "none",
+        user_type: "general",
+      },
+    ]);
   } finally {
     db.close();
   }

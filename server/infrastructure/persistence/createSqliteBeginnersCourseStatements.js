@@ -196,6 +196,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       initial_email_sent,
       thirty_day_reminder_sent,
       course_fee_paid,
+      origin_course_type,
       assigned_case_id,
       assigned_case_by_username,
       assigned_case_at_date,
@@ -204,7 +205,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       created_at_date,
       created_at_time
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const updateBeginnersCourseParticipant = db.prepare(`
@@ -222,6 +223,21 @@ export function createSqliteBeginnersCourseStatements(db) {
     WHERE id = @id
   `);
 
+  const transferBeginnersCourseParticipant = db.prepare(`
+    UPDATE beginners_course_participants
+    SET
+      course_id = ?,
+      assigned_case_id = NULL,
+      assigned_case_by_username = NULL,
+      assigned_case_at_date = NULL,
+      assigned_case_at_time = NULL,
+      converted_to_member = 0,
+      converted_at_date = NULL,
+      converted_at_time = NULL,
+      converted_by_username = NULL
+    WHERE id = ?
+  `);
+
   const updateBeginnersCourseParticipantCase = db.prepare(`
     UPDATE beginners_course_participants
     SET
@@ -234,7 +250,11 @@ export function createSqliteBeginnersCourseStatements(db) {
 
   const markBeginnersCourseParticipantConverted = db.prepare(`
     UPDATE beginners_course_participants
-    SET converted_to_member = 1
+    SET
+      converted_to_member = 1,
+      converted_at_date = ?,
+      converted_at_time = ?,
+      converted_by_username = ?
     WHERE id = ?
   `);
 
@@ -287,6 +307,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       beginners_course_lessons.lesson_date,
       beginners_course_lessons.start_time,
       beginners_course_lessons.end_time,
+      beginners_courses.course_type,
       beginners_courses.first_lesson_date,
       coordinator.first_name AS coordinator_first_name,
       coordinator.surname AS coordinator_surname
@@ -332,6 +353,7 @@ export function createSqliteBeginnersCourseStatements(db) {
     listBeginnersLessonCoachesByLessonId,
     listCoachBeginnersLessonsByUserId,
     markBeginnersCourseParticipantConverted,
+    transferBeginnersCourseParticipant,
     updateBeginnersCourseApproval,
     updateBeginnersCourseParticipant,
     updateBeginnersCourseParticipantCase,

@@ -555,7 +555,11 @@ function buildInitialSchemaSql() {
       initial_email_sent INTEGER NOT NULL DEFAULT 0,
       thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
       course_fee_paid INTEGER NOT NULL DEFAULT 0,
+      origin_course_type TEXT NOT NULL DEFAULT 'beginners',
       converted_to_member INTEGER NOT NULL DEFAULT 0,
+      converted_at_date TEXT,
+      converted_at_time TEXT,
+      converted_by_username TEXT REFERENCES users(username),
       assigned_case_id BIGINT REFERENCES equipment_items(id),
       assigned_case_by_username TEXT REFERENCES users(username),
       assigned_case_at_date TEXT,
@@ -564,6 +568,7 @@ function buildInitialSchemaSql() {
       created_at_date TEXT NOT NULL,
       created_at_time TEXT NOT NULL,
       user_id BIGINT REFERENCES users(id),
+      converted_by_user_id BIGINT REFERENCES users(id),
       assigned_case_by_user_id BIGINT REFERENCES users(id),
       created_by_user_id BIGINT REFERENCES users(id)
     );
@@ -771,7 +776,9 @@ function buildRolePermissionSeedSql({
         user.membershipFeesDue,
         user.coachingVolunteer ? 1 : 0,
         user.membershipStatus ??
-          (user.userType === "beginner" || user.userType === "have-a-go"
+          (user.userType === "beginner" ||
+          user.userType === "have-a-go" ||
+          user.userType === "non-member"
             ? "non-member"
             : "member"),
         user.programmeType ??
@@ -973,6 +980,10 @@ function buildUserReferenceSyncStatements() {
       tableName: "beginners_course_participants",
       references: [
         { usernameColumn: "username", userIdColumn: "user_id" },
+        {
+          usernameColumn: "converted_by_username",
+          userIdColumn: "converted_by_user_id",
+        },
         {
           usernameColumn: "assigned_case_by_username",
           userIdColumn: "assigned_case_by_user_id",
@@ -1176,6 +1187,39 @@ export async function runPostgresMigrations({
           END
         ELSE programme_type
       END
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS origin_course_type TEXT NOT NULL DEFAULT 'beginners'
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS converted_at_date TEXT
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS converted_at_time TEXT
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS converted_by_username TEXT REFERENCES users(username)
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS converted_by_user_id BIGINT REFERENCES users(id)
+    `);
+    await client.query(`
+      UPDATE beginners_course_participants
+      SET origin_course_type = COALESCE(
+        NULLIF(BTRIM(origin_course_type), ''),
+        (
+          SELECT beginners_courses.course_type
+          FROM beginners_courses
+          WHERE beginners_courses.id = beginners_course_participants.course_id
+        ),
+        'beginners'
+      )
+      WHERE origin_course_type IS NULL OR BTRIM(origin_course_type) = ''
     `);
     await client.query(`
       CREATE TABLE IF NOT EXISTS range_presence_extensions (

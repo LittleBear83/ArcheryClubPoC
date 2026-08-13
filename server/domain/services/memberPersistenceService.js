@@ -70,7 +70,11 @@ export function createMemberPersistenceService({
 
     const normalizedRole = String(userType ?? "").trim().toLowerCase();
 
-    if (normalizedRole === "beginner" || normalizedRole === "have-a-go") {
+    if (
+      normalizedRole === "beginner" ||
+      normalizedRole === "have-a-go" ||
+      normalizedRole === "non-member"
+    ) {
       return "non-member";
     }
 

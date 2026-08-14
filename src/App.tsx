@@ -304,6 +304,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   // against the server and refreshes the canonical member profile after login.
   const inactivityTimeoutRef = useRef<number | null>(null);
   const lastActivityAtRef = useRef(Date.now());
+  const hasForcedHomeForCurrentSessionRef = useRef(false);
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -324,6 +325,23 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   const inactivityTimeoutMs = isMobile
     ? MOBILE_INACTIVITY_TIMEOUT_MS
     : DESKTOP_INACTIVITY_TIMEOUT_MS;
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      hasForcedHomeForCurrentSessionRef.current = false;
+      return;
+    }
+
+    if (!currentUserProfile || hasForcedHomeForCurrentSessionRef.current) {
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.location.pathname !== "/") {
+      window.history.replaceState(null, "", "/");
+    }
+
+    hasForcedHomeForCurrentSessionRef.current = true;
+  }, [currentUserProfile, isAuthenticated]);
 
   useServerEvents({
     actorUsername: authenticatedUsername,

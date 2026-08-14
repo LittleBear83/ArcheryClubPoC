@@ -5,6 +5,10 @@ export function bootstrapSqliteEquipmentCompatibility({ db }) {
     )
     .get();
 
+  if (equipmentItemsTable?.sql && !equipmentItemsTable.sql.includes("details_json")) {
+    db.exec(`ALTER TABLE equipment_items ADD COLUMN details_json TEXT`);
+  }
+
   if (!equipmentItemsTable?.sql?.includes("'quiver'")) {
     db.exec(`
       PRAGMA foreign_keys = OFF;
@@ -31,6 +35,7 @@ export function bootstrapSqliteEquipmentCompatibility({ db }) {
         ),
         arrow_length INTEGER,
         arrow_quantity INTEGER NOT NULL DEFAULT 1,
+        details_json TEXT,
         status TEXT NOT NULL DEFAULT 'active' CHECK (
           status IN ('active', 'decommissioned')
         ),
@@ -67,6 +72,7 @@ export function bootstrapSqliteEquipmentCompatibility({ db }) {
         size_category,
         arrow_length,
         arrow_quantity,
+        details_json,
         status,
         location_type,
         location_label,
@@ -93,6 +99,7 @@ export function bootstrapSqliteEquipmentCompatibility({ db }) {
         size_category,
         arrow_length,
         arrow_quantity,
+        details_json,
         status,
         location_type,
         location_label,

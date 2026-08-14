@@ -22,6 +22,19 @@ function formatMembershipStatusLabel(value) {
   }
 }
 
+function formatProgrammeTypeLabel(value) {
+  switch (value) {
+    case "none":
+      return "None";
+    case "have-a-go":
+      return "Have A Go";
+    case "taster-session":
+      return "Taster Session";
+    default:
+      return formatRoleLabel(value);
+  }
+}
+
 function sortRolesAlphabetically(roles) {
   return [...roles].sort((left, right) =>
     formatRoleLabel(left).localeCompare(formatRoleLabel(right)),
@@ -41,6 +54,7 @@ export function MemberProfileForm({
   disciplineOptions,
   roleOptions,
   membershipStatusOptions = [],
+  programmeTypeOptions = [],
   isAdmin,
   isCreatingNew,
   isSaving,
@@ -135,6 +149,21 @@ export function MemberProfileForm({
             {membershipStatusOptions.map((status) => (
               <option key={status} value={status}>
                 {formatMembershipStatusLabel(status)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Programme type
+          <select
+            value={editableProfile.programmeType}
+            onChange={handleChange("programmeType")}
+            disabled={!isAdmin || isProfileLocked}
+          >
+            {programmeTypeOptions.map((programmeType) => (
+              <option key={programmeType} value={programmeType}>
+                {formatProgrammeTypeLabel(programmeType)}
               </option>
             ))}
           </select>

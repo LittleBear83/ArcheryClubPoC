@@ -885,6 +885,7 @@ export function bootstrapSqliteBaseSchema({
       ),
       arrow_length INTEGER,
       arrow_quantity INTEGER NOT NULL DEFAULT 1,
+      details_json TEXT,
       status TEXT NOT NULL DEFAULT 'active' CHECK (
         status IN ('active', 'decommissioned')
       ),

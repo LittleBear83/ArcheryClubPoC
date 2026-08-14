@@ -5895,6 +5895,15 @@ button:disabled {
   gap: var(--section-gap);
 }
 
+.beginners-course-combined-page {
+  display: grid;
+  gap: var(--section-gap);
+}
+
+.beginners-course-tabs {
+  margin-bottom: 0;
+}
+
 .beginners-course-list {
   display: grid;
   gap: var(--section-gap);
@@ -7704,8 +7713,24 @@ button:disabled {
   background: #fbfbfb;
 }
 
-.outdoor-table-row:hover {
-  background: #eef6ff;
+.outdoor-table-row:hover td {
+  box-shadow:
+    inset 0 2px 0 #c9ab00,
+    inset 0 -2px 0 #c9ab00;
+}
+
+.outdoor-table-row:hover td:first-child {
+  box-shadow:
+    inset 2px 0 0 #c9ab00,
+    inset 0 2px 0 #c9ab00,
+    inset 0 -2px 0 #c9ab00;
+}
+
+.outdoor-table-row:hover td:last-child {
+  box-shadow:
+    inset -2px 0 0 #c9ab00,
+    inset 0 2px 0 #c9ab00,
+    inset 0 -2px 0 #c9ab00;
 }
 
 .outdoor-table-row.is-selected {

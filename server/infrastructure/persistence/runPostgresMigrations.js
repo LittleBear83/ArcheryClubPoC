@@ -460,6 +460,7 @@ function buildInitialSchemaSql() {
       size_category TEXT NOT NULL DEFAULT 'standard',
       arrow_length INTEGER,
       arrow_quantity INTEGER NOT NULL DEFAULT 1,
+      details_json TEXT,
       status TEXT NOT NULL DEFAULT 'active',
       location_type TEXT NOT NULL DEFAULT 'cupboard',
       location_label TEXT,
@@ -1141,6 +1142,10 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE users
       ADD COLUMN IF NOT EXISTS junior_member INTEGER NOT NULL DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE equipment_items
+      ADD COLUMN IF NOT EXISTS details_json TEXT
     `);
     await client.query(`
       ALTER TABLE users

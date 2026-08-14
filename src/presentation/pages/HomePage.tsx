@@ -84,19 +84,14 @@ const ApprovalsPage = lazy(() =>
 const EquipmentPage = lazy(() =>
   import("./EquipmentPage").then((module) => ({ default: module.EquipmentPage })),
 );
-const BeginnersCoursesPage = lazy(() =>
-  import("./BeginnersCoursesPage").then((module) => ({
-    default: module.BeginnersCoursesPage,
+const BeginnersAndTasterPage = lazy(() =>
+  import("./BeginnersAndTasterPage").then((module) => ({
+    default: module.BeginnersAndTasterPage,
   })),
 );
 const HaveAGoSessionsPage = lazy(() =>
   import("./HaveAGoSessionsPage").then((module) => ({
     default: module.HaveAGoSessionsPage,
-  })),
-);
-const TasterSessionsPage = lazy(() =>
-  import("./TasterSessionsPage").then((module) => ({
-    default: module.TasterSessionsPage,
   })),
 );
 const AskQuestionPage = lazy(() =>
@@ -313,9 +308,8 @@ const pageTitleMap = {
   "audit-log": "Audit Log",
   approvals: "Approvals",
   equipment: "Equipment",
-  "beginners-courses": "Beginners Courses",
+  "beginners-courses": "Beginners & Taster Sessions",
   "have-a-go-sessions": "Have a Go Sessions",
-  "taster-sessions": "Taster Sessions",
   "event-calendar": "Calendar",
   "range-usage": "Range Usage",
   "ask-a-question": "Ask A Question",
@@ -347,7 +341,7 @@ const pathToPageId = {
   "/equipment": "equipment",
   "/beginners-courses": "beginners-courses",
   "/have-a-go-sessions": "have-a-go-sessions",
-  "/taster-sessions": "taster-sessions",
+  "/taster-sessions": "beginners-courses",
   "/event-calendar": "event-calendar",
   "/range-usage": "range-usage",
   "/ask-a-question": "ask-a-question",
@@ -1079,7 +1073,7 @@ export function HomePage({
             <Route
               path="/beginners-courses"
               element={
-                <BeginnersCoursesPage currentUserProfile={currentUserProfile} />
+                <BeginnersAndTasterPage currentUserProfile={currentUserProfile} />
               }
             />
             <Route
@@ -1090,9 +1084,7 @@ export function HomePage({
             />
             <Route
               path="/taster-sessions"
-              element={
-                <TasterSessionsPage currentUserProfile={currentUserProfile} />
-              }
+              element={<Navigate to="/beginners-courses?tab=taster-session" replace />}
             />
             <Route
               path="/"
@@ -1123,10 +1115,10 @@ export function HomePage({
                   lostArrows={openLostArrows}
                   onOpenGuestLogin={() => setIsGuestLoginModalOpen(true)}
                   onOpenApprovals={() => navigate("/approvals")}
-                  onOpenBeginnersCourses={() => navigate("/beginners-courses")}
+                  onOpenBeginnersCourses={() => navigate("/beginners-courses?tab=beginners")}
                   onOpenHaveAGoSessions={() => navigate("/have-a-go-sessions")}
                   onOpenLostAndFound={() => navigate("/lost-and-found")}
-                  onOpenTasterSessions={() => navigate("/taster-sessions")}
+                  onOpenTasterSessions={() => navigate("/beginners-courses?tab=taster-session")}
                 />
               }
             />

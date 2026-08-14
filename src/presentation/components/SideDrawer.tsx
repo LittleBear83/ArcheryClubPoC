@@ -143,20 +143,19 @@ const pages = [
   },
   {
     id: "beginners-courses",
-    label: "Beginners Courses",
+    label: "Beginners & Taster Sessions",
     path: "/beginners-courses",
-    permissionAny: ["manage_beginners_courses", "approve_beginners_courses"],
+    permissionAny: [
+      "manage_beginners_courses",
+      "approve_beginners_courses",
+      "manage_have_a_go_sessions",
+      "approve_have_a_go_sessions",
+    ],
   },
   {
     id: "have-a-go-sessions",
     label: "Have a Go Sessions",
     path: "/have-a-go-sessions",
-    permissionAny: ["manage_have_a_go_sessions", "approve_have_a_go_sessions"],
-  },
-  {
-    id: "taster-sessions",
-    label: "Taster Sessions",
-    path: "/taster-sessions",
     permissionAny: ["manage_have_a_go_sessions", "approve_have_a_go_sessions"],
   },
   {
@@ -176,7 +175,7 @@ const adminGroups = [
   {
     id: "member-admin",
     label: "Member Admin",
-    pageIds: ["user-creation", "role-permissions", "approvals"],
+    pageIds: ["user-creation", "role-permissions"],
   },
   {
     id: "club-setup",
@@ -187,10 +186,10 @@ const adminGroups = [
     id: "operations",
     label: "Operations",
     pageIds: [
+      "approvals",
       "equipment",
       "beginners-courses",
       "have-a-go-sessions",
-      "taster-sessions",
       "tournament-setup",
     ],
   },

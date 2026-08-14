@@ -32,10 +32,14 @@ export function GuestLoginForm({
   const [guestFirstName, setGuestFirstName] = useState("");
   const [guestSurname, setGuestSurname] = useState("");
   const [guestMembershipNumber, setGuestMembershipNumber] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"" | "paypal" | "cash">("");
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  function isValidPaymentMethod(value: string): value is "paypal" | "cash" {
+    return value === "paypal" || value === "cash";
+  }
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -73,6 +77,16 @@ export function GuestLoginForm({
       return;
     }
 
+    const selectedPaymentMethod = isValidPaymentMethod(paymentMethod)
+      ? paymentMethod
+      : null;
+
+    if (!selectedPaymentMethod) {
+      setError("Select a payment method before signing in the guest.");
+      setSuccessMessage("");
+      return;
+    }
+
     setIsSubmitting(true);
 
     const result = await onGuestLogin({
@@ -80,7 +94,7 @@ export function GuestLoginForm({
       surname: guestSurname,
       archeryGbMembershipNumber: guestMembershipNumber,
       invitedByUsername,
-      paymentMethod,
+      paymentMethod: selectedPaymentMethod,
     });
 
     if (!result.success) {
@@ -199,11 +213,11 @@ export function GuestLoginForm({
         <select
           value={paymentMethod}
           onChange={(event) => {
-            setPaymentMethod(event.target.value);
+            const nextPaymentMethod = event.target.value as "" | "paypal" | "cash";
+            setPaymentMethod(nextPaymentMethod);
             setFieldErrors((current) => ({
               ...current,
-              paymentMethod:
-                event.target.value !== "paypal" && event.target.value !== "cash",
+              paymentMethod: !isValidPaymentMethod(nextPaymentMethod),
             }));
             setError("");
           }}

@@ -8,6 +8,7 @@ import {
   getEquipmentLocationLabel,
   getEquipmentMemberLabel,
   getEquipmentReferenceLabel,
+  getEquipmentTypeDisplayLabel,
 } from "./equipmentUtils";
 
 export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
@@ -404,10 +405,19 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   });
 
   const updateAddFormField = (field) => (event) => {
-    setAddForm((current) => ({
-      ...current,
-      [field]: event.target.value,
-    }));
+    const nextValue = event.target.value;
+
+    setAddForm((current) =>
+      field === "equipmentType"
+        ? {
+            ...EMPTY_ADD_FORM,
+            equipmentType: nextValue,
+          }
+        : {
+            ...current,
+            [field]: nextValue,
+          },
+    );
   };
 
   const handleAddEquipmentSubmit = (event) => {
@@ -573,7 +583,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   };
 
   const selectedItemSummary = selectedItem
-    ? `${selectedItem.label} | ${selectedItem.status} | ${getEquipmentLocationLabel(selectedItem)}`
+    ? `${getEquipmentTypeDisplayLabel(selectedItem)} | ${getEquipmentReferenceLabel(selectedItem)} | ${selectedItem.status} | ${getEquipmentLocationLabel(selectedItem)}`
     : "";
 
   return {

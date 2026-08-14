@@ -153,6 +153,7 @@ function createPostgresEquipmentGateway({ pool }) {
             size_category,
             arrow_length,
             arrow_quantity,
+            details_json,
             status,
             location_type,
             location_label,
@@ -166,7 +167,7 @@ function createPostgresEquipmentGateway({ pool }) {
             last_storage_updated_at_time
           )
           VALUES (
-            $1, $2, $3, $4, $5, 'active', $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+            $1, $2, $3, $4, $5, $6, 'active', $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
           )
           RETURNING id
         `,
@@ -176,6 +177,7 @@ function createPostgresEquipmentGateway({ pool }) {
           payload.sizeCategory,
           payload.arrowLength,
           payload.arrowQuantity,
+          payload.detailsJson,
           payload.locationType,
           payload.locationLabel,
           payload.locationCaseId,

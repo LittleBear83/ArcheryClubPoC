@@ -2945,6 +2945,70 @@ function sanitizeEquipmentNumber(value) {
   return value.trim().slice(0, 60);
 }
 
+function sanitizeEquipmentDetailText(value, maxLength = 60) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim().slice(0, maxLength);
+}
+
+function sanitizeEquipmentDetailOption(value, allowedValues) {
+  return allowedValues.includes(value) ? value : "";
+}
+
+function sanitizeEquipmentDetails(payload, equipmentType) {
+  switch (equipmentType) {
+    case EQUIPMENT_TYPES.RISER:
+      return {
+        makeModel: sanitizeEquipmentDetailText(payload?.makeModel, 80),
+        length: sanitizeEquipmentDetailText(payload?.equipmentLength, 20),
+        handedness: sanitizeEquipmentDetailOption(payload?.handedness, ["left", "right"]),
+        colour: sanitizeEquipmentDetailText(payload?.colour, 40),
+      };
+    case EQUIPMENT_TYPES.LIMB:
+      return {
+        makeModel: sanitizeEquipmentDetailText(payload?.makeModel, 80),
+        length: sanitizeEquipmentDetailOption(payload?.equipmentLength, ["XS", "S", "M", "L"]),
+        poundage: sanitizeEquipmentDetailText(payload?.poundage, 20),
+      };
+    case EQUIPMENT_TYPES.QUIVER:
+      return {
+        handedness: sanitizeEquipmentDetailOption(payload?.handedness, [
+          "left",
+          "right",
+          "ambidextrous",
+        ]),
+      };
+    case EQUIPMENT_TYPES.ARM_GUARD:
+      return {
+        length: sanitizeEquipmentDetailOption(payload?.equipmentLength, [
+          "short",
+          "long",
+          "extra-long",
+        ]),
+      };
+    case EQUIPMENT_TYPES.FINGER_TAB:
+    case EQUIPMENT_TYPES.CHEST_GUARD:
+      return {
+        fitSize: sanitizeEquipmentDetailOption(payload?.fitSize, ["XS", "S", "M", "L", "XL"]),
+        handedness: sanitizeEquipmentDetailOption(payload?.handedness, [
+          "left",
+          "right",
+          "ambidextrous",
+        ]),
+      };
+    case EQUIPMENT_TYPES.ARROWS:
+      return {
+        fletchingColour: sanitizeEquipmentDetailText(payload?.fletchingColour, 40),
+        nockColour: sanitizeEquipmentDetailText(payload?.nockColour, 40),
+        spine: sanitizeEquipmentDetailText(payload?.arrowSpine, 20),
+      };
+    default:
+      return {};
+  }
+}
+
 function sanitizeCupboardLabel(value) {
   if (typeof value !== "string") {
     return DEFAULT_EQUIPMENT_CUPBOARD_LABEL;
@@ -2956,20 +3020,80 @@ function sanitizeCupboardLabel(value) {
 
 function buildEquipmentDisplayLabel(item) {
   const typeLabel = EQUIPMENT_TYPE_LABELS[item.equipment_type] ?? item.equipment_type;
-  const sizePrefix = item.size_category === "junior" ? "Junior " : "";
+  const details = parseEquipmentDetails(item.details_json);
+
+  if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
+    const caseSize = item.size_category === "junior" ? "Long" : "Short";
+    return `${caseSize} ${typeLabel} ${item.item_number || ""}`.trim();
+  }
+
+  if (item.equipment_type === EQUIPMENT_TYPES.QUIVER) {
+    const quiverGroup = item.size_category === "junior" ? "Junior" : "Adult";
+    return `${quiverGroup} ${typeLabel} ${item.item_number || ""}`.trim();
+  }
+
+  if (item.equipment_type === EQUIPMENT_TYPES.LONG_ROD) {
+    const rodLength = item.size_category === "junior" ? "Long" : "Short";
+    return `${rodLength} ${typeLabel} ${item.item_number || ""}`.trim();
+  }
 
   if (item.equipment_type === EQUIPMENT_TYPES.ARROWS) {
-    return `${sizePrefix}${item.arrow_quantity} x ${item.arrow_length}" ${typeLabel}`;
+    const arrowParts = [`${item.arrow_quantity} x ${item.arrow_length}"`, typeLabel];
+    if (details.spine) {
+      arrowParts.push(`Spine ${details.spine}`);
+    }
+    return arrowParts.join(" ");
   }
 
   if (item.item_number) {
-    return `${sizePrefix}${typeLabel} ${item.item_number}`.trim();
+    return `${typeLabel} ${item.item_number}`.trim();
   }
 
-  return `${sizePrefix}${typeLabel}`.trim();
+  return `${typeLabel}`.trim();
+}
+
+function parseEquipmentDetails(detailsJson) {
+  if (typeof detailsJson !== "string" || !detailsJson.trim()) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(detailsJson);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function buildEquipmentDetailSummary(item, details) {
+  switch (item.equipment_type) {
+    case EQUIPMENT_TYPES.RISER:
+      return [details.makeModel, details.length ? `${details.length}"` : "", details.handedness, details.colour]
+        .filter(Boolean)
+        .join(" | ");
+    case EQUIPMENT_TYPES.LIMB:
+      return [details.makeModel, details.length, details.poundage]
+        .filter(Boolean)
+        .join(" | ");
+    case EQUIPMENT_TYPES.QUIVER:
+      return [details.handedness].filter(Boolean).join(" | ");
+    case EQUIPMENT_TYPES.ARM_GUARD:
+      return [details.length].filter(Boolean).join(" | ");
+    case EQUIPMENT_TYPES.FINGER_TAB:
+    case EQUIPMENT_TYPES.CHEST_GUARD:
+      return [details.fitSize, details.handedness].filter(Boolean).join(" | ");
+    case EQUIPMENT_TYPES.ARROWS:
+      return [details.fletchingColour, details.nockColour, details.spine ? `Spine ${details.spine}` : ""]
+        .filter(Boolean)
+        .join(" | ");
+    default:
+      return "";
+  }
 }
 
 function buildEquipmentIdentity(item) {
+  const details = parseEquipmentDetails(item.details_json);
+
   return {
     id: item.id,
     type: item.equipment_type,
@@ -2979,6 +3103,8 @@ function buildEquipmentIdentity(item) {
     sizeCategory: item.size_category,
     arrowLength: item.arrow_length ?? null,
     arrowQuantity: item.arrow_quantity ?? null,
+    details,
+    detailSummary: buildEquipmentDetailSummary(item, details),
     status: item.status,
   };
 }
@@ -3203,6 +3329,7 @@ function sanitizeEquipmentCreatePayload(payload) {
   const itemNumber = sanitizeEquipmentNumber(payload?.itemNumber);
   const arrowLength = Number.parseInt(payload?.arrowLength, 10);
   const arrowQuantity = Number.parseInt(payload?.arrowQuantity, 10);
+  const details = sanitizeEquipmentDetails(payload, equipmentType);
 
   if (!equipmentType) {
     return {
@@ -3249,6 +3376,7 @@ function sanitizeEquipmentCreatePayload(payload) {
       sizeCategory,
       arrowLength: equipmentType === EQUIPMENT_TYPES.ARROWS ? arrowLength : null,
       arrowQuantity: equipmentType === EQUIPMENT_TYPES.ARROWS ? arrowQuantity : 1,
+      detailsJson: JSON.stringify(details),
     },
   };
 }

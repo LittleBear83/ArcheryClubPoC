@@ -160,6 +160,8 @@ export type MemberProfilePageData = {
   equipmentLoans: EquipmentLoan[];
   disciplines: string[];
   goldenRecords?: GoldenRecordsSnapshot;
+  membershipStatuses: string[];
+  programmeTypes: string[];
   userTypes: string[];
   userProfile?: unknown;
 };
@@ -177,6 +179,8 @@ export type MemberProfileDeleteResult = {
 export type MemberProfileApiProfileResult = MemberProfileSaveResult & {
   disciplines: string[];
   goldenRecords?: GoldenRecordsSnapshot;
+  membershipStatuses: string[];
+  programmeTypes: string[];
   userTypes: string[];
 };
 

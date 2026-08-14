@@ -42,7 +42,16 @@ export function getJoiningRouteSummary(route: string) {
   );
 }
 
-export function applyJoiningRoutePreset(route: string, profile: Record<string, unknown>) {
+export function applyJoiningRoutePreset<T extends Record<string, unknown>>(
+  route: string,
+  profile: T,
+): T & {
+  activeMember: boolean;
+  affiliateMember: boolean;
+  membershipStatus: string;
+  programmeType: string;
+  userType: string;
+} {
   const baseProfile = {
     ...profile,
     activeMember: true,

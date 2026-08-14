@@ -23,6 +23,12 @@ export function GuestLoginForm({
   invitedByUsername,
   onGuestLogin,
 }: GuestLoginFormProps) {
+  const [fieldErrors, setFieldErrors] = useState({
+    guestFirstName: false,
+    guestSurname: false,
+    guestMembershipNumber: false,
+    paymentMethod: false,
+  });
   const [guestFirstName, setGuestFirstName] = useState("");
   const [guestSurname, setGuestSurname] = useState("");
   const [guestMembershipNumber, setGuestMembershipNumber] = useState("");
@@ -34,6 +40,14 @@ export function GuestLoginForm({
   const handleSubmit = async (event) => {
     event.preventDefault();
     const membershipDigits = guestMembershipNumber.replace(/\D/g, "");
+    const nextFieldErrors = {
+      guestFirstName: guestFirstName.trim().length === 0,
+      guestSurname: guestSurname.trim().length === 0,
+      guestMembershipNumber: membershipDigits.length < 7,
+      paymentMethod: paymentMethod !== "paypal" && paymentMethod !== "cash",
+    };
+
+    setFieldErrors(nextFieldErrors);
 
     if (!invitedByUsername) {
       setError("The signed-in member could not be identified.");
@@ -41,13 +55,19 @@ export function GuestLoginForm({
       return;
     }
 
-    if (membershipDigits.length < 7) {
+    if (nextFieldErrors.guestFirstName || nextFieldErrors.guestSurname) {
+      setError("Complete all required guest details before booking in the guest.");
+      setSuccessMessage("");
+      return;
+    }
+
+    if (nextFieldErrors.guestMembershipNumber) {
       setError("Archery GB membership number must contain at least 7 digits.");
       setSuccessMessage("");
       return;
     }
 
-    if (paymentMethod !== "paypal" && paymentMethod !== "cash") {
+    if (nextFieldErrors.paymentMethod) {
       setError("Select a payment method before signing in the guest.");
       setSuccessMessage("");
       return;
@@ -76,6 +96,12 @@ export function GuestLoginForm({
     setGuestSurname("");
     setGuestMembershipNumber("");
     setPaymentMethod("");
+    setFieldErrors({
+      guestFirstName: false,
+      guestSurname: false,
+      guestMembershipNumber: false,
+      paymentMethod: false,
+    });
     setIsSubmitting(false);
   };
 
@@ -92,28 +118,44 @@ export function GuestLoginForm({
         </p>
       ) : null}
 
-      <label>
+      <label className={fieldErrors.guestFirstName ? "login-form-field--invalid" : ""}>
         First name
         <input
           type="text"
           value={guestFirstName}
-          onChange={(event) => setGuestFirstName(event.target.value)}
+          onChange={(event) => {
+            setGuestFirstName(event.target.value);
+            setFieldErrors((current) => ({
+              ...current,
+              guestFirstName: event.target.value.trim().length === 0,
+            }));
+            setError("");
+          }}
           autoComplete="off"
           name="guest-first-name"
           disabled={isSubmitting}
+          aria-invalid={fieldErrors.guestFirstName}
           required
         />
       </label>
 
-      <label>
+      <label className={fieldErrors.guestSurname ? "login-form-field--invalid" : ""}>
         Surname
         <input
           type="text"
           value={guestSurname}
-          onChange={(event) => setGuestSurname(event.target.value)}
+          onChange={(event) => {
+            setGuestSurname(event.target.value);
+            setFieldErrors((current) => ({
+              ...current,
+              guestSurname: event.target.value.trim().length === 0,
+            }));
+            setError("");
+          }}
           autoComplete="off"
           name="guest-surname"
           disabled={isSubmitting}
+          aria-invalid={fieldErrors.guestSurname}
           required
         />
       </label>
@@ -129,30 +171,45 @@ export function GuestLoginForm({
         />
       </label>
 
-      <label>
+      <label className={fieldErrors.guestMembershipNumber ? "login-form-field--invalid" : ""}>
         Archery GB membership number
         <input
           type="text"
           value={guestMembershipNumber}
-          onChange={(event) => setGuestMembershipNumber(event.target.value)}
+          onChange={(event) => {
+            setGuestMembershipNumber(event.target.value);
+            setFieldErrors((current) => ({
+              ...current,
+              guestMembershipNumber:
+                event.target.value.replace(/\D/g, "").length < 7,
+            }));
+            setError("");
+          }}
           inputMode="numeric"
           autoComplete="off"
           name="guest-membership-number"
           disabled={isSubmitting}
+          aria-invalid={fieldErrors.guestMembershipNumber}
           required
         />
       </label>
 
-      <label>
+      <label className={fieldErrors.paymentMethod ? "login-form-field--invalid" : ""}>
         Payment
         <select
           value={paymentMethod}
           onChange={(event) => {
             setPaymentMethod(event.target.value);
+            setFieldErrors((current) => ({
+              ...current,
+              paymentMethod:
+                event.target.value !== "paypal" && event.target.value !== "cash",
+            }));
             setError("");
           }}
           name="guest-payment-method"
           disabled={isSubmitting}
+          aria-invalid={fieldErrors.paymentMethod}
           required
         >
           <option value="">Select payment method</option>
@@ -166,7 +223,7 @@ export function GuestLoginForm({
         className="guest-submit-button"
         disabled={isSubmitting}
       >
-        {isSubmitting ? "Signing In Guest..." : "Guest Sign In"}
+        {isSubmitting ? "Booking In Guest..." : "Book In Guest"}
       </Button>
     </form>
   );

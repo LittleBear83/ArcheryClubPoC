@@ -132,6 +132,11 @@ type TransferSelection = {
   participant: CourseBeginner;
 };
 
+type BulkCoachAssignmentCourse = {
+  id: number;
+  lessons: CourseLesson[];
+};
+
 type CancelledCourseSummary = {
   id: number;
   firstLessonDate: string;
@@ -310,9 +315,9 @@ const BEGINNERS_COPY = {
   assignCoachesButton: "Assign coaches",
   saveCoachesButton: "Save lesson coaches",
   cancelButtonLabel: "Cancel course",
-  cancelledTitle: "Cancelled courses",
-  hideCancelledLabel: "Hide cancelled courses",
-  showCancelledLabel: "Show cancelled courses",
+  cancelledTitle: "Closed courses",
+  hideCancelledLabel: "Collapse",
+  showCancelledLabel: "Expand",
   noCancelledText: "No cancelled beginners courses yet.",
   rejectPrompt: "Add a short reason for rejecting this course.",
   cancelPrompt: "Add a short reason for cancelling this course.",
@@ -367,9 +372,9 @@ const HAVE_A_GO_COPY = {
   assignCoachesButton: "Assign coaches",
   saveCoachesButton: "Save session coaches",
   cancelButtonLabel: "Cancel session",
-  cancelledTitle: "Cancelled sessions",
-  hideCancelledLabel: "Hide cancelled sessions",
-  showCancelledLabel: "Show cancelled sessions",
+  cancelledTitle: "Closed sessions",
+  hideCancelledLabel: "Collapse",
+  showCancelledLabel: "Expand",
   noCancelledText: "No cancelled Have a Go sessions yet.",
   rejectPrompt: "Add a short reason for rejecting this session.",
   cancelPrompt: "Add a short reason for cancelling this session.",
@@ -424,9 +429,9 @@ const TASTER_SESSION_COPY = {
   assignCoachesButton: "Assign coaches",
   saveCoachesButton: "Save session coaches",
   cancelButtonLabel: "Cancel session",
-  cancelledTitle: "Cancelled sessions",
-  hideCancelledLabel: "Hide cancelled sessions",
-  showCancelledLabel: "Show cancelled sessions",
+  cancelledTitle: "Closed sessions",
+  hideCancelledLabel: "Collapse",
+  showCancelledLabel: "Expand",
   noCancelledText: "No cancelled Taster Sessions yet.",
   rejectPrompt: "Add a short reason for rejecting this session.",
   cancelPrompt: "Add a short reason for cancelling this session.",
@@ -470,7 +475,9 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [coachLesson, setCoachLesson] = useState<CourseLesson | null>(null);
+  const [bulkCoachCourse, setBulkCoachCourse] = useState<BulkCoachAssignmentCourse | null>(null);
   const [selectedCoachUsernames, setSelectedCoachUsernames] = useState<string[]>([]);
+  const [bulkCoachAssignments, setBulkCoachAssignments] = useState<Record<number, string[]>>({});
   const [editingBeginner, setEditingBeginner] = useState<CourseBeginner | null>(null);
   const [editBeginnerForm, setEditBeginnerForm] = useState(EMPTY_BEGINNER_FORM);
   const [transferSelection, setTransferSelection] = useState<TransferSelection | null>(null);
@@ -719,6 +726,19 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     setSelectedCoachUsernames(lesson.coaches.map((coach) => coach.username));
   };
 
+  const openBulkCoachModal = (course: CourseRecord) => {
+    setBulkCoachCourse({
+      id: course.id,
+      lessons: course.lessons,
+    });
+    setBulkCoachAssignments(
+      course.lessons.reduce<Record<number, string[]>>((accumulator, lesson) => {
+        accumulator[lesson.id] = lesson.coaches.map((coach) => coach.username);
+        return accumulator;
+      }, {}),
+    );
+  };
+
   const saveLessonCoaches = async () => {
     if (!coachLesson) {
       return;
@@ -728,6 +748,42 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       assignLessonCoaches(currentUserProfile, coachLesson.id, selectedCoachUsernames),
     );
     setCoachLesson(null);
+    setMessage(copy.coachesUpdated);
+    await refreshDashboard();
+  };
+
+  const toggleBulkCoachAssignment = (lessonId: number, coachUsername: string) => {
+    setBulkCoachAssignments((current) => {
+      const currentLessonAssignments = current[lessonId] ?? [];
+      const nextLessonAssignments = currentLessonAssignments.includes(coachUsername)
+        ? currentLessonAssignments.filter((username) => username !== coachUsername)
+        : [...currentLessonAssignments, coachUsername];
+
+      return {
+        ...current,
+        [lessonId]: nextLessonAssignments,
+      };
+    });
+  };
+
+  const saveBulkCoachAssignments = async () => {
+    if (!bulkCoachCourse) {
+      return;
+    }
+
+    await mutation.mutateAsync(() =>
+      Promise.all(
+        bulkCoachCourse.lessons.map((lesson) =>
+          assignLessonCoaches(
+            currentUserProfile,
+            lesson.id,
+            bulkCoachAssignments[lesson.id] ?? [],
+          ),
+        ),
+      ),
+    );
+    setBulkCoachCourse(null);
+    setBulkCoachAssignments({});
     setMessage(copy.coachesUpdated);
     await refreshDashboard();
   };
@@ -923,7 +979,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
           const canCancelCourse =
             permissions.canApproveBeginnersCourses ||
             course.coordinatorUsername === actorUsername;
-          const isCollapsed = Boolean(collapsedCourseIds[course.id]);
+          const isCollapsed = collapsedCourseIds[course.id] ?? true;
 
           return (
             <section key={course.id} className="equipment-action-card beginners-course-panel">
@@ -948,26 +1004,18 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                 <div className="beginners-course-actions">
                   <Button
                     type="button"
-                    variant="ghost"
+                    variant="unstyled"
                     className="beginners-course-collapse-button"
                     onClick={() =>
                       setCollapsedCourseIds((current) => ({
                         ...current,
-                        [course.id]: !current[course.id],
+                        [course.id]: !(current[course.id] ?? true),
                       }))
                     }
                     aria-expanded={!isCollapsed}
                   >
-                    {isCollapsed ? "Show course" : "Hide course"}
+                    {isCollapsed ? "Expand" : "Collapse"}
                   </Button>
-                  {canCancelCourse ? (
-                    <Button
-                      variant="danger"
-                      onClick={() => void cancelCourse(course.id)}
-                    >
-                      {copy.cancelButtonLabel}
-                    </Button>
-                  ) : null}
                 </div>
               </div>
 
@@ -1405,7 +1453,18 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                   </section>
 
                   <section className="beginners-course-subpanel">
-                    <h4>{copy.planTitle}</h4>
+                    <div className="beginners-course-subpanel-header">
+                      <h4>{copy.planTitle}</h4>
+                      {permissions.canManageBeginnersCourses ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => openBulkCoachModal(course)}
+                        >
+                          Assign multiple coaches
+                        </Button>
+                      ) : null}
+                    </div>
                     {isMobile ? (
                       <MobileCardList className="beginners-course-mobile-card-list">
                         {course.lessons.map((lesson) => (
@@ -1492,6 +1551,17 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                       </div>
                     )}
                   </section>
+
+                  {canCancelCourse ? (
+                    <div className="beginners-course-actions beginners-course-footer-actions">
+                      <Button
+                        variant="danger"
+                        onClick={() => void cancelCourse(course.id)}
+                      >
+                        {copy.cancelButtonLabel}
+                      </Button>
+                    </div>
+                  ) : null}
                 </>
               )}
             </section>
@@ -1504,7 +1574,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
           <h3>{copy.cancelledTitle} ({cancelledCourses.length})</h3>
           <Button
             type="button"
-            variant="ghost"
+            variant="unstyled"
+            className="beginners-course-collapse-button"
             onClick={() => setShowCancelledCourses((current) => !current)}
           >
             {showCancelledCourses ? copy.hideCancelledLabel : copy.showCancelledLabel}
@@ -1555,8 +1626,131 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
             </label>
           ))}
           <div className="beginners-course-actions">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setSelectedCoachUsernames(coaches.map((coach) => coach.username))}
+              disabled={
+                coaches.length === 0 ||
+                coaches.every((coach) => selectedCoachUsernames.includes(coach.username))
+              }
+            >
+              Add all
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setSelectedCoachUsernames([])}
+              disabled={selectedCoachUsernames.length === 0}
+            >
+              Unassign all
+            </Button>
             <Button onClick={() => void saveLessonCoaches()}>{copy.saveCoachesButton}</Button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(bulkCoachCourse)}
+        onClose={() => {
+          setBulkCoachCourse(null);
+          setBulkCoachAssignments({});
+        }}
+        title="Assign multiple coaches"
+        contentClassName="modal-content--wide beginners-course-bulk-coach-modal"
+      >
+        <div className="beginners-course-coach-modal">
+          {bulkCoachCourse ? (
+            <>
+              <p className="equipment-meta-copy">
+                Select each coach against the lesson dates you want them assigned to.
+              </p>
+              <div className="equipment-inventory-table-wrap">
+                <table className="equipment-inventory-table beginners-course-coach-assignment-table">
+                  <thead>
+                    <tr>
+                      <th>Coach</th>
+                      {bulkCoachCourse.lessons.map((lesson) => (
+                        <th key={lesson.id}>{formatDate(lesson.date)}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coaches.map((coach) => (
+                      <tr key={coach.username}>
+                        <td>{coach.fullName}</td>
+                        {bulkCoachCourse.lessons.map((lesson) => {
+                          const checked = (bulkCoachAssignments[lesson.id] ?? []).includes(
+                            coach.username,
+                          );
+
+                          return (
+                            <td
+                              key={`${coach.username}-${lesson.id}`}
+                              className="beginners-course-attendance-cell"
+                            >
+                              <label className="beginners-course-coach-assignment-check">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() =>
+                                    toggleBulkCoachAssignment(lesson.id, coach.username)}
+                                />
+                                <span>{checked ? "\u2713" : ""}</span>
+                              </label>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="beginners-course-actions">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    if (!bulkCoachCourse) {
+                      return;
+                    }
+
+                    setBulkCoachAssignments(
+                      bulkCoachCourse.lessons.reduce<Record<number, string[]>>(
+                        (accumulator, lesson) => {
+                          accumulator[lesson.id] = coaches.map((coach) => coach.username);
+                          return accumulator;
+                        },
+                        {},
+                      ),
+                    );
+                  }}
+                  disabled={coaches.length === 0 || bulkCoachCourse.lessons.length === 0}
+                >
+                  Add all
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() =>
+                    setBulkCoachAssignments(
+                      (bulkCoachCourse?.lessons ?? []).reduce<Record<number, string[]>>(
+                        (accumulator, lesson) => {
+                          accumulator[lesson.id] = [];
+                          return accumulator;
+                        },
+                        {},
+                      ),
+                    )}
+                >
+                  Unassign all
+                </Button>
+                <Button onClick={() => void saveBulkCoachAssignments()}>
+                  Save coach assignments
+                </Button>
+              </div>
+            </>
+          ) : null}
         </div>
       </Modal>
 

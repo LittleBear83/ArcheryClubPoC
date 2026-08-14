@@ -169,7 +169,7 @@ function buildClubEventItems(events, coachAssignments) {
       id: `coach-${assignment.id}`,
       date: assignment.date,
       startTime: assignment.startTime ?? "",
-      title: `Coaching reminder: ${formatCoachedSessionLabel(assignment.courseType)} lesson ${assignment.lessonNumber} for ${assignment.beginnerCount} attendees (Coordinator: ${assignment.coordinatorName})`,
+      title: `Coaching reminder: ${formatCoachedSessionLabel(assignment.courseType)}`,
     })),
   ].sort((left, right) => {
     const byDate = left.date.localeCompare(right.date);
@@ -263,15 +263,19 @@ function CurrentLostArrowsCard({ lostArrows, onOpenLostAndFound }) {
 
 function GuestSignInCard({ onOpenGuestLogin }) {
   return (
-    <section className="home-panel">
+    <button
+      type="button"
+      className="home-panel home-panel--interactive"
+      onClick={onOpenGuestLogin}
+      aria-label="Open the guest sign-in form"
+    >
       <h3 className="home-panel-title">Guest Sign In</h3>
       <div className="home-panel-copy">
-        <p>Open the guest sign-in form and record a visiting archer.</p>
+        <p>Book in a visiting archer.</p>
+        <p>For non-members and visiting club guests.</p>
+        <p className="home-panel-link-copy">Open Guest Form</p>
       </div>
-      <Button type="button" onClick={onOpenGuestLogin}>
-        Open Guest Form
-      </Button>
-    </section>
+    </button>
   );
 }
 
@@ -502,34 +506,36 @@ export function HomeSection({
   hideEventPanels = false,
 }) {
   return (
-    <div className="home-split-view">
-      <MembersAtRangeList members={members} />
-      <GuestSignInCard onOpenGuestLogin={onOpenGuestLogin} />
-      <CurrentLostArrowsCard
-        lostArrows={lostArrows}
-        onOpenLostAndFound={onOpenLostAndFound}
-      />
-      {hideEventPanels ? null : (
-        <SignedUpEventsList
-          events={signedUpEvents}
-          coachAssignments={beginnerCoachAssignments}
+    <div className="home-dashboard-layout">
+      <div className="home-split-view">
+        <MembersAtRangeList members={members} />
+        <GuestSignInCard onOpenGuestLogin={onOpenGuestLogin} />
+        <CurrentLostArrowsCard
+          lostArrows={lostArrows}
+          onOpenLostAndFound={onOpenLostAndFound}
         />
-      )}
+        <CommitteeApprovalsCard
+          approvalSummary={approvalSummary}
+          onOpenApprovals={onOpenApprovals}
+        />
+        <CommitteeApprovedCoursesCard
+          approvalSummary={approvalSummary}
+          onOpenBeginnersCourses={onOpenBeginnersCourses}
+          onOpenHaveAGoSessions={onOpenHaveAGoSessions}
+          onOpenTasterSessions={onOpenTasterSessions}
+        />
+        <BeginnerTodayCard dashboard={beginnerDashboard} />
+        <MobileOnSiteFeatureCard mobileOnSiteFeature={mobileOnSiteFeature} />
+      </div>
       {hideEventPanels ? null : (
-        <TournamentRemindersList reminders={tournamentReminders} />
+        <div className="home-events-column">
+          <SignedUpEventsList
+            events={signedUpEvents}
+            coachAssignments={beginnerCoachAssignments}
+          />
+          <TournamentRemindersList reminders={tournamentReminders} />
+        </div>
       )}
-      <CommitteeApprovalsCard
-        approvalSummary={approvalSummary}
-        onOpenApprovals={onOpenApprovals}
-      />
-      <CommitteeApprovedCoursesCard
-        approvalSummary={approvalSummary}
-        onOpenBeginnersCourses={onOpenBeginnersCourses}
-        onOpenHaveAGoSessions={onOpenHaveAGoSessions}
-        onOpenTasterSessions={onOpenTasterSessions}
-      />
-      <BeginnerTodayCard dashboard={beginnerDashboard} />
-      <MobileOnSiteFeatureCard mobileOnSiteFeature={mobileOnSiteFeature} />
     </div>
   );
 }

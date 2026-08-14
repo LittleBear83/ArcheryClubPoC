@@ -49,6 +49,7 @@ type LostArrowDraft = {
 type FoundArrowDraft = {
   dateFound: string;
   foundByUsername: string;
+  foundCollectionLocation: string;
 };
 
 const LANE_OPTIONS = Array.from({ length: 11 }, (_, index) => String(index + 1));
@@ -78,6 +79,7 @@ function buildFoundDraft(currentUsername: string): FoundArrowDraft {
   return {
     dateFound: getTodayIsoDate(),
     foundByUsername: currentUsername,
+    foundCollectionLocation: "",
   };
 }
 
@@ -556,6 +558,16 @@ export function LostAndFoundPage({ currentUserProfile }: LostAndFoundPageProps) 
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label>
+              Put Aside For Collection At
+              <input
+                value={foundDraft.foundCollectionLocation}
+                onChange={handleFoundDraftChange("foundCollectionLocation")}
+                maxLength={256}
+                placeholder="Optional collection location"
+              />
             </label>
 
             <div className="lost-arrow-actions">

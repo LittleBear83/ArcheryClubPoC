@@ -232,6 +232,7 @@ function buildInitialSchemaSql() {
       other_details TEXT,
       date_found TEXT,
       found_by_username TEXT REFERENCES users(username),
+      found_collection_location TEXT,
       found_seen_at_date TEXT,
       found_seen_at_time TEXT,
       created_at_date TEXT NOT NULL,
@@ -1316,6 +1317,10 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE lost_arrows
       ADD COLUMN IF NOT EXISTS fletching_colour_3 TEXT
+    `);
+    await client.query(`
+      ALTER TABLE lost_arrows
+      ADD COLUMN IF NOT EXISTS found_collection_location TEXT
     `);
     await client.query(`
       ALTER TABLE lost_arrows

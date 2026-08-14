@@ -126,6 +126,7 @@ export type LostArrowRecord = {
   dateFound?: string;
   foundByUsername?: string;
   foundByName?: string;
+  foundCollectionLocation?: string;
   createdAtDate: string;
   createdAtTime: string;
 };

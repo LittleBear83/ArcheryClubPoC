@@ -549,6 +549,7 @@ export function bootstrapSqliteBaseSchema({
       other_details TEXT,
       date_found TEXT,
       found_by_username TEXT,
+      found_collection_location TEXT,
       found_seen_at_date TEXT,
       found_seen_at_time TEXT,
       created_at_date TEXT NOT NULL,
@@ -601,6 +602,7 @@ export function bootstrapSqliteBaseSchema({
         other_details TEXT,
         date_found TEXT,
         found_by_username TEXT,
+        found_collection_location TEXT,
         found_seen_at_date TEXT,
         found_seen_at_time TEXT,
         created_at_date TEXT NOT NULL,
@@ -625,6 +627,7 @@ export function bootstrapSqliteBaseSchema({
         other_details,
         date_found,
         found_by_username,
+        found_collection_location,
         found_seen_at_date,
         found_seen_at_time,
         created_at_date,
@@ -646,6 +649,7 @@ export function bootstrapSqliteBaseSchema({
         other_details,
         date_found,
         found_by_username,
+        NULL,
         found_seen_at_date,
         found_seen_at_time,
         created_at_date,
@@ -664,6 +668,10 @@ export function bootstrapSqliteBaseSchema({
 
   if (!lostArrowColumns.some((column) => column.name === "found_seen_at_date")) {
     db.exec(`ALTER TABLE lost_arrows ADD COLUMN found_seen_at_date TEXT`);
+  }
+
+  if (!lostArrowColumns.some((column) => column.name === "found_collection_location")) {
+    db.exec(`ALTER TABLE lost_arrows ADD COLUMN found_collection_location TEXT`);
   }
 
   if (!lostArrowColumns.some((column) => column.name === "found_seen_at_time")) {

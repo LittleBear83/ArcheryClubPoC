@@ -59,6 +59,7 @@ export function markLostArrowFound(
   payload: {
     dateFound: string;
     foundByUsername: string;
+    foundCollectionLocation?: string;
   },
 ) {
   return fetchApi<{ success: true; lostArrow: LostArrowRecord }>(

@@ -111,6 +111,9 @@ function buildLostArrowFoundPayload(body) {
     maxLength: 64,
     required: true,
   });
+  const foundCollectionLocation = normalizeText(body?.foundCollectionLocation, {
+    maxLength: 256,
+  });
 
   if (!dateFound || !isIsoDate(dateFound) || !foundByUsername) {
     return null;
@@ -118,6 +121,7 @@ function buildLostArrowFoundPayload(body) {
 
   return {
     dateFound,
+    foundCollectionLocation,
     foundByUsername,
   };
 }
@@ -291,6 +295,7 @@ export function registerLostArrowRoutes({
     const [foundAtDate, foundAtTime] = getUtcTimestampParts();
     const lostArrow = await lostArrowGateway.markLostArrowFound({
       dateFound: foundPayload.dateFound,
+      foundCollectionLocation: foundPayload.foundCollectionLocation,
       foundByUsername: foundPayload.foundByUsername,
       id: lostArrowId,
     });
@@ -319,6 +324,7 @@ export function registerLostArrowRoutes({
       archerUsername: lostArrow.archerUsername,
       arrowId: lostArrow.id,
       arrowSummary: `${lostArrow.arrowColour} ${lostArrow.arrowMaterial} arrow`,
+      collectionLocation: lostArrow.foundCollectionLocation || "",
       targetPath: "/lost-and-found",
     });
 

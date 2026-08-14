@@ -21,6 +21,7 @@ function normalizeLostArrowRow(row) {
     dateFound: row.date_found ?? "",
     foundByUsername: row.found_by_username ?? "",
     foundByName: row.found_by_name ?? "",
+    foundCollectionLocation: row.found_collection_location ?? "",
     createdAtDate: row.created_at_date,
     createdAtTime: row.created_at_time,
   };
@@ -85,7 +86,8 @@ function createSqliteLostArrowGateway(db) {
     UPDATE lost_arrows
     SET
       date_found = ?,
-      found_by_username = ?
+      found_by_username = ?,
+      found_collection_location = ?
     WHERE id = ?
   `);
   const markFoundLostArrowsSeenForUserStatement = db.prepare(`
@@ -130,8 +132,18 @@ function createSqliteLostArrowGateway(db) {
     async listOpenLostArrows() {
       return listOpenLostArrowsStatement.all().map(normalizeLostArrowRow);
     },
-    async markLostArrowFound({ dateFound, foundByUsername, id }) {
-      markLostArrowFoundStatement.run(dateFound, foundByUsername, id);
+    async markLostArrowFound({
+      dateFound,
+      foundByUsername,
+      foundCollectionLocation,
+      id,
+    }) {
+      markLostArrowFoundStatement.run(
+        dateFound,
+        foundByUsername,
+        foundCollectionLocation,
+        id,
+      );
       return normalizeLostArrowRow(findLostArrowByIdStatement.get(id));
     },
     async markFoundLostArrowsSeenForUser({
@@ -245,16 +257,22 @@ function createPostgresLostArrowGateway(pool) {
 
       return result.rows.map(normalizeLostArrowRow);
     },
-    async markLostArrowFound({ dateFound, foundByUsername, id }) {
+    async markLostArrowFound({
+      dateFound,
+      foundByUsername,
+      foundCollectionLocation,
+      id,
+    }) {
       await pool.query(
         `
           UPDATE lost_arrows
           SET
             date_found = $1,
-            found_by_username = $2
-          WHERE id = $3
+            found_by_username = $2,
+            found_collection_location = $3
+          WHERE id = $4
         `,
-        [dateFound, foundByUsername, id],
+        [dateFound, foundByUsername, foundCollectionLocation, id],
       );
 
       return this.findLostArrowById(id);

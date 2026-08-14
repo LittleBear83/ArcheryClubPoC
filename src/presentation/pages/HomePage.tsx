@@ -425,7 +425,10 @@ function getHomeTickerMessage(currentUserProfile, beginnerDashboard) {
 function getLostArrowNoticeMessages(notices: LostArrowNotice[]) {
   return notices.map((notice) => {
     const foundBy = notice.foundByName || notice.foundByUsername || "another member";
-    return `${notice.arrowColour} ${notice.arrowMaterial} arrow (${notice.arrowIdentifier}) found by ${foundBy} on ${formatDate(notice.dateFound || notice.dateLost)}`;
+    const collectionLocation = notice.foundCollectionLocation
+      ? ` Collected from: ${notice.foundCollectionLocation}.`
+      : "";
+    return `${notice.arrowColour} ${notice.arrowMaterial} arrow (${notice.arrowIdentifier}) found by ${foundBy} on ${formatDate(notice.dateFound || notice.dateLost)}.${collectionLocation}`;
   });
 }
 

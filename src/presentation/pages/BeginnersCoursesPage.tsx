@@ -570,9 +570,6 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
         queryKey: [copy.queryKey, actorUsername],
       }),
       queryClient.invalidateQueries({
-        queryKey: [BEGINNERS_COPY.queryKey, actorUsername],
-      }),
-      queryClient.invalidateQueries({
         queryKey: ["committee-approval-summary", actorUsername],
       }),
     ]);

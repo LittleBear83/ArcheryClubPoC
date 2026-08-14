@@ -240,6 +240,72 @@ export function useServerEvents({
     });
   };
 
+  const eventInvalidators = useMemo(() => {
+    return [
+      {
+        event: "announcements.updated",
+        invalidate: invalidateAnnouncementQueries,
+      },
+      {
+        event: "calendar.updated",
+        invalidate: invalidateCalendarQueries,
+      },
+      {
+        event: "approvals.updated",
+        invalidate: invalidateApprovalsQueries,
+      },
+      {
+        event: "roles.updated",
+        invalidate: invalidateRoleQueries,
+      },
+      {
+        event: "committee.updated",
+        invalidate: invalidateCommitteeQueries,
+      },
+      {
+        event: "members.updated",
+        invalidate: invalidateMemberQueries,
+      },
+      {
+        event: "equipment.updated",
+        invalidate: invalidateEquipmentQueries,
+      },
+      {
+        event: "beginners.updated",
+        invalidate: invalidateBeginnersQueries,
+      },
+      {
+        event: "tournaments.updated",
+        invalidate: invalidateTournamentQueries,
+      },
+      {
+        event: "range-members.updated",
+        invalidate: invalidateRangeMemberQueries,
+      },
+      {
+        event: "lost-found.updated",
+        invalidate: invalidateLostArrowQueries,
+      },
+      {
+        event: "outdoor-table.updated",
+        invalidate: invalidateOutdoorTableQueries,
+      },
+    ];
+  }, [
+    invalidateAnnouncementQueries,
+    invalidateApprovalsQueries,
+    invalidateBeginnersQueries,
+    invalidateCalendarQueries,
+    invalidateCommitteeQueries,
+    invalidateEquipmentQueries,
+    invalidateLostArrowQueries,
+    invalidateMemberQueries,
+    invalidateOutdoorTableQueries,
+    invalidateRangeMemberQueries,
+    invalidateRoleQueries,
+    invalidateTournamentQueries,
+  ]);
+
   useSseFallbackPolling({
     callback: () => {
       for (const { invalidate } of eventInvalidators) {

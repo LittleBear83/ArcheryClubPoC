@@ -7,6 +7,7 @@ function createSqliteBeginnersCourseWriteGateway({
   insertBeginnersCourseParticipant,
   insertBeginnersLessonCoach,
   markBeginnersCourseParticipantConverted,
+  transferBeginnersCourseParticipant,
   updateBeginnersCourseApproval,
   updateBeginnersCourseParticipant,
   updateBeginnersCourseParticipantCase,
@@ -81,6 +82,7 @@ function createSqliteBeginnersCourseWriteGateway({
       courseId,
       createdAtDate,
       createdAtTime,
+      originCourseType,
       participant,
       username,
     }) {
@@ -96,6 +98,7 @@ function createSqliteBeginnersCourseWriteGateway({
         participant.initialEmailSent ? 1 : 0,
         participant.thirtyDayReminderSent ? 1 : 0,
         participant.courseFeePaid ? 1 : 0,
+        originCourseType,
         null,
         null,
         null,
@@ -105,8 +108,21 @@ function createSqliteBeginnersCourseWriteGateway({
         createdAtTime,
       );
     },
-    async markParticipantConverted(participantId) {
-      markBeginnersCourseParticipantConverted.run(participantId);
+    async markParticipantConverted({
+      actorUsername,
+      convertedAtDate,
+      convertedAtTime,
+      participantId,
+    }) {
+      markBeginnersCourseParticipantConverted.run(
+        convertedAtDate,
+        convertedAtTime,
+        actorUsername,
+        participantId,
+      );
+    },
+    async transferParticipantToCourse({ courseId, participantId }) {
+      transferBeginnersCourseParticipant.run(courseId, participantId);
     },
     async replaceLessonCoaches({
       actorUsername,
@@ -307,6 +323,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
       courseId,
       createdAtDate,
       createdAtTime,
+      originCourseType,
       participant,
       username,
     }) {
@@ -324,6 +341,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
             initial_email_sent,
             thirty_day_reminder_sent,
             course_fee_paid,
+            origin_course_type,
             assigned_case_id,
             assigned_case_by_username,
             assigned_case_at_date,
@@ -348,20 +366,49 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
           participant.initialEmailSent ? 1 : 0,
           participant.thirtyDayReminderSent ? 1 : 0,
           participant.courseFeePaid ? 1 : 0,
+          originCourseType,
           actorUsername,
           createdAtDate,
           createdAtTime,
         ],
       );
     },
-    async markParticipantConverted(participantId) {
+    async markParticipantConverted({
+      actorUsername,
+      convertedAtDate,
+      convertedAtTime,
+      participantId,
+    }) {
       await pool.query(
         `
           UPDATE beginners_course_participants
-          SET converted_to_member = 1
-          WHERE id = $1
+          SET
+            converted_to_member = 1,
+            converted_at_date = $1,
+            converted_at_time = $2,
+            converted_by_username = $3
+          WHERE id = $4
         `,
-        [participantId],
+        [convertedAtDate, convertedAtTime, actorUsername, participantId],
+      );
+    },
+    async transferParticipantToCourse({ courseId, participantId }) {
+      await pool.query(
+        `
+          UPDATE beginners_course_participants
+          SET
+            course_id = $1,
+            assigned_case_id = NULL,
+            assigned_case_by_username = NULL,
+            assigned_case_at_date = NULL,
+            assigned_case_at_time = NULL,
+            converted_to_member = 0,
+            converted_at_date = NULL,
+            converted_at_time = NULL,
+            converted_by_username = NULL
+          WHERE id = $2
+        `,
+        [courseId, participantId],
       );
     },
     async replaceLessonCoaches({

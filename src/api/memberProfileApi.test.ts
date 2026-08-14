@@ -52,6 +52,8 @@ test("MemberProfileApi combines profile and equipment loan data", async () => {
     equipmentLoans: [{ id: 7 }],
     disciplines: [],
     userTypes: [],
+    membershipStatuses: [],
+    programmeTypes: [],
   });
   assert.deepEqual(
     requests.map((request) => request.url).sort(),
@@ -66,4 +68,51 @@ test("MemberProfileApi combines profile and equipment loan data", async () => {
   );
   assert.equal(requests[0].headers.get("x-actor-username"), null);
   assert.equal(requests[1].headers.get("x-actor-username"), null);
+});
+
+test("MemberProfileApi still returns profile data when equipment loans are forbidden", async () => {
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+
+    if (url.includes("/member-equipment-loans/")) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: "You do not have permission to view this member's equipment loans.",
+        }),
+        {
+          status: 403,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        editableProfile: { username: "member-one" },
+        userProfile: { auth: { username: "member-one" } },
+        membershipStatuses: ["member", "non-member", "guest"],
+        programmeTypes: ["none", "beginners"],
+      }),
+      {
+        headers: { "content-type": "application/json" },
+      },
+    );
+  };
+
+  const result = await new MemberProfileApi().getProfilePageData(
+    "admin-user",
+    "member-one",
+  );
+
+  assert.deepEqual(result, {
+    editableProfile: { username: "member-one" },
+    userProfile: { auth: { username: "member-one" } },
+    equipmentLoans: [],
+    disciplines: [],
+    userTypes: [],
+    membershipStatuses: ["member", "non-member", "guest"],
+    programmeTypes: ["none", "beginners"],
+  });
 });

@@ -180,6 +180,7 @@ function formatAuditAction(event: AuditEventRecord) {
     ["post /api/beginners-courses/:id/beginners", "beginner added to course"],
     ["post /api/beginners-course-participants/:id/reset-password", "beginner password reset"],
     ["put /api/beginners-course-participants/:id", "beginner updated"],
+    ["post /api/beginners-course-participants/:id/transfer-to-beginners-course", "beginner transferred to course"],
     ["post /api/beginners-course-participants/:id/convert", "beginner converted to member"],
     ["post /api/beginners-course-participants/:id/assign-case", "beginner case assigned"],
     ["post /api/beginners-course-lessons/:id/coaches", "lesson coaches assigned"],
@@ -458,6 +459,36 @@ function formatAuditValue(value: unknown) {
   return JSON.stringify(value);
 }
 
+function formatAuditChangePath(path: string) {
+  const pathLabelMap: Record<string, string> = {
+    membershipStatus: "Membership status",
+    programmeType: "Programme type",
+    userType: "Role",
+    activeMember: "Active member",
+    affiliateMember: "Affiliate member",
+    juniorMember: "Junior member",
+    archeryGbMembershipNumber: "Archery GB number",
+    emailAddress: "Email address",
+    membershipFeesDue: "Membership fees due",
+    coachingVolunteer: "Coaching volunteer",
+    firstName: "First name",
+    surname: "Surname",
+    username: "Username",
+    rfidTag: "RFID tag",
+  };
+
+  if (pathLabelMap[path]) {
+    return pathLabelMap[path];
+  }
+
+  return path
+    .replace(/\[(\d+)\]/g, " $1")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .split(".")
+    .map((segment) => segment.replace(/_/g, " "))
+    .join(" / ");
+}
+
 function GenericAuditMetadataDetails({ metadata }: { metadata: Record<string, unknown> }) {
   const body = isPlainObject(metadata.body) ? metadata.body : null;
 
@@ -558,7 +589,7 @@ function AuditMetadataDetails({ metadata }: { metadata: unknown }) {
             <tbody>
               {(metadata.changes ?? []).map((change) => (
                 <tr key={change.path}>
-                  <td className="audit-log-change-path">{change.path}</td>
+                  <td className="audit-log-change-path">{formatAuditChangePath(change.path)}</td>
                   <td>
                     <pre className="audit-log-change-value">
                       {formatAuditValue(change.before)}

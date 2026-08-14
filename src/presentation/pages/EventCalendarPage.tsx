@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import "./EventCalendarPage.css";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
 import { Calendar } from "../components/Calendar";
@@ -12,6 +13,29 @@ import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { EventCalendarDesktopView } from "./event-calendar/EventCalendarDesktopView";
 import { EventCalendarMobileView } from "./event-calendar/EventCalendarMobileView";
+import {
+  buildRecurringDates,
+  EVENT_TYPE_OPTIONS,
+  eventQueryKeys,
+  getTodayDateString,
+  getVenueLabel,
+  parseDateString,
+  VENUE_OPTIONS,
+} from "./event-calendar/eventCalendarShared";
+import {
+  fetchCalendarBeginnersCourseLessons,
+  fetchCalendarCoachingSessions,
+  fetchCalendarEvents,
+} from "./event-calendar/eventCalendarQueries";
+import {
+  useEventCalendarSchedule,
+  eventMatchesType,
+  getEventTypes,
+  type EventCalendarFilterKey,
+  type EventCalendarScheduleItem,
+  type EventCalendarEventItem,
+  type EventCalendarCoachingItem,
+} from "./event-calendar/useEventCalendarSchedule";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
 import {
@@ -25,9 +49,6 @@ import {
   createEvent,
   leaveCoachingSession,
   leaveEvent as leaveEventApi,
-  listBeginnersCourseCalendarLessons,
-  listCoachingSessions,
-  listEvents,
 } from "../../api/scheduleApi";
 import type {
   BeginnersCourseCalendarLesson,
@@ -35,82 +56,6 @@ import type {
   EventBooking,
   UserProfile,
 } from "../../types/app";
-
-function getTodayDateString() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function parseDateString(dateString: string) {
-  const [year, month, day] = dateString.split("-").map(Number);
-
-  if (!year || !month || !day) {
-    return null;
-  }
-
-  return new Date(year, month - 1, day, 12, 0, 0);
-}
-
-function addDays(dateString: string, daysToAdd: number) {
-  const nextDate = new Date(`${dateString}T12:00:00`);
-  nextDate.setDate(nextDate.getDate() + daysToAdd);
-  return nextDate.toISOString().slice(0, 10);
-}
-
-function buildRecurringDates(
-  startDate: string,
-  repeatUntilDate: string,
-  repeatPattern: "weekly" | "monthly",
-) {
-  if (!startDate || !repeatUntilDate || repeatUntilDate < startDate) {
-    return [startDate].filter(Boolean);
-  }
-
-  const generatedDates = [startDate];
-
-  if (repeatPattern === "weekly") {
-    let nextDate = startDate;
-
-    while (true) {
-      nextDate = addDays(nextDate, 7);
-      if (nextDate > repeatUntilDate) {
-        break;
-      }
-      generatedDates.push(nextDate);
-    }
-
-    return generatedDates;
-  }
-
-  const start = new Date(`${startDate}T12:00:00`);
-  const targetDay = start.getDate();
-  let monthOffset = 1;
-
-  while (monthOffset < 60) {
-    const candidate = new Date(
-      start.getFullYear(),
-      start.getMonth() + monthOffset,
-      targetDay,
-      12,
-      0,
-      0,
-    );
-    monthOffset += 1;
-
-    if (candidate.getDate() !== targetDay) {
-      continue;
-    }
-
-    const candidateDate = candidate.toISOString().slice(0, 10);
-
-    if (candidateDate > repeatUntilDate) {
-      break;
-    }
-
-    generatedDates.push(candidateDate);
-  }
-
-  return generatedDates;
-}
 
 function hasEventEnded(event) {
   if (!event?.date || !event?.endTime) {
@@ -166,17 +111,6 @@ function TrainingIcon({ className = "" }) {
   );
 }
 
-const EVENT_TYPE_OPTIONS = [
-  { value: "competition", label: "Competition", className: "event-type-competition" },
-  { value: "social", label: "Social event", className: "event-type-social" },
-  { value: "range-closed", label: "Range closed", className: "event-type-range-closed" },
-];
-const VENUE_OPTIONS = [
-  { value: "indoor", label: "Indoor" },
-  { value: "outdoor", label: "Outdoor" },
-  { value: "both", label: "Indoor and outdoor" },
-];
-
 type CalendarEvent = {
   id: string | number;
   date: string;
@@ -200,23 +134,6 @@ type CalendarEvent = {
   cancellationReason?: string;
 };
 
-type MixedCalendarEvent = CalendarEvent & {
-  kind: "event";
-};
-
-type MixedCoachingSession = CoachingSession & {
-  kind: "coaching";
-};
-
-type MixedBeginnersLesson = BeginnersCourseCalendarLesson & {
-  kind: "beginners";
-};
-
-type CalendarScheduleItem =
-  | MixedCalendarEvent
-  | MixedCoachingSession
-  | MixedBeginnersLesson;
-
 type EventCalendarPageProps = {
   currentUserProfile: UserProfile | null;
   onBookingsChanged?: () => void;
@@ -224,40 +141,29 @@ type EventCalendarPageProps = {
 
 type EventCreationMode = "single" | "recurring" | "multiple";
 type CoachingCreationMode = "single" | "recurring" | "multiple";
-type CalendarFilterKey =
-  | CalendarEvent["type"]
-  | "coaching"
-  | "beginners";
 
 function getCourseLessonLabel(lesson: BeginnersCourseCalendarLesson) {
-  return lesson.courseType === "have-a-go" ? "Session" : "Lesson";
+  return lesson.courseType === "beginners" ? "Lesson" : "Session";
 }
 
 function getCourseParticipantLabel(lesson: BeginnersCourseCalendarLesson) {
-  return lesson.courseType === "have-a-go" ? "Participants" : "Beginners";
+  return lesson.courseType === "beginners" ? "Beginners" : "Participants";
+}
+
+function getCourseTypeLabel(lesson: BeginnersCourseCalendarLesson) {
+  switch (lesson.courseType) {
+    case "have-a-go":
+      return "Have a Go";
+    case "taster-session":
+      return "Taster Session";
+    default:
+      return "Beginners";
+  }
 }
 
 function getCancelledSummary(reason?: string) {
   const cancellationReason = reason?.trim();
   return cancellationReason ? ` | Cancelled: ${cancellationReason}` : " | Cancelled";
-}
-
-function getEventTypes(event: Pick<CalendarEvent, "type" | "types">) {
-  const normalizedTypes = [...new Set(
-    (event.types?.length ? event.types : [event.type])
-      .filter((type): type is string => typeof type === "string")
-      .map((type) => type.trim())
-      .filter(Boolean),
-  )];
-
-  return normalizedTypes.length > 0 ? normalizedTypes : ["competition"];
-}
-
-function eventMatchesType(
-  event: Pick<CalendarEvent, "type" | "types">,
-  filterKey: CalendarEvent["type"],
-) {
-  return getEventTypes(event).includes(filterKey);
 }
 
 function mergeCalendarEvents(
@@ -326,46 +232,13 @@ function getCreatedEventMessage(createdEvents: CalendarEvent[], failures: string
   return messageParts.join(" ");
 }
 
-const eventQueryKeys = {
-  list: (username: string) => ["events", username] as const,
-};
-
-const ALL_CALENDAR_FILTERS: CalendarFilterKey[] = [
+const ALL_CALENDAR_FILTERS: EventCalendarFilterKey[] = [
   "competition",
   "social",
   "range-closed",
   "coaching",
   "beginners",
 ];
-
-function getVenueLabel(venue) {
-  return (
-    VENUE_OPTIONS.find((option) => option.value === venue)?.label ??
-    "Indoor and outdoor"
-  );
-}
-
-async function fetchEvents(actorUsername: string): Promise<CalendarEvent[]> {
-  const result = await listEvents<CalendarEvent>(actorUsername);
-
-  return result.events ?? [];
-}
-
-async function fetchCoachingSessions(
-  actorUsername: string,
-): Promise<CoachingSession[]> {
-  const result = await listCoachingSessions(actorUsername);
-
-  return result.sessions ?? [];
-}
-
-async function fetchBeginnersCourseLessons(): Promise<
-  BeginnersCourseCalendarLesson[]
-> {
-  const result = await listBeginnersCourseCalendarLessons();
-
-  return result.lessons ?? [];
-}
 
 export function EventCalendarPage({
   currentUserProfile,
@@ -435,7 +308,7 @@ export function EventCalendarPage({
     availableSlots: 4,
   });
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateString());
-  const [activeFilters, setActiveFilters] = useState<CalendarFilterKey[]>([]);
+  const [activeFilters, setActiveFilters] = useState<EventCalendarFilterKey[]>([]);
   const [bookingMessage, setBookingMessage] = useState("");
   const [eventFormError, setEventFormError] = useState("");
   const [coachingFormError, setCoachingFormError] = useState("");
@@ -486,21 +359,27 @@ export function EventCalendarPage({
 
   const eventsQuery = useQuery({
     queryKey: eventQueryKeys.list(actorUsername),
-    queryFn: () => fetchEvents(actorUsername),
+    queryFn: () => fetchCalendarEvents<CalendarEvent>(actorUsername),
   });
 
   const coachingSessionsQuery = useQuery({
     queryKey: ["coaching-sessions", actorUsername],
-    queryFn: () => fetchCoachingSessions(actorUsername),
+    queryFn: () => fetchCalendarCoachingSessions(actorUsername),
   });
 
   const beginnersLessonsQuery = useQuery({
     queryKey: ["beginners-course-calendar"],
-    queryFn: fetchBeginnersCourseLessons,
+    queryFn: fetchCalendarBeginnersCourseLessons,
   });
-  const events = eventsQuery.data ?? [];
-  const coachingSessions = coachingSessionsQuery.data ?? [];
-  const beginnersLessons = beginnersLessonsQuery.data ?? [];
+  const events = useMemo(() => eventsQuery.data ?? [], [eventsQuery.data]);
+  const coachingSessions = useMemo(
+    () => coachingSessionsQuery.data ?? [],
+    [coachingSessionsQuery.data],
+  );
+  const beginnersLessons = useMemo(
+    () => beginnersLessonsQuery.data ?? [],
+    [beginnersLessonsQuery.data],
+  );
   const calendarLoadError =
     eventsQuery.error instanceof Error
       ? eventsQuery.error.message
@@ -623,154 +502,41 @@ export function EventCalendarPage({
     await addEventMutation.mutateAsync(eventDates);
   };
 
-  const filteredScheduleItems = useMemo(
-    () => {
-      const isUnfiltered = activeFilters.length === 0;
-
-      return [
-        ...events
-          .filter(
-            (event) =>
-              isUnfiltered ||
-              activeFilters.some((filterKey) => eventMatchesType(event, filterKey)),
-          )
-          .map((event) => ({ ...event, kind: "event" as const })),
-        ...coachingSessions
-          .filter(() => isUnfiltered || activeFilters.includes("coaching"))
-          .map((session) => ({
-            ...session,
-            kind: "coaching" as const,
-          })),
-        ...beginnersLessons
-          .filter(() => isUnfiltered || activeFilters.includes("beginners"))
-          .map((lesson) => ({
-            ...lesson,
-            kind: "beginners" as const,
-          })),
-      ];
-    },
-    [activeFilters, beginnersLessons, coachingSessions, events],
-  );
-
-  const scheduleItemsByDate = useMemo(
-    () =>
-      filteredScheduleItems
-        .sort((left, right) => {
-          const byDate = left.date.localeCompare(right.date);
-          if (byDate !== 0) {
-            return byDate;
-          }
-
-          const byStartTime = left.startTime.localeCompare(right.startTime);
-          if (byStartTime !== 0) {
-            return byStartTime;
-          }
-
-          return String(left.id).localeCompare(String(right.id));
-        })
-        .reduce<Record<string, CalendarScheduleItem[]>>((acc, evt) => {
-          (acc[evt.date] = acc[evt.date] || []).push(evt);
-          return acc;
-        }, {}),
-    [filteredScheduleItems],
-  );
-
-  const selectedScheduleItems = useMemo(
-    () => (selectedDate ? scheduleItemsByDate[selectedDate] || [] : []),
-    [scheduleItemsByDate, selectedDate],
-  );
-  const selectedEvents = useMemo(
-    () =>
-      selectedScheduleItems.filter(
-        (item): item is MixedCalendarEvent => item.kind === "event",
-      ),
-    [selectedScheduleItems],
-  );
-  const selectedCoachingSessions = useMemo(
-    () =>
-      selectedScheduleItems.filter(
-        (item): item is MixedCoachingSession => item.kind === "coaching",
-      ),
-    [selectedScheduleItems],
-  );
-  const selectedCoachingSessionDetail = useMemo(
-    () =>
-      selectedCoachingSessions.find(
-        (session) => session.id === selectedCoachingSessionId,
-      ) ?? null,
-    [selectedCoachingSessionId, selectedCoachingSessions],
-  );
-  const selectedBeginnersLessons = useMemo(
-    () =>
-      selectedScheduleItems.filter(
-        (item): item is MixedBeginnersLesson => item.kind === "beginners",
-      ),
-    [selectedScheduleItems],
-  );
-  const activeSelectedEvents = useMemo(
-    () => selectedEvents.filter((event) => !event.isRejected && !event.isCancelled),
-    [selectedEvents],
-  );
-  const activeSelectedCoachingSessions = useMemo(
-    () =>
-      selectedCoachingSessions.filter(
-        (session) => !session.isRejected && !session.isCancelled,
-      ),
-    [selectedCoachingSessions],
-  );
-  const activeSelectedBeginnersLessons = useMemo(
-    () => selectedBeginnersLessons.filter((lesson) => !lesson.isCancelled),
-    [selectedBeginnersLessons],
-  );
-  const pendingSelectedEvents = useMemo(
-    () => selectedEvents.filter((event) => event.isPendingApproval),
-    [selectedEvents],
-  );
-  const rejectedSelectedEvents = useMemo(
-    () => selectedEvents.filter((event) => event.isRejected && !event.isCancelled),
-    [selectedEvents],
-  );
-  const rejectedSelectedCoachingSessions = useMemo(
-    () =>
-      selectedCoachingSessions.filter(
-        (session) => session.isRejected && !session.isCancelled,
-      ),
-    [selectedCoachingSessions],
-  );
-  const cancelledSelectedEvents = useMemo(
-    () => selectedEvents.filter((event) => event.isCancelled),
-    [selectedEvents],
-  );
-  const cancelledSelectedCoachingSessions = useMemo(
-    () => selectedCoachingSessions.filter((session) => session.isCancelled),
-    [selectedCoachingSessions],
-  );
-  const cancelledSelectedBeginnersLessons = useMemo(
-    () => selectedBeginnersLessons.filter((lesson) => lesson.isCancelled),
-    [selectedBeginnersLessons],
-  );
+  const {
+    scheduleItemsByDate,
+    selectedScheduleItems,
+    selectedCoachingSessionDetail,
+    activeSelectedEvents,
+    activeSelectedCoachingSessions,
+    activeSelectedBeginnersLessons,
+    pendingSelectedEvents,
+    rejectedSelectedEvents,
+    rejectedSelectedCoachingSessions,
+    cancelledSelectedEvents,
+    cancelledSelectedCoachingSessions,
+    cancelledSelectedBeginnersLessons,
+    selectedEventDetail,
+    cancellableEvents,
+    cancelEventTarget,
+    currentMonthAgendaItems,
+  } = useEventCalendarSchedule({
+    events,
+    coachingSessions,
+    beginnersLessons,
+    activeFilters,
+    selectedDate,
+    selectedEventId,
+    selectedCoachingSessionId,
+    cancelEventId,
+    year,
+    month,
+  });
   const hasRejectedSummaryItems =
     rejectedSelectedEvents.length > 0 || rejectedSelectedCoachingSessions.length > 0;
   const hasCancelledSummaryItems =
     cancelledSelectedEvents.length > 0 ||
     cancelledSelectedCoachingSessions.length > 0 ||
     cancelledSelectedBeginnersLessons.length > 0;
-  const selectedEventDetail = useMemo(
-    () => selectedEvents.find((event) => event.id === selectedEventId) ?? null,
-    [selectedEventId, selectedEvents],
-  );
-  const cancellableEvents = useMemo(
-    () =>
-      events.filter((event) => {
-        const normalizedId = String(event.id);
-        return /^\d+$/.test(normalizedId);
-      }),
-    [events],
-  );
-  const cancelEventTarget = useMemo(
-    () => cancellableEvents.find((event) => event.id === cancelEventId) ?? null,
-    [cancelEventId, cancellableEvents],
-  );
 
   const handleDateSelect = (dateString) => {
     setSelectedDate(dateString);
@@ -800,7 +566,7 @@ export function EventCalendarPage({
     );
   };
 
-  const toggleFilter = (filterKey: CalendarFilterKey) => {
+  const toggleFilter = (filterKey: EventCalendarFilterKey) => {
     setActiveFilters((current) =>
       current.length === 0
         ? [filterKey]
@@ -1057,7 +823,7 @@ export function EventCalendarPage({
     }
   };
 
-  const handleOpenScheduleItem = (item: CalendarScheduleItem) => {
+  const handleOpenScheduleItem = (item: EventCalendarScheduleItem<CalendarEvent>) => {
     setSelectedDate(item.date);
 
     if (item.kind === "event") {
@@ -1069,19 +835,6 @@ export function EventCalendarPage({
       setSelectedCoachingSessionId(item.id);
     }
   };
-
-  const currentMonthAgendaItems = useMemo(
-    () =>
-      filteredScheduleItems.filter((item) => {
-        const itemDate = new Date(`${item.date}T12:00:00`);
-
-        return (
-          itemDate.getFullYear() === year &&
-          itemDate.getMonth() === month
-        );
-      }),
-    [filteredScheduleItems, month, year],
-  );
 
   const filterBar = (
     <div className="event-calendar-key" aria-label="Event type key">
@@ -1149,12 +902,12 @@ export function EventCalendarPage({
   );
 
   const renderDesktopDayMeta = (items: Array<{ id: string | number }>) => {
-    const scheduleItems = items as CalendarScheduleItem[];
+    const scheduleItems = items as EventCalendarScheduleItem<CalendarEvent>[];
     const typeClasses = [
       ...new Set(
         scheduleItems
           .filter(
-            (item): item is MixedCalendarEvent => item.kind === "event",
+            (item): item is EventCalendarEventItem<CalendarEvent> => item.kind === "event",
           )
           .flatMap((item) =>
             getEventTypes(item).map((type) => getEventTypeDetails(type).className),
@@ -1191,7 +944,7 @@ export function EventCalendarPage({
   };
 
   const renderDesktopCalendarItem = (itemLike: { id: string | number }) => {
-    const item = itemLike as CalendarScheduleItem;
+    const item = itemLike as EventCalendarScheduleItem<CalendarEvent>;
 
     if (item.kind === "event") {
       return (
@@ -1238,7 +991,7 @@ export function EventCalendarPage({
           .filter(Boolean)
           .join(" ")}
       >
-        {item.courseType === "have-a-go" ? "Have a Go" : "Beginners"}{" "}
+        {getCourseTypeLabel(item)}{" "}
         {getCourseLessonLabel(item).slice(0, 1)}
         {item.lessonNumber}
       </span>
@@ -1474,9 +1227,9 @@ export function EventCalendarPage({
           {activeSelectedBeginnersLessons.length > 0 ? (
             <>
               {isMobile ? (
-                <MobileSectionHeader title="Beginners And Have a Go" />
+                <MobileSectionHeader title="Courses And Sessions" />
               ) : (
-                <h4>Beginners and Have a Go sessions</h4>
+                <h4>Beginners, Have a Go, and Taster Sessions</h4>
               )}
               <div className="event-summary-card-list">
                 {activeSelectedBeginnersLessons.map((lesson) => (

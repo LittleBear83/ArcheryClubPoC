@@ -17,6 +17,17 @@ function getFirstNameOnly(value) {
   return String(displayName).trim().split(/\s+/)[0] || "";
 }
 
+function formatCoachedSessionLabel(courseType) {
+  switch (courseType) {
+    case "taster-session":
+      return "Taster Session";
+    case "have-a-go":
+      return "Have a Go session";
+    default:
+      return "Beginners course";
+  }
+}
+
 function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
   if (!mobileOnSiteFeature?.isMobile) {
     return null;
@@ -146,13 +157,40 @@ function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
   );
 }
 
-function SignedUpEventsList({ events }) {
+function buildClubEventItems(events, coachAssignments) {
+  return [
+    ...events.map((event) => ({
+      id: `event-${event.id}`,
+      date: event.date,
+      startTime: event.startTime ?? "",
+      title: event.title,
+    })),
+    ...coachAssignments.map((assignment) => ({
+      id: `coach-${assignment.id}`,
+      date: assignment.date,
+      startTime: assignment.startTime ?? "",
+      title: `Coaching reminder: ${formatCoachedSessionLabel(assignment.courseType)}`,
+    })),
+  ].sort((left, right) => {
+    const byDate = left.date.localeCompare(right.date);
+
+    if (byDate !== 0) {
+      return byDate;
+    }
+
+    return left.startTime.localeCompare(right.startTime);
+  });
+}
+
+function SignedUpEventsList({ events, coachAssignments }) {
+  const clubEventItems = buildClubEventItems(events, coachAssignments);
+
   return (
     <section className="home-panel">
       <h3 className="home-panel-title">Your Club Events List</h3>
       <ul className="home-info-list home-info-list--events">
-        {events.length > 0 ? (
-          events.map((event) => (
+        {clubEventItems.length > 0 ? (
+          clubEventItems.map((event) => (
             <li key={event.id}>
               <strong>{formatDate(event.date)}</strong>
               {`: ${event.title}`}
@@ -225,22 +263,26 @@ function CurrentLostArrowsCard({ lostArrows, onOpenLostAndFound }) {
 
 function GuestSignInCard({ onOpenGuestLogin }) {
   return (
-    <section className="home-panel">
+    <button
+      type="button"
+      className="home-panel home-panel--interactive"
+      onClick={onOpenGuestLogin}
+      aria-label="Open the guest sign-in form"
+    >
       <h3 className="home-panel-title">Guest Sign In</h3>
       <div className="home-panel-copy">
-        <p>Open the guest sign-in form and record a visiting archer.</p>
+        <p>Book in a visiting archer.</p>
+        <p>For non-members and visiting club guests.</p>
+        <p className="home-panel-link-copy">Open Guest Form</p>
       </div>
-      <Button type="button" onClick={onOpenGuestLogin}>
-        Open Guest Form
-      </Button>
-    </section>
+    </button>
   );
 }
 
 function MembersAtRangeList({ members }) {
   return (
     <section className="home-panel">
-      <h3 className="home-panel-title">Current Members At The Range</h3>
+      <h3 className="home-panel-title">Current Archers At The Range</h3>
       <ul className="home-info-list home-info-list--members">
         {members.length > 0 ? (
           members.map((member) => {
@@ -258,7 +300,7 @@ function MembersAtRangeList({ members }) {
             );
           })
         ) : (
-          <li>No members have logged in within the last 2 hours</li>
+          <li>No archers have logged in within the last 2 hours</li>
         )}
       </ul>
     </section>
@@ -307,26 +349,6 @@ function BeginnerTodayCard({ dashboard }) {
   );
 }
 
-function BeginnerCoachAssignmentsCard({ assignments }) {
-  if (!assignments.length) {
-    return null;
-  }
-
-  return (
-    <section className="home-panel">
-      <h3 className="home-panel-title">Beginners Coaching</h3>
-      <ul className="home-info-list home-info-list--events">
-        {assignments.map((assignment) => (
-          <li key={assignment.id}>
-            <strong>{formatDate(assignment.date)}</strong>
-            {`: lesson ${assignment.lessonNumber}, coordinator ${assignment.coordinatorName}, ${assignment.beginnerCount} beginners`}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 function CommitteeApprovalsCard({ approvalSummary, onOpenApprovals }) {
   if (!approvalSummary) {
     return null;
@@ -336,6 +358,7 @@ function CommitteeApprovalsCard({ approvalSummary, onOpenApprovals }) {
     beginnersCoursesCount,
     calendarItemsCount,
     haveAGoSessionsCount,
+    tasterSessionsCount,
     noApprovalAccess,
     totalPendingCount,
   } = approvalSummary;
@@ -378,6 +401,9 @@ function CommitteeApprovalsCard({ approvalSummary, onOpenApprovals }) {
         <p>
           <strong>{haveAGoSessionsCount}</strong> Have a Go sessions need approval
         </p>
+        <p>
+          <strong>{tasterSessionsCount}</strong> Taster Sessions need approval
+        </p>
       </div>
         </>
       )}
@@ -386,7 +412,12 @@ function CommitteeApprovalsCard({ approvalSummary, onOpenApprovals }) {
   );
 }
 
-function CommitteeApprovedCoursesCard({ approvalSummary }) {
+function CommitteeApprovedCoursesCard({
+  approvalSummary,
+  onOpenBeginnersCourses,
+  onOpenHaveAGoSessions,
+  onOpenTasterSessions,
+}) {
   if (!approvalSummary) {
     return null;
   }
@@ -394,10 +425,13 @@ function CommitteeApprovedCoursesCard({ approvalSummary }) {
   const {
     approvedBeginnersCoursesCount,
     approvedHaveAGoSessionsCount,
+    approvedTasterSessionsCount,
     noApprovalAccess,
   } = approvalSummary;
   const totalApprovedCount =
-    approvedBeginnersCoursesCount + approvedHaveAGoSessionsCount;
+    approvedBeginnersCoursesCount +
+    approvedHaveAGoSessionsCount +
+    approvedTasterSessionsCount;
 
   return (
     <section className="home-panel">
@@ -423,14 +457,30 @@ function CommitteeApprovedCoursesCard({ approvalSummary }) {
             </p>
           </div>
           <div className="home-approval-summary-list">
-            <p>
+            <button
+              type="button"
+              className="home-approval-summary-link"
+              onClick={onOpenBeginnersCourses}
+            >
               <strong>{approvedBeginnersCoursesCount}</strong> approved beginners
               courses
-            </p>
-            <p>
+            </button>
+            <button
+              type="button"
+              className="home-approval-summary-link"
+              onClick={onOpenHaveAGoSessions}
+            >
               <strong>{approvedHaveAGoSessionsCount}</strong> approved Have a Go
               sessions
-            </p>
+            </button>
+            <button
+              type="button"
+              className="home-approval-summary-link"
+              onClick={onOpenTasterSessions}
+            >
+              <strong>{approvedTasterSessionsCount}</strong> approved Taster
+              Sessions
+            </button>
           </div>
         </>
       )}
@@ -446,6 +496,9 @@ export function HomeSection({
   onOpenGuestLogin,
   onOpenLostAndFound,
   onOpenApprovals,
+  onOpenBeginnersCourses,
+  onOpenHaveAGoSessions,
+  onOpenTasterSessions,
   approvalSummary = null,
   beginnerDashboard,
   beginnerCoachAssignments,
@@ -453,25 +506,36 @@ export function HomeSection({
   hideEventPanels = false,
 }) {
   return (
-    <div className="home-split-view">
-      <MembersAtRangeList members={members} />
-      <GuestSignInCard onOpenGuestLogin={onOpenGuestLogin} />
-      <CurrentLostArrowsCard
-        lostArrows={lostArrows}
-        onOpenLostAndFound={onOpenLostAndFound}
-      />
-      {hideEventPanels ? null : <SignedUpEventsList events={signedUpEvents} />}
+    <div className="home-dashboard-layout">
+      <div className="home-split-view">
+        <MembersAtRangeList members={members} />
+        <GuestSignInCard onOpenGuestLogin={onOpenGuestLogin} />
+        <CurrentLostArrowsCard
+          lostArrows={lostArrows}
+          onOpenLostAndFound={onOpenLostAndFound}
+        />
+        <CommitteeApprovalsCard
+          approvalSummary={approvalSummary}
+          onOpenApprovals={onOpenApprovals}
+        />
+        <CommitteeApprovedCoursesCard
+          approvalSummary={approvalSummary}
+          onOpenBeginnersCourses={onOpenBeginnersCourses}
+          onOpenHaveAGoSessions={onOpenHaveAGoSessions}
+          onOpenTasterSessions={onOpenTasterSessions}
+        />
+        <BeginnerTodayCard dashboard={beginnerDashboard} />
+        <MobileOnSiteFeatureCard mobileOnSiteFeature={mobileOnSiteFeature} />
+      </div>
       {hideEventPanels ? null : (
-        <TournamentRemindersList reminders={tournamentReminders} />
+        <div className="home-events-column">
+          <SignedUpEventsList
+            events={signedUpEvents}
+            coachAssignments={beginnerCoachAssignments}
+          />
+          <TournamentRemindersList reminders={tournamentReminders} />
+        </div>
       )}
-      <CommitteeApprovalsCard
-        approvalSummary={approvalSummary}
-        onOpenApprovals={onOpenApprovals}
-      />
-      <CommitteeApprovedCoursesCard approvalSummary={approvalSummary} />
-      <BeginnerTodayCard dashboard={beginnerDashboard} />
-      <BeginnerCoachAssignmentsCard assignments={beginnerCoachAssignments} />
-      <MobileOnSiteFeatureCard mobileOnSiteFeature={mobileOnSiteFeature} />
     </div>
   );
 }

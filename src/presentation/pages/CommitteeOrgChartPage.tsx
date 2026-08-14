@@ -191,15 +191,27 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
     enabled: Boolean(actorUsername),
   });
 
-  const roles = data?.roles ?? [];
-  const minutes = minutesData?.minutes ?? [];
+  const roles = useMemo(() => data?.roles ?? [], [data?.roles]);
+  const minutes = useMemo(() => minutesData?.minutes ?? [], [minutesData?.minutes]);
   const selectedRole = useMemo(
     () => roles.find((role) => role.id === selectedRoleId) ?? null,
     [roles, selectedRoleId],
   );
+  const effectiveSelectedMinuteId = useMemo(() => {
+    if (!minutes.length) {
+      return null;
+    }
+
+    return minutes.some((minute) => minute.id === selectedMinuteId)
+      ? selectedMinuteId
+      : minutes[0].id;
+  }, [minutes, selectedMinuteId]);
   const selectedMinute = useMemo(
-    () => minutes.find((minute) => minute.id === selectedMinuteId) ?? minutes[0] ?? null,
-    [minutes, selectedMinuteId],
+    () =>
+      minutes.find((minute) => minute.id === effectiveSelectedMinuteId) ??
+      minutes[0] ??
+      null,
+    [effectiveSelectedMinuteId, minutes],
   );
   const canEditSelectedRoleBlurb =
     Boolean(selectedRole?.assignedMember?.username) &&
@@ -211,23 +223,6 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
         role.assignedMember?.username?.trim().toLowerCase() ===
         actorUsername.trim().toLowerCase(),
     );
-
-  useEffect(() => {
-    setBlurbDraft(selectedRole?.personalBlurb ?? "");
-    setMessage("");
-    setError("");
-  }, [selectedRole?.id, selectedRole?.personalBlurb]);
-
-  useEffect(() => {
-    if (!minutes.length) {
-      setSelectedMinuteId(null);
-      return;
-    }
-
-    if (!selectedMinuteId || !minutes.some((minute) => minute.id === selectedMinuteId)) {
-      setSelectedMinuteId(minutes[0].id);
-    }
-  }, [minutes, selectedMinuteId]);
 
   useEffect(() => {
     if (!actorUsername) {
@@ -366,7 +361,12 @@ export function CommitteeOrgChartPage({ currentUserProfile }) {
                     key={role.id}
                     type="button"
                     className="committee-role-card committee-role-card-button"
-                    onClick={() => setSelectedRoleId(role.id)}
+                    onClick={() => {
+                      setSelectedRoleId(role.id);
+                      setBlurbDraft(role.personalBlurb ?? "");
+                      setMessage("");
+                      setError("");
+                    }}
                   >
                     <div className="committee-role-card-header">
                       {role.photoDataUrl ? (

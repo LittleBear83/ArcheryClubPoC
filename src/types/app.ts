@@ -14,6 +14,8 @@ export type UserProfile = {
   };
   membership?: {
     role?: string;
+    status?: string;
+    programmeType?: string;
     permissions?: string[];
     disciplines?: string[];
   };
@@ -89,7 +91,7 @@ export type BeginnersCourseCalendarLesson = {
   id: string | number;
   courseId: string | number;
   lessonId: string | number;
-  courseType?: "beginners" | "have-a-go";
+  courseType?: "beginners" | "have-a-go" | "taster-session";
   title: string;
   date: string;
   startTime: string;

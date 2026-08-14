@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 function toBase64(value) {
   return Buffer.from(String(value), "utf8").toString("base64");
 }

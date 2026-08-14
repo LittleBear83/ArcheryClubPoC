@@ -224,7 +224,9 @@ export function bootstrapSqliteBaseSchema({
       affiliate_member INTEGER NOT NULL DEFAULT 0,
       junior_member INTEGER NOT NULL DEFAULT 0,
       membership_fees_due TEXT,
-      coaching_volunteer INTEGER NOT NULL DEFAULT 0
+      coaching_volunteer INTEGER NOT NULL DEFAULT 0,
+      membership_status TEXT NOT NULL DEFAULT 'member',
+      programme_type TEXT NOT NULL DEFAULT 'none'
     )
   `);
 
@@ -883,6 +885,7 @@ export function bootstrapSqliteBaseSchema({
       ),
       arrow_length INTEGER,
       arrow_quantity INTEGER NOT NULL DEFAULT 1,
+      details_json TEXT,
       status TEXT NOT NULL DEFAULT 'active' CHECK (
         status IN ('active', 'decommissioned')
       ),
@@ -977,7 +980,7 @@ export function bootstrapSqliteBaseSchema({
     CREATE TABLE IF NOT EXISTS beginners_courses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       course_type TEXT NOT NULL DEFAULT 'beginners' CHECK (
-        course_type IN ('beginners', 'have-a-go')
+        course_type IN ('beginners', 'have-a-go', 'taster-session')
       ),
       coordinator_username TEXT NOT NULL,
       submitted_by_username TEXT NOT NULL,
@@ -1035,7 +1038,11 @@ export function bootstrapSqliteBaseSchema({
       initial_email_sent INTEGER NOT NULL DEFAULT 0,
       thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
       course_fee_paid INTEGER NOT NULL DEFAULT 0,
+      origin_course_type TEXT NOT NULL DEFAULT 'beginners',
       converted_to_member INTEGER NOT NULL DEFAULT 0,
+      converted_at_date TEXT,
+      converted_at_time TEXT,
+      converted_by_username TEXT,
       assigned_case_id INTEGER,
       assigned_case_by_username TEXT,
       assigned_case_at_date TEXT,
@@ -1045,10 +1052,47 @@ export function bootstrapSqliteBaseSchema({
       created_at_time TEXT NOT NULL,
       FOREIGN KEY (course_id) REFERENCES beginners_courses(id),
       FOREIGN KEY (username) REFERENCES users(username),
+      FOREIGN KEY (converted_by_username) REFERENCES users(username),
       FOREIGN KEY (assigned_case_id) REFERENCES equipment_items(id),
       FOREIGN KEY (assigned_case_by_username) REFERENCES users(username),
       FOREIGN KEY (created_by_username) REFERENCES users(username)
     )
+  `);
+
+  const beginnersParticipantColumns = db
+    .prepare(`PRAGMA table_info(beginners_course_participants)`)
+    .all();
+
+  if (!beginnersParticipantColumns.some((column) => column.name === "origin_course_type")) {
+    db.exec(
+      `ALTER TABLE beginners_course_participants ADD COLUMN origin_course_type TEXT NOT NULL DEFAULT 'beginners'`,
+    );
+  }
+
+  if (!beginnersParticipantColumns.some((column) => column.name === "converted_at_date")) {
+    db.exec(`ALTER TABLE beginners_course_participants ADD COLUMN converted_at_date TEXT`);
+  }
+
+  if (!beginnersParticipantColumns.some((column) => column.name === "converted_at_time")) {
+    db.exec(`ALTER TABLE beginners_course_participants ADD COLUMN converted_at_time TEXT`);
+  }
+
+  if (!beginnersParticipantColumns.some((column) => column.name === "converted_by_username")) {
+    db.exec(`ALTER TABLE beginners_course_participants ADD COLUMN converted_by_username TEXT`);
+  }
+
+  db.exec(`
+    UPDATE beginners_course_participants
+    SET origin_course_type = COALESCE(
+      NULLIF(TRIM(origin_course_type), ''),
+      (
+        SELECT beginners_courses.course_type
+        FROM beginners_courses
+        WHERE beginners_courses.id = beginners_course_participants.course_id
+      ),
+      'beginners'
+    )
+    WHERE origin_course_type IS NULL OR TRIM(origin_course_type) = ''
   `);
 
   db.exec(`
@@ -1116,4 +1160,61 @@ export function bootstrapSqliteBaseSchema({
       PRAGMA foreign_keys = ON;
     `);
   }
+
+  const userColumns = db.prepare(`PRAGMA table_info(users)`).all();
+  const userColumnNames = new Set(userColumns.map((column) => column.name));
+
+  if (!userColumnNames.has("membership_status")) {
+    db.exec(`
+      ALTER TABLE users
+      ADD COLUMN membership_status TEXT NOT NULL DEFAULT 'member'
+    `);
+  }
+
+  if (!userColumnNames.has("programme_type")) {
+    db.exec(`
+      ALTER TABLE users
+      ADD COLUMN programme_type TEXT NOT NULL DEFAULT 'none'
+    `);
+  }
+
+  db.exec(`
+    UPDATE users
+    SET membership_status = CASE
+      WHEN membership_status IS NULL OR TRIM(membership_status) = '' THEN
+        CASE
+          WHEN EXISTS (
+            SELECT 1
+            FROM user_types
+            WHERE user_types.username = users.username
+              AND user_types.user_type IN ('beginner', 'have-a-go')
+          ) THEN 'non-member'
+          ELSE 'member'
+        END
+      ELSE membership_status
+    END
+  `);
+
+  db.exec(`
+    UPDATE users
+    SET programme_type = CASE
+      WHEN programme_type IS NULL OR TRIM(programme_type) = '' THEN
+        CASE
+          WHEN EXISTS (
+            SELECT 1
+            FROM user_types
+            WHERE user_types.username = users.username
+              AND user_types.user_type = 'beginner'
+          ) THEN 'beginners'
+          WHEN EXISTS (
+            SELECT 1
+            FROM user_types
+            WHERE user_types.username = users.username
+              AND user_types.user_type = 'have-a-go'
+          ) THEN 'have-a-go'
+          ELSE 'none'
+        END
+      ELSE programme_type
+    END
+  `);
 }

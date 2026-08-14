@@ -2,6 +2,12 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MemberProfileForm } from "../components/MemberProfileForm";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
+import { normalizeMembershipClassification } from "../../utils/memberClassification";
+import {
+  applyJoiningRoutePreset,
+  getJoiningRouteOptions,
+  getJoiningRouteSummary,
+} from "../../utils/joiningRoutes";
 import { hasPermission } from "../../utils/userProfile";
 
 function buildGeneratedUsername(firstName, surname) {
@@ -32,6 +38,8 @@ const EMPTY_PROFILE = {
   membershipFeesDue: new Date().toISOString().slice(0, 10),
   coachingVolunteer: false,
   userType: "general",
+  membershipStatus: "member",
+  programmeType: "none",
   disciplines: [],
   loanBow: {
     hasLoanBow: false,
@@ -52,6 +60,7 @@ const EMPTY_PROFILE = {
 
 export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
   const [editableProfile, setEditableProfile] = useState(EMPTY_PROFILE);
+  const [joiningRoute, setJoiningRoute] = useState("direct-full-member");
   const [isUsernameManuallyEdited, setIsUsernameManuallyEdited] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -62,6 +71,15 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
   const canManageMembers = hasPermission(
     currentUserProfile,
     "manage_members",
+  );
+  const joiningRouteOptions = useMemo(
+    () =>
+      getJoiningRouteOptions().filter(
+        (option) =>
+          option.value === "direct-full-member" ||
+          option.value === "associated-member",
+      ),
+    [],
   );
 
   const optionsQuery = useQuery({
@@ -80,6 +98,14 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
   const disciplineOptions = useMemo(
     () => optionsQuery.data?.disciplines ?? [],
     [optionsQuery.data?.disciplines],
+  );
+  const membershipStatusOptions = useMemo(
+    () => optionsQuery.data?.membershipStatuses ?? ["member", "non-member", "guest"],
+    [optionsQuery.data?.membershipStatuses],
+  );
+  const programmeTypeOptions = useMemo(
+    () => optionsQuery.data?.programmeTypes ?? ["none", "beginners", "have-a-go", "taster-session"],
+    [optionsQuery.data?.programmeTypes],
   );
   const isLoading = optionsQuery.isLoading;
   const defaultRole = useMemo(
@@ -122,13 +148,32 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
         };
       }
 
-      return { ...current, [field]: value };
+      const nextProfile = { ...current, [field]: value };
+
+      if (field === "membershipStatus" || field === "programmeType") {
+        return {
+          ...nextProfile,
+          ...normalizeMembershipClassification(nextProfile, field),
+        };
+      }
+
+      return nextProfile;
     });
   };
 
   const handleBooleanChange = (field) => (event) => {
     const value = event.target.checked;
     setEditableProfile((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleJoiningRouteChange = (event) => {
+    const nextRoute = event.target.value;
+    setJoiningRoute(nextRoute);
+    setEditableProfile((current) =>
+      applyJoiningRoutePreset(nextRoute, {
+        ...current,
+      }),
+    );
   };
 
   const handleBooleanSelectChange = (field, trueValue = "active") => (event) => {
@@ -153,7 +198,10 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
     mutationFn: async () =>
       memberProfileCrud.createMemberProfileUseCase.execute({
         actorUsername,
-        profile: effectiveEditableProfile,
+        profile: {
+          ...effectiveEditableProfile,
+          ...normalizeMembershipClassification(effectiveEditableProfile),
+        },
       }),
     onMutate: () => {
       setIsSaving(true);
@@ -166,6 +214,7 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
         ...EMPTY_PROFILE,
         userType: defaultRole,
       });
+      setJoiningRoute("direct-full-member");
       setIsUsernameManuallyEdited(false);
       await queryClient.invalidateQueries({ queryKey: ["profile-options", actorUsername] });
     },
@@ -183,12 +232,12 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
   };
 
   if (!canManageMembers) {
-    return <p>You do not have permission to create member accounts.</p>;
+    return <p>You do not have permission to create people accounts.</p>;
   }
 
   return (
     <div className="profile-page">
-      <p>Create a new member account for the system.</p>
+      <p>Create a new account for a member, attendee, associated member, or guest.</p>
       <StatusMessagePanel
         error={error}
         loading={isLoading && roleOptions.length === 0}
@@ -200,11 +249,17 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
         <MemberProfileForm
           editableProfile={effectiveEditableProfile}
           handleChange={handleChange}
+          handleJoiningRouteChange={handleJoiningRouteChange}
           handleBooleanChange={handleBooleanChange}
           handleBooleanSelectChange={handleBooleanSelectChange}
+          joiningRoute={joiningRoute}
+          joiningRouteOptions={joiningRouteOptions}
+          joiningRouteSummary={getJoiningRouteSummary(joiningRoute)}
           toggleDiscipline={toggleDiscipline}
           disciplineOptions={disciplineOptions}
           roleOptions={roleOptions}
+          membershipStatusOptions={membershipStatusOptions}
+          programmeTypeOptions={programmeTypeOptions}
           isAdmin={canManageMembers}
           isCreatingNew
           isSaving={isSaving || isLoading}

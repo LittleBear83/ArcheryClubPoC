@@ -22,27 +22,26 @@ export function useSseFallbackPolling({
   source,
 }: UseSseFallbackPollingOptions) {
   const diagnostics = useServerEventDiagnostics();
-  const [isFallbackActive, setIsFallbackActive] = useState(false);
+  const [hasDelayElapsed, setHasDelayElapsed] = useState(false);
+  const shouldActivateFallback =
+    enabled && diagnostics.connectionState !== "open";
 
   useEffect(() => {
-    if (!enabled) {
-      setIsFallbackActive(false);
-      return undefined;
-    }
-
-    if (diagnostics.connectionState === "open") {
-      setIsFallbackActive(false);
+    if (!shouldActivateFallback) {
       return undefined;
     }
 
     const timeoutId = window.setTimeout(() => {
-      setIsFallbackActive(true);
+      setHasDelayElapsed(true);
     }, fallbackDelayMs);
 
     return () => {
       window.clearTimeout(timeoutId);
+      setHasDelayElapsed(false);
     };
-  }, [diagnostics.connectionState, enabled, fallbackDelayMs]);
+  }, [fallbackDelayMs, shouldActivateFallback]);
+
+  const isFallbackActive = shouldActivateFallback && hasDelayElapsed;
 
   useVisiblePolling(callback, {
     enabled: enabled && isFallbackActive,

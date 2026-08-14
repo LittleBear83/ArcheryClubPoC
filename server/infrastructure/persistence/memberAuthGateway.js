@@ -38,6 +38,8 @@ function mapUserPayloadToSqliteProfile(user) {
     juniorMember: user.juniorMember,
     membershipFeesDue: user.membershipFeesDue,
     coachingVolunteer: user.coachingVolunteer,
+    membershipStatus: user.membershipStatus ?? user.membership_status ?? null,
+    programmeType: user.programmeType ?? user.programme_type ?? null,
   };
 }
 
@@ -165,6 +167,8 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.junior_member,
             users.membership_fees_due,
             users.coaching_volunteer,
+            users.membership_status,
+            users.programme_type,
             user_types.user_type
           FROM users
           INNER JOIN user_types ON user_types.user_id = users.id
@@ -194,6 +198,8 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.junior_member,
             users.membership_fees_due,
             users.coaching_volunteer,
+            users.membership_status,
+            users.programme_type,
             user_types.user_type
           FROM users
           INNER JOIN user_types ON user_types.user_id = users.id
@@ -223,6 +229,8 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.junior_member,
             users.membership_fees_due,
             users.coaching_volunteer,
+            users.membership_status,
+            users.programme_type,
             user_types.user_type
           FROM users
           INNER JOIN user_types ON user_types.user_id = users.id
@@ -280,6 +288,8 @@ function createPostgresMemberAuthGateway({ pool }) {
             users.junior_member,
             users.membership_fees_due,
             users.coaching_volunteer,
+            users.membership_status,
+            users.programme_type,
             user_types.user_type
           FROM users
           INNER JOIN user_types ON user_types.user_id = users.id

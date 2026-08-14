@@ -279,9 +279,11 @@ function createPostgresMemberProfileGateway({
               affiliate_member,
               junior_member,
               membership_fees_due,
-              coaching_volunteer
+              coaching_volunteer,
+              membership_status,
+              programme_type
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             ON CONFLICT(username) DO UPDATE SET
               first_name = EXCLUDED.first_name,
               surname = EXCLUDED.surname,
@@ -293,7 +295,9 @@ function createPostgresMemberProfileGateway({
               affiliate_member = EXCLUDED.affiliate_member,
               junior_member = EXCLUDED.junior_member,
               membership_fees_due = EXCLUDED.membership_fees_due,
-              coaching_volunteer = EXCLUDED.coaching_volunteer
+              coaching_volunteer = EXCLUDED.coaching_volunteer,
+              membership_status = EXCLUDED.membership_status,
+              programme_type = EXCLUDED.programme_type
           `,
           [
             userPayload.username,
@@ -308,6 +312,8 @@ function createPostgresMemberProfileGateway({
             userPayload.juniorMember,
             userPayload.membershipFeesDue,
             userPayload.coachingVolunteer,
+            userPayload.membershipStatus,
+            userPayload.programmeType,
           ],
         );
         await client.query(

@@ -10,7 +10,9 @@ import {
   getEquipmentLocationLabel,
   getEquipmentMemberLabel,
   getEquipmentReferenceLabel,
+  getEquipmentTypeDisplayLabel,
 } from "./equipmentUtils";
+import { EquipmentAddDetailsFields } from "./EquipmentAddDetailsFields";
 import type { useEquipmentPageState } from "./useEquipmentPageState";
 
 type EquipmentPageState = ReturnType<typeof useEquipmentPageState>;
@@ -63,7 +65,6 @@ export function EquipmentDesktopView({
   setSelectedItemId,
   setTargetCaseId,
   setTargetMemberUsername,
-  sizeCategoryOptions,
   storageItems,
   storageMutation,
   targetCaseId,
@@ -86,76 +87,95 @@ export function EquipmentDesktopView({
       />
 
       {permissions.canAddDecommissionEquipment ? (
-        <SectionPanel className="profile-form" title="Add Equipment">
-          <form className="left-align-form" onSubmit={handleAddEquipmentSubmit}>
-            <div className="profile-form-grid">
-              <LabeledSelect
-                label="Equipment type"
-                value={addForm.equipmentType}
-                onChange={updateAddFormField("equipmentType")}
-              >
-                {equipmentTypeOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </LabeledSelect>
+        <>
+          <SectionPanel className="profile-form" title="Add Equipment">
+            <form className="left-align-form" onSubmit={handleAddEquipmentSubmit}>
+              <div className="profile-form-grid">
+                <LabeledSelect
+                  label="Equipment type"
+                  value={addForm.equipmentType}
+                  onChange={updateAddFormField("equipmentType")}
+                >
+                  {equipmentTypeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </LabeledSelect>
 
-              <LabeledSelect
-                label="Size"
-                value={addForm.sizeCategory}
-                onChange={updateAddFormField("sizeCategory")}
-              >
-                {sizeCategoryOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </LabeledSelect>
+                <EquipmentAddDetailsFields
+                  addForm={addForm}
+                  updateAddFormField={updateAddFormField}
+                />
+              </div>
 
-              {addForm.equipmentType === "arrows" ? (
-                <>
-                  <label>
-                    Arrow length (inches)
-                    <input
-                      type="number"
-                      min="20"
-                      inputMode="numeric"
-                      value={addForm.arrowLength}
-                      onChange={updateAddFormField("arrowLength")}
-                    />
-                  </label>
+              <Button type="submit" disabled={addEquipmentMutation.isPending}>
+                {addEquipmentMutation.isPending
+                  ? "Adding equipment..."
+                  : "Add equipment"}
+              </Button>
+            </form>
+          </SectionPanel>
 
-                  <label>
-                    Arrow quantity
-                    <input
-                      type="number"
-                      min="1"
-                      max="12"
-                      inputMode="numeric"
-                      value={addForm.arrowQuantity}
-                      onChange={updateAddFormField("arrowQuantity")}
-                    />
-                  </label>
-                </>
-              ) : (
+          {permissions.canManageEquipmentStorageLocations ? (
+            <SectionPanel className="profile-form" title="Manage Storage Locations">
+              <div className="profile-form-grid">
                 <label>
-                  Equipment number
+                  New storage location
                   <input
-                    value={addForm.itemNumber}
-                    onChange={updateAddFormField("itemNumber")}
+                    value={newStorageLocation}
+                    onChange={(event) => setNewStorageLocation(event.target.value)}
+                    placeholder="Limb Cupboard"
                   />
                 </label>
-              )}
-            </div>
 
-            <Button type="submit" disabled={addEquipmentMutation.isPending}>
-              {addEquipmentMutation.isPending
-                ? "Adding equipment..."
-                : "Add equipment"}
-            </Button>
-          </form>
-        </SectionPanel>
+                <LabeledSelect
+                  label="Remove storage location"
+                  value={removeStorageLocation}
+                  onChange={(event) =>
+                    setRemoveStorageLocation(event.target.value)
+                  }
+                  disabled={removableStorageOptions.length === 0}
+                >
+                  {removableStorageOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </LabeledSelect>
+              </div>
+
+              <div className="loan-bow-return-actions">
+                <Button
+                  type="button"
+                  disabled={
+                    !newStorageLocation.trim() ||
+                    addStorageLocationMutation.isPending
+                  }
+                  onClick={handleAddStorageLocation}
+                >
+                  {addStorageLocationMutation.isPending
+                    ? "Adding location..."
+                    : "Add location"}
+                </Button>
+
+                <Button
+                  type="button"
+                  variant="danger"
+                  disabled={
+                    !removeStorageLocation ||
+                    removeStorageLocationMutation.isPending
+                  }
+                  onClick={handleRemoveStorageLocation}
+                >
+                  {removeStorageLocationMutation.isPending
+                    ? "Removing location..."
+                    : "Remove location"}
+                </Button>
+              </div>
+            </SectionPanel>
+          ) : null}
+        </>
       ) : null}
 
       <SectionPanel className="profile-form" title="Equipment Actions">
@@ -334,66 +354,6 @@ export function EquipmentDesktopView({
             </div>
           ) : null}
 
-          {permissions.canManageEquipmentStorageLocations ? (
-            <div className="equipment-action-card">
-              <h3>Manage storage locations</h3>
-              <div className="profile-form-grid">
-                <label>
-                  New storage location
-                  <input
-                    value={newStorageLocation}
-                    onChange={(event) => setNewStorageLocation(event.target.value)}
-                    placeholder="Limb Cupboard"
-                  />
-                </label>
-
-                <LabeledSelect
-                  label="Remove storage location"
-                  value={removeStorageLocation}
-                  onChange={(event) =>
-                    setRemoveStorageLocation(event.target.value)
-                  }
-                  disabled={removableStorageOptions.length === 0}
-                >
-                  {removableStorageOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </LabeledSelect>
-              </div>
-
-              <div className="loan-bow-return-actions">
-                <Button
-                  type="button"
-                  disabled={
-                    !newStorageLocation.trim() ||
-                    addStorageLocationMutation.isPending
-                  }
-                  onClick={handleAddStorageLocation}
-                >
-                  {addStorageLocationMutation.isPending
-                    ? "Adding location..."
-                    : "Add location"}
-                </Button>
-
-                <Button
-                  type="button"
-                  variant="danger"
-                  disabled={
-                    !removeStorageLocation ||
-                    removeStorageLocationMutation.isPending
-                  }
-                  onClick={handleRemoveStorageLocation}
-                >
-                  {removeStorageLocationMutation.isPending
-                    ? "Removing location..."
-                    : "Remove location"}
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
           {permissions.canAddDecommissionEquipment ? (
             <div className="equipment-action-card">
               <h3>Decommission equipment</h3>
@@ -555,8 +515,7 @@ export function EquipmentDesktopView({
                 filteredInventoryItems.map((item) => (
                   <tr key={item.id}>
                     <td>
-                      {item.typeLabel}
-                      {item.sizeCategory === "junior" ? " (Junior)" : ""}
+                      {getEquipmentTypeDisplayLabel(item)}
                     </td>
                     <td>{getEquipmentReferenceLabel(item)}</td>
                     <td>{getEquipmentLocationLabel(item)}</td>

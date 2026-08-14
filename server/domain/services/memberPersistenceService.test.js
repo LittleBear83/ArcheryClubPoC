@@ -80,8 +80,10 @@ test("saveMemberProfile uses normalized member status before persistence", async
     existingUser: null,
     firstName: "Alice",
     loanBow: null,
+    membershipStatus: "member",
     membershipFeesDue: "2026-04-01",
     password: "secret",
+    programmeType: "none",
     rfidTag: "TAG-1",
     surname: "Example",
     userType: "general",
@@ -92,5 +94,134 @@ test("saveMemberProfile uses normalized member status before persistence", async
   assert.equal(capturedPayload.userPayload.affiliateMember, 1);
   assert.equal(capturedPayload.userPayload.rfidTag, "TAG-1-deactivated");
   assert.equal(capturedPayload.userPayload.password, "hashed:secret");
+  assert.equal(capturedPayload.userPayload.membershipStatus, "member");
+  assert.equal(capturedPayload.userPayload.programmeType, "none");
+  assert.equal(result.success, true);
+});
+
+test("saveMemberProfile keeps legacy role keys while inferring new classification fields", async () => {
+  let capturedPayload = null;
+  const memberPersistenceService = createMemberPersistenceService({
+    buildEditableMemberProfile: () => ({ editable: true }),
+    buildMemberUserProfile: () => ({ profile: true }),
+    deactivatedRfidSuffix: "-deactivated",
+    hashPassword: (password) => `hashed:${password}`,
+    memberAuthGateway: {
+      async findUserByUsername(username) {
+        return {
+          id: 8,
+          username,
+          first_name: "Bea",
+          surname: "Beginner",
+          user_type: "beginner",
+          active_member: 0,
+          affiliate_member: 0,
+          membership_fees_due: null,
+          coaching_volunteer: 0,
+          membership_status: "non-member",
+          programme_type: "beginners",
+          rfid_tag: null,
+        };
+      },
+    },
+    memberProfileGateway: {
+      async findLoanBowByUsername() {
+        return null;
+      },
+      async roleExists() {
+        return true;
+      },
+      async saveMemberProfile(payload) {
+        capturedPayload = payload;
+      },
+    },
+    sanitizeDisciplines: (disciplines) => disciplines,
+    sanitizeLoanBow: (loanBow) => loanBow,
+  });
+
+  const result = await memberPersistenceService.saveMemberProfile({
+    activeMember: false,
+    affiliateMember: false,
+    coachingVolunteer: false,
+    disciplines: [],
+    existingUser: null,
+    firstName: "Bea",
+    loanBow: null,
+    membershipStatus: "",
+    membershipFeesDue: "",
+    password: "secret",
+    programmeType: "",
+    rfidTag: "",
+    surname: "Beginner",
+    userType: "beginner",
+    username: "bea",
+  });
+
+  assert.equal(capturedPayload.userType, "beginner");
+  assert.equal(capturedPayload.userPayload.membershipStatus, "non-member");
+  assert.equal(capturedPayload.userPayload.programmeType, "beginners");
+  assert.equal(result.success, true);
+});
+
+test("saveMemberProfile clears unsupported programme types from guest accounts", async () => {
+  let capturedPayload = null;
+  const memberPersistenceService = createMemberPersistenceService({
+    buildEditableMemberProfile: () => ({ editable: true }),
+    buildMemberUserProfile: () => ({ profile: true }),
+    deactivatedRfidSuffix: "-deactivated",
+    hashPassword: (password) => `hashed:${password}`,
+    memberAuthGateway: {
+      async findUserByUsername(username) {
+        return {
+          id: 9,
+          username,
+          first_name: "Gia",
+          surname: "Guest",
+          user_type: "general",
+          active_member: 0,
+          affiliate_member: 0,
+          membership_fees_due: null,
+          coaching_volunteer: 0,
+          membership_status: "guest",
+          programme_type: "none",
+          rfid_tag: null,
+        };
+      },
+    },
+    memberProfileGateway: {
+      async findLoanBowByUsername() {
+        return null;
+      },
+      async roleExists() {
+        return true;
+      },
+      async saveMemberProfile(payload) {
+        capturedPayload = payload;
+      },
+    },
+    sanitizeDisciplines: (disciplines) => disciplines,
+    sanitizeLoanBow: (loanBow) => loanBow,
+  });
+
+  const result = await memberPersistenceService.saveMemberProfile({
+    activeMember: false,
+    affiliateMember: false,
+    coachingVolunteer: false,
+    disciplines: [],
+    existingUser: null,
+    firstName: "Gia",
+    loanBow: null,
+    membershipStatus: "guest",
+    membershipFeesDue: "",
+    password: "secret",
+    programmeType: "taster-session",
+    rfidTag: "",
+    surname: "Guest",
+    userType: "general",
+    username: "gia",
+  });
+
+  assert.equal(capturedPayload.userPayload.membershipStatus, "guest");
+  assert.equal(capturedPayload.userPayload.programmeType, "none");
   assert.equal(result.success, true);
 });

@@ -1,4 +1,4 @@
-import { buildActorHeaders, fetchApi } from "./client";
+import { ApiError, buildActorHeaders, fetchApi } from "./client";
 import type { ApiEnvelope } from "./client";
 import type {
   DistanceSignOffInput,
@@ -33,17 +33,30 @@ export class MemberProfileApi {
     signal?: AbortSignal,
   ): Promise<MemberProfilePageData> {
     const headers = buildActorHeaders(actorUsername);
+    const profileRequest = fetchApi<MemberProfileEnvelope>(`/api/user-profiles/${username}`, {
+      headers,
+      cache: "no-store",
+      signal,
+    });
+    const loansRequest = fetchApi<EquipmentLoansEnvelope>(`/api/member-equipment-loans/${username}`, {
+      headers,
+      cache: "no-store",
+      signal,
+    }).catch((error) => {
+      // Equipment loan visibility is narrower than profile visibility for some
+      // roles. Missing loan access should not block the rest of the profile.
+      if (
+        error instanceof ApiError &&
+        (error.status === 403 || error.status === 404)
+      ) {
+        return { success: true, loans: [] } satisfies EquipmentLoansEnvelope;
+      }
+
+      throw error;
+    });
     const [profileResult, loansResult] = await Promise.all([
-      fetchApi<MemberProfileEnvelope>(`/api/user-profiles/${username}`, {
-        headers,
-        cache: "no-store",
-        signal,
-      }),
-      fetchApi<EquipmentLoansEnvelope>(`/api/member-equipment-loans/${username}`, {
-        headers,
-        cache: "no-store",
-        signal,
-      }),
+      profileRequest,
+      loansRequest,
     ]);
 
     return {
@@ -52,6 +65,8 @@ export class MemberProfileApi {
       equipmentLoans: loansResult.loans ?? [],
       disciplines: profileResult.disciplines ?? [],
       userTypes: profileResult.userTypes ?? [],
+      membershipStatuses: profileResult.membershipStatuses ?? [],
+      programmeTypes: profileResult.programmeTypes ?? [],
       ...(profileResult.goldenRecords ? { goldenRecords: profileResult.goldenRecords } : {}),
     };
   }

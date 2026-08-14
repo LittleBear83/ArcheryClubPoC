@@ -37,7 +37,6 @@ export function AskQuestionPage({ currentUserProfile }: AskQuestionPageProps) {
   });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [activeQuestion, setActiveQuestion] = useState<MemberQuestionRecord | null>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -84,27 +83,21 @@ export function AskQuestionPage({ currentUserProfile }: AskQuestionPageProps) {
   });
 
   const openQuestion = (question: MemberQuestionRecord) => {
-    setActiveQuestion(question);
     setSearchParams({ questionId: String(question.id) });
   };
 
   const closeQuestion = () => {
-    setActiveQuestion(null);
     setSearchParams({});
   };
 
-  useEffect(() => {
+  const activeQuestion = useMemo(() => {
     const questionId = Number.parseInt(searchParams.get("questionId") ?? "", 10);
 
     if (!Number.isInteger(questionId)) {
-      return;
+      return null;
     }
 
-    const matchingQuestion = questions.find((question) => question.id === questionId) ?? null;
-
-    if (matchingQuestion) {
-      setActiveQuestion(matchingQuestion);
-    }
+    return questions.find((question) => question.id === questionId) ?? null;
   }, [questions, searchParams]);
 
   useEffect(() => {
@@ -117,7 +110,7 @@ export function AskQuestionPage({ currentUserProfile }: AskQuestionPageProps) {
     }
 
     seenMutation.mutate(activeQuestion.id);
-  }, [activeQuestion]);
+  }, [activeQuestion, seenMutation]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

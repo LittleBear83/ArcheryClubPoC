@@ -198,10 +198,28 @@ export const SYSTEM_ROLE_DEFINITIONS = [
     permissions: [],
   },
   {
+    roleKey: "non-member",
+    title: "Non-member",
+    permissions: [],
+  },
+  {
     roleKey: "associate-member",
     title: "Associate Member",
     permissions: [],
   },
+];
+
+export const MEMBERSHIP_STATUS_OPTIONS = [
+  "member",
+  "non-member",
+  "guest",
+];
+
+export const PROGRAMME_TYPE_OPTIONS = [
+  "none",
+  "beginners",
+  "have-a-go",
+  "taster-session",
 ];
 
 export const ALLOWED_DISCIPLINES = [

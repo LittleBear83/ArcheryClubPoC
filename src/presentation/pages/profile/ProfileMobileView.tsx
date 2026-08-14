@@ -35,7 +35,6 @@ export function ProfileMobileView({
   canManageOutdoorAchievements,
   canSelectMembers,
   canSignOffSelectedMember,
-  canSignOffDistances,
   currentUserProfile,
   deleteConfirmationUsername,
   deleteError,
@@ -74,8 +73,10 @@ export function ProfileMobileView({
   isSavingOutdoorTableByBowType,
   memberOptions,
   message,
+  membershipStatusOptions,
   outdoorTableBowEntries,
   outdoorTableError,
+  programmeTypeOptions,
   roleOptions,
   selectedUsername,
   submitLabel,
@@ -156,6 +157,8 @@ export function ProfileMobileView({
           toggleDiscipline={toggleDiscipline}
           disciplineOptions={disciplineOptions}
           roleOptions={roleOptions}
+          membershipStatusOptions={membershipStatusOptions}
+          programmeTypeOptions={programmeTypeOptions}
           isAdmin={canManageMembers}
           isCreatingNew={false}
           isSaving={isSaving || isRefreshingProfile}

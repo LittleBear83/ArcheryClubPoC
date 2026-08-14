@@ -10,11 +10,36 @@ export function createSqliteBeginnersCourseStatements(db) {
       approved_by.surname AS approved_by_surname
     FROM beginners_courses
     INNER JOIN users AS coordinator
-      ON coordinator.id = beginners_courses.coordinator_user_id
+      ON (
+        (
+          beginners_courses.coordinator_user_id IS NOT NULL AND
+          coordinator.id = beginners_courses.coordinator_user_id
+        ) OR (
+          beginners_courses.coordinator_user_id IS NULL AND
+          LOWER(coordinator.username) = LOWER(beginners_courses.coordinator_username)
+        )
+      )
     INNER JOIN users AS submitted_by
-      ON submitted_by.id = beginners_courses.submitted_by_user_id
+      ON (
+        (
+          beginners_courses.submitted_by_user_id IS NOT NULL AND
+          submitted_by.id = beginners_courses.submitted_by_user_id
+        ) OR (
+          beginners_courses.submitted_by_user_id IS NULL AND
+          LOWER(submitted_by.username) = LOWER(beginners_courses.submitted_by_username)
+        )
+      )
     LEFT JOIN users AS approved_by
-      ON approved_by.id = beginners_courses.approved_by_user_id
+      ON (
+        (
+          beginners_courses.approved_by_user_id IS NOT NULL AND
+          approved_by.id = beginners_courses.approved_by_user_id
+        ) OR (
+          beginners_courses.approved_by_user_id IS NULL AND
+          beginners_courses.approved_by_username IS NOT NULL AND
+          LOWER(approved_by.username) = LOWER(beginners_courses.approved_by_username)
+        )
+      )
     ORDER BY beginners_courses.first_lesson_date ASC, beginners_courses.start_time ASC, beginners_courses.id ASC
   `);
 
@@ -171,6 +196,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       initial_email_sent,
       thirty_day_reminder_sent,
       course_fee_paid,
+      origin_course_type,
       assigned_case_id,
       assigned_case_by_username,
       assigned_case_at_date,
@@ -179,7 +205,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       created_at_date,
       created_at_time
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const updateBeginnersCourseParticipant = db.prepare(`
@@ -197,6 +223,21 @@ export function createSqliteBeginnersCourseStatements(db) {
     WHERE id = @id
   `);
 
+  const transferBeginnersCourseParticipant = db.prepare(`
+    UPDATE beginners_course_participants
+    SET
+      course_id = ?,
+      assigned_case_id = NULL,
+      assigned_case_by_username = NULL,
+      assigned_case_at_date = NULL,
+      assigned_case_at_time = NULL,
+      converted_to_member = 0,
+      converted_at_date = NULL,
+      converted_at_time = NULL,
+      converted_by_username = NULL
+    WHERE id = ?
+  `);
+
   const updateBeginnersCourseParticipantCase = db.prepare(`
     UPDATE beginners_course_participants
     SET
@@ -209,7 +250,11 @@ export function createSqliteBeginnersCourseStatements(db) {
 
   const markBeginnersCourseParticipantConverted = db.prepare(`
     UPDATE beginners_course_participants
-    SET converted_to_member = 1
+    SET
+      converted_to_member = 1,
+      converted_at_date = ?,
+      converted_at_time = ?,
+      converted_by_username = ?
     WHERE id = ?
   `);
 
@@ -262,6 +307,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       beginners_course_lessons.lesson_date,
       beginners_course_lessons.start_time,
       beginners_course_lessons.end_time,
+      beginners_courses.course_type,
       beginners_courses.first_lesson_date,
       coordinator.first_name AS coordinator_first_name,
       coordinator.surname AS coordinator_surname
@@ -271,7 +317,15 @@ export function createSqliteBeginnersCourseStatements(db) {
     INNER JOIN beginners_courses
       ON beginners_courses.id = beginners_course_lessons.course_id
     INNER JOIN users AS coordinator
-      ON coordinator.id = beginners_courses.coordinator_user_id
+      ON (
+        (
+          beginners_courses.coordinator_user_id IS NOT NULL AND
+          coordinator.id = beginners_courses.coordinator_user_id
+        ) OR (
+          beginners_courses.coordinator_user_id IS NULL AND
+          LOWER(coordinator.username) = LOWER(beginners_courses.coordinator_username)
+        )
+      )
     WHERE beginners_course_lesson_coaches.coach_user_id = ?
       AND beginners_courses.is_cancelled = 0
       AND beginners_courses.approval_status = 'approved'
@@ -299,6 +353,7 @@ export function createSqliteBeginnersCourseStatements(db) {
     listBeginnersLessonCoachesByLessonId,
     listCoachBeginnersLessonsByUserId,
     markBeginnersCourseParticipantConverted,
+    transferBeginnersCourseParticipant,
     updateBeginnersCourseApproval,
     updateBeginnersCourseParticipant,
     updateBeginnersCourseParticipantCase,

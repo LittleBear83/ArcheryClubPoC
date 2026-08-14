@@ -11,6 +11,7 @@ const EMPTY_ROLE_FORM = {
   title: "",
   permissions: [] as string[],
 };
+const HIDDEN_LEGACY_ROLE_KEYS = new Set(["beginner", "have-a-go"]);
 
 export function useRolePermissionsPageState({
   currentUserProfile,
@@ -44,7 +45,14 @@ export function useRolePermissionsPageState({
     enabled: canManageRoles,
   });
 
-  const roles = useMemo(() => rolesQuery.data?.roles ?? [], [rolesQuery.data?.roles]);
+  const roles = useMemo(
+    () =>
+      (rolesQuery.data?.roles ?? []).filter(
+        (role) =>
+          !HIDDEN_LEGACY_ROLE_KEYS.has(String(role.roleKey ?? "").trim().toLowerCase()),
+      ),
+    [rolesQuery.data?.roles],
+  );
   const permissionOptions = useMemo(
     () => rolesQuery.data?.permissions ?? [],
     [rolesQuery.data?.permissions],

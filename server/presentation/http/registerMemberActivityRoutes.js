@@ -19,6 +19,55 @@ export function registerMemberActivityRoutes({
   startOfUtcDay,
   toUtcDateString,
 }) {
+  function normalizeJourneyCourseType(value) {
+    const normalizedValue = String(value ?? "").trim().toLowerCase();
+
+    if (
+      normalizedValue === "beginners" ||
+      normalizedValue === "taster-session" ||
+      normalizedValue === "have-a-go"
+    ) {
+      return normalizedValue;
+    }
+
+    return "beginners";
+  }
+
+  function buildMemberJourneyLabel(row) {
+    const originCourseType = normalizeJourneyCourseType(row.origin_course_type);
+    const currentCourseType = normalizeJourneyCourseType(row.current_course_type);
+
+    if (originCourseType === "taster-session" && currentCourseType === "beginners") {
+      return row.converted_to_member
+        ? "Taster Session -> Beginners Course -> Full member"
+        : "Taster Session -> Beginners Course";
+    }
+
+    if (originCourseType === "taster-session") {
+      return row.converted_to_member
+        ? "Taster Session -> Full member"
+        : "Taster Session";
+    }
+
+    if (originCourseType === "have-a-go") {
+      return row.converted_to_member
+        ? "Have a Go -> Full member"
+        : "Have a Go";
+    }
+
+    return row.converted_to_member
+      ? "Beginners Course -> Full member"
+      : "Beginners Course";
+  }
+
+  function buildRateSummary(numerator, denominator) {
+    if (!denominator) {
+      return 0;
+    }
+
+    return Math.round((numerator / denominator) * 1000) / 10;
+  }
+
   const RANGE_USAGE_MAX_DAYS = 366;
   const REPORTING_MAX_DAYS = 366;
   const RANGE_PRESENCE_DEFAULT_WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -661,6 +710,9 @@ export function registerMemberActivityRoutes({
           name: `${member.first_name ?? ""} ${member.surname ?? ""}`.trim(),
           username: member.username ?? "",
           loginMethod: member.login_method ?? "",
+          membershipStatus: member.membership_status ?? "member",
+          programmeType: member.programme_type ?? "none",
+          role: member.user_type ?? "",
           archeryGbMembershipNumber: "",
           attendingWith: "",
           attendingWithUsername: "",
@@ -678,6 +730,9 @@ export function registerMemberActivityRoutes({
           name: `${guest.first_name ?? ""} ${guest.surname ?? ""}`.trim(),
           username: "",
           loginMethod: "guest",
+          membershipStatus: "guest",
+          programmeType: "none",
+          role: "guest",
           archeryGbMembershipNumber:
             guest.archery_gb_membership_number ?? "",
           attendingWith: guest.invited_by_name ?? "",
@@ -740,6 +795,140 @@ export function registerMemberActivityRoutes({
         guests: rows.filter((row) => row.type === "Guest").length,
         daily: [...dailyMap.values()],
         rows,
+      },
+    });
+  });
+
+  app.get("/api/reporting/member-journeys", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actorHasPermission(actor, PERMISSIONS.VIEW_REPORTS)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to view reports.",
+      });
+      return;
+    }
+
+    const requestedStart = String(req.query.start ?? "").trim();
+    const requestedEnd = String(req.query.end ?? "").trim();
+
+    if (!requestedStart || !requestedEnd) {
+      res.status(400).json({
+        success: false,
+        message: "Start and end dates are required.",
+      });
+      return;
+    }
+
+    const filteredStart = new Date(`${requestedStart}T00:00:00.000Z`);
+    const filteredEndDay = new Date(`${requestedEnd}T00:00:00.000Z`);
+
+    if (
+      Number.isNaN(filteredStart.getTime()) ||
+      Number.isNaN(filteredEndDay.getTime())
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Invalid start or end date.",
+      });
+      return;
+    }
+
+    if (filteredStart.getTime() > filteredEndDay.getTime()) {
+      res.status(400).json({
+        success: false,
+        message: "Start date cannot be after end date.",
+      });
+      return;
+    }
+
+    if (
+      rejectDateRangeIfTooLong(
+        res,
+        filteredStart,
+        filteredEndDay,
+        REPORTING_MAX_DAYS,
+      )
+    ) {
+      return;
+    }
+
+    const participantRows = await activityReportingGateway.listMemberJourneyParticipants(
+      requestedStart,
+      requestedEnd,
+    );
+    const rows = participantRows.map((row) => ({
+      id: `participant-${row.id}`,
+      username: row.username ?? "",
+      name: `${row.first_name ?? ""} ${row.surname ?? ""}`.trim(),
+      joinedAtDate: row.created_at_date ?? "",
+      joinedAtTime: row.created_at_time ?? "",
+      convertedAtDate: row.converted_at_date ?? "",
+      convertedAtTime: row.converted_at_time ?? "",
+      convertedToMember: Boolean(row.converted_to_member),
+      currentCourseType: normalizeJourneyCourseType(row.current_course_type),
+      journey: buildMemberJourneyLabel(row),
+      membershipStatus: row.membership_status ?? "member",
+      originCourseType: normalizeJourneyCourseType(row.origin_course_type),
+      programmeType: row.programme_type ?? "none",
+      role: row.user_type ?? "",
+    }));
+
+    const directBeginnersRows = rows.filter(
+      (row) => row.originCourseType === "beginners",
+    );
+    const tasterRows = rows.filter(
+      (row) => row.originCourseType === "taster-session",
+    );
+    const haveAGoRows = rows.filter(
+      (row) => row.originCourseType === "have-a-go",
+    );
+    const tasterToBeginnersRows = rows.filter(
+      (row) =>
+        row.originCourseType === "taster-session" &&
+        row.currentCourseType === "beginners",
+    );
+    const beginnersFunnelRows = rows.filter((row) =>
+      row.originCourseType === "beginners" || row.originCourseType === "taster-session",
+    );
+    const convertedRows = rows.filter((row) => row.convertedToMember);
+    const convertedDirectBeginnersRows = directBeginnersRows.filter(
+      (row) => row.convertedToMember,
+    );
+    const convertedTasterRows = tasterRows.filter((row) => row.convertedToMember);
+
+    res.json({
+      success: true,
+      report: {
+        startDate: requestedStart,
+        endDate: requestedEnd,
+        rows,
+        summary: {
+          totalParticipants: rows.length,
+          directBeginnersParticipants: directBeginnersRows.length,
+          tasterParticipants: tasterRows.length,
+          haveAGoParticipants: haveAGoRows.length,
+          tasterToBeginnersParticipants: tasterToBeginnersRows.length,
+          convertedToMembers: convertedRows.length,
+          convertedFromDirectBeginners: convertedDirectBeginnersRows.length,
+          convertedFromTasterPath: convertedTasterRows.length,
+          beginnersCourseCohortCount: beginnersFunnelRows.length,
+          beginnersCourseConvertedCount:
+            convertedDirectBeginnersRows.length + convertedTasterRows.length,
+          beginnersCourseConversionRate: buildRateSummary(
+            convertedDirectBeginnersRows.length + convertedTasterRows.length,
+            beginnersFunnelRows.length,
+          ),
+          directBeginnersConversionRate: buildRateSummary(
+            convertedDirectBeginnersRows.length,
+            directBeginnersRows.length,
+          ),
+          tasterPathConversionRate: buildRateSummary(
+            convertedTasterRows.length,
+            tasterRows.length,
+          ),
+        },
       },
     });
   });

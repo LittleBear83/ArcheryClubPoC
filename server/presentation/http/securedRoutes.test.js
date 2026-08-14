@@ -128,6 +128,7 @@ function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission)
       guestLoginsByHourInRange: async () => [],
       guestLoginsByWeekdayInRange: async () => [],
       listAllUserDisciplines: async () => [],
+      listMemberJourneyParticipants: async () => [],
       listReportingGuestLogins: async () => [],
       listReportingMemberLogins: async () => [],
       memberLoginsByDateForUserInRange: async () => [],

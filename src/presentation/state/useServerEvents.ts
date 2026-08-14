@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   connectServerEvents,
@@ -6,6 +6,100 @@ import {
   subscribeToServerEvent,
 } from "../../lib/serverEvents";
 import { useSseFallbackPolling } from "./useSseFallbackPolling";
+
+type QueryKeyFactory = (actorUsername: string) => readonly unknown[];
+
+export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
+  event: string;
+  queryKeys: QueryKeyFactory[];
+}> = [
+  {
+    event: "announcements.updated",
+    queryKeys: [
+      (actorUsername) => ["announcements", actorUsername],
+      (actorUsername) => ["active-announcements", actorUsername],
+    ],
+  },
+  {
+    event: "calendar.updated",
+    queryKeys: [
+      (actorUsername) => ["events", actorUsername],
+      (actorUsername) => ["coaching-sessions", actorUsername],
+      () => ["beginners-course-calendar"],
+      (actorUsername) => ["home-activity", actorUsername],
+    ],
+  },
+  {
+    event: "approvals.updated",
+    queryKeys: [
+      (actorUsername) => ["approvals", actorUsername],
+      (actorUsername) => ["committee-approval-summary", actorUsername],
+    ],
+  },
+  {
+    event: "roles.updated",
+    queryKeys: [
+      (actorUsername) => ["roles", actorUsername],
+      (actorUsername) => ["profile-options", actorUsername],
+      (actorUsername) => ["loan-bow-options", actorUsername],
+      (actorUsername) => ["committee-roles", actorUsername],
+    ],
+  },
+  {
+    event: "committee.updated",
+    queryKeys: [(actorUsername) => ["committee-roles", actorUsername]],
+  },
+  {
+    event: "members.updated",
+    queryKeys: [
+      (actorUsername) => ["profile-options", actorUsername],
+      (actorUsername) => ["loan-bow-options", actorUsername],
+      () => ["loan-bow-profile"],
+      (actorUsername) => ["committee-roles", actorUsername],
+    ],
+  },
+  {
+    event: "equipment.updated",
+    queryKeys: [(actorUsername) => ["equipment-dashboard", actorUsername]],
+  },
+  {
+    event: "beginners.updated",
+    queryKeys: [
+      (actorUsername) => ["beginners-courses-dashboard", actorUsername],
+      (actorUsername) => ["have-a-go-sessions-dashboard", actorUsername],
+      (actorUsername) => ["taster-sessions-dashboard", actorUsername],
+      (actorUsername) => ["committee-approval-summary", actorUsername],
+      () => ["beginners-course-calendar"],
+      (actorUsername) => ["home-activity", actorUsername],
+    ],
+  },
+  {
+    event: "tournaments.updated",
+    queryKeys: [
+      (actorUsername) => ["admin-tournament-warnings", actorUsername],
+      (actorUsername) => ["home-activity", actorUsername],
+    ],
+  },
+  {
+    event: "range-members.updated",
+    queryKeys: [() => ["range-members"]],
+  },
+  {
+    event: "lost-found.updated",
+    queryKeys: [
+      (actorUsername) => ["lost-arrows", actorUsername],
+      (actorUsername) => ["lost-arrow-members", actorUsername],
+      (actorUsername) => ["my-lost-arrow-notices", actorUsername],
+    ],
+  },
+  {
+    event: "outdoor-table.updated",
+    queryKeys: [
+      () => ["outdoor-table"],
+      (actorUsername) => ["outdoor-table-members", actorUsername],
+    ],
+  },
+];
 
 export function useServerEvents({
   actorUsername,
@@ -148,18 +242,9 @@ export function useServerEvents({
 
   useSseFallbackPolling({
     callback: () => {
-      invalidateAnnouncementQueries();
-      invalidateCalendarQueries();
-      invalidateApprovalsQueries();
-      invalidateRoleQueries();
-      invalidateCommitteeQueries();
-      invalidateMemberQueries();
-      invalidateEquipmentQueries();
-      invalidateBeginnersQueries();
-      invalidateTournamentQueries();
-      invalidateRangeMemberQueries();
-      invalidateLostArrowQueries();
-      invalidateOutdoorTableQueries();
+      for (const { invalidate } of eventInvalidators) {
+        invalidate();
+      }
     },
     enabled: canUseServerEvents,
     source: "authenticated-shell",
@@ -173,69 +258,15 @@ export function useServerEvents({
 
     connectServerEvents();
 
-    const unsubscribeAnnouncements = subscribeToServerEvent(
-      "announcements.updated",
-      invalidateAnnouncementQueries,
-    );
-    const unsubscribeCalendar = subscribeToServerEvent(
-      "calendar.updated",
-      invalidateCalendarQueries,
-    );
-    const unsubscribeApprovals = subscribeToServerEvent(
-      "approvals.updated",
-      invalidateApprovalsQueries,
-    );
-    const unsubscribeRoles = subscribeToServerEvent(
-      "roles.updated",
-      invalidateRoleQueries,
-    );
-    const unsubscribeCommittee = subscribeToServerEvent(
-      "committee.updated",
-      invalidateCommitteeQueries,
-    );
-    const unsubscribeMembers = subscribeToServerEvent(
-      "members.updated",
-      invalidateMemberQueries,
-    );
-    const unsubscribeEquipment = subscribeToServerEvent(
-      "equipment.updated",
-      invalidateEquipmentQueries,
-    );
-    const unsubscribeBeginners = subscribeToServerEvent(
-      "beginners.updated",
-      invalidateBeginnersQueries,
-    );
-    const unsubscribeTournaments = subscribeToServerEvent(
-      "tournaments.updated",
-      invalidateTournamentQueries,
-    );
-    const unsubscribeRangeMembers = subscribeToServerEvent(
-      "range-members.updated",
-      invalidateRangeMemberQueries,
-    );
-    const unsubscribeLostArrows = subscribeToServerEvent(
-      "lost-found.updated",
-      invalidateLostArrowQueries,
-    );
-    const unsubscribeOutdoorTable = subscribeToServerEvent(
-      "outdoor-table.updated",
-      invalidateOutdoorTableQueries,
+    const unsubscribers = eventInvalidators.map(({ event, invalidate }) =>
+      subscribeToServerEvent(event, invalidate),
     );
 
     return () => {
-      unsubscribeAnnouncements();
-      unsubscribeCalendar();
-      unsubscribeApprovals();
-      unsubscribeRoles();
-      unsubscribeCommittee();
-      unsubscribeMembers();
-      unsubscribeEquipment();
-      unsubscribeBeginners();
-      unsubscribeTournaments();
-      unsubscribeRangeMembers();
-      unsubscribeLostArrows();
-      unsubscribeOutdoorTable();
+      for (const unsubscribe of unsubscribers) {
+        unsubscribe();
+      }
       disconnectServerEvents();
     };
-  }, [actorUsername, canUseServerEvents, queryClient]);
+  }, [canUseServerEvents, eventInvalidators]);
 }

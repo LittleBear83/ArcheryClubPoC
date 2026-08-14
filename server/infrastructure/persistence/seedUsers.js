@@ -166,6 +166,6 @@ function toSeedUserRecord(user, hashPassword) {
   };
 }
 
-export function getSeedUsers({ hashPassword, isLive }) {
+export function getSeedUsers({ hashPassword }) {
   return seedUsers.map((user) => toSeedUserRecord(user, hashPassword));
 }

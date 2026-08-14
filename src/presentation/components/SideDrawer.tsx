@@ -1,7 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
-import { formatMemberDisplayName, hasPermission } from "../../utils/userProfile";
+import {
+  formatMemberDisplayName,
+  hasPermission,
+} from "../../utils/userProfile";
 import { Button } from "./Button";
+import {
+  canAccessMemberPage,
+  getRestrictedPageMessage,
+} from "../navigation/memberPageAccess";
 
 const pages = [
   { id: "home", label: "Home", path: "/" },
@@ -10,31 +17,31 @@ const pages = [
     id: "range-usage",
     label: "Range Usage",
     path: "/range-usage",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   {
     id: "event-calendar",
     label: "Calendar",
     path: "/event-calendar",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   {
     id: "tournaments",
     label: "Tournaments",
     path: "/tournaments",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   {
     id: "records",
     label: "Records",
     path: "/records",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   {
     id: "outdoor-table",
     label: "Outdoor Table",
     path: "/outdoor-table",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   { id: "range-rules", label: "Range Rules", path: "/range-rules" },
   { id: "ask-a-question", label: "Ask A Question", path: "/ask-a-question" },
@@ -55,7 +62,7 @@ const pages = [
     id: "lost-and-found",
     label: "Lost and Found",
     path: "/lost-and-found",
-    disabledForRoles: ["beginner"],
+    restrictedForProgrammeUsers: true,
   },
   {
     id: "committee-org-chart",
@@ -83,7 +90,7 @@ const pages = [
   { id: "general-info", label: "General Information", path: "/general-info" },
   {
     id: "user-creation",
-    label: "Member Creation",
+    label: "People & Access",
     path: "/user-creation",
     permission: "manage_members",
   },
@@ -136,9 +143,14 @@ const pages = [
   },
   {
     id: "beginners-courses",
-    label: "Beginners Courses",
+    label: "Beginners & Taster Sessions",
     path: "/beginners-courses",
-    permissionAny: ["manage_beginners_courses", "approve_beginners_courses"],
+    permissionAny: [
+      "manage_beginners_courses",
+      "approve_beginners_courses",
+      "manage_have_a_go_sessions",
+      "approve_have_a_go_sessions",
+    ],
   },
   {
     id: "have-a-go-sessions",
@@ -163,7 +175,7 @@ const adminGroups = [
   {
     id: "member-admin",
     label: "Member Admin",
-    pageIds: ["user-creation", "role-permissions", "approvals"],
+    pageIds: ["user-creation", "role-permissions"],
   },
   {
     id: "club-setup",
@@ -174,6 +186,7 @@ const adminGroups = [
     id: "operations",
     label: "Operations",
     pageIds: [
+      "approvals",
       "equipment",
       "beginners-courses",
       "have-a-go-sessions",
@@ -186,6 +199,10 @@ const adminGroups = [
     pageIds: ["reporting", "audit-log"],
   },
 ];
+
+type VisiblePage = (typeof pages)[number];
+type AdminGroup = (typeof adminGroups)[number];
+type GroupedAdminPageGroup = AdminGroup & { pages: VisiblePage[] };
 
 function getDefaultExpandedGroups(selectedPage, groupedAdminPages) {
   const selectedGroup = groupedAdminPages.find((group) =>
@@ -215,7 +232,6 @@ export function SideDrawer({
     formatMemberDisplayName(currentUserProfile) ||
     currentUserProfile?.auth?.username ||
     "Member";
-  const currentRole = currentUserProfile?.membership?.role ?? "";
 
   const visiblePages = useMemo(() => {
     return pages.filter(
@@ -243,12 +259,12 @@ export function SideDrawer({
     [visiblePages],
   );
   const groupedAdminPages = useMemo(() => {
-    const grouped = adminGroups
+    const grouped: GroupedAdminPageGroup[] = adminGroups
       .map((group) => ({
         ...group,
         pages: group.pageIds
           .map((pageId) => adminPages.find((page) => page.id === pageId))
-          .filter(Boolean),
+          .filter((page): page is VisiblePage => Boolean(page)),
       }))
       .filter((group) => group.pages.length > 0);
 
@@ -261,57 +277,46 @@ export function SideDrawer({
       grouped.push({
         id: "other-admin",
         label: "Other Admin",
+        pageIds: [],
         pages: ungroupedPages,
       });
     }
 
     return grouped;
   }, [adminPages]);
-  const [expandedAdminGroups, setExpandedAdminGroups] = useState(() =>
-    getDefaultExpandedGroups(selectedPage, groupedAdminPages),
-  );
+  const [expandedAdminGroups, setExpandedAdminGroups] = useState<Record<string, boolean>>({});
+  const resolvedExpandedAdminGroups = useMemo(() => {
+    const availableGroupIds = new Set(groupedAdminPages.map((group) => group.id));
+    const normalizedGroups = Object.fromEntries(
+      Object.entries(expandedAdminGroups).filter(([groupId]) =>
+        availableGroupIds.has(groupId),
+      ),
+    ) as Record<string, boolean>;
 
-  useEffect(() => {
-    setExpandedAdminGroups((current) => {
-      const next = { ...current };
-      let hasChanges = false;
-
-      groupedAdminPages.forEach((group) => {
-        if (!(group.id in next)) {
-          next[group.id] = false;
-          hasChanges = true;
-        }
-      });
-
-      Object.keys(next).forEach((groupId) => {
-        if (!groupedAdminPages.some((group) => group.id === groupId)) {
-          delete next[groupId];
-          hasChanges = true;
-        }
-      });
-
-      const selectedGroup = groupedAdminPages.find((group) =>
-        group.pages.some((page) => page.id === selectedPage),
-      );
-
-      if (selectedGroup && !next[selectedGroup.id]) {
-        next[selectedGroup.id] = true;
-        hasChanges = true;
+    for (const group of groupedAdminPages) {
+      if (!(group.id in normalizedGroups)) {
+        normalizedGroups[group.id] = false;
       }
+    }
 
-      if (!hasChanges && Object.keys(next).length > 0) {
-        return current;
-      }
+    const selectedGroup = groupedAdminPages.find((group) =>
+      group.pages.some((page) => page.id === selectedPage),
+    );
 
-      if (Object.keys(next).length === 0) {
-        return getDefaultExpandedGroups(selectedPage, groupedAdminPages);
-      }
+    if (selectedGroup) {
+      normalizedGroups[selectedGroup.id] = true;
+      return normalizedGroups;
+    }
 
-      return next;
-    });
-  }, [groupedAdminPages, selectedPage]);
+    if (Object.keys(normalizedGroups).length === 0) {
+      return getDefaultExpandedGroups(selectedPage, groupedAdminPages);
+    }
+
+    return normalizedGroups;
+  }, [expandedAdminGroups, groupedAdminPages, selectedPage]);
   const isPageDisabled = (page) =>
-    Array.isArray(page.disabledForRoles) && page.disabledForRoles.includes(currentRole);
+    Boolean(page.restrictedForProgrammeUsers) &&
+    !canAccessMemberPage(page.id, currentUserProfile);
   const renderPageButton = (page, nested = false) => (
     <li key={page.id}>
       <Button
@@ -322,11 +327,7 @@ export function SideDrawer({
           .filter(Boolean)
           .join(" ")}
         disabled={isPageDisabled(page)}
-        title={
-          isPageDisabled(page)
-            ? "This area is not available for beginners."
-            : undefined
-        }
+        title={isPageDisabled(page) ? getRestrictedPageMessage(page.id, currentUserProfile) : undefined}
         onClick={() => {
           if (isPageDisabled(page)) {
             return;
@@ -378,7 +379,7 @@ export function SideDrawer({
               <p className="drawer-section-label">Admin Tools</p>
               <ul className="drawer-tree">
                 {groupedAdminPages.map((group) => {
-                  const isExpanded = expandedAdminGroups[group.id];
+                  const isExpanded = resolvedExpandedAdminGroups[group.id];
 
                   return (
                     <li key={group.id} className="drawer-tree-group">

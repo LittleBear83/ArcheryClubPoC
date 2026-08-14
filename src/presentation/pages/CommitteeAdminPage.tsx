@@ -185,7 +185,7 @@ async function buildCompressedImageDataUrl(file: File) {
 async function buildCommitteePhotoDataUrl(file: File) {
   try {
     return await buildCompressedImageDataUrl(file);
-  } catch (error) {
+  } catch {
     const fallbackDataUrl = await loadFileAsDataUrl(file);
 
     if (!fallbackDataUrl.startsWith("data:image/")) {

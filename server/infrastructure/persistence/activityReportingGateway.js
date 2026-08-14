@@ -22,6 +22,27 @@ function normalizeUserRows(rows) {
   }));
 }
 
+function normalizeReportingMemberRows(rows) {
+  return rows.map((row) => ({
+    ...row,
+    membership_status: row.membership_status ?? "member",
+    programme_type: row.programme_type ?? "none",
+    user_type: row.user_type ?? "",
+  }));
+}
+
+function normalizeMemberJourneyRows(rows) {
+  return rows.map((row) => ({
+    ...row,
+    origin_course_type: row.origin_course_type ?? "beginners",
+    current_course_type: row.current_course_type ?? "beginners",
+    membership_status: row.membership_status ?? "member",
+    programme_type: row.programme_type ?? "none",
+    user_type: row.user_type ?? "",
+    converted_to_member: Number(row.converted_to_member ?? 0),
+  }));
+}
+
 const POSTGRES_MEMBER_PRESENCE_EVENTS_CTE = `
   WITH RECURSIVE ordered_member_presence_events AS (
     SELECT
@@ -91,6 +112,7 @@ function createSqliteActivityReportingGateway({
   guestLoginsByHourInRange,
   guestLoginsByWeekdayInRange,
   listAllUserDisciplines,
+  listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
   memberLoginsByDateForUserInRange,
@@ -139,11 +161,18 @@ function createSqliteActivityReportingGateway({
     async listAllUserDisciplines() {
       return listAllUserDisciplines.all();
     },
+    async listMemberJourneyParticipants(startDate, endDate) {
+      return normalizeMemberJourneyRows(
+        listMemberJourneyParticipants.all(startDate, endDate),
+      );
+    },
     async listReportingGuestLogins(startIso, endIsoExclusive) {
       return listReportingGuestLogins.all(startIso, endIsoExclusive);
     },
     async listReportingMemberLogins(startIso, endIsoExclusive) {
-      return listReportingMemberLogins.all(startIso, endIsoExclusive);
+      return normalizeReportingMemberRows(
+        listReportingMemberLogins.all(startIso, endIsoExclusive),
+      );
     },
     async memberLoginsByDateForUserInRange(username, startIso, endIsoExclusive) {
       return normalizeRowsWithCount(
@@ -345,6 +374,41 @@ function createPostgresActivityReportingGateway({ pool }) {
       );
       return result.rows;
     },
+    async listMemberJourneyParticipants(startDate, endDate) {
+      const result = await pool.query(
+        `SELECT
+          beginners_course_participants.id,
+          beginners_course_participants.username,
+          beginners_course_participants.first_name,
+          beginners_course_participants.surname,
+          beginners_course_participants.created_at_date,
+          beginners_course_participants.created_at_time,
+          beginners_course_participants.origin_course_type,
+          beginners_course_participants.converted_to_member,
+          beginners_course_participants.converted_at_date,
+          beginners_course_participants.converted_at_time,
+          beginners_courses.course_type AS current_course_type,
+          users.membership_status,
+          users.programme_type,
+          user_types.user_type
+         FROM beginners_course_participants
+         INNER JOIN beginners_courses
+           ON beginners_courses.id = beginners_course_participants.course_id
+         INNER JOIN users
+           ON users.id = beginners_course_participants.user_id
+         INNER JOIN user_types
+           ON user_types.user_id = users.id
+         WHERE beginners_course_participants.created_at_date >= $1
+           AND beginners_course_participants.created_at_date <= $2
+         ORDER BY
+           beginners_course_participants.created_at_date ASC,
+           beginners_course_participants.created_at_time ASC,
+           beginners_course_participants.surname ASC,
+           beginners_course_participants.first_name ASC`,
+        [startDate, endDate],
+      );
+      return normalizeMemberJourneyRows(result.rows);
+    },
     async listReportingGuestLogins(startIso, endIsoExclusive) {
       const result = await pool.query(
         `SELECT
@@ -365,17 +429,21 @@ function createPostgresActivityReportingGateway({ pool }) {
           COALESCE(users.username, login_events.username) AS username,
           users.first_name,
           users.surname,
+          users.membership_status,
+          users.programme_type,
+          user_types.user_type,
           login_events.login_method,
           login_events.logged_in_date,
           login_events.logged_in_time
          FROM login_events
          LEFT JOIN users ON users.id = login_events.user_id
+         LEFT JOIN user_types ON user_types.user_id = users.id
          WHERE (login_events.logged_in_date::text || 'T' || login_events.logged_in_time::text) >= $1
            AND (login_events.logged_in_date::text || 'T' || login_events.logged_in_time::text) < $2
          ORDER BY login_events.logged_in_date ASC, login_events.logged_in_time ASC, surname ASC, first_name ASC`,
         [startIso, endIsoExclusive],
       );
-      return result.rows;
+      return normalizeReportingMemberRows(result.rows);
     },
     async memberLoginsByDateForUserInRange(username, startIso, endIsoExclusive) {
       const result = await pool.query(

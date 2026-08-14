@@ -38,6 +38,178 @@ function migrateCombinedDateTimeColumn({
   return true;
 }
 
+function rebuildBeginnersCourseLessonsTable(db) {
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN TRANSACTION;
+    ALTER TABLE beginners_course_lessons RENAME TO beginners_course_lessons_old;
+    CREATE TABLE beginners_course_lessons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL,
+      lesson_number INTEGER NOT NULL,
+      lesson_date TEXT NOT NULL,
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      UNIQUE (course_id, lesson_number),
+      FOREIGN KEY (course_id) REFERENCES beginners_courses(id)
+    );
+    INSERT INTO beginners_course_lessons (
+      id,
+      course_id,
+      lesson_number,
+      lesson_date,
+      start_time,
+      end_time
+    )
+    SELECT
+      id,
+      course_id,
+      lesson_number,
+      lesson_date,
+      start_time,
+      end_time
+    FROM beginners_course_lessons_old;
+    DROP TABLE beginners_course_lessons_old;
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
+function rebuildBeginnersCourseParticipantsTable(db) {
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN TRANSACTION;
+    ALTER TABLE beginners_course_participants RENAME TO beginners_course_participants_old;
+    CREATE TABLE beginners_course_participants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL,
+      username TEXT NOT NULL UNIQUE,
+      first_name TEXT NOT NULL,
+      surname TEXT NOT NULL,
+      beginner_size_category TEXT NOT NULL CHECK (
+        beginner_size_category IN ('senior', 'junior')
+      ),
+      height_text TEXT,
+      handedness TEXT CHECK (handedness IN ('left', 'right')),
+      eye_dominance TEXT CHECK (eye_dominance IN ('left', 'right')),
+      initial_email_sent INTEGER NOT NULL DEFAULT 0,
+      thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
+      course_fee_paid INTEGER NOT NULL DEFAULT 0,
+      converted_to_member INTEGER NOT NULL DEFAULT 0,
+      assigned_case_id INTEGER,
+      assigned_case_by_username TEXT,
+      assigned_case_at_date TEXT,
+      assigned_case_at_time TEXT,
+      created_by_username TEXT NOT NULL,
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      user_id INTEGER,
+      assigned_case_by_user_id INTEGER,
+      created_by_user_id INTEGER,
+      FOREIGN KEY (course_id) REFERENCES beginners_courses(id),
+      FOREIGN KEY (username) REFERENCES users(username),
+      FOREIGN KEY (assigned_case_id) REFERENCES equipment_items(id),
+      FOREIGN KEY (assigned_case_by_username) REFERENCES users(username),
+      FOREIGN KEY (created_by_username) REFERENCES users(username)
+    );
+    INSERT INTO beginners_course_participants (
+      id,
+      course_id,
+      username,
+      first_name,
+      surname,
+      beginner_size_category,
+      height_text,
+      handedness,
+      eye_dominance,
+      initial_email_sent,
+      thirty_day_reminder_sent,
+      course_fee_paid,
+      converted_to_member,
+      assigned_case_id,
+      assigned_case_by_username,
+      assigned_case_at_date,
+      assigned_case_at_time,
+      created_by_username,
+      created_at_date,
+      created_at_time,
+      user_id,
+      assigned_case_by_user_id,
+      created_by_user_id
+    )
+    SELECT
+      id,
+      course_id,
+      username,
+      first_name,
+      surname,
+      beginner_size_category,
+      height_text,
+      handedness,
+      eye_dominance,
+      initial_email_sent,
+      thirty_day_reminder_sent,
+      course_fee_paid,
+      COALESCE(converted_to_member, 0),
+      assigned_case_id,
+      assigned_case_by_username,
+      assigned_case_at_date,
+      assigned_case_at_time,
+      created_by_username,
+      created_at_date,
+      created_at_time,
+      user_id,
+      assigned_case_by_user_id,
+      created_by_user_id
+    FROM beginners_course_participants_old;
+    DROP TABLE beginners_course_participants_old;
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
+function rebuildBeginnersCourseLessonCoachesTable(db) {
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    BEGIN TRANSACTION;
+    ALTER TABLE beginners_course_lesson_coaches RENAME TO beginners_course_lesson_coaches_old;
+    CREATE TABLE beginners_course_lesson_coaches (
+      lesson_id INTEGER NOT NULL,
+      coach_username TEXT NOT NULL,
+      assigned_by_username TEXT NOT NULL,
+      assigned_at_date TEXT NOT NULL,
+      assigned_at_time TEXT NOT NULL,
+      coach_user_id INTEGER,
+      assigned_by_user_id INTEGER,
+      PRIMARY KEY (lesson_id, coach_username),
+      FOREIGN KEY (lesson_id) REFERENCES beginners_course_lessons(id),
+      FOREIGN KEY (coach_username) REFERENCES users(username),
+      FOREIGN KEY (assigned_by_username) REFERENCES users(username)
+    );
+    INSERT INTO beginners_course_lesson_coaches (
+      lesson_id,
+      coach_username,
+      assigned_by_username,
+      assigned_at_date,
+      assigned_at_time,
+      coach_user_id,
+      assigned_by_user_id
+    )
+    SELECT
+      lesson_id,
+      coach_username,
+      assigned_by_username,
+      assigned_at_date,
+      assigned_at_time,
+      coach_user_id,
+      assigned_by_user_id
+    FROM beginners_course_lesson_coaches_old;
+    DROP TABLE beginners_course_lesson_coaches_old;
+    COMMIT;
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
 export function bootstrapSqliteCourseScheduleCompatibility({
   clubEventsTableSql,
   coachingSessionBookingsTableSql,
@@ -88,6 +260,127 @@ export function bootstrapSqliteCourseScheduleCompatibility({
     db.exec(
       `ALTER TABLE beginners_courses ADD COLUMN course_type TEXT NOT NULL DEFAULT 'beginners'`,
     );
+  }
+
+  const beginnersCoursesTable = db
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'beginners_courses'`,
+    )
+    .get();
+
+  if (
+    beginnersCoursesTable?.sql &&
+    !beginnersCoursesTable.sql.includes("'taster-session'")
+  ) {
+    db.exec(`
+      ALTER TABLE beginners_courses RENAME TO beginners_courses_old;
+      CREATE TABLE beginners_courses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_type TEXT NOT NULL DEFAULT 'beginners' CHECK (
+          course_type IN ('beginners', 'have-a-go', 'taster-session')
+        ),
+        coordinator_username TEXT NOT NULL,
+        submitted_by_username TEXT NOT NULL,
+        first_lesson_date TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        lesson_count INTEGER NOT NULL,
+        beginner_capacity INTEGER NOT NULL,
+        approval_status TEXT NOT NULL DEFAULT 'pending',
+        rejection_reason TEXT,
+        approved_by_username TEXT,
+        approved_at_date TEXT,
+        approved_at_time TEXT,
+        created_at_date TEXT NOT NULL,
+        created_at_time TEXT NOT NULL,
+        is_cancelled INTEGER NOT NULL DEFAULT 0,
+        cancellation_reason TEXT,
+        cancelled_by_username TEXT,
+        cancelled_at_date TEXT,
+        cancelled_at_time TEXT,
+        FOREIGN KEY (coordinator_username) REFERENCES users(username),
+        FOREIGN KEY (submitted_by_username) REFERENCES users(username),
+        FOREIGN KEY (approved_by_username) REFERENCES users(username),
+        FOREIGN KEY (cancelled_by_username) REFERENCES users(username)
+      );
+      INSERT INTO beginners_courses (
+        id,
+        course_type,
+        coordinator_username,
+        submitted_by_username,
+        first_lesson_date,
+        start_time,
+        end_time,
+        lesson_count,
+        beginner_capacity,
+        approval_status,
+        rejection_reason,
+        approved_by_username,
+        approved_at_date,
+        approved_at_time,
+        created_at_date,
+        created_at_time,
+        is_cancelled,
+        cancellation_reason,
+        cancelled_by_username,
+        cancelled_at_date,
+        cancelled_at_time
+      )
+      SELECT
+        id,
+        course_type,
+        coordinator_username,
+        submitted_by_username,
+        first_lesson_date,
+        start_time,
+        end_time,
+        lesson_count,
+        beginner_capacity,
+        approval_status,
+        rejection_reason,
+        approved_by_username,
+        approved_at_date,
+        approved_at_time,
+        created_at_date,
+        created_at_time,
+        is_cancelled,
+        cancellation_reason,
+        cancelled_by_username,
+        cancelled_at_date,
+        cancelled_at_time
+      FROM beginners_courses_old;
+      DROP TABLE beginners_courses_old;
+    `);
+  }
+
+  const beginnersCourseLessonsTable = db
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'beginners_course_lessons'`,
+    )
+    .get();
+
+  if (beginnersCourseLessonsTable?.sql?.includes("beginners_courses_old")) {
+    rebuildBeginnersCourseLessonsTable(db);
+  }
+
+  const beginnersCourseParticipantsTable = db
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'beginners_course_participants'`,
+    )
+    .get();
+
+  if (beginnersCourseParticipantsTable?.sql?.includes("beginners_courses_old")) {
+    rebuildBeginnersCourseParticipantsTable(db);
+  }
+
+  const beginnersCourseLessonCoachesTable = db
+    .prepare(
+      `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'beginners_course_lesson_coaches'`,
+    )
+    .get();
+
+  if (beginnersCourseLessonCoachesTable?.sql?.includes("beginners_course_lessons_old")) {
+    rebuildBeginnersCourseLessonCoachesTable(db);
   }
 
   const beginnersCourseCancellationColumns = [

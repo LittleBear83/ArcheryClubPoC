@@ -236,12 +236,17 @@ export function createSqliteReportingStatements(db) {
       users.username,
       users.first_name,
       users.surname,
+      users.membership_status,
+      users.programme_type,
+      user_types.user_type,
       login_events.login_method,
       login_events.logged_in_date,
       login_events.logged_in_time
     FROM login_events
     INNER JOIN users
       ON users.id = login_events.user_id
+    INNER JOIN user_types
+      ON user_types.user_id = users.id
     WHERE login_events.logged_in_date || 'T' || login_events.logged_in_time >= ?
       AND login_events.logged_in_date || 'T' || login_events.logged_in_time < ?
     ORDER BY login_events.logged_in_date ASC, login_events.logged_in_time ASC, users.surname ASC, users.first_name ASC
@@ -263,6 +268,38 @@ export function createSqliteReportingStatements(db) {
     ORDER BY logged_in_date ASC, logged_in_time ASC, surname ASC, first_name ASC
   `);
 
+  const listMemberJourneyParticipants = db.prepare(`
+    SELECT
+      beginners_course_participants.id,
+      beginners_course_participants.username,
+      beginners_course_participants.first_name,
+      beginners_course_participants.surname,
+      beginners_course_participants.created_at_date,
+      beginners_course_participants.created_at_time,
+      beginners_course_participants.origin_course_type,
+      beginners_course_participants.converted_to_member,
+      beginners_course_participants.converted_at_date,
+      beginners_course_participants.converted_at_time,
+      beginners_courses.course_type AS current_course_type,
+      users.membership_status,
+      users.programme_type,
+      user_types.user_type
+    FROM beginners_course_participants
+    INNER JOIN beginners_courses
+      ON beginners_courses.id = beginners_course_participants.course_id
+    INNER JOIN users
+      ON users.id = beginners_course_participants.user_id
+    INNER JOIN user_types
+      ON user_types.user_id = users.id
+    WHERE beginners_course_participants.created_at_date >= ?
+      AND beginners_course_participants.created_at_date <= ?
+    ORDER BY
+      beginners_course_participants.created_at_date ASC,
+      beginners_course_participants.created_at_time ASC,
+      beginners_course_participants.surname ASC,
+      beginners_course_participants.first_name ASC
+  `);
+
   return {
     countGuestLoginsInRange,
     countMemberLoginsForUserInRange,
@@ -275,6 +312,7 @@ export function createSqliteReportingStatements(db) {
     guestLoginsByHourInRange,
     guestLoginsByWeekdayInRange,
     listAllUserDisciplines,
+    listMemberJourneyParticipants,
     listReportingGuestLogins,
     listReportingMemberLogins,
     memberLoginsByDateForUserInRange,

@@ -91,6 +91,30 @@ function shouldAttachCsrfToken(input: RequestInfo | URL, init?: RequestInit) {
   );
 }
 
+function buildServiceUnavailableMessage(input: RequestInfo | URL) {
+  const path = getRequestPath(input);
+
+  if (!path.startsWith("/api/")) {
+    return "The API service is unavailable. Make sure the local server is running.";
+  }
+
+  if (typeof window === "undefined") {
+    return "The API service is unavailable. Make sure the local server is running.";
+  }
+
+  const currentPort = window.location.port;
+
+  if (currentPort === "5173") {
+    return "The API service is unavailable. Start it with `npm run dev:full`, or run `npm run dev:server` alongside the Vite app.";
+  }
+
+  if (currentPort === "8080") {
+    return "The API service is unavailable. `npm run preview` serves only the frontend. Run `npm run start` for the built app, or start the backend separately on port 3001.";
+  }
+
+  return "The API service is unavailable. Make sure the local server is running.";
+}
+
 async function getCsrfToken() {
   if (csrfTokenCache) {
     return csrfTokenCache;
@@ -131,10 +155,20 @@ export async function fetchApi<T extends ApiEnvelope = ApiEnvelope & Record<stri
   // All app APIs are expected to return JSON envelopes. Turning unexpected HTML
   // or plain text into a useful error makes dev-server mistakes easier to spot.
   const requestInit = await buildRequestInit(input, init);
-  const response = await fetch(input, {
-    credentials: "same-origin",
-    ...requestInit,
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(input, {
+      credentials: "same-origin",
+      ...requestInit,
+    });
+  } catch (error) {
+    if (pathStartsWithApi(input)) {
+      throw new Error(buildServiceUnavailableMessage(input));
+    }
+
+    throw error;
+  }
   const contentType = response.headers.get("content-type") ?? "";
 
   if (!contentType.includes("application/json")) {
@@ -143,9 +177,7 @@ export async function fetchApi<T extends ApiEnvelope = ApiEnvelope & Record<stri
     const statusLabel = `${response.status} ${response.statusText}`.trim();
 
     if (SERVICE_UNAVAILABLE_STATUSES.has(response.status)) {
-      throw new Error(
-        "The API service is unavailable. Make sure the local server is running.",
-      );
+      throw new Error(buildServiceUnavailableMessage(input));
     }
 
     throw new Error(
@@ -170,4 +202,8 @@ export async function fetchApi<T extends ApiEnvelope = ApiEnvelope & Record<stri
   }
 
   return result;
+}
+
+function pathStartsWithApi(input: RequestInfo | URL) {
+  return getRequestPath(input).startsWith("/api/");
 }

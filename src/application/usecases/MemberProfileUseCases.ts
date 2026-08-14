@@ -36,10 +36,6 @@ export class GetMemberProfilePageDataUseCase {
     username,
     signal,
   }: ProfileTargetInput): Promise<MemberProfilePageData> {
-    if (!actorUsername?.trim()) {
-      throw new Error("An authenticated member is required.");
-    }
-
     if (!username?.trim()) {
       throw new Error("A member username is required.");
     }
@@ -63,10 +59,6 @@ export class GetMemberProfileOptionsUseCase {
     actorUsername,
     signal,
   }: ActorUsernameInput & { signal?: AbortSignal }): Promise<ProfileOptions> {
-    if (!actorUsername?.trim()) {
-      throw new Error("An authenticated member is required.");
-    }
-
     return this.memberProfileRepository.getProfileOptions(actorUsername, signal);
   }
 }
@@ -279,10 +271,6 @@ export class GetUserProfileUseCase {
   }
 
   async execute({ actorUsername, username, signal }: ProfileTargetInput) {
-    if (!actorUsername?.trim()) {
-      throw new Error("An authenticated member is required.");
-    }
-
     if (!username?.trim()) {
       throw new Error("A member username is required.");
     }

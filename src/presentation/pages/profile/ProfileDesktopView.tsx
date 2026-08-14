@@ -21,7 +21,6 @@ export function ProfileDesktopView({
   canManageOutdoorAchievements,
   canSelectMembers,
   canSignOffSelectedMember,
-  canSignOffDistances,
   currentUserProfile,
   deleteConfirmationUsername,
   deleteError,
@@ -61,8 +60,10 @@ export function ProfileDesktopView({
   isSavingOutdoorTableByBowType,
   memberOptions,
   message,
+  membershipStatusOptions,
   outdoorTableBowEntries,
   outdoorTableError,
+  programmeTypeOptions,
   roleOptions,
   selectedUsername,
   submitLabel,
@@ -139,6 +140,8 @@ export function ProfileDesktopView({
           toggleDiscipline={toggleDiscipline}
           disciplineOptions={disciplineOptions}
           roleOptions={roleOptions}
+          membershipStatusOptions={membershipStatusOptions}
+          programmeTypeOptions={programmeTypeOptions}
           isAdmin={canManageMembers}
           isCreatingNew={false}
           isSaving={isSaving || isRefreshingProfile}

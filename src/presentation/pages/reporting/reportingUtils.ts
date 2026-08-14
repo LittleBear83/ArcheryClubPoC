@@ -1,5 +1,9 @@
-import { formatClockTime, formatDate, formatDateRangeLabel } from "../../../utils/dateTime";
-import type { AttendanceReport, AttendanceReportDailyRow } from "../../../api/reportingApi";
+import { formatClockTime, formatDate, formatDateRangeLabel } from "../../../utils/dateTime.js";
+import type {
+  AttendanceReport,
+  AttendanceReportDailyRow,
+  AttendanceReportRow,
+} from "../../../api/reportingApi";
 
 export function getUtcDateString(date: Date) {
   return new Date(
@@ -36,6 +40,9 @@ export function buildCsv(report: AttendanceReport) {
     "Date",
     "Time",
     "Type",
+    "Membership Status",
+    "Programme Type",
+    "Role",
     "Name",
     "Username",
     "Login Method",
@@ -48,6 +55,9 @@ export function buildCsv(report: AttendanceReport) {
       formatDate(row.date),
       formatClockTime(row.time),
       row.type,
+      row.membershipStatus,
+      row.programmeType,
+      row.role,
       row.name,
       row.username,
       row.loginMethod,
@@ -130,6 +140,60 @@ export function aggregateMonthDayRows(rows: AttendanceReportDailyRow[]) {
   }
 
   return aggregatedRows;
+}
+
+function formatBreakdownLabel(value: string, fallback: string) {
+  const normalizedValue = String(value ?? "").trim();
+
+  if (!normalizedValue || normalizedValue === "none") {
+    return fallback;
+  }
+
+  if (normalizedValue === "non-member") {
+    return "Non-member";
+  }
+
+  return normalizedValue
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+export function summarizeAttendanceBreakdown(rows: AttendanceReportRow[]) {
+  const membershipStatusCounts = new Map<string, number>();
+  const programmeTypeCounts = new Map<string, number>();
+
+  for (const row of rows) {
+    const membershipStatusKey = String(row.membershipStatus ?? "").trim() || "unknown";
+    const programmeTypeKey = String(row.programmeType ?? "").trim() || "none";
+
+    membershipStatusCounts.set(
+      membershipStatusKey,
+      (membershipStatusCounts.get(membershipStatusKey) ?? 0) + 1,
+    );
+    programmeTypeCounts.set(
+      programmeTypeKey,
+      (programmeTypeCounts.get(programmeTypeKey) ?? 0) + 1,
+    );
+  }
+
+  return {
+    membershipStatuses: [...membershipStatusCounts.entries()]
+      .map(([key, count]) => ({
+        key,
+        label: formatBreakdownLabel(key, "Unknown"),
+        count,
+      }))
+      .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label)),
+    programmeTypes: [...programmeTypeCounts.entries()]
+      .map(([key, count]) => ({
+        key,
+        label: formatBreakdownLabel(key, "No programme"),
+        count,
+      }))
+      .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label)),
+  };
 }
 
 export function getRangeLabel(startDate: string, endDate: string) {

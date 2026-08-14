@@ -1,19 +1,20 @@
 import "./App.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import lawnmower from "./assets/lawnmower.svg";
 import { subscribeToServerEvent } from "./lib/serverEvents";
 import { Button } from "./presentation/components/Button";
-import { HomePage } from "./presentation/pages/HomePage";
-import { LoginPage } from "./presentation/pages/LoginPage";
 import { Modal } from "./presentation/components/Modal";
 import { useIsMobile } from "./presentation/hooks/useIsMobile";
 import { normalizeUserProfile } from "./utils/userProfile";
 import { subscribeToRfidScans } from "./utils/rfidScanHub";
 import { useSseFallbackDiagnostics } from "./presentation/state/useSseFallbackDiagnostics";
 import { useServerEventDiagnostics } from "./presentation/state/useServerEventDiagnostics";
-import { useServerEvents } from "./presentation/state/useServerEvents";
+import {
+  AUTHENTICATED_EVENT_QUERY_GROUPS,
+  useServerEvents,
+} from "./presentation/state/useServerEvents";
 import {
   getCurrentSession,
   loginAsGuest,
@@ -23,6 +24,17 @@ import {
 } from "./api/authApi";
 import type { UserProfile } from "./types/app";
 import type { AppDependencies } from "./bootstrap/createAppDependencies";
+
+const HomePage = lazy(() =>
+  import("./presentation/pages/HomePage").then((module) => ({
+    default: module.HomePage,
+  })),
+);
+const LoginPage = lazy(() =>
+  import("./presentation/pages/LoginPage").then((module) => ({
+    default: module.LoginPage,
+  })),
+);
 
 const AUTH_STORAGE_KEY = "archeryclubpoc-authenticated";
 const AUTH_USER_STORAGE_KEY = "archeryclubpoc-authenticated-user";
@@ -35,6 +47,30 @@ const DEFAULT_PAYMENT_CARD_MESSAGE =
 const PAYMENT_CARD_WARNING_MESSAGE =
   "No Monies have been taken, Please ensure not to use any other token or card other than the one that was issued to you";
 const IS_DEV = import.meta.env.DEV;
+const ADDITIONAL_AUTH_QUERY_ROOTS = new Set([
+  "member-questions",
+  "range-usage-dashboard",
+  "member-profiles",
+]);
+
+function getAuthenticatedQueryRoots() {
+  const roots = new Set<string>(ADDITIONAL_AUTH_QUERY_ROOTS);
+
+  for (const { queryKeys } of AUTHENTICATED_EVENT_QUERY_GROUPS) {
+    for (const buildQueryKey of queryKeys) {
+      const queryKey = buildQueryKey("");
+      const root = queryKey[0];
+
+      if (typeof root === "string") {
+        roots.add(root);
+      }
+    }
+  }
+
+  return roots;
+}
+
+const AUTHENTICATED_QUERY_ROOTS = getAuthenticatedQueryRoots();
 
 function formatDiagnosticsTimestamp(value: string | null) {
   if (!value) {
@@ -132,6 +168,11 @@ function loadStoredUserProfile() {
   } catch {
     return null;
   }
+}
+
+function isAuthenticatedQueryKey(queryKey: readonly unknown[]) {
+  const root = queryKey[0];
+  return typeof root === "string" && AUTHENTICATED_QUERY_ROOTS.has(root);
 }
 
 function PaymentCardModal({
@@ -250,11 +291,20 @@ function ServerEventsDiagnosticsBadge() {
   );
 }
 
+function AppLoadingFallback() {
+  return (
+    <div className="profile-form">
+      <p>Loading...</p>
+    </div>
+  );
+}
+
 function App({ dependencies }: { dependencies: AppDependencies }) {
   // The app keeps a local session snapshot for fast reloads, then verifies it
   // against the server and refreshes the canonical member profile after login.
   const inactivityTimeoutRef = useRef<number | null>(null);
   const lastActivityAtRef = useRef(Date.now());
+  const hasForcedHomeForCurrentSessionRef = useRef(false);
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -275,6 +325,23 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   const inactivityTimeoutMs = isMobile
     ? MOBILE_INACTIVITY_TIMEOUT_MS
     : DESKTOP_INACTIVITY_TIMEOUT_MS;
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      hasForcedHomeForCurrentSessionRef.current = false;
+      return;
+    }
+
+    if (!currentUserProfile || hasForcedHomeForCurrentSessionRef.current) {
+      return;
+    }
+
+    if (typeof window !== "undefined" && window.location.pathname !== "/") {
+      window.history.replaceState(null, "", "/");
+    }
+
+    hasForcedHomeForCurrentSessionRef.current = true;
+  }, [currentUserProfile, isAuthenticated]);
 
   useServerEvents({
     actorUsername: authenticatedUsername,
@@ -300,6 +367,40 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     });
   };
 
+  const invalidateAuthenticatedQueries = useCallback((actorUsername: string) => {
+    const dynamicQueryKeys = new Map<string, readonly unknown[]>();
+
+    for (const { queryKeys } of AUTHENTICATED_EVENT_QUERY_GROUPS) {
+      for (const buildQueryKey of queryKeys) {
+        const queryKey = buildQueryKey(actorUsername);
+        dynamicQueryKeys.set(JSON.stringify(queryKey), queryKey);
+      }
+    }
+
+    dynamicQueryKeys.set(
+      JSON.stringify(["member-questions", "mine", actorUsername]),
+      ["member-questions", "mine", actorUsername],
+    );
+    dynamicQueryKeys.set(
+      JSON.stringify(["range-usage-dashboard", actorUsername]),
+      ["range-usage-dashboard", actorUsername],
+    );
+    dynamicQueryKeys.set(
+      JSON.stringify(["member-profiles"]),
+      ["member-profiles"],
+    );
+
+    for (const queryKey of dynamicQueryKeys.values()) {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+  }, [queryClient]);
+
+  const clearAuthenticatedQueries = useCallback(() => {
+    queryClient.removeQueries({
+      predicate: (query) => isAuthenticatedQueryKey(query.queryKey),
+    });
+  }, [queryClient]);
+
   const persistAuthenticatedUser = (userProfile: unknown) => {
     // Normalize before persisting so old API shapes and current API shapes are
     // read consistently by the rest of the frontend.
@@ -313,17 +414,17 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       AUTH_USER_STORAGE_KEY,
       JSON.stringify(storedUserProfile),
     );
-    window.history.replaceState({}, "", "/");
     setIsAuthenticated(true);
     setCurrentUserProfile(storedUserProfile);
     window.dispatchEvent(new Event("member-session-updated"));
+    return storedUserProfile;
   };
 
   const handleCurrentUserProfileUpdate = (
     userProfile: UserProfile | unknown,
   ) => {
-    persistAuthenticatedUser(userProfile);
-    void queryClient.invalidateQueries();
+    const storedUserProfile = persistAuthenticatedUser(userProfile);
+    invalidateAuthenticatedQueries(storedUserProfile?.auth?.username ?? "");
   };
 
   const handleLogin = async ({
@@ -376,9 +477,9 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       void logoutSession().catch(() => undefined);
       setIsAuthenticated(false);
       setCurrentUserProfile(null);
-      void queryClient.invalidateQueries();
+      clearAuthenticatedQueries();
     },
-    [queryClient],
+    [clearAuthenticatedQueries],
   );
 
   const handleRfidLogin = useCallback(async (rfidTag: string) => {
@@ -701,11 +802,13 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   if (!isAuthenticated) {
     return (
       <>
-        <LoginPage
-          onLogin={handleLogin}
-          onRfidLogin={handleRfidLogin}
-          initialMessage={loginMessage}
-        />
+        <Suspense fallback={<AppLoadingFallback />}>
+          <LoginPage
+            onLogin={handleLogin}
+            onRfidLogin={handleRfidLogin}
+            initialMessage={loginMessage}
+          />
+        </Suspense>
         <PaymentCardModal
           open={paymentCardModal.open}
           cardBrand={paymentCardModal.cardBrand}
@@ -719,25 +822,27 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
 
   return (
     <>
-      <Router>
-        <Routes>
-          <Route
-            path="/*"
-            element={
-              <HomePage
-                currentUserProfile={currentUserProfile}
-                onGuestLogin={handleGuestLogin}
-                onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
-                onLogout={handleLogout}
-                memberProfileCrud={dependencies}
-                roleCrud={dependencies}
-                tournamentCrud={dependencies}
-                equipmentCrud={dependencies}
-              />
-            }
-          />
-        </Routes>
-      </Router>
+      <Suspense fallback={<AppLoadingFallback />}>
+        <Router>
+          <Routes>
+            <Route
+              path="/*"
+              element={
+                <HomePage
+                  currentUserProfile={currentUserProfile}
+                  onGuestLogin={handleGuestLogin}
+                  onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
+                  onLogout={handleLogout}
+                  memberProfileCrud={dependencies}
+                  roleCrud={dependencies}
+                  tournamentCrud={dependencies}
+                  equipmentCrud={dependencies}
+                />
+              }
+            />
+          </Routes>
+        </Router>
+      </Suspense>
       <PaymentCardModal
         open={paymentCardModal.open}
         cardBrand={paymentCardModal.cardBrand}

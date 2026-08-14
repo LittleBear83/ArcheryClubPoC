@@ -1,9 +1,17 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getAttendanceReport } from "../../../api/reportingApi";
+import { getAttendanceReport, getMemberJourneyReport } from "../../../api/reportingApi";
 import { hasPermission } from "../../../utils/userProfile";
 import type { UserProfile } from "../../../types/app";
-import { aggregateMonthDayRows, buildCsv, getMonthStartString, getRangeLabel, getTodayString, saveCsv } from "./reportingUtils";
+import {
+  aggregateMonthDayRows,
+  buildCsv,
+  getMonthStartString,
+  getRangeLabel,
+  getTodayString,
+  saveCsv,
+  summarizeAttendanceBreakdown,
+} from "./reportingUtils";
 
 export function useReportingPageState(currentUserProfile: UserProfile | null) {
   const [startDate, setStartDate] = useState(getMonthStartString());
@@ -36,6 +44,18 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
     },
     enabled: canViewReports && Boolean(actorUsername) && hasDataSource,
   });
+  const memberJourneyQuery = useQuery({
+    queryKey: ["member-journey-report", actorUsername, startDate, endDate],
+    queryFn: async () => {
+      const result = await getMemberJourneyReport(actorUsername, {
+        startDate,
+        endDate,
+      });
+
+      return result.report;
+    },
+    enabled: canViewReports && Boolean(actorUsername),
+  });
 
   const rangeLabel = useMemo(
     () => getRangeLabel(startDate, endDate),
@@ -43,6 +63,13 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
   );
   const aggregatedMonthRows = useMemo(
     () => (queryResult.data ? aggregateMonthDayRows(queryResult.data.daily) : []),
+    [queryResult.data],
+  );
+  const attendanceBreakdown = useMemo(
+    () =>
+      queryResult.data
+        ? summarizeAttendanceBreakdown(queryResult.data.rows)
+        : { membershipStatuses: [], programmeTypes: [] },
     [queryResult.data],
   );
 
@@ -74,6 +101,7 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
   return {
     actorUsername,
     aggregatedMonthRows,
+    attendanceBreakdown,
     canViewReports,
     data: queryResult.data,
     endDate,
@@ -85,6 +113,9 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
     includeGuests,
     includeMembers,
     isFetching: queryResult.isFetching,
+    isLoadingMemberJourneys: memberJourneyQuery.isFetching,
+    memberJourneyData: memberJourneyQuery.data,
+    memberJourneyError: memberJourneyQuery.error,
     rangeLabel,
     setEndDate,
     setIncludeGuests,

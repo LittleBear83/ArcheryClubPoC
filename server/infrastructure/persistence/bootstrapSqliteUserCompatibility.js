@@ -147,6 +147,11 @@ export function bootstrapSqliteUserCompatibility({ db }) {
     { table: "beginners_courses", usernameColumn: "cancelled_by_username", userIdColumn: "cancelled_by_user_id" },
     { table: "beginners_courses", usernameColumn: "approved_by_username", userIdColumn: "approved_by_user_id" },
     { table: "beginners_course_participants", usernameColumn: "username", userIdColumn: "user_id" },
+    {
+      table: "beginners_course_participants",
+      usernameColumn: "converted_by_username",
+      userIdColumn: "converted_by_user_id",
+    },
     { table: "beginners_course_participants", usernameColumn: "assigned_case_by_username", userIdColumn: "assigned_case_by_user_id" },
     { table: "beginners_course_participants", usernameColumn: "created_by_username", userIdColumn: "created_by_user_id" },
     { table: "beginners_course_lesson_coaches", usernameColumn: "coach_username", userIdColumn: "coach_user_id" },

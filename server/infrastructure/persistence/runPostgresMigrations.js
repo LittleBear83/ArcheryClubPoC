@@ -1119,6 +1119,23 @@ export async function runPostgresMigrations({
       );
     }
 
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS converted_by_username TEXT REFERENCES users(username)
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS converted_at_date TEXT
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS converted_at_time TEXT
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS converted_by_user_id BIGINT REFERENCES users(id)
+    `);
+
     for (const statement of buildUserReferenceSyncStatements()) {
       await client.query(statement.sql, statement.values);
     }

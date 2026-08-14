@@ -820,6 +820,14 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     );
   }
 
+  if (!currentUserProfile) {
+    // A stale auth flag can briefly survive in local storage after the backing
+    // session or profile snapshot has gone away. Hold the authenticated shell
+    // until logout/session validation settles so we never mount protected pages
+    // with a null user profile.
+    return <AppLoadingFallback />;
+  }
+
   return (
     <>
       <Suspense fallback={<AppLoadingFallback />}>

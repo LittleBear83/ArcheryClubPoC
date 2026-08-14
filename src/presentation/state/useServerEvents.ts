@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   connectServerEvents,
@@ -110,208 +110,121 @@ export function useServerEvents({
 }) {
   const queryClient = useQueryClient();
   const canUseServerEvents = enabled && Boolean(actorUsername);
-
-  const invalidateAnnouncementQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["announcements", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["active-announcements", actorUsername],
-    });
-  };
-
-  const invalidateCalendarQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["events", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["coaching-sessions", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["beginners-course-calendar"],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["home-activity", actorUsername],
-    });
-  };
-
-  const invalidateApprovalsQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["approvals", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["committee-approval-summary", actorUsername],
-    });
-  };
-
-  const invalidateRoleQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["roles", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["profile-options", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["loan-bow-options", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["committee-roles", actorUsername],
-    });
-  };
-
-  const invalidateCommitteeQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["committee-roles", actorUsername],
-    });
-  };
-
-  const invalidateMemberQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["profile-options", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["loan-bow-options", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["loan-bow-profile"],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["committee-roles", actorUsername],
-    });
-  };
-
-  const invalidateEquipmentQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["equipment-dashboard", actorUsername],
-    });
-  };
-
-  const invalidateBeginnersQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["beginners-courses-dashboard", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["have-a-go-sessions-dashboard", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["committee-approval-summary", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["beginners-course-calendar"],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["home-activity", actorUsername],
-    });
-  };
-
-  const invalidateTournamentQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["admin-tournament-warnings", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["home-activity", actorUsername],
-    });
-  };
-
-  const invalidateRangeMemberQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["range-members"],
-    });
-  };
-
-  const invalidateLostArrowQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["lost-arrows", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["lost-arrow-members", actorUsername],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["my-lost-arrow-notices", actorUsername],
-    });
-  };
-
-  const invalidateOutdoorTableQueries = () => {
-    void queryClient.invalidateQueries({
-      queryKey: ["outdoor-table"],
-    });
-    void queryClient.invalidateQueries({
-      queryKey: ["outdoor-table-members", actorUsername],
-    });
-  };
-
   const eventInvalidators = useMemo(() => {
+    const invalidateQueries = (queryKeys: readonly unknown[][]) => {
+      for (const queryKey of queryKeys) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
+    };
+
     return [
       {
         event: "announcements.updated",
-        invalidate: invalidateAnnouncementQueries,
+        invalidate: () =>
+          invalidateQueries([
+            ["announcements", actorUsername],
+            ["active-announcements", actorUsername],
+          ]),
       },
       {
         event: "calendar.updated",
-        invalidate: invalidateCalendarQueries,
+        invalidate: () =>
+          invalidateQueries([
+            ["events", actorUsername],
+            ["coaching-sessions", actorUsername],
+            ["beginners-course-calendar"],
+            ["home-activity", actorUsername],
+          ]),
       },
       {
         event: "approvals.updated",
-        invalidate: invalidateApprovalsQueries,
+        invalidate: () =>
+          invalidateQueries([
+            ["approvals", actorUsername],
+            ["committee-approval-summary", actorUsername],
+          ]),
       },
       {
         event: "roles.updated",
-        invalidate: invalidateRoleQueries,
+        invalidate: () =>
+          invalidateQueries([
+            ["roles", actorUsername],
+            ["profile-options", actorUsername],
+            ["loan-bow-options", actorUsername],
+            ["committee-roles", actorUsername],
+          ]),
       },
       {
         event: "committee.updated",
-        invalidate: invalidateCommitteeQueries,
+        invalidate: () => invalidateQueries([["committee-roles", actorUsername]]),
       },
       {
         event: "members.updated",
-        invalidate: invalidateMemberQueries,
+        invalidate: () =>
+          invalidateQueries([
+            ["profile-options", actorUsername],
+            ["loan-bow-options", actorUsername],
+            ["loan-bow-profile"],
+            ["committee-roles", actorUsername],
+          ]),
       },
       {
         event: "equipment.updated",
-        invalidate: invalidateEquipmentQueries,
+        invalidate: () =>
+          invalidateQueries([["equipment-dashboard", actorUsername]]),
       },
       {
         event: "beginners.updated",
-        invalidate: invalidateBeginnersQueries,
+        invalidate: () =>
+          invalidateQueries([
+            ["beginners-courses-dashboard", actorUsername],
+            ["have-a-go-sessions-dashboard", actorUsername],
+            ["taster-sessions-dashboard", actorUsername],
+            ["committee-approval-summary", actorUsername],
+            ["beginners-course-calendar"],
+            ["home-activity", actorUsername],
+          ]),
       },
       {
         event: "tournaments.updated",
-        invalidate: invalidateTournamentQueries,
+        invalidate: () =>
+          invalidateQueries([
+            ["admin-tournament-warnings", actorUsername],
+            ["home-activity", actorUsername],
+          ]),
       },
       {
         event: "range-members.updated",
-        invalidate: invalidateRangeMemberQueries,
+        invalidate: () => invalidateQueries([["range-members"]]),
       },
       {
         event: "lost-found.updated",
-        invalidate: invalidateLostArrowQueries,
+        invalidate: () =>
+          invalidateQueries([
+            ["lost-arrows", actorUsername],
+            ["lost-arrow-members", actorUsername],
+            ["my-lost-arrow-notices", actorUsername],
+          ]),
       },
       {
         event: "outdoor-table.updated",
-        invalidate: invalidateOutdoorTableQueries,
+        invalidate: () =>
+          invalidateQueries([
+            ["outdoor-table"],
+            ["outdoor-table-members", actorUsername],
+          ]),
       },
     ];
-  }, [
-    invalidateAnnouncementQueries,
-    invalidateApprovalsQueries,
-    invalidateBeginnersQueries,
-    invalidateCalendarQueries,
-    invalidateCommitteeQueries,
-    invalidateEquipmentQueries,
-    invalidateLostArrowQueries,
-    invalidateMemberQueries,
-    invalidateOutdoorTableQueries,
-    invalidateRangeMemberQueries,
-    invalidateRoleQueries,
-    invalidateTournamentQueries,
-  ]);
+  }, [actorUsername, queryClient]);
+
+  const handleFallbackPolling = useCallback(() => {
+    for (const { invalidate } of eventInvalidators) {
+      invalidate();
+    }
+  }, [eventInvalidators]);
 
   useSseFallbackPolling({
-    callback: () => {
-      for (const { invalidate } of eventInvalidators) {
-        invalidate();
-      }
-    },
+    callback: handleFallbackPolling,
     enabled: canUseServerEvents,
     source: "authenticated-shell",
   });

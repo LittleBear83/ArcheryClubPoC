@@ -59,6 +59,7 @@ export function listOutdoorTableDashboard(actor: unknown, seasonYear: number) {
     success: true;
     seasonYear: number;
     availableYears?: number[];
+    goldenRecordsFetchedAt?: string;
     rows?: OutdoorTableEntry[];
   }>(`/api/outdoor-table?year=${seasonYear}`, {
     headers: buildActorHeaders(actor),

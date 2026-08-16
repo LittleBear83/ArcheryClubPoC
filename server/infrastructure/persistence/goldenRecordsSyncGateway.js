@@ -53,10 +53,20 @@ function createSqliteGoldenRecordsSyncGateway(db) {
       synced_at_time = excluded.synced_at_time,
       updated_by_username = excluded.updated_by_username
   `);
+  const findLatestFetchedAtStatement = db.prepare(`
+    SELECT fetched_at
+    FROM golden_records_member_sync
+    WHERE fetched_at IS NOT NULL AND TRIM(fetched_at) <> ''
+    ORDER BY fetched_at DESC
+    LIMIT 1
+  `);
 
   return {
     async findByUsername(username) {
       return normalizeGoldenRecordsSnapshotRow(findByUsernameStatement.get(username));
+    },
+    async findLatestFetchedAt() {
+      return String(findLatestFetchedAtStatement.get()?.fetched_at ?? "").trim();
     },
     async upsertSnapshot({
       fetchedAt,
@@ -92,6 +102,19 @@ function createPostgresGoldenRecordsSyncGateway(pool) {
       );
 
       return normalizeGoldenRecordsSnapshotRow(result.rows[0] ?? null);
+    },
+    async findLatestFetchedAt() {
+      const result = await pool.query(
+        `
+          SELECT fetched_at
+          FROM golden_records_member_sync
+          WHERE fetched_at IS NOT NULL AND BTRIM(fetched_at) <> ''
+          ORDER BY fetched_at DESC
+          LIMIT 1
+        `,
+      );
+
+      return String(result.rows[0]?.fetched_at ?? "").trim();
     },
     async upsertSnapshot({
       fetchedAt,

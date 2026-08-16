@@ -3,6 +3,7 @@ import "./LoginPage.css";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Button } from "../components/Button";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { getCurrentMobileInstallContext } from "../../utils/mobileInstall";
 import {
   connectPublicServerEvents,
   disconnectPublicServerEvents,
@@ -15,11 +16,32 @@ const ENABLE_RFID_SIMULATOR =
 
 export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
   const isMobile = useIsMobile();
+  const installContext = getCurrentMobileInstallContext();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(initialMessage);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const latestRfidSequenceRef = useRef(0);
+  const showInstallHelp = isMobile && installContext.isIos;
+
+  let installTitle = "";
+  let installMessage = "";
+
+  if (showInstallHelp) {
+    if (installContext.isStandalone) {
+      installTitle = "Home Screen app detected";
+      installMessage =
+        "This copy is already running from the iPhone Home Screen. If an older saved shortcut is failing, delete that shortcut and add the portal again from Safari.";
+    } else if (installContext.isEmbeddedWebView) {
+      installTitle = "Open this in Safari to install";
+      installMessage =
+        "This headless in-app browser cannot show 'Add to Home Screen'. Open the portal in Safari, then use Share > Add to Home Screen. If a bookmark opens here and fails, recreate it from Safari.";
+    } else {
+      installTitle = "Install on iPhone";
+      installMessage =
+        "To add the portal to the Home Screen, open the Safari share menu and choose 'Add to Home Screen'.";
+    }
+  }
 
   const attemptRfidLogin = async (rfidTag) => {
     if (!rfidTag) {
@@ -148,6 +170,13 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
             <p className="login-error login-error-banner" role="alert">
               {error}
             </p>
+          ) : null}
+
+          {showInstallHelp ? (
+            <div className="login-install-help" role="note" aria-live="polite">
+              <p className="login-install-help-title">{installTitle}</p>
+              <p className="login-install-help-copy">{installMessage}</p>
+            </div>
           ) : null}
         </div>
 

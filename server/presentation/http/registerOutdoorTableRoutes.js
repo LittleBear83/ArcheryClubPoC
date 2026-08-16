@@ -230,6 +230,7 @@ export function registerOutdoorTableRoutes({
   app,
   actorHasPermission,
   auditChangeLogger,
+  goldenRecordsSyncGateway,
   getActorUser,
   getUtcTimestampParts,
   memberAuthGateway,
@@ -326,9 +327,10 @@ export function registerOutdoorTableRoutes({
     const requestedYear = normalizeSeasonYear(req.query?.year);
     const currentYear = new Date().getUTCFullYear();
     const seasonYear = requestedYear ?? currentYear;
-    const [rowsRaw, availableYearsRaw] = await Promise.all([
+    const [rowsRaw, availableYearsRaw, goldenRecordsFetchedAt] = await Promise.all([
       outdoorTableGateway.listEntriesByYear(seasonYear),
       outdoorTableGateway.listAvailableYears(),
+      goldenRecordsSyncGateway?.findLatestFetchedAt?.() ?? Promise.resolve(""),
     ]);
     const rows = await applySightMarksFromProfiles(rowsRaw);
     const availableYears = Array.from(
@@ -339,6 +341,7 @@ export function registerOutdoorTableRoutes({
       success: true,
       seasonYear,
       availableYears,
+      goldenRecordsFetchedAt,
       rows,
     });
   });

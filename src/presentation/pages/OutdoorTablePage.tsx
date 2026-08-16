@@ -8,6 +8,7 @@ import {
   triggerGoldenRecordsOutdoorTableSync,
 } from "../../api/outdoorTableApi";
 import type { UserProfile } from "../../types/app";
+import { formatDateTime } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
 import {
   OUTDOOR_252_COLUMNS,
@@ -63,7 +64,6 @@ export function OutdoorTablePage({
     "manage_members",
   );
   const canRunGoldenRecordsSync = [
-    "records-officer",
     "admin",
     "developer",
   ].includes(actorRole);
@@ -158,6 +158,15 @@ export function OutdoorTablePage({
       (left, right) => right - left,
     );
   }, [dashboardQuery.data?.availableYears, selectedYear]);
+  const goldenRecordsSyncInfo = useMemo(() => {
+    const fetchedAt = dashboardQuery.data?.goldenRecordsFetchedAt ?? "";
+
+    if (!fetchedAt) {
+      return "Golden Records data has not been synced yet.";
+    }
+
+    return `Golden Records data last synced on ${formatDateTime(fetchedAt)}.`;
+  }, [dashboardQuery.data?.goldenRecordsFetchedAt]);
 
   const handleYearChange = (event: ChangeEvent<HTMLSelectElement>) => {
     const nextYear = Number.parseInt(event.target.value, 10);
@@ -202,6 +211,7 @@ export function OutdoorTablePage({
 
       <StatusMessagePanel
         error=""
+        info={goldenRecordsSyncInfo}
         loading={dashboardQuery.isLoading}
         loadingLabel="Loading outdoor table..."
         success=""

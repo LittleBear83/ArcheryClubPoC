@@ -2,10 +2,9 @@ import { createGoldenRecordsHttpClient } from "./goldenRecordsHttpClient.js";
 
 const DEFAULT_CACHE_TTL_MS = 60_000;
 const DEFAULT_MEMBER_LIST_CACHE_TTL_MS = 10 * 60_000;
-const DEFAULT_PAGE_SIZES = [250, 100, 50, 25];
-const DEFAULT_MAX_PAGES = 20;
+const DEFAULT_PAGE_SIZE = 1000;
+const DEFAULT_MAX_PAGES = 100;
 const MIN_REQUEST_GAP_MS = 1_100;
-const DEFAULT_ACHIEVEMENT_PAGE_SIZE = 100;
 
 function mapGoldenRecordsBowClassToDiscipline(bowClass) {
   switch (String(bowClass ?? "").trim().toLowerCase()) {
@@ -345,64 +344,58 @@ export function createGoldenRecordsCurrentHandicapService({
   }
 
   async function listMembers() {
-    let lastError = null;
-
-    for (const pageSize of DEFAULT_PAGE_SIZES) {
-      try {
-        return await listMembersWithPageSize(pageSize);
-      } catch (error) {
-        lastError = error;
-      }
-    }
-
-    throw lastError ?? new Error("Golden Records could not load members.");
+    return listMembersWithPageSize(DEFAULT_PAGE_SIZE);
   }
 
-  async function getCurrentHandicapsByMemberId(memberId) {
-    await waitForQuotaWindow();
-    const result = await client.getJson("/api/currenthandicaps", {
-      id: memberId,
-      pageNumber: 1,
-      pageSize: 20,
-    });
+  async function listPagedRows(path, query, buildErrorMessage) {
+    const rows = [];
 
-    if (!result.ok) {
-      throw new Error(
-        `Golden Records returned ${result.status} while loading current handicaps.`,
-      );
-    }
-
-    return (Array.isArray(result.body) ? result.body : []).map(normalizeHandicapRow);
-  }
-
-  async function getAchievementsByMemberId(memberId) {
-    const achievementRows = [];
-    const pageSize = DEFAULT_ACHIEVEMENT_PAGE_SIZE;
-    let pageNumber = 1;
-
-    while (true) {
+    for (let pageNumber = 1; pageNumber <= DEFAULT_MAX_PAGES; pageNumber += 1) {
       await waitForQuotaWindow();
-      const result = await client.getJson("/api/achievements", {
-        filter_id: memberId,
+      const result = await client.getJson(path, {
+        ...query,
         pageNumber,
-        pageSize,
+        pageSize: DEFAULT_PAGE_SIZE,
       });
 
       if (!result.ok) {
-        throw new Error(
-          `Golden Records returned ${result.status} while loading achievements.`,
-        );
+        throw new Error(buildErrorMessage(result.status));
       }
 
       const pageRows = Array.isArray(result.body) ? result.body : [];
-      achievementRows.push(...pageRows);
 
-      if (pageRows.length < pageSize) {
+      if (pageRows.length === 0) {
         break;
       }
 
-      pageNumber += 1;
+      rows.push(...pageRows);
+
+      if (pageRows.length < DEFAULT_PAGE_SIZE) {
+        break;
+      }
     }
+
+    return rows;
+  }
+
+  async function getCurrentHandicapsByMemberId(memberId) {
+    const rows = await listPagedRows(
+      "/api/currenthandicaps",
+      { id: memberId },
+      (status) =>
+        `Golden Records returned ${status} while loading current handicaps.`,
+    );
+
+    return rows.map(normalizeHandicapRow);
+  }
+
+  async function getAchievementsByMemberId(memberId) {
+    const achievementRows = await listPagedRows(
+      "/api/achievements",
+      { filter_id: memberId },
+      (status) =>
+        `Golden Records returned ${status} while loading achievements.`,
+    );
 
     return achievementRows
       .map(normalizeAchievementRow)
@@ -411,20 +404,14 @@ export function createGoldenRecordsCurrentHandicapService({
   }
 
   async function getCurrentClassificationsByMemberId(memberId) {
-    await waitForQuotaWindow();
-    const result = await client.getJson("/api/currentclassifications", {
-      id: memberId,
-      pageNumber: 1,
-      pageSize: 50,
-    });
+    const rows = await listPagedRows(
+      "/api/currentclassifications",
+      { id: memberId },
+      (status) =>
+        `Golden Records returned ${status} while loading current classifications.`,
+    );
 
-    if (!result.ok) {
-      throw new Error(
-        `Golden Records returned ${result.status} while loading current classifications.`,
-      );
-    }
-
-    return (Array.isArray(result.body) ? result.body : [])
+    return rows
       .map(normalizeClassificationRow)
       .filter((entry) => entry.memberId === memberId)
       .sort((left, right) => right.achieved.localeCompare(left.achieved));

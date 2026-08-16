@@ -259,7 +259,21 @@ export function registerAdminMemberRoutes({
     ["252 white", "award25220"],
     ["252 black", "award25230"],
   ]);
+  const GOLDEN_RECORDS_252_SEQUENCE_BY_ALIAS = new Map([
+    ["252 white", 1],
+    ["252 black", 1],
+  ]);
+  const GOLDEN_RECORDS_252_DISTANCE_BY_AWARD_KEY = new Map([
+    ["award25220", 20],
+    ["award25230", 30],
+    ["award25240", 40],
+    ["award25250", 50],
+    ["award25260", 60],
+    ["award25280", 80],
+    ["award252100", 100],
+  ]);
   const GOLDEN_RECORDS_252_ACHIEVEMENT_DISTANCE_PATTERN = /^252@\s*(20|30|40|50|60|80|100)\s*yds\/[123]$/i;
+  const GOLDEN_RECORDS_252_ACHIEVEMENT_SEQUENCE_PATTERN = /^252@\s*(20|30|40|50|60|80|100)\s*yds\/([123])$/i;
   const GOLDEN_RECORDS_252_SIGN_OFF_FIELD_BY_AWARD_KEY = new Map([
     ["award25220", "award25220SignOffDates"],
     ["award25230", "award25230SignOffDates"],
@@ -332,6 +346,73 @@ export function registerAdminMemberRoutes({
     return [...new Set(dates)].sort((left, right) => left.localeCompare(right)).slice(0, 3);
   }
 
+  function normalizeGoldenRecords252Achievement(achievement) {
+    const achievementName = String(achievement?.achievement ?? "").trim();
+    const normalizedAchievementName = achievementName.toLowerCase();
+    const roundName = String(achievement?.round ?? "").trim();
+    const achievedDate = normalizeGoldenRecordsDate(achievement?.achieved);
+    const awardKey = getGoldenRecords252AwardKey({
+      achievementName,
+      roundName,
+    });
+
+    if (!awardKey || !achievedDate) {
+      return null;
+    }
+
+    const sequenceMatch = achievementName.match(
+      GOLDEN_RECORDS_252_ACHIEVEMENT_SEQUENCE_PATTERN,
+    );
+    const sequenceNumber = sequenceMatch
+      ? Number.parseInt(sequenceMatch[2], 10)
+      : (GOLDEN_RECORDS_252_SEQUENCE_BY_ALIAS.get(normalizedAchievementName) ?? null);
+    const distanceYards =
+      GOLDEN_RECORDS_252_DISTANCE_BY_AWARD_KEY.get(awardKey) ?? null;
+
+    return {
+      achievedDate,
+      awardKey,
+      distanceYards,
+      sequenceNumber,
+      sourceAchievementId: String(
+        achievement?.achievementId ?? achievement?.achievement_id ?? "",
+      ).trim(),
+      sourceLabel: achievementName,
+    };
+  }
+
+  function normalizeGoldenRecords252Achievements(achievements = []) {
+    const normalizedEntries = achievements
+      .map((achievement) => normalizeGoldenRecords252Achievement(achievement))
+      .filter(Boolean);
+
+    normalizedEntries.sort((left, right) => {
+      const byDistance = (left.distanceYards ?? 0) - (right.distanceYards ?? 0);
+
+      if (byDistance !== 0) {
+        return byDistance;
+      }
+
+      const leftSequence = left.sequenceNumber ?? Number.MAX_SAFE_INTEGER;
+      const rightSequence = right.sequenceNumber ?? Number.MAX_SAFE_INTEGER;
+      const bySequence = leftSequence - rightSequence;
+
+      if (bySequence !== 0) {
+        return bySequence;
+      }
+
+      const byDate = left.achievedDate.localeCompare(right.achievedDate);
+
+      if (byDate !== 0) {
+        return byDate;
+      }
+
+      return left.sourceLabel.localeCompare(right.sourceLabel);
+    });
+
+    return normalizedEntries;
+  }
+
   function buildGoldenRecordsManagedOutdoorFieldReset(entry) {
     let nextEntry = { ...entry };
 
@@ -351,11 +432,9 @@ export function registerAdminMemberRoutes({
   function applyGoldenRecordsAchievementsToEntry(entry, achievements = []) {
     let nextEntry = { ...entry };
     let hasChanges = false;
-    const signOffDatesByAwardKey = new Map();
 
     for (const achievement of achievements) {
       const achievementName = String(achievement.achievement ?? "").trim();
-      const roundName = String(achievement.round ?? "").trim();
       const achievedDate = normalizeGoldenRecordsDate(achievement.achieved);
       const mappedAchievement = GOLDEN_RECORDS_OUTDOOR_ACHIEVEMENT_MAPPINGS.find(
         (candidate) =>
@@ -377,18 +456,19 @@ export function registerAdminMemberRoutes({
 
         continue;
       }
-
-      const awardKey = getGoldenRecords252AwardKey({
-        achievementName,
-        roundName,
-      });
-
-      if (awardKey && achievedDate) {
-        const currentDates = signOffDatesByAwardKey.get(awardKey) ?? [];
-        currentDates.push(achievedDate);
-        signOffDatesByAwardKey.set(awardKey, currentDates);
-      }
     }
+
+    const normalized252Achievements =
+      normalizeGoldenRecords252Achievements(achievements);
+    const signOffDatesByAwardKey = normalized252Achievements.reduce(
+      (next, achievement) => {
+        const currentDates = next.get(achievement.awardKey) ?? [];
+        currentDates.push(achievement.achievedDate);
+        next.set(achievement.awardKey, currentDates);
+        return next;
+      },
+      new Map(),
+    );
 
     for (const [awardKey, dates] of signOffDatesByAwardKey.entries()) {
       const signOffKey = GOLDEN_RECORDS_252_SIGN_OFF_FIELD_BY_AWARD_KEY.get(awardKey);
@@ -1704,7 +1784,7 @@ export function registerAdminMemberRoutes({
 
   app.post("/api/golden-records/sync-outdoor-table", async (req, res) => {
     const actor = getActorUser(req);
-    const allowedRoleKeys = new Set(["records-officer", "admin", "developer"]);
+    const allowedRoleKeys = new Set(["admin", "developer"]);
 
     if (!actor) {
       res.status(401).json({
@@ -1718,7 +1798,7 @@ export function registerAdminMemberRoutes({
       res.status(403).json({
         success: false,
         message:
-          "Only the records officer, admins, and developers can run the Golden Records sync.",
+          "Only admins and developers can run the Golden Records sync.",
       });
       return;
     }

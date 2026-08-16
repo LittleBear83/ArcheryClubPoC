@@ -363,3 +363,82 @@ test("Golden Records sync treats 252 White and 252 Black as 20yd and 30yd awards
     "2026-06-15",
   ]);
 });
+
+test("Golden Records sync normalizes mixed 252 aliases and numbered awards into canonical progress", async () => {
+  const snapshot = {
+    achievements: [
+      {
+        achievement: "252@20Yds/3",
+        achieved: "2026-06-25T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+      {
+        achievement: "252 Black",
+        achieved: "2026-03-01T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+      {
+        achievement: "252 White",
+        achieved: "2025-04-23T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+      {
+        achievement: "252@20Yds/2",
+        achieved: "2025-06-25T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+      {
+        achievement: "252@30Yds/3",
+        achieved: "2026-03-08T09:00:00Z",
+        bowClass: "Recurve",
+        memberId: "gr-123",
+        round: "",
+      },
+    ],
+    candidateMatches: [],
+    classifications: [],
+    enabled: true,
+    fetchedAt: "2026-08-16T15:19:49.770Z",
+    handicaps: [
+      {
+        bowClass: "Recurve",
+        handicap: 71,
+        type: "Outdoor",
+      },
+    ],
+    matchedMemberId: "gr-123",
+    matchedMemberName: "Robin Archer",
+    matchSource: "matched-id",
+  };
+  const { createdEntries, service } = buildTestService({ snapshot });
+
+  await service.syncMember({
+    archery_gb_membership_number: "123456",
+    first_name: "Robin",
+    gr_id: "gr-123",
+    surname: "Archer",
+    username: "robin",
+  });
+
+  assert.equal(createdEntries.length, 1);
+  assert.equal(createdEntries[0].award25220, true);
+  assert.equal(createdEntries[0].award25230, false);
+  assert.deepEqual(createdEntries[0].award25220SignOffDates, [
+    "2025-04-23",
+    "2025-06-25",
+    "2026-06-25",
+  ]);
+  assert.deepEqual(createdEntries[0].award25230SignOffDates, [
+    "2026-03-01",
+    "2026-03-08",
+    "",
+  ]);
+});

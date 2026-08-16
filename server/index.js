@@ -4091,6 +4091,7 @@ registerOutdoorTableRoutes({
   app,
   actorHasPermission,
   auditChangeLogger,
+  goldenRecordsSyncGateway,
   getActorUser,
   getUtcTimestampParts,
   memberAuthGateway,

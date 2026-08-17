@@ -1,0 +1,520 @@
+{
+    "success":  true,
+    "editableProfile":  {
+                            "userId":  1,
+                            "username":  "Cfleetham",
+                            "firstName":  "Craig",
+                            "surname":  "Fleetham",
+                            "goldenRecordsId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                            "archeryGbMembershipNumber":  "",
+                            "emailAddress":  "",
+                            "password":  "",
+                            "rfidTag":  "7673CF3D",
+                            "activeMember":  true,
+                            "affiliateMember":  false,
+                            "juniorMember":  false,
+                            "membershipFeesDue":  "2026-12-31",
+                            "coachingVolunteer":  true,
+                            "userType":  "developer",
+                            "membershipStatus":  "member",
+                            "programmeType":  "none",
+                            "disciplines":  [
+                                                "Compound Bow",
+                                                "Recurve Bow"
+                                            ],
+                            "loanBow":  {
+                                            "hasLoanBow":  true,
+                                            "dateLoaned":  "2026-04-01",
+                                            "returnedDate":  "2026-04-01",
+                                            "riserNumber":  "R-12",
+                                            "limbsNumber":  "L-34",
+                                            "arrowCount":  6,
+                                            "returnedRiser":  true,
+                                            "returnedLimbs":  true,
+                                            "returnedArrows":  true,
+                                            "quiver":  false,
+                                            "returnedQuiver":  false,
+                                            "fingerTab":  true,
+                                            "returnedFingerTab":  true,
+                                            "string":  true,
+                                            "returnedString":  true,
+                                            "armGuard":  true,
+                                            "returnedArmGuard":  true,
+                                            "chestGuard":  false,
+                                            "returnedChestGuard":  false,
+                                            "sight":  true,
+                                            "returnedSight":  true,
+                                            "longRod":  true,
+                                            "returnedLongRod":  true,
+                                            "pressureButton":  true,
+                                            "returnedPressureButton":  true
+                                        },
+                            "distanceSignOffs":  [
+                                                     {
+                                                         "discipline":  "Recurve Bow",
+                                                         "distances":  [
+                                                                           {
+                                                                               "distanceYards":  20,
+                                                                               "signOff":  {
+                                                                                               "username":  "Cfleetham",
+                                                                                               "discipline":  "Recurve Bow",
+                                                                                               "distanceYards":  20,
+                                                                                               "source":  "golden-records",
+                                                                                               "signedOffByUsername":  "Cfleetham",
+                                                                                               "signedOffByName":  "Craig Fleetham",
+                                                                                               "signedOffAt":  "2024-09-07"
+                                                                                           }
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  30,
+                                                                               "signOff":  {
+                                                                                               "username":  "Cfleetham",
+                                                                                               "discipline":  "Recurve Bow",
+                                                                                               "distanceYards":  30,
+                                                                                               "source":  "golden-records",
+                                                                                               "signedOffByUsername":  "Cfleetham",
+                                                                                               "signedOffByName":  "Craig Fleetham",
+                                                                                               "signedOffAt":  "2025-06-25"
+                                                                                           }
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  40,
+                                                                               "signOff":  {
+                                                                                               "username":  "Cfleetham",
+                                                                                               "discipline":  "Recurve Bow",
+                                                                                               "distanceYards":  40,
+                                                                                               "source":  "golden-records",
+                                                                                               "signedOffByUsername":  "Cfleetham",
+                                                                                               "signedOffByName":  "Craig Fleetham",
+                                                                                               "signedOffAt":  "2026-03-08"
+                                                                                           }
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  50,
+                                                                               "signOff":  {
+                                                                                               "username":  "Cfleetham",
+                                                                                               "discipline":  "Recurve Bow",
+                                                                                               "distanceYards":  50,
+                                                                                               "source":  "golden-records",
+                                                                                               "signedOffByUsername":  "Cfleetham",
+                                                                                               "signedOffByName":  "Craig Fleetham",
+                                                                                               "signedOffAt":  "2026-08-14"
+                                                                                           }
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  60,
+                                                                               "signOff":  null
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  80,
+                                                                               "signOff":  null
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  100,
+                                                                               "signOff":  null
+                                                                           }
+                                                                       ]
+                                                     },
+                                                     {
+                                                         "discipline":  "Compound Bow",
+                                                         "distances":  [
+                                                                           {
+                                                                               "distanceYards":  20,
+                                                                               "signOff":  {
+                                                                                               "username":  "Cfleetham",
+                                                                                               "discipline":  "Compound Bow",
+                                                                                               "distanceYards":  20,
+                                                                                               "source":  "golden-records",
+                                                                                               "signedOffByUsername":  "Cfleetham",
+                                                                                               "signedOffByName":  "Craig Fleetham",
+                                                                                               "signedOffAt":  "2026-05-27"
+                                                                                           }
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  30,
+                                                                               "signOff":  {
+                                                                                               "username":  "Cfleetham",
+                                                                                               "discipline":  "Compound Bow",
+                                                                                               "distanceYards":  30,
+                                                                                               "source":  "golden-records",
+                                                                                               "signedOffByUsername":  "Cfleetham",
+                                                                                               "signedOffByName":  "Craig Fleetham",
+                                                                                               "signedOffAt":  "2026-06-20"
+                                                                                           }
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  40,
+                                                                               "signOff":  {
+                                                                                               "username":  "Cfleetham",
+                                                                                               "discipline":  "Compound Bow",
+                                                                                               "distanceYards":  40,
+                                                                                               "source":  "golden-records",
+                                                                                               "signedOffByUsername":  "Cfleetham",
+                                                                                               "signedOffByName":  "Craig Fleetham",
+                                                                                               "signedOffAt":  "2026-07-08"
+                                                                                           }
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  50,
+                                                                               "signOff":  null
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  60,
+                                                                               "signOff":  null
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  80,
+                                                                               "signOff":  null
+                                                                           },
+                                                                           {
+                                                                               "distanceYards":  100,
+                                                                               "signOff":  null
+                                                                           }
+                                                                       ]
+                                                     }
+                                                 ]
+                        },
+    "goldenRecords":  {
+                          "achievements":  [
+                                               {
+                                                   "achieved":  "2026-08-14T00:00:00",
+                                                   "achievement":  "sight mark 50yds",
+                                                   "achievementId":  "3afbf66d-4111-4c98-a219-ed9ccac9c0a4",
+                                                   "ageGroup":  "",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  ""
+                                               },
+                                               {
+                                                   "achieved":  "2026-07-08T00:00:00",
+                                                   "achievement":  "sight mark 40yds",
+                                                   "achievementId":  "c7cba5c8-4d83-475f-be43-fe1f34890566",
+                                                   "ageGroup":  "",
+                                                   "bowClass":  "Compound",
+                                                   "discipline":  "Compound Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  ""
+                                               },
+                                               {
+                                                   "achieved":  "2026-07-02T00:00:00",
+                                                   "achievement":  "252 Black",
+                                                   "achievementId":  "0a316eb0-3f40-4ecb-b11d-fe06c0b1b068",
+                                                   "ageGroup":  "Men",
+                                                   "bowClass":  "Compound",
+                                                   "discipline":  "Compound Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  "252 - 30 yds"
+                                               },
+                                               {
+                                                   "achieved":  "2026-06-20T00:00:00",
+                                                   "achievement":  "sight mark 30yds",
+                                                   "achievementId":  "1553560a-8d44-4e51-9b84-9c6845d8dd0c",
+                                                   "ageGroup":  "",
+                                                   "bowClass":  "Compound",
+                                                   "discipline":  "Compound Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  ""
+                                               },
+                                               {
+                                                   "achieved":  "2026-05-27T00:00:00",
+                                                   "achievement":  "sight mark 20yds",
+                                                   "achievementId":  "97956b36-bc8a-46d5-a4b0-7435327d9c86",
+                                                   "ageGroup":  "",
+                                                   "bowClass":  "Compound",
+                                                   "discipline":  "Compound Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  ""
+                                               },
+                                               {
+                                                   "achieved":  "2026-05-27T00:00:00",
+                                                   "achievement":  "252 White",
+                                                   "achievementId":  "45a7156e-9cc9-4787-9a89-a8aa5042f96b",
+                                                   "ageGroup":  "Men",
+                                                   "bowClass":  "Compound",
+                                                   "discipline":  "Compound Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  "252 - 20 yds"
+                                               },
+                                               {
+                                                   "achieved":  "2026-03-08T00:00:00",
+                                                   "achievement":  "sight mark 40yds",
+                                                   "achievementId":  "d84724c3-6642-44ac-943c-fd60aa024e16",
+                                                   "ageGroup":  "",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  ""
+                                               },
+                                               {
+                                                   "achieved":  "2026-03-08T00:00:00",
+                                                   "achievement":  "252@30Yds/3",
+                                                   "achievementId":  "5f15138b-8ad9-4371-8ea6-de1620ad5530",
+                                                   "ageGroup":  "",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  ""
+                                               },
+                                               {
+                                                   "achieved":  "2026-03-01T00:00:00",
+                                                   "achievement":  "252 Black",
+                                                   "achievementId":  "b42781b8-8331-4ce4-bd1d-193894b36b08",
+                                                   "ageGroup":  "Men",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  "252 - 30 yds"
+                                               },
+                                               {
+                                                   "achieved":  "2025-06-25T00:00:00",
+                                                   "achievement":  "252@20Yds/3",
+                                                   "achievementId":  "8e4ecb55-1d08-4bf3-9897-89d78b8262d2",
+                                                   "ageGroup":  "",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  ""
+                                               },
+                                               {
+                                                   "achieved":  "2025-06-25T00:00:00",
+                                                   "achievement":  "sight mark 30yds",
+                                                   "achievementId":  "13c5af19-0234-4d4d-9ddb-12c87ecbc8da",
+                                                   "ageGroup":  "",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  ""
+                                               },
+                                               {
+                                                   "achieved":  "2025-04-23T00:00:00",
+                                                   "achievement":  "252@20Yds/2",
+                                                   "achievementId":  "4e31537f-a838-4119-88f9-805e46d91886",
+                                                   "ageGroup":  "Men",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  "252 - 20 yds"
+                                               },
+                                               {
+                                                   "achieved":  "2025-03-20T00:00:00",
+                                                   "achievement":  "Portsmouth 375",
+                                                   "achievementId":  "b2f05584-9536-41a5-a8e6-dbe9fb664635",
+                                                   "ageGroup":  "Men",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  "Portsmouth"
+                                               },
+                                               {
+                                                   "achieved":  "2025-03-20T00:00:00",
+                                                   "achievement":  "Portsmouth 400",
+                                                   "achievementId":  "2f34ef54-e64e-4546-9038-91f7a54273e6",
+                                                   "ageGroup":  "Men",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  "Portsmouth"
+                                               },
+                                               {
+                                                   "achieved":  "2025-02-05T00:00:00",
+                                                   "achievement":  "Portsmouth 350",
+                                                   "achievementId":  "7468d7f8-5f76-4d3f-892c-b767fa14156e",
+                                                   "ageGroup":  "Men",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  "Portsmouth"
+                                               },
+                                               {
+                                                   "achieved":  "2024-11-27T00:00:00",
+                                                   "achievement":  "Portsmouth 325",
+                                                   "achievementId":  "503d8658-ebab-4b8c-a4d3-cc2cffd20b51",
+                                                   "ageGroup":  "Men",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  "Portsmouth"
+                                               },
+                                               {
+                                                   "achieved":  "2024-09-24T00:00:00",
+                                                   "achievement":  "Portsmouth 300",
+                                                   "achievementId":  "6aed6bd2-9f23-4af1-be9e-b73c2508abb8",
+                                                   "ageGroup":  "Men",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  "Portsmouth"
+                                               },
+                                               {
+                                                   "achieved":  "2024-09-07T00:00:00",
+                                                   "achievement":  "sight mark 20yds",
+                                                   "achievementId":  "a296e5fb-4148-48c1-aca7-b0c695e0dee7",
+                                                   "ageGroup":  "",
+                                                   "bowClass":  "Recurve",
+                                                   "discipline":  "Recurve Bow",
+                                                   "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                   "name":  "Fleetham Craig",
+                                                   "round":  ""
+                                               }
+                                           ],
+                          "candidateMatches":  [
+
+                                               ],
+                          "classifications":  [
+                                                  {
+                                                      "achieved":  "2026-07-12T00:00:00",
+                                                      "ageGroup":  "Open",
+                                                      "bowClass":  "Compound",
+                                                      "classification":  "Archer 3rd Class",
+                                                      "classificationId":  "582399a6-198f-4b87-aaf3-e1fc22653dfe",
+                                                      "discipline":  "Compound Bow",
+                                                      "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                      "name":  "Fleetham Craig",
+                                                      "type":  "Outdoor",
+                                                      "updated":  "2026-07-12T00:00:00"
+                                                  }
+                                              ],
+                          "enabled":  true,
+                          "fetchedAt":  "2026-08-16T15:19:49.770Z",
+                          "handicaps":  [
+                                            {
+                                                "achieved":  "2026-07-01T00:00:00",
+                                                "bowClass":  "Recurve",
+                                                "discipline":  "Recurve Bow",
+                                                "handicap":  78,
+                                                "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                "name":  "Fleetham Craig",
+                                                "type":  "indoor",
+                                                "updated":  "2026-06-28T00:00:00"
+                                            },
+                                            {
+                                                "achieved":  "2026-07-08T00:00:00",
+                                                "bowClass":  "Compound",
+                                                "discipline":  "Compound Bow",
+                                                "handicap":  43,
+                                                "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                "name":  "Fleetham Craig",
+                                                "type":  "outdoor",
+                                                "updated":  "2026-07-11T00:00:00"
+                                            },
+                                            {
+                                                "achieved":  "2026-03-01T00:00:00",
+                                                "bowClass":  "Recurve",
+                                                "discipline":  "Recurve Bow",
+                                                "handicap":  71,
+                                                "memberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                                                "name":  "Fleetham Craig",
+                                                "type":  "outdoor",
+                                                "updated":  "2026-03-26T00:00:00"
+                                            }
+                                        ],
+                          "matchedMemberId":  "15aa590f-72af-4d58-8fe7-f2d5ca92f0cc",
+                          "matchedMemberName":  "Fleetham Craig",
+                          "matchSource":  "gr-id"
+                      },
+    "userProfile":  {
+                        "id":  "Cfleetham",
+                        "userId":  1,
+                        "accountType":  "member",
+                        "auth":  {
+                                     "username":  "Cfleetham",
+                                     "rfidEnabled":  true
+                                 },
+                        "personal":  {
+                                         "firstName":  "Craig",
+                                         "surname":  "Fleetham",
+                                         "fullName":  "Craig Fleetham",
+                                         "emailAddress":  "",
+                                         "archeryGbMembershipNumber":  null
+                                     },
+                        "membership":  {
+                                           "role":  "developer",
+                                           "status":  "member",
+                                           "programmeType":  "none",
+                                           "permissions":  [
+                                                               "add_coaching_sessions",
+                                                               "add_decommission_equipment",
+                                                               "add_events",
+                                                               "approve_beginners_courses",
+                                                               "approve_coaching_sessions",
+                                                               "approve_events",
+                                                               "approve_have_a_go_sessions",
+                                                               "assign_equipment",
+                                                               "cancel_events",
+                                                               "delete_roles",
+                                                               "manage_announcements",
+                                                               "manage_beginners_courses",
+                                                               "manage_committee_roles",
+                                                               "manage_equipment_storage_locations",
+                                                               "manage_have_a_go_sessions",
+                                                               "manage_member_disciplines",
+                                                               "manage_members",
+                                                               "manage_range_rules",
+                                                               "manage_roles_permissions",
+                                                               "manage_tournaments",
+                                                               "return_equipment",
+                                                               "send_email",
+                                                               "sign_off_distances",
+                                                               "update_equipment_storage",
+                                                               "view_reports"
+                                                           ],
+                                           "disciplines":  [
+                                                               "Compound Bow",
+                                                               "Recurve Bow"
+                                                           ]
+                                       },
+                        "meta":  {
+                                     "activeMember":  true,
+                                     "affiliateMember":  false,
+                                     "juniorMember":  false,
+                                     "membershipFeesDue":  "2026-12-31",
+                                     "coachingVolunteer":  true
+                                 }
+                    },
+    "userTypes":  [
+                      "associate-member",
+                      "have-a-go",
+                      "admin",
+                      "beginner",
+                      "coach",
+                      "developer",
+                      "general",
+                      "non-member",
+                      "featuredeveloper"
+                  ],
+    "membershipStatuses":  [
+                               "member",
+                               "non-member",
+                               "guest"
+                           ],
+    "programmeTypes":  [
+                           "none",
+                           "beginners",
+                           "have-a-go",
+                           "taster-session"
+                       ],
+    "disciplines":  [
+                        "Long Bow",
+                        "Bare Bow",
+                        "Recurve Bow",
+                        "Compound Bow"
+                    ]
+}

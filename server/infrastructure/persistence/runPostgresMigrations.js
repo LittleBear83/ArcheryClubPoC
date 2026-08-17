@@ -306,6 +306,22 @@ function buildInitialSchemaSql() {
       updated_by_user_id BIGINT REFERENCES users(id)
     );
 
+    CREATE TABLE IF NOT EXISTS golden_records_integration_status (
+      status_key TEXT PRIMARY KEY,
+      status_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS golden_records_lookup_cache (
+      lookup_type TEXT PRIMARY KEY,
+      item_count INTEGER NOT NULL DEFAULT 0,
+      payload_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+      fetched_at TEXT NOT NULL DEFAULT '',
+      synced_at_date TEXT NOT NULL DEFAULT '',
+      synced_at_time TEXT NOT NULL DEFAULT '',
+      updated_by_username TEXT REFERENCES users(username)
+    );
+
     CREATE TABLE IF NOT EXISTS login_events (
       id BIGSERIAL PRIMARY KEY,
       username TEXT NOT NULL REFERENCES users(username),
@@ -405,6 +421,9 @@ function buildInitialSchemaSql() {
       id BIGSERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       tournament_type TEXT NOT NULL,
+      template_key TEXT,
+      draw_date TEXT,
+      round_schedule_json TEXT NOT NULL DEFAULT '[]',
       registration_start_date TEXT NOT NULL,
       registration_end_date TEXT NOT NULL,
       score_submission_start_date TEXT NOT NULL,
@@ -415,6 +434,15 @@ function buildInitialSchemaSql() {
       created_by_user_id BIGINT REFERENCES users(id)
     );
 
+    ALTER TABLE tournaments
+    ADD COLUMN IF NOT EXISTS template_key TEXT;
+
+    ALTER TABLE tournaments
+    ADD COLUMN IF NOT EXISTS draw_date TEXT;
+
+    ALTER TABLE tournaments
+    ADD COLUMN IF NOT EXISTS round_schedule_json TEXT NOT NULL DEFAULT '[]';
+
     CREATE TABLE IF NOT EXISTS tournament_registrations (
       tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
       member_username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
@@ -422,6 +450,89 @@ function buildInitialSchemaSql() {
       registered_at_time TEXT NOT NULL,
       member_user_id BIGINT REFERENCES users(id),
       PRIMARY KEY (tournament_id, member_username)
+    );
+
+    CREATE TABLE IF NOT EXISTS tournament_rounds (
+      tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+      round_number INTEGER NOT NULL,
+      title TEXT NOT NULL,
+      publish_date TEXT,
+      submission_deadline TEXT,
+      status TEXT NOT NULL DEFAULT 'scheduled',
+      PRIMARY KEY (tournament_id, round_number)
+    );
+
+    CREATE TABLE IF NOT EXISTS tournament_matches (
+      tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+      round_number INTEGER NOT NULL,
+      match_number INTEGER NOT NULL,
+      left_member_username TEXT REFERENCES users(username) ON DELETE SET NULL,
+      right_member_username TEXT REFERENCES users(username) ON DELETE SET NULL,
+      left_score INTEGER,
+      right_score INTEGER,
+      winner_username TEXT REFERENCES users(username) ON DELETE SET NULL,
+      submitted_by_username TEXT REFERENCES users(username) ON DELETE SET NULL,
+      submitted_at_date TEXT,
+      submitted_at_time TEXT,
+      confirmed_by_username TEXT REFERENCES users(username) ON DELETE SET NULL,
+      confirmed_at_date TEXT,
+      confirmed_at_time TEXT,
+      disputed_by_username TEXT REFERENCES users(username) ON DELETE SET NULL,
+      disputed_at_date TEXT,
+      disputed_at_time TEXT,
+      dispute_reason TEXT,
+      status TEXT NOT NULL DEFAULT 'scheduled',
+      PRIMARY KEY (tournament_id, round_number, match_number)
+    );
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS submitted_by_username TEXT REFERENCES users(username) ON DELETE SET NULL;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS submitted_at_date TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS submitted_at_time TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS confirmed_by_username TEXT REFERENCES users(username) ON DELETE SET NULL;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS confirmed_at_date TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS confirmed_at_time TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS disputed_by_username TEXT REFERENCES users(username) ON DELETE SET NULL;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS disputed_at_date TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS disputed_at_time TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS dispute_reason TEXT;
+
+    CREATE TABLE IF NOT EXISTS tournament_handicap_tables (
+      id BIGSERIAL PRIMARY KEY,
+      table_key TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      description TEXT,
+      allowance_percent INTEGER,
+      is_editable INTEGER NOT NULL DEFAULT 0,
+      updated_at_date TEXT,
+      updated_at_time TEXT,
+      updated_by_username TEXT REFERENCES users(username)
+    );
+
+    CREATE TABLE IF NOT EXISTS tournament_handicap_table_rows (
+      table_id BIGINT NOT NULL REFERENCES tournament_handicap_tables(id) ON DELETE CASCADE,
+      handicap_value INTEGER NOT NULL,
+      reference_score INTEGER,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (table_id, handicap_value)
     );
 
     CREATE TABLE IF NOT EXISTS tournament_scores (

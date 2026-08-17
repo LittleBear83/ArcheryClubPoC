@@ -26,10 +26,14 @@ import {
   UpdateRoleUseCase,
 } from "../application/usecases/RoleUseCases";
 import {
+  ConfirmTournamentMatchResultUseCase,
   CreateTournamentUseCase,
   DeleteTournamentUseCase,
+  DisputeTournamentMatchResultUseCase,
   ListTournamentsUseCase,
+  OverrideTournamentMatchResultUseCase,
   RegisterForTournamentUseCase,
+  SubmitTournamentMatchResultUseCase,
   SubmitTournamentScoreUseCase,
   UpdateTournamentUseCase,
   WithdrawFromTournamentUseCase,
@@ -127,6 +131,18 @@ export function createAppDependencies() {
       tournamentRepository,
     }),
     withdrawFromTournamentUseCase: new WithdrawFromTournamentUseCase({
+      tournamentRepository,
+    }),
+    submitTournamentMatchResultUseCase: new SubmitTournamentMatchResultUseCase({
+      tournamentRepository,
+    }),
+    confirmTournamentMatchResultUseCase: new ConfirmTournamentMatchResultUseCase({
+      tournamentRepository,
+    }),
+    disputeTournamentMatchResultUseCase: new DisputeTournamentMatchResultUseCase({
+      tournamentRepository,
+    }),
+    overrideTournamentMatchResultUseCase: new OverrideTournamentMatchResultUseCase({
       tournamentRepository,
     }),
     submitTournamentScoreUseCase: new SubmitTournamentScoreUseCase({

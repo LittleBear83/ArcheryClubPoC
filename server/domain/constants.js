@@ -297,6 +297,63 @@ export const TOURNAMENT_TYPE_OPTIONS = [
   { value: "head-to-head", label: "Head-to-head Knockout" },
 ];
 
+export const TOURNAMENT_TEMPLATE_OPTIONS = [
+  {
+    key: "standard-knockout",
+    label: "Standard Knockout",
+    tournamentType: "head-to-head",
+    format: "knockout",
+    roundType: "head-to-head",
+    description:
+      "A reusable head-to-head knockout format with registration, bracket progression, and score submission.",
+    defaults: {
+      registrationMode: "member-self-service",
+      resultWorkflow: "single-submit",
+      handicapAllowancePercent: null,
+      defaultRoundNames: ["Round 1", "Round 2", "Semi-final", "Final"],
+    },
+    capabilities: {
+      supportsCaptainSetupWizard: true,
+      supportsEligibilityRules: false,
+      supportsHandicapAdjustments: false,
+      supportsMatchConfirmation: false,
+      supportsRoundDeadlines: false,
+    },
+  },
+  {
+    key: "captains-sword",
+    label: "Captain's Sword",
+    tournamentType: "head-to-head",
+    format: "knockout",
+    roundType: "portsmouth",
+    description:
+      "Head-to-head Portsmouth knockout with 95% handicap allowances, qualification checks, and captain-managed round deadlines.",
+    defaults: {
+      registrationMode: "captain-managed-with-member-signup",
+      resultWorkflow: "submit-and-confirm",
+      handicapAllowancePercent: 95,
+      defaultRoundNames: [
+        "Round 1",
+        "Quarter-final",
+        "Semi-final",
+        "Final",
+      ],
+    },
+    eligibilityRules: {
+      handicapQualificationRoundsRequired: 3,
+      qualifyingRoundsRequiredPerKnockoutRound: 1,
+      qualifyingRoundDiscipline: "indoor",
+    },
+    capabilities: {
+      supportsCaptainSetupWizard: true,
+      supportsEligibilityRules: true,
+      supportsHandicapAdjustments: true,
+      supportsMatchConfirmation: true,
+      supportsRoundDeadlines: true,
+    },
+  },
+];
+
 export const COMMITTEE_ROLE_SEED = [
   {
     roleKey: "chairman",

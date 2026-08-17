@@ -13,6 +13,7 @@ export function registerTournamentRoutes({
   serverEventBus,
   toUtcDateString,
   tournamentGateway,
+  TOURNAMENT_TEMPLATE_OPTIONS,
   TOURNAMENT_TYPE_OPTIONS,
   writeFileSync,
 }) {
@@ -23,9 +24,148 @@ export function registerTournamentRoutes({
     });
   };
 
+  const findTemplateByKey = (templateKey) =>
+    TOURNAMENT_TEMPLATE_OPTIONS.find((template) => template.key === templateKey) ??
+    null;
+
+  const normalizeAutomaticRoundPlan = ({
+    roundOneStartDate,
+    roundRestDays,
+    roundWindowDays,
+  }) => {
+    const normalizedRoundWindowDays = Number.parseInt(roundWindowDays, 10);
+    const normalizedRoundRestDays = Number.parseInt(roundRestDays, 10);
+
+    if (
+      typeof roundOneStartDate !== "string" ||
+      !roundOneStartDate.trim() ||
+      !Number.isInteger(normalizedRoundWindowDays) ||
+      normalizedRoundWindowDays < 1 ||
+      !Number.isInteger(normalizedRoundRestDays) ||
+      normalizedRoundRestDays < 0
+    ) {
+      return null;
+    }
+
+    return {
+      mode: "automatic",
+      firstRoundStartDate: roundOneStartDate.trim(),
+      roundWindowDays: normalizedRoundWindowDays,
+      roundRestDays: normalizedRoundRestDays,
+    };
+  };
+
+  const parseTournamentMatchId = (value) => {
+    const normalizedValue = String(value ?? "").trim();
+    const match = normalizedValue.match(/^tournament-(\d+)-round-(\d+)-match-(\d+)$/u);
+
+    if (!match) {
+      return null;
+    }
+
+    return {
+      tournamentId: Number.parseInt(match[1], 10),
+      roundNumber: Number.parseInt(match[2], 10),
+      matchNumber: Number.parseInt(match[3], 10),
+    };
+  };
+
+  const loadTournamentSnapshot = async (tournament, actorUsername = null) => {
+    const [registrations, rounds, scores, matches] = await Promise.all([
+      tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
+      tournamentGateway.listTournamentRoundsByTournamentId(tournament.id),
+      tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
+      tournamentGateway.listTournamentMatchesByTournamentId(tournament.id),
+    ]);
+
+    return {
+      registrations,
+      rounds,
+      scores,
+      matches,
+      builtTournament: buildTournament(
+        tournament,
+        registrations,
+        scores,
+        actorUsername,
+        rounds,
+        matches,
+      ),
+    };
+  };
+
+  const parseIsoTimestampParts = (value) => {
+    const normalizedValue = String(value ?? "").trim();
+
+    if (!normalizedValue || !normalizedValue.includes("T")) {
+      return [null, null];
+    }
+
+    const [datePart, timePart] = normalizedValue.split("T");
+    return [datePart || null, timePart || null];
+  };
+
+  const syncTournamentMatches = async (tournament, actorUsername = null) => {
+    const { registrations, rounds, scores, matches, builtTournament } =
+      await loadTournamentSnapshot(tournament, actorUsername);
+    await tournamentGateway.replaceTournamentRounds({
+      tournamentId: tournament.id,
+      rounds: (builtTournament.roundSchedule ?? []).map((round) => ({
+        roundNumber: round.roundNumber,
+        title: round.title,
+        publishDate: round.publishDate ?? null,
+        submissionDeadline: round.submissionDeadline ?? null,
+        status: round.status ?? "scheduled",
+      })),
+    });
+    const persistedMatches = (builtTournament.engine?.rounds ?? []).flatMap((round) =>
+      (round.matches ?? []).map((match, index) => ({
+        roundNumber: round.roundNumber,
+        matchNumber: index + 1,
+        leftMemberUsername: match.competitorA?.username ?? null,
+        rightMemberUsername: match.competitorB?.username ?? null,
+        leftScore: match.score?.competitorA ?? null,
+        rightScore: match.score?.competitorB ?? null,
+        winnerUsername: match.winner?.username ?? null,
+        submittedByUsername: match.workflow?.submittedByUsername ?? null,
+        submittedAt: match.workflow?.submittedAt ?? null,
+        confirmedByUsername: match.workflow?.confirmedByUsername ?? null,
+        confirmedAt: match.workflow?.confirmedAt ?? null,
+        disputedByUsername: match.workflow?.disputedByUsername ?? null,
+        disputedAt: match.workflow?.disputedAt ?? null,
+        disputeReason: match.workflow?.disputeReason ?? null,
+        status: match.status ?? "scheduled",
+      })),
+    );
+    await tournamentGateway.replaceTournamentMatches({
+      tournamentId: tournament.id,
+      matches: persistedMatches,
+    });
+
+    return {
+      builtTournament,
+      matches,
+      registrations,
+      rounds,
+      scores,
+    };
+  };
+
+  app.get("/api/tournament-templates", async (_req, res) => {
+    res.json({
+      success: true,
+      tournamentTemplates: TOURNAMENT_TEMPLATE_OPTIONS,
+    });
+  });
+
   app.get("/api/tournaments", async (req, res) => {
     const actor = getActorUser(req);
-    const { registrationsByTournamentId, scoresByTournamentId } =
+    const {
+      matchesByTournamentId,
+      registrationsByTournamentId,
+      roundsByTournamentId,
+      scoresByTournamentId,
+    } =
       await buildTournamentDataMaps();
     const tournaments = (await tournamentGateway.listTournaments()).map((tournament) =>
       buildTournament(
@@ -33,12 +173,15 @@ export function registerTournamentRoutes({
         registrationsByTournamentId.get(tournament.id) ?? [],
         scoresByTournamentId.get(tournament.id) ?? [],
         actor?.username ?? null,
+        roundsByTournamentId.get(tournament.id) ?? [],
+        matchesByTournamentId.get(tournament.id) ?? [],
       ),
     );
 
     res.json({
       success: true,
       tournaments,
+      tournamentTemplates: TOURNAMENT_TEMPLATE_OPTIONS,
       tournamentTypes: TOURNAMENT_TYPE_OPTIONS,
     });
   });
@@ -56,37 +199,51 @@ export function registerTournamentRoutes({
 
     const {
       name,
+      templateKey,
       tournamentType,
+      roundOneStartDate,
+      roundWindowDays,
+      roundRestDays,
       registrationStartDate,
       registrationEndDate,
-      scoreSubmissionStartDate,
-      scoreSubmissionEndDate,
     } = req.body ?? {};
+    const selectedTemplate =
+      typeof templateKey === "string" && templateKey.trim()
+        ? findTemplateByKey(templateKey.trim())
+        : null;
+    const normalizedTournamentType =
+      selectedTemplate?.tournamentType ?? tournamentType;
+    const automaticRoundPlan = normalizeAutomaticRoundPlan({
+      roundOneStartDate,
+      roundWindowDays,
+      roundRestDays,
+    });
+    const requiresRoundDeadlines =
+      selectedTemplate?.capabilities?.supportsRoundDeadlines ?? false;
 
     const trimmedName = typeof name === "string" ? name.trim() : "";
 
     if (
       !trimmedName ||
+      (typeof templateKey === "string" &&
+        templateKey.trim() &&
+        !selectedTemplate) ||
       !TOURNAMENT_TYPE_OPTIONS.some(
-        (option) => option.value === tournamentType,
+        (option) => option.value === normalizedTournamentType,
       ) ||
       !registrationStartDate ||
       !registrationEndDate ||
-      !scoreSubmissionStartDate ||
-      !scoreSubmissionEndDate
+      (requiresRoundDeadlines && !automaticRoundPlan)
     ) {
       res.status(400).json({
         success: false,
         message:
-          "Name, tournament type, registration window, and score window are required.",
+          "Name, tournament type, registration window, and automatic round settings are required.",
       });
       return;
     }
 
-    if (
-      registrationStartDate > registrationEndDate ||
-      scoreSubmissionStartDate > scoreSubmissionEndDate
-    ) {
+    if (registrationStartDate > registrationEndDate) {
       res.status(400).json({
         success: false,
         message: "End dates must be on or after the related start dates.",
@@ -94,25 +251,35 @@ export function registerTournamentRoutes({
       return;
     }
 
-    if (registrationEndDate > scoreSubmissionEndDate) {
+    if (
+      requiresRoundDeadlines &&
+      automaticRoundPlan.firstRoundStartDate < registrationEndDate
+    ) {
       res.status(400).json({
         success: false,
         message:
-          "The registration window must finish on or before the score window end date.",
+          "Round 1 must start on or after the registration close date.",
       });
       return;
     }
 
     const tournament = await tournamentGateway.createTournament({
       createdByUsername: actor.username,
+      drawDate: automaticRoundPlan?.firstRoundStartDate || null,
       name: trimmedName,
       registrationEndDate,
       registrationStartDate,
-      scoreSubmissionEndDate,
-      scoreSubmissionStartDate,
+      roundScheduleJson: JSON.stringify(automaticRoundPlan ?? []),
+      scoreSubmissionEndDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
+      scoreSubmissionStartDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
+      templateKey: selectedTemplate?.key ?? null,
       timestampParts: getUtcTimestampParts(),
-      tournamentType,
+      tournamentType: normalizedTournamentType,
     });
+    const { builtTournament } = await syncTournamentMatches(
+      tournament,
+      actor.username,
+    );
 
     if (auditChangeLogger) {
       const [createdAtDate, createdAtTime] = tournament.created_at_date
@@ -139,7 +306,7 @@ export function registerTournamentRoutes({
 
     res.status(201).json({
       success: true,
-      tournament: buildTournament(tournament, [], [], actor.username),
+      tournament: builtTournament,
     });
   });
 
@@ -166,37 +333,51 @@ export function registerTournamentRoutes({
 
     const {
       name,
+      templateKey,
       tournamentType,
+      roundOneStartDate,
+      roundWindowDays,
+      roundRestDays,
       registrationStartDate,
       registrationEndDate,
-      scoreSubmissionStartDate,
-      scoreSubmissionEndDate,
     } = req.body ?? {};
+    const selectedTemplate =
+      typeof templateKey === "string" && templateKey.trim()
+        ? findTemplateByKey(templateKey.trim())
+        : null;
+    const normalizedTournamentType =
+      selectedTemplate?.tournamentType ?? tournamentType;
+    const automaticRoundPlan = normalizeAutomaticRoundPlan({
+      roundOneStartDate,
+      roundWindowDays,
+      roundRestDays,
+    });
+    const requiresRoundDeadlines =
+      selectedTemplate?.capabilities?.supportsRoundDeadlines ?? false;
 
     const trimmedName = typeof name === "string" ? name.trim() : "";
 
     if (
       !trimmedName ||
+      (typeof templateKey === "string" &&
+        templateKey.trim() &&
+        !selectedTemplate) ||
       !TOURNAMENT_TYPE_OPTIONS.some(
-        (option) => option.value === tournamentType,
+        (option) => option.value === normalizedTournamentType,
       ) ||
       !registrationStartDate ||
       !registrationEndDate ||
-      !scoreSubmissionStartDate ||
-      !scoreSubmissionEndDate
+      (requiresRoundDeadlines && !automaticRoundPlan)
     ) {
       res.status(400).json({
         success: false,
         message:
-          "Name, tournament type, registration window, and score window are required.",
+          "Name, tournament type, registration window, and automatic round settings are required.",
       });
       return;
     }
 
-    if (
-      registrationStartDate > registrationEndDate ||
-      scoreSubmissionStartDate > scoreSubmissionEndDate
-    ) {
+    if (registrationStartDate > registrationEndDate) {
       res.status(400).json({
         success: false,
         message: "End dates must be on or after the related start dates.",
@@ -204,24 +385,34 @@ export function registerTournamentRoutes({
       return;
     }
 
-    if (registrationEndDate > scoreSubmissionEndDate) {
+    if (
+      requiresRoundDeadlines &&
+      automaticRoundPlan.firstRoundStartDate < registrationEndDate
+    ) {
       res.status(400).json({
         success: false,
         message:
-          "The registration window must finish on or before the score window end date.",
+          "Round 1 must start on or after the registration close date.",
       });
       return;
     }
 
     const updatedTournament = await tournamentGateway.updateTournament({
+      drawDate: automaticRoundPlan?.firstRoundStartDate || null,
       id: tournament.id,
       name: trimmedName,
       registrationEndDate,
       registrationStartDate,
-      scoreSubmissionEndDate,
-      scoreSubmissionStartDate,
-      tournamentType,
+      roundScheduleJson: JSON.stringify(automaticRoundPlan ?? []),
+      scoreSubmissionEndDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
+      scoreSubmissionStartDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
+      templateKey: selectedTemplate?.key ?? null,
+      tournamentType: normalizedTournamentType,
     });
+    const { builtTournament } = await syncTournamentMatches(
+      updatedTournament,
+      actor.username,
+    );
 
     if (auditChangeLogger) {
       const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
@@ -241,20 +432,11 @@ export function registerTournamentRoutes({
         console.error("Failed to record tournament audit event", auditError);
       });
     }
-    const [registrations, scores] = await Promise.all([
-      tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
-      tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
-    ]);
     broadcastTournamentsUpdated("tournaments.update");
 
     res.json({
       success: true,
-      tournament: buildTournament(
-        updatedTournament,
-        registrations,
-        scores,
-        actor.username,
-      ),
+      tournament: builtTournament,
     });
   });
 
@@ -390,20 +572,15 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const [registrations, scores] = await Promise.all([
-      tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
-      tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
-    ]);
+    const { builtTournament } = await syncTournamentMatches(
+      tournament,
+      actor.username,
+    );
     broadcastTournamentsUpdated("tournaments.register");
 
     res.json({
       success: true,
-      tournament: buildTournament(
-        tournament,
-        registrations,
-        scores,
-        actor.username,
-      ),
+      tournament: builtTournament,
     });
   });
 
@@ -476,20 +653,15 @@ export function registerTournamentRoutes({
       });
     }
 
-    const [registrations, scores] = await Promise.all([
-      tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
-      tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
-    ]);
+    const { builtTournament } = await syncTournamentMatches(
+      tournament,
+      actor.username,
+    );
     broadcastTournamentsUpdated("tournaments.withdraw");
 
     res.json({
       success: true,
-      tournament: buildTournament(
-        tournament,
-        registrations,
-        scores,
-        actor.username,
-      ),
+      tournament: builtTournament,
     });
   });
 
@@ -523,28 +695,8 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const today = toUtcDateString(new Date());
-
-    if (
-      today < tournament.score_submission_start_date ||
-      today > tournament.score_submission_end_date
-    ) {
-      res.status(400).json({
-        success: false,
-        message: "The score submission window is not currently open.",
-      });
-      return;
-    }
-
-    const [registrations, scores] = await Promise.all([
-      tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
-      tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
-    ]);
-
-    const builtTournament = buildTournament(
+    const { builtTournament, scores } = await loadTournamentSnapshot(
       tournament,
-      registrations,
-      scores,
       actor.username,
     );
 
@@ -601,15 +753,606 @@ export function registerTournamentRoutes({
       });
     }
     broadcastTournamentsUpdated("tournaments.score");
+    const updatedTournamentSnapshot = await syncTournamentMatches(
+      tournament,
+      actor.username,
+    );
 
     res.json({
       success: true,
-      tournament: buildTournament(
-        tournament,
-        registrations,
-        updatedScores,
-        actor.username,
-      ),
+      tournament: updatedTournamentSnapshot.builtTournament,
+    });
+  });
+
+  app.get("/api/tournament-matches/:id", async (req, res) => {
+    const actor = getActorUser(req);
+    const parsedMatchId = parseTournamentMatchId(req.params.id);
+
+    if (!parsedMatchId) {
+      res.status(400).json({
+        success: false,
+        message: "Tournament match id is invalid.",
+      });
+      return;
+    }
+
+    const tournament = await tournamentGateway.findTournamentById(parsedMatchId.tournamentId);
+
+    if (!tournament) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament not found.",
+      });
+      return;
+    }
+
+    const { builtTournament } = await loadTournamentSnapshot(
+      tournament,
+      actor?.username ?? null,
+    );
+    const match =
+      builtTournament.engine?.matches?.find(
+        (entry) => String(entry.id) === req.params.id,
+      ) ?? null;
+
+    if (!match) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament match not found.",
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      match,
+      tournament: builtTournament,
+    });
+  });
+
+  app.post("/api/tournament-matches/:id/result", async (req, res) => {
+    const actor = getActorUser(req);
+    const parsedMatchId = parseTournamentMatchId(req.params.id);
+    const leftScore = Number.parseInt(req.body?.leftScore, 10);
+    const rightScore = Number.parseInt(req.body?.rightScore, 10);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    if (!parsedMatchId) {
+      res.status(400).json({
+        success: false,
+        message: "Tournament match id is invalid.",
+      });
+      return;
+    }
+
+    if (
+      !Number.isInteger(leftScore) ||
+      !Number.isInteger(rightScore) ||
+      leftScore < 0 ||
+      rightScore < 0
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Enter valid whole-number scores for both archers.",
+      });
+      return;
+    }
+
+    if (leftScore === rightScore) {
+      res.status(400).json({
+        success: false,
+        message: "Tied scores cannot be submitted in this flow.",
+      });
+      return;
+    }
+
+    const tournament = await tournamentGateway.findTournamentById(parsedMatchId.tournamentId);
+
+    if (!tournament) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament not found.",
+      });
+      return;
+    }
+
+    const snapshot = await loadTournamentSnapshot(tournament, actor.username);
+    const match =
+      snapshot.builtTournament.engine?.matches?.find(
+        (entry) => String(entry.id) === req.params.id,
+      ) ?? null;
+
+    if (!match) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament match not found.",
+      });
+      return;
+    }
+
+    const actorCanSubmit = match.workflow?.canSubmitResult;
+
+    if (!actorCanSubmit) {
+      res.status(400).json({
+        success: false,
+        message: "You cannot submit a result for this match right now.",
+      });
+      return;
+    }
+
+    const winnerUsername =
+      leftScore > rightScore
+        ? match.competitorA?.username ?? null
+        : match.competitorB?.username ?? null;
+    const [submittedAtDate, submittedAtTime] = getUtcTimestampParts();
+    const requiresOpponentConfirmation =
+      match.workflow?.requiresOpponentConfirmation ?? false;
+    const nextStatus = requiresOpponentConfirmation
+      ? "awaiting_opponent_confirmation"
+      : "finalised";
+
+    await tournamentGateway.updateTournamentMatchWorkflow({
+      leftScore,
+      matchNumber: parsedMatchId.matchNumber,
+      rightScore,
+      roundNumber: parsedMatchId.roundNumber,
+      status: nextStatus,
+      submittedByUsername: actor.username,
+      submittedTimestampParts: [submittedAtDate, submittedAtTime],
+      tournamentId: tournament.id,
+      winnerUsername,
+    });
+
+    if (!requiresOpponentConfirmation) {
+      await Promise.all([
+        tournamentGateway.submitTournamentScore({
+          roundNumber: parsedMatchId.roundNumber,
+          score: leftScore,
+          timestampParts: [submittedAtDate, submittedAtTime],
+          tournamentId: tournament.id,
+          username: match.competitorA?.username,
+        }),
+        tournamentGateway.submitTournamentScore({
+          roundNumber: parsedMatchId.roundNumber,
+          score: rightScore,
+          timestampParts: [submittedAtDate, submittedAtTime],
+          tournamentId: tournament.id,
+          username: match.competitorB?.username,
+        }),
+      ]);
+    }
+
+    const updatedTournamentSnapshot = await syncTournamentMatches(
+      tournament,
+      actor.username,
+    );
+    broadcastTournamentsUpdated("tournament-match.result");
+
+    res.json({
+      success: true,
+      match:
+        updatedTournamentSnapshot.builtTournament.engine?.matches?.find(
+          (entry) => String(entry.id) === req.params.id,
+        ) ?? null,
+      tournament: updatedTournamentSnapshot.builtTournament,
+    });
+  });
+
+  app.post("/api/tournament-matches/:id/confirm", async (req, res) => {
+    const actor = getActorUser(req);
+    const parsedMatchId = parseTournamentMatchId(req.params.id);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    if (!parsedMatchId) {
+      res.status(400).json({
+        success: false,
+        message: "Tournament match id is invalid.",
+      });
+      return;
+    }
+
+    const tournament = await tournamentGateway.findTournamentById(parsedMatchId.tournamentId);
+
+    if (!tournament) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament not found.",
+      });
+      return;
+    }
+
+    const snapshot = await loadTournamentSnapshot(tournament, actor.username);
+    const match =
+      snapshot.builtTournament.engine?.matches?.find(
+        (entry) => String(entry.id) === req.params.id,
+      ) ?? null;
+
+    if (!match) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament match not found.",
+      });
+      return;
+    }
+
+    if (!match.workflow?.canConfirmResult) {
+      res.status(400).json({
+        success: false,
+        message: "You cannot confirm this result right now.",
+      });
+      return;
+    }
+
+    const [confirmedAtDate, confirmedAtTime] = getUtcTimestampParts();
+    await tournamentGateway.updateTournamentMatchWorkflow({
+      confirmedByUsername: actor.username,
+      confirmedTimestampParts: [confirmedAtDate, confirmedAtTime],
+      leftScore: match.score?.competitorA ?? null,
+      matchNumber: parsedMatchId.matchNumber,
+      rightScore: match.score?.competitorB ?? null,
+      roundNumber: parsedMatchId.roundNumber,
+      status: "finalised",
+      submittedByUsername: match.workflow?.submittedByUsername ?? null,
+      submittedTimestampParts: match.workflow?.submittedAt
+        ? String(match.workflow.submittedAt).split("T")
+        : [null, null],
+      tournamentId: tournament.id,
+      winnerUsername: match.winner?.username ?? null,
+    });
+
+    await Promise.all([
+      tournamentGateway.submitTournamentScore({
+        roundNumber: parsedMatchId.roundNumber,
+        score: match.score?.competitorA ?? null,
+        timestampParts: [confirmedAtDate, confirmedAtTime],
+        tournamentId: tournament.id,
+        username: match.competitorA?.username,
+      }),
+      tournamentGateway.submitTournamentScore({
+        roundNumber: parsedMatchId.roundNumber,
+        score: match.score?.competitorB ?? null,
+        timestampParts: [confirmedAtDate, confirmedAtTime],
+        tournamentId: tournament.id,
+        username: match.competitorB?.username,
+      }),
+    ]);
+
+    const updatedTournamentSnapshot = await syncTournamentMatches(
+      tournament,
+      actor.username,
+    );
+    broadcastTournamentsUpdated("tournament-match.confirm");
+
+    res.json({
+      success: true,
+      match:
+        updatedTournamentSnapshot.builtTournament.engine?.matches?.find(
+          (entry) => String(entry.id) === req.params.id,
+        ) ?? null,
+      tournament: updatedTournamentSnapshot.builtTournament,
+    });
+  });
+
+  app.post("/api/tournament-matches/:id/dispute", async (req, res) => {
+    const actor = getActorUser(req);
+    const parsedMatchId = parseTournamentMatchId(req.params.id);
+    const disputeReason = String(req.body?.reason ?? "").trim();
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    if (!parsedMatchId) {
+      res.status(400).json({
+        success: false,
+        message: "Tournament match id is invalid.",
+      });
+      return;
+    }
+
+    if (!disputeReason) {
+      res.status(400).json({
+        success: false,
+        message: "Enter a reason for the dispute.",
+      });
+      return;
+    }
+
+    const tournament = await tournamentGateway.findTournamentById(parsedMatchId.tournamentId);
+
+    if (!tournament) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament not found.",
+      });
+      return;
+    }
+
+    const snapshot = await loadTournamentSnapshot(tournament, actor.username);
+    const match =
+      snapshot.builtTournament.engine?.matches?.find(
+        (entry) => String(entry.id) === req.params.id,
+      ) ?? null;
+
+    if (!match) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament match not found.",
+      });
+      return;
+    }
+
+    if (!match.workflow?.canDisputeResult) {
+      res.status(400).json({
+        success: false,
+        message: "You cannot dispute this result right now.",
+      });
+      return;
+    }
+
+    const [disputedAtDate, disputedAtTime] = getUtcTimestampParts();
+    await tournamentGateway.updateTournamentMatchWorkflow({
+      disputedByUsername: actor.username,
+      disputedTimestampParts: [disputedAtDate, disputedAtTime],
+      disputeReason,
+      leftScore: match.score?.competitorA ?? null,
+      matchNumber: parsedMatchId.matchNumber,
+      rightScore: match.score?.competitorB ?? null,
+      roundNumber: parsedMatchId.roundNumber,
+      status: "disputed",
+      submittedByUsername: match.workflow?.submittedByUsername ?? null,
+      submittedTimestampParts: match.workflow?.submittedAt
+        ? String(match.workflow.submittedAt).split("T")
+        : [null, null],
+      tournamentId: tournament.id,
+      winnerUsername: match.winner?.username ?? null,
+    });
+
+    const updatedTournamentSnapshot = await syncTournamentMatches(
+      tournament,
+      actor.username,
+    );
+    broadcastTournamentsUpdated("tournament-match.dispute");
+
+    res.json({
+      success: true,
+      match:
+        updatedTournamentSnapshot.builtTournament.engine?.matches?.find(
+          (entry) => String(entry.id) === req.params.id,
+        ) ?? null,
+      tournament: updatedTournamentSnapshot.builtTournament,
+    });
+  });
+
+  app.post("/api/tournament-matches/:id/override", async (req, res) => {
+    const actor = getActorUser(req);
+    const parsedMatchId = parseTournamentMatchId(req.params.id);
+    const action = String(req.body?.action ?? "").trim().toLowerCase();
+    const winnerUsername = String(req.body?.winnerUsername ?? "").trim();
+    const reason = String(req.body?.reason ?? "").trim();
+    const leftScoreRaw = req.body?.leftScore;
+    const rightScoreRaw = req.body?.rightScore;
+    const hasOverrideScoreValues =
+      String(leftScoreRaw ?? "").trim() !== "" || String(rightScoreRaw ?? "").trim() !== "";
+    const leftScore = hasOverrideScoreValues
+      ? Number.parseInt(String(leftScoreRaw ?? ""), 10)
+      : null;
+    const rightScore = hasOverrideScoreValues
+      ? Number.parseInt(String(rightScoreRaw ?? ""), 10)
+      : null;
+
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to make captain decisions on matches.",
+      });
+      return;
+    }
+
+    if (!parsedMatchId) {
+      res.status(400).json({
+        success: false,
+        message: "Tournament match id is invalid.",
+      });
+      return;
+    }
+
+    if (!["override", "walkover", "disqualify"].includes(action)) {
+      res.status(400).json({
+        success: false,
+        message: "Choose a valid captain decision.",
+      });
+      return;
+    }
+
+    if (!winnerUsername || !reason) {
+      res.status(400).json({
+        success: false,
+        message: "Winner and decision reason are required.",
+      });
+      return;
+    }
+
+    if (action === "override" && hasOverrideScoreValues) {
+      if (
+        !Number.isInteger(leftScore) ||
+        !Number.isInteger(rightScore) ||
+        leftScore < 0 ||
+        rightScore < 0
+      ) {
+        res.status(400).json({
+          success: false,
+          message: "Override scores must be valid whole numbers for both archers.",
+        });
+        return;
+      }
+
+      if (leftScore === rightScore) {
+        res.status(400).json({
+          success: false,
+          message: "Override scores cannot be tied.",
+        });
+        return;
+      }
+    }
+
+    const tournament = await tournamentGateway.findTournamentById(parsedMatchId.tournamentId);
+
+    if (!tournament) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament not found.",
+      });
+      return;
+    }
+
+    const snapshot = await loadTournamentSnapshot(tournament, actor.username);
+    const match =
+      snapshot.builtTournament.engine?.matches?.find(
+        (entry) => String(entry.id) === req.params.id,
+      ) ?? null;
+
+    if (!match) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament match not found.",
+      });
+      return;
+    }
+
+    const validCompetitorUsernames = [
+      match.competitorA?.username ?? null,
+      match.competitorB?.username ?? null,
+    ].filter(Boolean);
+
+    if (!validCompetitorUsernames.includes(winnerUsername)) {
+      res.status(400).json({
+        success: false,
+        message: "Winner must be one of the paired competitors.",
+      });
+      return;
+    }
+
+    if (action === "override" && hasOverrideScoreValues) {
+      const leftUsername = match.competitorA?.username ?? "";
+      const rightUsername = match.competitorB?.username ?? "";
+      const scoreWinnerUsername = leftScore > rightScore ? leftUsername : rightUsername;
+
+      if (scoreWinnerUsername !== winnerUsername) {
+        res.status(400).json({
+          success: false,
+          message: "Override scores must support the selected winner.",
+        });
+        return;
+      }
+    }
+
+    const [decisionDate, decisionTime] = getUtcTimestampParts();
+    const nextStatus =
+      action === "walkover"
+        ? "walkover"
+        : action === "disqualify"
+          ? "disqualified"
+          : "finalised";
+    const [submittedAtDate, submittedAtTime] = parseIsoTimestampParts(
+      match.workflow?.submittedAt,
+    );
+    const [confirmedAtDate, confirmedAtTime] = parseIsoTimestampParts(
+      match.workflow?.confirmedAt,
+    );
+    const [disputedAtDate, disputedAtTime] = parseIsoTimestampParts(
+      match.workflow?.disputedAt,
+    );
+    const existingPersistedMatch = await tournamentGateway.findTournamentMatchByKey({
+      matchNumber: parsedMatchId.matchNumber,
+      roundNumber: parsedMatchId.roundNumber,
+      tournamentId: tournament.id,
+    });
+
+    await tournamentGateway.updateTournamentMatchWorkflow({
+      confirmedByUsername:
+        action === "override" ? actor.username : match.workflow?.confirmedByUsername ?? null,
+      confirmedTimestampParts:
+        action === "override"
+          ? [decisionDate, decisionTime]
+          : [confirmedAtDate, confirmedAtTime],
+      disputedByUsername: match.workflow?.disputedByUsername ?? null,
+      disputedTimestampParts: [disputedAtDate, disputedAtTime],
+      disputeReason: reason,
+      leftScore:
+        action === "override" && hasOverrideScoreValues
+          ? leftScore
+          : match.score?.competitorA ?? null,
+      matchNumber: parsedMatchId.matchNumber,
+      rightScore:
+        action === "override" && hasOverrideScoreValues
+          ? rightScore
+          : match.score?.competitorB ?? null,
+      roundNumber: parsedMatchId.roundNumber,
+      status: nextStatus,
+      submittedByUsername: match.workflow?.submittedByUsername ?? null,
+      submittedTimestampParts: [submittedAtDate, submittedAtTime],
+      tournamentId: tournament.id,
+      winnerUsername,
+    });
+
+    const updatedTournamentSnapshot = await syncTournamentMatches(
+      tournament,
+      actor.username,
+    );
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: `match_${action}`,
+        actorUsername: actor.username,
+        after: {
+          action,
+          reason,
+          winnerUsername,
+          ...(updatedTournamentSnapshot.builtTournament.engine?.matches?.find(
+            (entry) => String(entry.id) === req.params.id,
+          ) ?? {}),
+        },
+        before: existingPersistedMatch ?? null,
+        changedAtDate: decisionDate,
+        changedAtTime: decisionTime,
+        entityId: req.params.id,
+        entityLabel: `${tournament.name} ${match.roundTitle}`,
+        entityType: "tournament_match_decision",
+        req,
+        target: `/api/tournament-matches/${req.params.id}/override`,
+      }).catch((auditError) => {
+        console.error("Failed to record tournament match decision audit event", auditError);
+      });
+    }
+
+    broadcastTournamentsUpdated(`tournament-match.${action}`);
+
+    res.json({
+      success: true,
+      match:
+        updatedTournamentSnapshot.builtTournament.engine?.matches?.find(
+          (entry) => String(entry.id) === req.params.id,
+        ) ?? null,
+      tournament: updatedTournamentSnapshot.builtTournament,
     });
   });
 
@@ -642,6 +1385,8 @@ export function registerTournamentRoutes({
       registrations,
       await tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
       actor.username,
+      await tournamentGateway.listTournamentRoundsByTournamentId(tournament.id),
+      await tournamentGateway.listTournamentMatchesByTournamentId(tournament.id),
     );
 
     const lines = [

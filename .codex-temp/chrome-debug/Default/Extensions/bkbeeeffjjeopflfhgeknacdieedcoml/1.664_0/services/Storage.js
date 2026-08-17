@@ -1,0 +1,1 @@
+"use strict";var Storage={getFromLocalStore:function(o,t){!function(o,t,e){o.get(t,(function(o){let c=o&&o[t];e(c)}))}(chrome.storage.local,o,t)},setToLocalStore:function(o,t,e){!function(o,t,e,c){let n={};n[t]=e,o.set(n,c)}(chrome.storage.local,o,t,e)}};

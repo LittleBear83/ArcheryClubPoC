@@ -16,4 +16,27 @@ export abstract class TournamentRepository {
     tournamentId: string | number,
     scoreSubmission: unknown,
   ): Promise<unknown>;
+
+  abstract submitTournamentMatchResult(
+    actorUsername: string,
+    matchId: string,
+    payload: unknown,
+  ): Promise<unknown>;
+
+  abstract confirmTournamentMatchResult(
+    actorUsername: string,
+    matchId: string,
+  ): Promise<unknown>;
+
+  abstract disputeTournamentMatchResult(
+    actorUsername: string,
+    matchId: string,
+    payload: unknown,
+  ): Promise<unknown>;
+
+  abstract overrideTournamentMatchResult(
+    actorUsername: string,
+    matchId: string,
+    payload: unknown,
+  ): Promise<unknown>;
 }

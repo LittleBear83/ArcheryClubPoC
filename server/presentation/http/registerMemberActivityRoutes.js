@@ -195,7 +195,7 @@ export function registerMemberActivityRoutes({
     }
 
     const today = toUtcDateString(new Date());
-    const { registrationsByTournamentId, scoresByTournamentId } =
+    const { registrationsByTournamentId, roundsByTournamentId, scoresByTournamentId } =
       await buildTournamentDataMaps();
     const reminders = (await listTournaments())
       .map((tournament) =>
@@ -204,6 +204,7 @@ export function registerMemberActivityRoutes({
           registrationsByTournamentId.get(tournament.id) ?? [],
           scoresByTournamentId.get(tournament.id) ?? [],
           actor.username,
+          roundsByTournamentId.get(tournament.id) ?? [],
         ),
       )
       .flatMap((tournament) => {

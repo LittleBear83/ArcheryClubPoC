@@ -87,6 +87,12 @@ const pages = [
     path: "/general-info-admin",
     permission: "manage_range_rules",
   },
+  {
+    id: "golden-records-admin",
+    label: "Golden Records Admin",
+    path: "/golden-records-admin",
+    permission: "manage_members",
+  },
   { id: "general-info", label: "General Information", path: "/general-info" },
   {
     id: "user-creation",
@@ -180,7 +186,12 @@ const adminGroups = [
   {
     id: "club-setup",
     label: "Club Setup",
-    pageIds: ["committee-admin", "range-rules-admin", "general-info-admin"],
+    pageIds: [
+      "committee-admin",
+      "range-rules-admin",
+      "general-info-admin",
+      "golden-records-admin",
+    ],
   },
   {
     id: "operations",

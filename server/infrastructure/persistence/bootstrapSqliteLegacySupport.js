@@ -489,6 +489,53 @@ export function bootstrapSqliteLegacyDateSupport({
   const tournamentScoresForeignKeys = db
     .prepare(`PRAGMA foreign_key_list(tournament_scores)`)
     .all();
+  const tournamentMatchesColumns = db
+    .prepare(`PRAGMA table_info(tournament_matches)`)
+    .all();
+  const tournamentsColumns = db.prepare(`PRAGMA table_info(tournaments)`).all();
+
+  if (!tournamentsColumns.some((column) => column.name === "template_key")) {
+    db.exec(`
+      ALTER TABLE tournaments
+      ADD COLUMN template_key TEXT;
+    `);
+  }
+
+  if (!tournamentsColumns.some((column) => column.name === "draw_date")) {
+    db.exec(`
+      ALTER TABLE tournaments
+      ADD COLUMN draw_date TEXT;
+    `);
+  }
+
+  if (!tournamentsColumns.some((column) => column.name === "round_schedule_json")) {
+    db.exec(`
+      ALTER TABLE tournaments
+      ADD COLUMN round_schedule_json TEXT NOT NULL DEFAULT '[]';
+    `);
+  }
+
+  const tournamentMatchColumnsToAdd = [
+    ["submitted_by_username", "TEXT REFERENCES users(username)"],
+    ["submitted_at_date", "TEXT"],
+    ["submitted_at_time", "TEXT"],
+    ["confirmed_by_username", "TEXT REFERENCES users(username)"],
+    ["confirmed_at_date", "TEXT"],
+    ["confirmed_at_time", "TEXT"],
+    ["disputed_by_username", "TEXT REFERENCES users(username)"],
+    ["disputed_at_date", "TEXT"],
+    ["disputed_at_time", "TEXT"],
+    ["dispute_reason", "TEXT"],
+  ];
+
+  for (const [columnName, columnType] of tournamentMatchColumnsToAdd) {
+    if (!tournamentMatchesColumns.some((column) => column.name === columnName)) {
+      db.exec(`
+        ALTER TABLE tournament_matches
+        ADD COLUMN ${columnName} ${columnType};
+      `);
+    }
+  }
 
   if (
     migrateCombinedDateTimeColumn({

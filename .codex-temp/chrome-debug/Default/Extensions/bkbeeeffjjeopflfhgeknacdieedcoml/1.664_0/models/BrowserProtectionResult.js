@@ -1,0 +1,1 @@
+"use strict";function BrowserProtectionResult(t,e,r,s){this.url=t,this.result=e,this.origin=r,this.reportUrl=s}BrowserProtectionResult.ResultType={KNOWNSAFE:"knownsafe",ALLOWED:"allowed",MALICIOUS:"malicious",PHISHING:"phishing",UNTRUSTED:"untrusted"},BrowserProtectionResult.ThreatCodes={PHISHING:1,MALICIOUS:2},BrowserProtectionResult.ResultOrigin={TOPSITE:1,ENDPOINT:2,FAIL:3};

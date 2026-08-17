@@ -12,6 +12,21 @@ export type TournamentMatch = {
   leftScore?: number | null;
   rightScore?: number | null;
   winner?: TournamentParticipant | null;
+  workflow?: {
+    resultSubmissionMode?: string;
+    requiresOpponentConfirmation?: boolean;
+    submittedByUsername?: string | null;
+    submittedAt?: string | null;
+    confirmedByUsername?: string | null;
+    confirmedAt?: string | null;
+    disputedByUsername?: string | null;
+    disputedAt?: string | null;
+    disputeReason?: string | null;
+    actorRole?: "competitorA" | "competitorB" | null;
+    canSubmitResult?: boolean;
+    canConfirmResult?: boolean;
+    canDisputeResult?: boolean;
+  };
 };
 
 export type TournamentRound = {
@@ -25,9 +40,49 @@ export type TournamentRecord = {
   name: string;
   type: string;
   typeLabel: string;
+  templateKey?: string | null;
+  templateLabel?: string | null;
+  roundOneStartDate?: string | null;
+  roundWindowDays?: number | null;
+  roundRestDays?: number | null;
+  roundSchedule?: Array<{
+    roundNumber: number;
+    title: string;
+    publishDate?: string | null;
+    submissionDeadline?: string | null;
+  }>;
   registrationCount: number;
   currentRoundNumber?: number;
   actorScore?: number | null;
+  currentMatch?: {
+    id: string | number;
+    roundNumber: number;
+    roundTitle: string;
+    status: string;
+    competitorA?: TournamentParticipant | null;
+    competitorB?: TournamentParticipant | null;
+    score?: {
+      competitorA?: number | null;
+      competitorB?: number | null;
+    };
+    winner?: TournamentParticipant | null;
+    submissionDeadline?: string | null;
+    workflow?: {
+      resultSubmissionMode?: string;
+      requiresOpponentConfirmation?: boolean;
+      submittedByUsername?: string | null;
+      submittedAt?: string | null;
+      confirmedByUsername?: string | null;
+      confirmedAt?: string | null;
+      disputedByUsername?: string | null;
+      disputedAt?: string | null;
+      disputeReason?: string | null;
+      actorRole?: "competitorA" | "competitorB" | null;
+      canSubmitResult?: boolean;
+      canConfirmResult?: boolean;
+      canDisputeResult?: boolean;
+    };
+  } | null;
   isRegistered: boolean;
   canRegister: boolean;
   canWithdraw: boolean;
@@ -51,5 +106,82 @@ export type TournamentRecord = {
   bracket: {
     rounds: TournamentRound[];
     winner?: TournamentParticipant | null;
+  };
+  engine?: {
+    format: string;
+    template?: {
+      key: string;
+      label: string;
+      description?: string;
+      roundType?: string;
+      capabilities?: Record<string, boolean>;
+      defaults?: {
+        registrationMode?: string;
+        resultWorkflow?: string;
+        handicapAllowancePercent?: number | null;
+      };
+      eligibilityRules?: {
+        handicapQualificationRoundsRequired?: number;
+        qualifyingRoundsRequiredPerKnockoutRound?: number;
+        qualifyingRoundDiscipline?: string;
+      } | null;
+    } | null;
+    lifecycle?: {
+      registrationWindow?: {
+        startDate: string;
+        endDate: string;
+        isOpen?: boolean;
+        isClosed?: boolean;
+      };
+      drawDate?: string | null;
+      activeRoundNumber?: number | null;
+      scoreWindow?: {
+        startDate: string;
+        endDate: string;
+        isOpen?: boolean;
+      };
+    };
+    rounds?: Array<{
+      roundNumber: number;
+      title: string;
+      status: string;
+      submissionDeadline?: string | null;
+      matches: Array<{
+        id: string | number;
+        roundNumber: number;
+        roundTitle: string;
+        status: string;
+        competitorA?: TournamentParticipant | null;
+        competitorB?: TournamentParticipant | null;
+        score?: {
+          competitorA?: number | null;
+          competitorB?: number | null;
+        };
+        winner?: TournamentParticipant | null;
+        submissionDeadline?: string | null;
+        workflow?: {
+          resultSubmissionMode?: string;
+          requiresOpponentConfirmation?: boolean;
+        };
+      }>;
+    }>;
+    matches?: Array<{
+      id: string | number;
+      roundNumber: number;
+      roundTitle: string;
+      status: string;
+      competitorA?: TournamentParticipant | null;
+      competitorB?: TournamentParticipant | null;
+      score?: {
+        competitorA?: number | null;
+        competitorB?: number | null;
+      };
+      winner?: TournamentParticipant | null;
+      submissionDeadline?: string | null;
+      workflow?: {
+        resultSubmissionMode?: string;
+        requiresOpponentConfirmation?: boolean;
+      };
+    }>;
   };
 };

@@ -2395,6 +2395,13 @@ button:disabled {
   background: var(--surface);
 }
 
+.tournament-summary-title {
+  margin: 0 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tournament-list-panel,
 .tournament-detail-panel {
   display: grid;
@@ -2432,6 +2439,66 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.tournament-field-group {
+  display: grid;
+  gap: 8px;
+}
+
+.tournament-field-label {
+  display: block;
+  font-weight: 600;
+}
+
+.tournament-captain-card-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  align-items: start;
+}
+
+.tournament-captain-editor {
+  display: grid;
+  gap: 10px;
+}
+
+.tournament-captain-score-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.tournament-captain-score-grid label {
+  display: grid;
+  gap: 8px;
+}
+
+.tournament-captain-actions-grid {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding-top: 0;
+}
+
+.tournament-captain-action-group {
+  display: grid;
+  gap: 8px;
+}
+
+.tournament-captain-action-group-title {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.tournament-captain-actions-grid .app-button {
+  width: 100%;
+  min-width: 0;
+}
+
 .tournament-primary-button,
 .tournament-secondary-button {
   min-width: min(190px, 100%);
@@ -2448,6 +2515,28 @@ button:disabled {
 
 .tournament-primary-button:hover {
   background: var(--accent-hover);
+}
+
+.left-align-form .tournament-name-input {
+  min-height: 48px;
+  height: 48px;
+  line-height: 1.2;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.tournament-basics-grid {
+  align-items: start;
+}
+
+.left-align-form .tournament-basics-field {
+  align-self: start;
+  align-content: start;
+  grid-auto-rows: max-content;
+}
+
+.left-align-form .tournament-basics-field--full {
+  grid-column: 1 / -1;
 }
 
 .tournament-primary-button:disabled,
@@ -2484,6 +2573,62 @@ button:disabled {
 .tournament-setup-copy {
   margin: 0;
   color: var(--muted);
+}
+
+.tournament-setup-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+
+.tournament-setup-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: var(--panel-bg);
+}
+
+.tournament-setup-step-current {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.tournament-setup-step-complete {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+}
+
+.tournament-setup-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  background: var(--accent-bg-strong);
+  color: var(--text);
+}
+
+.tournament-setup-step-current .tournament-setup-step-index {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.tournament-setup-step-complete .tournament-setup-step-index {
+  background: var(--success);
+  color: var(--text-on-accent);
+}
+
+.tournament-setup-step-label {
+  font-weight: 700;
 }
 
 .tournament-setup-actions {
@@ -2561,7 +2706,41 @@ button:disabled {
 }
 
 .tournament-modal-header {
-  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.tournament-modal-header > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.tournament-modal-header .profile-section-title,
+.tournament-modal-header .tournament-setup-copy {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tournament-setup-review {
+  display: grid;
+  gap: 14px;
+}
+
+.tournament-setup-review-card {
+  padding: 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: var(--panel-bg);
+}
+
+.tournament-setup-review-card h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
 }
 
 .tournament-bracket-graphic {
@@ -2713,6 +2892,16 @@ button:disabled {
 .tournament-mobile-score-card,
 .tournament-mobile-bracket-card {
   gap: 14px;
+}
+
+.tournament-mobile-summary-card .mobile-section-header {
+  margin-bottom: 12px;
+}
+
+.tournament-mobile-summary-card .mobile-section-header-copy h3 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tournament-mobile-status-note {
@@ -4880,6 +5069,12 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .tournament-captain-workspace,
+  .tournament-captain-card-layout,
+  .tournament-captain-score-grid {
+    grid-template-columns: 1fr;
+  }
+
   .welcome-message {
     font-size: 1.3rem;
   }
@@ -4936,6 +5131,10 @@ button:disabled {
     padding: 4px 8px;
     gap: 4px;
     font-size: 0.72rem;
+  }
+
+  .tournament-setup-stepper {
+    grid-template-columns: 1fr;
   }
 
   .theme-toggle-button strong {
@@ -7189,6 +7388,37 @@ button:disabled {
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.golden-records-admin-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.golden-records-admin-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: 1rem;
+  padding: 1rem 1.1rem;
+  background: var(--surface-raised);
+}
+
+.golden-records-admin-card h3 {
+  margin-top: 0;
+}
+
+.golden-records-admin-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.golden-records-admin-list-item {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.9rem;
+  background: var(--surface-base);
 }
 
 .range-rules-editor-card {

@@ -129,6 +129,11 @@ const GeneralInfoAdminPage = lazy(() =>
     default: module.GeneralInfoAdminPage,
   })),
 );
+const GoldenRecordsAdminPage = lazy(() =>
+  import("./GoldenRecordsAdminPage").then((module) => ({
+    default: module.GoldenRecordsAdminPage,
+  })),
+);
 const CommitteeOrgChartPage = lazy(() =>
   import("./CommitteeOrgChartPage").then((module) => ({
     default: module.CommitteeOrgChartPage,
@@ -321,6 +326,7 @@ const pageTitleMap = {
   "range-rules": "Range Rules",
   "range-rules-admin": "Range Rules Admin",
   "general-info-admin": "General Info Admin",
+  "golden-records-admin": "Golden Records Admin",
   "tournament-setup": "Tournament Setup",
   "committee-org-chart": "Committee Org Chart",
   "committee-admin": "Committee Admin",
@@ -354,6 +360,7 @@ const pathToPageId = {
   "/range-rules": "range-rules",
   "/range-rules-admin": "range-rules-admin",
   "/general-info-admin": "general-info-admin",
+  "/golden-records-admin": "golden-records-admin",
   "/tournament-setup": "tournament-setup",
   "/committee-org-chart": "committee-org-chart",
   "/committee-admin": "committee-admin",
@@ -1194,6 +1201,12 @@ export function HomePage({
               path="/general-info-admin"
               element={
                 <GeneralInfoAdminPage currentUserProfile={currentUserProfile} />
+              }
+            />
+            <Route
+              path="/golden-records-admin"
+              element={
+                <GoldenRecordsAdminPage currentUserProfile={currentUserProfile} />
               }
             />
             <Route

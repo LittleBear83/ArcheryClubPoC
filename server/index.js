@@ -42,6 +42,7 @@ import {
   PROGRAMME_TYPE_OPTIONS,
   RFID_READER_NAMES,
   SYSTEM_ROLE_DEFINITIONS,
+  TOURNAMENT_TEMPLATE_OPTIONS,
   TOURNAMENT_TYPE_OPTIONS,
 } from "./domain/constants.js";
 import { createDatabase } from "./infrastructure/persistence/createDatabase.js";
@@ -66,7 +67,9 @@ import { createOutdoorTableGateway } from "./infrastructure/persistence/outdoorT
 import { createRangeRulesGateway } from "./infrastructure/persistence/rangeRulesGateway.js";
 import { createGeneralInfoGateway } from "./infrastructure/persistence/generalInfoGateway.js";
 import { createGoldenRecordsSyncGateway } from "./infrastructure/persistence/goldenRecordsSyncGateway.js";
+import { createGoldenRecordsIntegrationGateway } from "./infrastructure/persistence/goldenRecordsIntegrationGateway.js";
 import { createGoldenRecordsCurrentHandicapService } from "./infrastructure/golden-records/goldenRecordsCurrentHandicapService.js";
+import { createGoldenRecordsIntegrationService } from "./infrastructure/golden-records/goldenRecordsIntegrationService.js";
 import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
 import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
 import { createSuggestionGateway } from "./infrastructure/persistence/suggestionGateway.js";
@@ -568,8 +571,17 @@ const goldenRecordsSyncGateway = createGoldenRecordsSyncGateway({
   db,
   pool: db.pool,
 });
+const goldenRecordsIntegrationGateway = createGoldenRecordsIntegrationGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
+});
 const goldenRecordsCurrentHandicapService = createGoldenRecordsCurrentHandicapService(
   serverRuntime.goldenRecords,
+);
+const goldenRecordsIntegrationService = createGoldenRecordsIntegrationService(
+  serverRuntime.goldenRecords,
+  goldenRecordsIntegrationGateway,
 );
 const serverEventBus = createServerEventBus();
 const publicServerEventBus = createServerEventBus();
@@ -644,33 +656,43 @@ const {
   deleteCoachingSessionBooking,
   deleteEventBooking,
   deleteTournamentById,
+  deleteTournamentMatchesByTournamentId,
   deleteTournamentRegistration,
   deleteTournamentRegistrationsByTournamentId,
+  deleteTournamentRoundsByTournamentId,
   deleteTournamentScoresByTournamentId,
   findClubEventById,
   findCoachingSessionById,
   findMemberCoachingBookingsByUserId,
   findMemberEventBookingsByUserId,
+  findTournamentMatchByKey,
   findTournamentById,
   insertClubEvent,
   insertCoachingSession,
   insertCoachingSessionBooking,
   insertEventBooking,
   insertTournament,
+  insertTournamentMatch,
   insertTournamentRegistration,
+  insertTournamentRound,
   listAllCoachingSessionBookings,
   listAllEventBookings,
+  listAllTournamentMatches,
   listAllTournamentRegistrations,
+  listAllTournamentRounds,
   listAllTournamentScores,
   listBookingsByCoachingSessionId,
   listClubEvents,
   listCoachingSessions,
   listEventBookingsByEventId,
+  listTournamentMatchesByTournamentId,
   listTournamentRegistrationsByTournamentId,
+  listTournamentRoundsByTournamentId,
   listTournamentScoresByTournamentId,
   listTournaments,
   rejectClubEventById,
   rejectCoachingSessionById,
+  updateTournamentMatchWorkflow,
   updateTournamentById,
   upsertTournamentScore,
 } = sqliteScheduleTournamentStatements ?? {};
@@ -735,18 +757,28 @@ const {
 const tournamentGateway = createTournamentGateway({
   databaseEngine: serverRuntime.databaseEngine,
   deleteTournamentById,
+  deleteTournamentMatchesByTournamentId,
   deleteTournamentRegistration,
   deleteTournamentRegistrationsByTournamentId,
+  deleteTournamentRoundsByTournamentId,
   deleteTournamentScoresByTournamentId,
+  findTournamentMatchByKey,
   findTournamentById,
   insertTournament,
+  insertTournamentMatch,
   insertTournamentRegistration,
+  insertTournamentRound,
+  listAllTournamentMatches,
   listAllTournamentRegistrations,
+  listAllTournamentRounds,
   listAllTournamentScores,
+  listTournamentMatchesByTournamentId,
   listTournamentRegistrationsByTournamentId,
+  listTournamentRoundsByTournamentId,
   listTournamentScoresByTournamentId,
   listTournaments,
   pool: db.pool,
+  updateTournamentMatchWorkflow,
   updateTournamentById,
   upsertTournamentScore,
 });
@@ -1948,21 +1980,33 @@ async function buildCoachingBookingsMap() {
 }
 
 async function buildTournamentDataMaps() {
-  const [registrations, scores] = await Promise.all([
+  const [registrations, rounds, scores, matches] = await Promise.all([
     tournamentGateway.listAllTournamentRegistrations(),
+    tournamentGateway.listAllTournamentRounds(),
     tournamentGateway.listAllTournamentScores(),
+    tournamentGateway.listAllTournamentMatches(),
   ]);
   const registrationsByTournamentId = groupRowsBy(
     registrations,
     (registration) => registration.tournament_id,
   );
+  const roundsByTournamentId = groupRowsBy(
+    rounds,
+    (round) => round.tournament_id,
+  );
   const scoresByTournamentId = groupRowsBy(
     scores,
     (score) => score.tournament_id,
   );
+  const matchesByTournamentId = groupRowsBy(
+    matches,
+    (match) => match.tournament_id,
+  );
 
   return {
+    matchesByTournamentId,
     registrationsByTournamentId,
+    roundsByTournamentId,
     scoresByTournamentId,
   };
 }
@@ -2509,7 +2553,384 @@ function getTournamentTypeLabel(type) {
   );
 }
 
-function buildTournamentBracket(registrations, scoresByRound) {
+function addUtcDaysToDateString(dateString, daysToAdd) {
+  const parsed = new Date(`${dateString}T00:00:00Z`);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  parsed.setUTCDate(parsed.getUTCDate() + Number(daysToAdd || 0));
+  return parsed.toISOString().slice(0, 10);
+}
+
+function buildAutomaticRoundTitles(defaultRoundNames = [], totalRounds) {
+  const nonGenericNames = defaultRoundNames.filter(
+    (name) => !/^round\s+\d+$/i.test(String(name ?? "").trim()),
+  );
+  const specialSuffix =
+    nonGenericNames.length > 0 ? nonGenericNames : [];
+  const genericCount = Math.max(totalRounds - specialSuffix.length, 0);
+  const genericTitles = Array.from({ length: genericCount }, (_, index) => `Round ${index + 1}`);
+
+  return [...genericTitles, ...specialSuffix].slice(-totalRounds);
+}
+
+function parseTournamentRoundPlan(rawSchedule) {
+  if (!rawSchedule) {
+    return {
+      automaticConfig: null,
+      manualSchedule: [],
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(rawSchedule);
+
+    if (Array.isArray(parsed)) {
+      return {
+        automaticConfig: null,
+        manualSchedule: parsed
+          .map((entry, index) => ({
+            roundNumber:
+              Number.isInteger(entry?.roundNumber) && entry.roundNumber > 0
+                ? entry.roundNumber
+                : index + 1,
+            title:
+              typeof entry?.title === "string" && entry.title.trim()
+                ? entry.title.trim()
+                : `Round ${index + 1}`,
+            publishDate:
+              typeof entry?.publishDate === "string" && entry.publishDate.trim()
+                ? entry.publishDate.trim()
+                : null,
+            submissionDeadline:
+              typeof entry?.submissionDeadline === "string" &&
+              entry.submissionDeadline.trim()
+                ? entry.submissionDeadline.trim()
+                : null,
+          }))
+          .sort((left, right) => left.roundNumber - right.roundNumber),
+      };
+    }
+
+    if (parsed && typeof parsed === "object" && parsed.mode === "automatic") {
+      const firstRoundStartDate =
+        typeof parsed.firstRoundStartDate === "string" && parsed.firstRoundStartDate.trim()
+          ? parsed.firstRoundStartDate.trim()
+          : "";
+      const roundWindowDays = Number(parsed.roundWindowDays ?? 0);
+      const roundRestDays = Number(parsed.roundRestDays ?? 0);
+
+      return {
+        automaticConfig:
+          firstRoundStartDate &&
+          Number.isInteger(roundWindowDays) &&
+          roundWindowDays > 0 &&
+          Number.isInteger(roundRestDays) &&
+          roundRestDays >= 0
+            ? {
+                firstRoundStartDate,
+                roundWindowDays,
+                roundRestDays,
+              }
+            : null,
+        manualSchedule: [],
+      };
+    }
+  } catch {
+    return {
+      automaticConfig: null,
+      manualSchedule: [],
+    };
+  }
+
+  return {
+    automaticConfig: null,
+    manualSchedule: [],
+  };
+}
+
+function normalizePersistedTournamentRounds(roundRows = []) {
+  return roundRows
+    .map((round, index) => ({
+      roundNumber:
+        Number.isInteger(round?.round_number) && round.round_number > 0
+          ? round.round_number
+          : Number.isInteger(round?.roundNumber) && round.roundNumber > 0
+            ? round.roundNumber
+            : index + 1,
+      title:
+        typeof round?.title === "string" && round.title.trim()
+          ? round.title.trim()
+          : `Round ${index + 1}`,
+      publishDate: round?.publish_date ?? round?.publishDate ?? null,
+      submissionDeadline:
+        round?.submission_deadline ?? round?.submissionDeadline ?? null,
+      status:
+        typeof round?.status === "string" && round.status.trim()
+          ? round.status.trim()
+          : "scheduled",
+    }))
+    .sort((left, right) => left.roundNumber - right.roundNumber);
+}
+
+function buildAutomaticRoundSchedule({
+  automaticConfig,
+  defaultRoundNames,
+  totalRounds,
+}) {
+  if (!automaticConfig || totalRounds <= 0) {
+    return [];
+  }
+
+  const titles = buildAutomaticRoundTitles(defaultRoundNames, totalRounds);
+  const rounds = [];
+  let publishDate = automaticConfig.firstRoundStartDate;
+
+  for (let index = 0; index < totalRounds; index += 1) {
+    const submissionDeadline = addUtcDaysToDateString(
+      publishDate,
+      automaticConfig.roundWindowDays,
+    );
+
+    rounds.push({
+      roundNumber: index + 1,
+      title: titles[index] ?? `Round ${index + 1}`,
+      publishDate,
+      submissionDeadline,
+      status: "scheduled",
+    });
+
+    publishDate = addUtcDaysToDateString(
+      submissionDeadline,
+      automaticConfig.roundRestDays + 1,
+    );
+  }
+
+  return rounds;
+}
+
+function getTournamentTemplateDefinition(tournament) {
+  const templateKey = tournament?.template_key ?? tournament?.templateKey ?? null;
+
+  if (templateKey) {
+    const matchingTemplate = TOURNAMENT_TEMPLATE_OPTIONS.find(
+      (template) => template.key === templateKey,
+    );
+
+    if (matchingTemplate) {
+      return matchingTemplate;
+    }
+  }
+
+  if (tournament?.tournament_type === "head-to-head") {
+    return (
+      TOURNAMENT_TEMPLATE_OPTIONS.find(
+        (template) => template.key === "standard-knockout",
+      ) ?? null
+    );
+  }
+
+  return null;
+}
+
+function buildTournamentMatchId(tournamentId, roundNumber, matchNumber) {
+  return `tournament-${tournamentId}-round-${roundNumber}-match-${matchNumber}`;
+}
+
+function normalizePersistedTournamentMatches(matchRows = []) {
+  return matchRows
+    .map((match) => ({
+      tournamentId: match?.tournament_id ?? match?.tournamentId ?? null,
+      roundNumber:
+        Number.isInteger(match?.round_number) && match.round_number > 0
+          ? match.round_number
+          : Number.isInteger(match?.roundNumber) && match.roundNumber > 0
+            ? match.roundNumber
+            : 1,
+      matchNumber:
+        Number.isInteger(match?.match_number) && match.match_number > 0
+          ? match.match_number
+          : Number.isInteger(match?.matchNumber) && match.matchNumber > 0
+            ? match.matchNumber
+            : 1,
+      leftMemberUsername:
+        match?.left_member_username ?? match?.leftMemberUsername ?? null,
+      rightMemberUsername:
+        match?.right_member_username ?? match?.rightMemberUsername ?? null,
+      leftScore: match?.left_score ?? match?.leftScore ?? null,
+      rightScore: match?.right_score ?? match?.rightScore ?? null,
+      winnerUsername: match?.winner_username ?? match?.winnerUsername ?? null,
+      submittedByUsername:
+        match?.submitted_by_username ?? match?.submittedByUsername ?? null,
+      submittedAt:
+        match?.submitted_at_date && match?.submitted_at_time
+          ? `${match.submitted_at_date}T${match.submitted_at_time}`
+          : match?.submittedAt ?? null,
+      confirmedByUsername:
+        match?.confirmed_by_username ?? match?.confirmedByUsername ?? null,
+      confirmedAt:
+        match?.confirmed_at_date && match?.confirmed_at_time
+          ? `${match.confirmed_at_date}T${match.confirmed_at_time}`
+          : match?.confirmedAt ?? null,
+      disputedByUsername:
+        match?.disputed_by_username ?? match?.disputedByUsername ?? null,
+      disputedAt:
+        match?.disputed_at_date && match?.disputed_at_time
+          ? `${match.disputed_at_date}T${match.disputed_at_time}`
+          : match?.disputedAt ?? null,
+      disputeReason: match?.dispute_reason ?? match?.disputeReason ?? null,
+      status:
+        typeof match?.status === "string" && match.status.trim()
+          ? match.status.trim()
+          : "scheduled",
+    }))
+    .sort(
+      (left, right) =>
+        left.roundNumber - right.roundNumber || left.matchNumber - right.matchNumber,
+    );
+}
+
+function mapBracketMatchToEngineMatch(match, round, tournament, scoreWindow, actorUsername = null) {
+  const requiresConfirmation =
+    tournament?.template?.capabilities?.supportsMatchConfirmation ?? false;
+  const actorIsCompetitorA =
+    actorUsername && match.leftParticipant?.username === actorUsername;
+  const actorIsCompetitorB =
+    actorUsername && match.rightParticipant?.username === actorUsername;
+  const submittedByUsername = match.submittedByUsername ?? null;
+  const waitingForOpponentConfirmation =
+    match.status === "awaiting_opponent_confirmation" &&
+    submittedByUsername &&
+    submittedByUsername !== actorUsername;
+  const canSubmitResult = Boolean(
+    actorUsername &&
+      (actorIsCompetitorA || actorIsCompetitorB) &&
+      match.leftParticipant &&
+      match.rightParticipant &&
+      ["scheduled", "pending", "awaiting_result"].includes(match.status),
+  );
+  const canConfirmResult = Boolean(
+    actorUsername &&
+      waitingForOpponentConfirmation &&
+      (actorIsCompetitorA || actorIsCompetitorB),
+  );
+  const canDisputeResult = canConfirmResult;
+
+  return {
+    id: match.id,
+    roundNumber: round.roundNumber,
+    roundTitle: round.title,
+    status: match.status,
+    competitorA: match.leftParticipant ?? null,
+    competitorB: match.rightParticipant ?? null,
+    score: {
+      competitorA: match.leftScore ?? null,
+      competitorB: match.rightScore ?? null,
+    },
+    winner: match.winner ?? null,
+    submissionDeadline: scoreWindow?.endDate ?? null,
+    workflow: {
+      resultSubmissionMode:
+        tournament?.template?.defaults?.resultWorkflow ?? "single-submit",
+      requiresOpponentConfirmation: requiresConfirmation,
+      submittedByUsername,
+      submittedAt: match.submittedAt ?? null,
+      confirmedByUsername: match.confirmedByUsername ?? null,
+      confirmedAt: match.confirmedAt ?? null,
+      disputedByUsername: match.disputedByUsername ?? null,
+      disputedAt: match.disputedAt ?? null,
+      disputeReason: match.disputeReason ?? null,
+      actorRole: actorIsCompetitorA
+        ? "competitorA"
+        : actorIsCompetitorB
+          ? "competitorB"
+          : null,
+      canSubmitResult,
+      canConfirmResult,
+      canDisputeResult,
+    },
+  };
+}
+
+function buildTournamentEngine(rounds, tournamentRecord, actorUsername = null) {
+  const template = getTournamentTemplateDefinition(tournamentRecord);
+  const engineRounds = rounds.map((round) => {
+    const configuredRound =
+      tournamentRecord.roundSchedule?.find(
+        (entry) => entry.roundNumber === round.roundNumber,
+      ) ?? null;
+    const matchStatuses = round.matches.map((match) => match.status);
+    const isComplete =
+      matchStatuses.length > 0 &&
+      matchStatuses.every((status) => isTournamentMatchResolvedStatus(status));
+
+    return {
+      roundNumber: round.roundNumber,
+      title: configuredRound?.title ?? round.title,
+      status: isComplete ? "completed" : "pending",
+      submissionDeadline:
+        configuredRound?.submissionDeadline ??
+        tournamentRecord.scoreWindow?.endDate ??
+        null,
+      matches: round.matches.map((match) =>
+        mapBracketMatchToEngineMatch(
+          match,
+          {
+            ...round,
+            title: configuredRound?.title ?? round.title,
+          },
+          { ...tournamentRecord, template },
+          {
+            ...tournamentRecord.scoreWindow,
+            endDate:
+              configuredRound?.submissionDeadline ??
+              tournamentRecord.scoreWindow?.endDate ??
+              null,
+          },
+          actorUsername,
+        ),
+      ),
+    };
+  });
+
+  return {
+    format: template?.format ?? "bracket",
+    template: template
+      ? {
+          key: template.key,
+          label: template.label,
+          description: template.description,
+          roundType: template.roundType,
+          capabilities: template.capabilities,
+          defaults: template.defaults ?? {},
+          eligibilityRules: template.eligibilityRules ?? null,
+        }
+      : null,
+    lifecycle: {
+      registrationWindow: tournamentRecord.registrationWindow,
+      drawDate: tournamentRecord.drawDate ?? null,
+      activeRoundNumber: tournamentRecord.currentRoundNumber ?? null,
+      scoreWindow: tournamentRecord.scoreWindow,
+    },
+    rounds: engineRounds,
+    matches: engineRounds.flatMap((round) => round.matches),
+  };
+}
+
+function isTournamentMatchResolvedStatus(status) {
+  return [
+    "completed",
+    "finalised",
+    "progressed",
+    "walkover",
+    "disqualified",
+    "bye",
+  ].includes(status);
+}
+
+function buildTournamentBracket(registrations, scoresByRound, persistedMatchesByKey = new Map()) {
   const entrants = [...registrations]
     .sort((left, right) => left.fullName.localeCompare(right.fullName))
     .map((registration, index) => ({
@@ -2543,6 +2964,7 @@ function buildTournamentBracket(registrations, scoresByRound) {
     const matches = [];
 
     for (let index = 0; index < currentParticipants.length; index += 2) {
+      const matchNumber = index / 2 + 1;
       const leftParticipant = currentParticipants[index] ?? null;
       const rightParticipant = currentParticipants[index + 1] ?? null;
       const leftScore = leftParticipant
@@ -2554,13 +2976,29 @@ function buildTournamentBracket(registrations, scoresByRound) {
 
       let winner = null;
       let status = "pending";
+      const persistedMatch =
+        persistedMatchesByKey.get(`${roundIndex}:${matchNumber}`) ?? null;
+      const persistedParticipantsMatch =
+        persistedMatch &&
+        (persistedMatch.leftMemberUsername ?? null) ===
+          (leftParticipant?.username ?? null) &&
+        (persistedMatch.rightMemberUsername ?? null) ===
+          (rightParticipant?.username ?? null);
 
       if (leftParticipant && !rightParticipant) {
-        winner = leftParticipant;
-        status = "bye";
+        if (roundIndex === 1) {
+          winner = leftParticipant;
+          status = "bye";
+        } else {
+          status = "pending";
+        }
       } else if (!leftParticipant && rightParticipant) {
-        winner = rightParticipant;
-        status = "bye";
+        if (roundIndex === 1) {
+          winner = rightParticipant;
+          status = "bye";
+        } else {
+          status = "pending";
+        }
       } else if (!leftParticipant && !rightParticipant) {
         status = "empty";
       } else if (
@@ -2578,8 +3016,25 @@ function buildTournamentBracket(registrations, scoresByRound) {
         }
       }
 
+      if (persistedParticipantsMatch) {
+        const persistedStatus = persistedMatch.status ?? status;
+
+        if (
+          persistedMatch.winnerUsername &&
+          isTournamentMatchResolvedStatus(persistedStatus)
+        ) {
+          winner =
+            [leftParticipant, rightParticipant].find(
+              (participant) =>
+                participant?.username === persistedMatch.winnerUsername,
+            ) ?? winner;
+        }
+
+        status = persistedStatus;
+      }
+
       matches.push({
-        id: `round-${roundIndex}-match-${index / 2 + 1}`,
+        id: `round-${roundIndex}-match-${matchNumber}`,
         leftParticipant,
         rightParticipant,
         leftScore,
@@ -2593,7 +3048,8 @@ function buildTournamentBracket(registrations, scoresByRound) {
       currentRoundNumber === null &&
       matches.some(
         (match) =>
-          ["pending", "tie"].includes(match.status) &&
+          !isTournamentMatchResolvedStatus(match.status) &&
+          !["empty"].includes(match.status) &&
           match.leftParticipant &&
           match.rightParticipant,
       )
@@ -2622,6 +3078,8 @@ function buildTournament(
   registrations = [],
   scores = [],
   actorUsername = null,
+  roundRows = [],
+  matchRows = [],
 ) {
   const registrationLookup = new Set(
     registrations.map((entry) => entry.member_username),
@@ -2644,25 +3102,138 @@ function buildTournament(
       .set(score.member_username, score.score);
   }
 
+  const persistedMatches = normalizePersistedTournamentMatches(matchRows);
+  const persistedMatchesByKey = new Map(
+    persistedMatches.map((match) => [
+      `${match.roundNumber}:${match.matchNumber}`,
+      match,
+    ]),
+  );
   const bracket = buildTournamentBracket(
     normalizedRegistrations,
     scoresByRound,
+    persistedMatchesByKey,
   );
+  const persistedRounds = normalizePersistedTournamentRounds(roundRows);
+  const roundPlan = parseTournamentRoundPlan(tournament.round_schedule_json);
+  const template = getTournamentTemplateDefinition(tournament);
+  const generatedRoundSchedule =
+    roundPlan.automaticConfig
+      ? buildAutomaticRoundSchedule({
+          automaticConfig: roundPlan.automaticConfig,
+          defaultRoundNames: template?.defaults?.defaultRoundNames ?? [],
+          totalRounds: bracket.rounds.length,
+        })
+      : [];
+  const roundSchedule =
+    roundPlan.automaticConfig
+      ? generatedRoundSchedule
+      : persistedRounds.length > 0
+        ? persistedRounds
+        : roundPlan.manualSchedule;
   const today = toUtcDateString(new Date());
   const registrationUpcoming = today < tournament.registration_start_date;
   const registrationOpen =
     today >= tournament.registration_start_date &&
     today <= tournament.registration_end_date;
   const registrationClosed = today > tournament.registration_end_date;
-  const scoreSubmissionOpen =
-    today >= tournament.score_submission_start_date &&
-    today <= tournament.score_submission_end_date;
   const currentRoundNumber = bracket.currentRoundNumber;
   const currentRound = bracket.rounds.find(
     (round) => round.roundNumber === currentRoundNumber,
   );
+  const currentRoundSchedule =
+    roundSchedule.find((round) => round.roundNumber === currentRoundNumber) ?? null;
+  const scoreSubmissionOpen = Boolean(
+    registrationClosed &&
+      currentRoundSchedule?.publishDate &&
+      currentRoundSchedule?.submissionDeadline &&
+      today >= currentRoundSchedule.publishDate &&
+      today <= currentRoundSchedule.submissionDeadline,
+  );
+  const enrichedBracketRounds = bracket.rounds.map((round) => ({
+    ...round,
+    matches: round.matches.map((match, index) => {
+      const matchNumber = index + 1;
+      const persistedMatch =
+        persistedMatchesByKey.get(`${round.roundNumber}:${matchNumber}`) ?? null;
+      const participantsMatchPersistedRecord =
+        persistedMatch &&
+        (persistedMatch.leftMemberUsername ?? null) ===
+          (match.leftParticipant?.username ?? null) &&
+        (persistedMatch.rightMemberUsername ?? null) ===
+          (match.rightParticipant?.username ?? null);
+      const isCurrentRound = round.roundNumber === currentRoundNumber;
+      const defaultStatus =
+        match.status === "bye" || match.status === "empty"
+          ? match.status
+          : isTournamentMatchResolvedStatus(match.status)
+            ? "finalised"
+            : isCurrentRound && scoreSubmissionOpen
+              ? "awaiting_result"
+              : "scheduled";
+      const progressedStatus =
+        currentRoundNumber &&
+        round.roundNumber < currentRoundNumber &&
+        ["finalised", "walkover", "disqualified"].includes(
+          participantsMatchPersistedRecord && persistedMatch?.status
+            ? persistedMatch.status
+            : defaultStatus,
+        )
+          ? "progressed"
+          : null;
+
+      return {
+        ...match,
+        id: buildTournamentMatchId(tournament.id, round.roundNumber, matchNumber),
+        status:
+          progressedStatus ??
+          (participantsMatchPersistedRecord && persistedMatch?.status
+            ? persistedMatch.status
+            : defaultStatus),
+        leftScore:
+          participantsMatchPersistedRecord &&
+          typeof persistedMatch?.leftScore === "number"
+            ? persistedMatch.leftScore
+            : match.leftScore,
+        rightScore:
+          participantsMatchPersistedRecord &&
+          typeof persistedMatch?.rightScore === "number"
+            ? persistedMatch.rightScore
+            : match.rightScore,
+        winner:
+          participantsMatchPersistedRecord && persistedMatch?.winnerUsername
+            ? [match.leftParticipant, match.rightParticipant].find(
+                (participant) =>
+                  participant?.username === persistedMatch.winnerUsername,
+              ) ?? match.winner
+            : match.winner,
+        submittedByUsername:
+          participantsMatchPersistedRecord
+            ? persistedMatch?.submittedByUsername ?? null
+            : null,
+        submittedAt:
+          participantsMatchPersistedRecord ? persistedMatch?.submittedAt ?? null : null,
+        confirmedByUsername:
+          participantsMatchPersistedRecord
+            ? persistedMatch?.confirmedByUsername ?? null
+            : null,
+        confirmedAt:
+          participantsMatchPersistedRecord ? persistedMatch?.confirmedAt ?? null : null,
+        disputedByUsername:
+          participantsMatchPersistedRecord
+            ? persistedMatch?.disputedByUsername ?? null
+            : null,
+        disputedAt:
+          participantsMatchPersistedRecord ? persistedMatch?.disputedAt ?? null : null,
+        disputeReason:
+          participantsMatchPersistedRecord ? persistedMatch?.disputeReason ?? null : null,
+      };
+    }),
+  }));
   const actorMatch =
-    currentRound?.matches.find(
+    enrichedBracketRounds
+      .find((round) => round.roundNumber === currentRoundNumber)
+      ?.matches.find(
       (match) =>
         match.leftParticipant?.username === actorUsername ||
         match.rightParticipant?.username === actorUsername,
@@ -2671,12 +3242,28 @@ function buildTournament(
     actorUsername && currentRoundNumber
       ? (scoresByRound.get(currentRoundNumber)?.get(actorUsername) ?? null)
       : null;
-
-  return {
+  const scoreWindowStartDate =
+    roundSchedule[0]?.publishDate ??
+    roundPlan.automaticConfig?.firstRoundStartDate ??
+    tournament.score_submission_start_date;
+  const scoreWindowEndDate =
+    roundSchedule[roundSchedule.length - 1]?.submissionDeadline ??
+    tournament.score_submission_end_date;
+  const baseTournamentRecord = {
     id: tournament.id,
     name: tournament.name,
     type: tournament.tournament_type,
     typeLabel: getTournamentTypeLabel(tournament.tournament_type),
+    templateKey: template?.key ?? null,
+    templateLabel: template?.label ?? null,
+    roundOneStartDate:
+      roundPlan.automaticConfig?.firstRoundStartDate ??
+      roundSchedule[0]?.publishDate ??
+      tournament.draw_date ??
+      null,
+    roundWindowDays: roundPlan.automaticConfig?.roundWindowDays ?? null,
+    roundRestDays: roundPlan.automaticConfig?.roundRestDays ?? null,
+    roundSchedule,
     registrationWindow: {
       startDate: tournament.registration_start_date,
       endDate: tournament.registration_end_date,
@@ -2685,8 +3272,8 @@ function buildTournament(
       isClosed: registrationClosed,
     },
     scoreWindow: {
-      startDate: tournament.score_submission_start_date,
-      endDate: tournament.score_submission_end_date,
+      startDate: scoreWindowStartDate,
+      endDate: scoreWindowEndDate,
       isOpen: scoreSubmissionOpen,
     },
     createdBy: {
@@ -2695,7 +3282,10 @@ function buildTournament(
     },
     registrations: normalizedRegistrations,
     registrationCount: normalizedRegistrations.length,
-    bracket,
+    bracket: {
+      ...bracket,
+      rounds: enrichedBracketRounds,
+    },
     bracketReady: registrationClosed && normalizedRegistrations.length > 1,
     currentRoundNumber,
     isRegistered: Boolean(
@@ -2718,7 +3308,9 @@ function buildTournament(
       currentRoundNumber &&
       actorMatch &&
       actorMatch.leftParticipant &&
-      actorMatch.rightParticipant,
+      actorMatch.rightParticipant &&
+      actorMatch.status !== "awaiting_opponent_confirmation" &&
+      actorMatch.status !== "disputed",
     ),
     actorScore,
     needsScoreReminder: Boolean(
@@ -2729,8 +3321,33 @@ function buildTournament(
       actorMatch &&
       actorMatch.leftParticipant &&
       actorMatch.rightParticipant &&
-      typeof actorScore !== "number",
+      typeof actorScore !== "number" &&
+      actorMatch.status !== "awaiting_opponent_confirmation" &&
+      actorMatch.status !== "disputed",
     ),
+  };
+
+  return {
+    ...baseTournamentRecord,
+    currentMatch: actorMatch
+      ? mapBracketMatchToEngineMatch(
+          actorMatch,
+          {
+            roundNumber: currentRoundNumber,
+            title: currentRoundSchedule?.title ?? `Round ${currentRoundNumber}`,
+          },
+          { ...baseTournamentRecord, template },
+          {
+            ...baseTournamentRecord.scoreWindow,
+            endDate:
+              currentRoundSchedule?.submissionDeadline ??
+              baseTournamentRecord.scoreWindow?.endDate ??
+              null,
+          },
+          actorUsername,
+        )
+      : null,
+    engine: buildTournamentEngine(enrichedBracketRounds, baseTournamentRecord, actorUsername),
   };
 }
 
@@ -3956,6 +4573,7 @@ registerAdminMemberRoutes({
   CURRENT_PERMISSION_KEY_SET,
   DISTANCE_SIGN_OFF_YARDS,
   goldenRecordsCurrentHandicapService,
+  goldenRecordsIntegrationService,
   goldenRecordsMemberSyncService,
   getActorUser,
   getUtcTimestampParts,
@@ -5635,6 +6253,7 @@ registerTournamentRoutes({
   serverEventBus,
   toUtcDateString,
   tournamentGateway,
+  TOURNAMENT_TEMPLATE_OPTIONS,
   TOURNAMENT_TYPE_OPTIONS,
   writeFileSync,
 });

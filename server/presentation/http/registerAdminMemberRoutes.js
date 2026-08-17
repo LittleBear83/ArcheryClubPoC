@@ -10,6 +10,7 @@ export function registerAdminMemberRoutes({
   CURRENT_PERMISSION_KEY_SET,
   DISTANCE_SIGN_OFF_YARDS,
   goldenRecordsCurrentHandicapService,
+  goldenRecordsIntegrationService,
   goldenRecordsMemberSyncService,
   getActorUser,
   getUtcTimestampParts,
@@ -44,6 +45,13 @@ export function registerAdminMemberRoutes({
     PERMISSIONS.MANAGE_COMMITTEE_ROLES,
     "manage_loan_bows",
   ];
+  const GOLDEN_RECORDS_ALLOWED_ROLE_KEYS = new Set(["admin", "developer"]);
+
+  function canAccessGoldenRecordsAdmin(actor) {
+    return GOLDEN_RECORDS_ALLOWED_ROLE_KEYS.has(
+      String(actor?.user_type ?? "").trim().toLowerCase(),
+    );
+  }
 
   async function listUsernamesByRoleKey(roleKey) {
     return (await memberDirectoryGateway.listAllUsers())
@@ -1784,7 +1792,6 @@ export function registerAdminMemberRoutes({
 
   app.post("/api/golden-records/sync-outdoor-table", async (req, res) => {
     const actor = getActorUser(req);
-    const allowedRoleKeys = new Set(["admin", "developer"]);
 
     if (!actor) {
       res.status(401).json({
@@ -1794,7 +1801,7 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    if (!allowedRoleKeys.has(String(actor.user_type ?? "").trim().toLowerCase())) {
+    if (!canAccessGoldenRecordsAdmin(actor)) {
       res.status(403).json({
         success: false,
         message:
@@ -1831,6 +1838,104 @@ export function registerAdminMemberRoutes({
               syncSummary.syncedCount === 1 ? "record" : "records"
             }.`,
     });
+  });
+
+  app.get("/api/golden-records/admin-summary", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    if (!canAccessGoldenRecordsAdmin(actor)) {
+      res.status(403).json({
+        success: false,
+        message: "Only admins and developers can view Golden Records settings.",
+      });
+      return;
+    }
+
+    const summary = await goldenRecordsIntegrationService.getAdminSummary();
+
+    res.json({
+      success: true,
+      summary,
+    });
+  });
+
+  app.get("/api/golden-records/health", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    if (!canAccessGoldenRecordsAdmin(actor)) {
+      res.status(403).json({
+        success: false,
+        message: "Only admins and developers can test Golden Records connectivity.",
+      });
+      return;
+    }
+
+    const health = await goldenRecordsIntegrationService.testConnection();
+
+    res.status(health.ok ? 200 : 502).json({
+      success: health.ok,
+      health,
+      message: health.ok
+        ? "Golden Records connection test succeeded."
+        : "Golden Records connection test failed.",
+    });
+  });
+
+  app.post("/api/golden-records/lookups/sync", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    if (!canAccessGoldenRecordsAdmin(actor)) {
+      res.status(403).json({
+        success: false,
+        message: "Only admins and developers can sync Golden Records lookups.",
+      });
+      return;
+    }
+
+    try {
+      const summary = await goldenRecordsIntegrationService.syncLookups({
+        getUtcTimestampParts,
+        updatedByUsername: actor.username,
+      });
+
+      res.json({
+        success: true,
+        summary,
+        message: summary.summary,
+      });
+    } catch (error) {
+      res.status(502).json({
+        success: false,
+        message:
+          error instanceof Error
+            ? error.message
+            : "Golden Records lookup sync failed.",
+      });
+    }
   });
 
   app.post("/api/user-profiles/:username/golden-records/assign-match", async (req, res) => {

@@ -16,6 +16,25 @@ type TournamentDataSource = {
     tournamentId: string | number,
     scoreSubmission: unknown,
   ): Promise<unknown>;
+  submitTournamentMatchResult(
+    actorUsername: string,
+    matchId: string,
+    payload: unknown,
+  ): Promise<unknown>;
+  confirmTournamentMatchResult(
+    actorUsername: string,
+    matchId: string,
+  ): Promise<unknown>;
+  disputeTournamentMatchResult(
+    actorUsername: string,
+    matchId: string,
+    payload: unknown,
+  ): Promise<unknown>;
+  overrideTournamentMatchResult(
+    actorUsername: string,
+    matchId: string,
+    payload: unknown,
+  ): Promise<unknown>;
 };
 
 // Tournament repository keeps the domain-facing method names stable while the
@@ -54,5 +73,21 @@ export class TournamentRepositoryImpl extends TournamentRepository {
 
   async submitTournamentScore(actorUsername, tournamentId, scoreSubmission) {
     return this.dataSource.submitTournamentScore(actorUsername, tournamentId, scoreSubmission);
+  }
+
+  async submitTournamentMatchResult(actorUsername, matchId, payload) {
+    return this.dataSource.submitTournamentMatchResult(actorUsername, matchId, payload);
+  }
+
+  async confirmTournamentMatchResult(actorUsername, matchId) {
+    return this.dataSource.confirmTournamentMatchResult(actorUsername, matchId);
+  }
+
+  async disputeTournamentMatchResult(actorUsername, matchId, payload) {
+    return this.dataSource.disputeTournamentMatchResult(actorUsername, matchId, payload);
+  }
+
+  async overrideTournamentMatchResult(actorUsername, matchId, payload) {
+    return this.dataSource.overrideTournamentMatchResult(actorUsername, matchId, payload);
   }
 }

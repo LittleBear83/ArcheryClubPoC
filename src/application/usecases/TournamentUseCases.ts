@@ -141,3 +141,98 @@ export class SubmitTournamentScoreUseCase {
     );
   }
 }
+
+export class SubmitTournamentMatchResultUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
+  constructor({ tournamentRepository }) {
+    this.tournamentRepository = tournamentRepository;
+  }
+
+  async execute({ actorUsername, matchId, payload }) {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!matchId?.trim()) {
+      throw new Error("A tournament match id is required.");
+    }
+
+    return this.tournamentRepository.submitTournamentMatchResult(
+      actorUsername,
+      matchId,
+      payload,
+    );
+  }
+}
+
+export class ConfirmTournamentMatchResultUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
+  constructor({ tournamentRepository }) {
+    this.tournamentRepository = tournamentRepository;
+  }
+
+  async execute({ actorUsername, matchId }) {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!matchId?.trim()) {
+      throw new Error("A tournament match id is required.");
+    }
+
+    return this.tournamentRepository.confirmTournamentMatchResult(
+      actorUsername,
+      matchId,
+    );
+  }
+}
+
+export class DisputeTournamentMatchResultUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
+  constructor({ tournamentRepository }) {
+    this.tournamentRepository = tournamentRepository;
+  }
+
+  async execute({ actorUsername, matchId, payload }) {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!matchId?.trim()) {
+      throw new Error("A tournament match id is required.");
+    }
+
+    return this.tournamentRepository.disputeTournamentMatchResult(
+      actorUsername,
+      matchId,
+      payload,
+    );
+  }
+}
+
+export class OverrideTournamentMatchResultUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
+  constructor({ tournamentRepository }) {
+    this.tournamentRepository = tournamentRepository;
+  }
+
+  async execute({ actorUsername, matchId, payload }) {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!matchId?.trim()) {
+      throw new Error("A tournament match id is required.");
+    }
+
+    return this.tournamentRepository.overrideTournamentMatchResult(
+      actorUsername,
+      matchId,
+      payload,
+    );
+  }
+}

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Microsoft Defender BrowserProtection</title>
+    <link rel="stylesheet" href="styles/popup.css">
+</head>
+
+<body>
+    <section class="alternate">
+        <h1>Web page monitoring</h1>
+        Safeguard against suspicious and malicious sites
+        <div id="divSwitch">
+            <span id="onoffswitch" class="switch on leftMargin"></span>
+            <span id="status" class="status">Active</span>
+        </div>
+        <a href="#" id="demoLink">Demonstrate this extension's protection</a>
+    </section>
+
+    <!-- Note: This section is Hidden for now, until a new feedback plan arises. -->
+    <section id="feedbackSection" class="alternate buttonPadding" style="display:none">
+        <a class="button" href="#" id="feedbackLink">Send feedback</a><br>
+    </section>
+
+    <section id="suspiciousSite" class="alternate buttonPadding">
+        <a class="button" id="reportSiteLink">Report Suspicious Site</a>
+    </section>
+
+    <section id="about" class="alternate">
+        <h1>About this extension</h1>
+        Version: <span id="versionNumber"></span>
+        <br />
+        &copy;<span id="copyrightYear"></span> Microsoft Corporation
+    </section>
+
+    <section id="Otherlinks" class="alternate">
+        <a href="#" id="uninstallLink">Learn about managing browser extensions</a>
+        <br />
+        <a href="#" id="privacyLink">Privacy statement</a>
+    </section>
+
+    <footer class="alternate">
+        <div class="footerMainDiv">
+            <div class="footerImageDiv" style="vertical-align:middle">
+                <img src="./images/defenderAppLogo_white.png" class="icon" />
+            </div>
+            <div class="footerTextDiv">
+                <p class="footerTextH1Font">Microsoft Defender</p>
+                <p class="footerTextH2Font">Browser Protection</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="../models/MessageType.js"></script>
+    <script src="../services/Storage.js "></script>
+    <script src="../services/Settings.js "></script>
+    <script src="popup.js"></script>
+</body>
+</html>

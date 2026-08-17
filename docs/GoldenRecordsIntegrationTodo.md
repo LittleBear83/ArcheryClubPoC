@@ -194,7 +194,7 @@ Update:
 
 ## Phase 3: Read-Only Connection And Reference Data
 
-### 9. Add admin-only connection test route `[ ]`
+### 9. Add admin-only connection test route `[x]`
 
 Create:
 
@@ -211,7 +211,7 @@ Restrict to:
 - developer
 - admin
 
-### 10. Add admin-only integration settings page `[ ]`
+### 10. Add admin-only integration settings page `[x]`
 
 Create:
 
@@ -225,7 +225,7 @@ Show:
 - last sync status
 - last failure summary
 
-### 11. Import lookup/reference data first `[ ]`
+### 11. Import lookup/reference data first `[x]`
 
 Pull and cache:
 

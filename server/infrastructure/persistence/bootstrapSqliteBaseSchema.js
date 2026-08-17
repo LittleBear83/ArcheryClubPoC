@@ -168,6 +168,9 @@ export const TOURNAMENTS_TABLE_SQL = `
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     tournament_type TEXT NOT NULL,
+    template_key TEXT,
+    draw_date TEXT,
+    round_schedule_json TEXT NOT NULL DEFAULT '[]',
     registration_start_date TEXT NOT NULL,
     registration_end_date TEXT NOT NULL,
     score_submission_start_date TEXT NOT NULL,
@@ -202,6 +205,77 @@ export const TOURNAMENT_SCORES_TABLE_SQL = `
     PRIMARY KEY (tournament_id, round_number, member_username),
     FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
     FOREIGN KEY (member_username) REFERENCES users(username)
+  )
+`;
+
+export const TOURNAMENT_ROUNDS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS tournament_rounds (
+    tournament_id INTEGER NOT NULL,
+    round_number INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    publish_date TEXT,
+    submission_deadline TEXT,
+    status TEXT NOT NULL DEFAULT 'scheduled',
+    PRIMARY KEY (tournament_id, round_number),
+    FOREIGN KEY (tournament_id) REFERENCES tournaments(id)
+  )
+`;
+
+export const TOURNAMENT_MATCHES_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS tournament_matches (
+    tournament_id INTEGER NOT NULL,
+    round_number INTEGER NOT NULL,
+    match_number INTEGER NOT NULL,
+    left_member_username TEXT,
+    right_member_username TEXT,
+    left_score INTEGER,
+    right_score INTEGER,
+    winner_username TEXT,
+    submitted_by_username TEXT,
+    submitted_at_date TEXT,
+    submitted_at_time TEXT,
+    confirmed_by_username TEXT,
+    confirmed_at_date TEXT,
+    confirmed_at_time TEXT,
+    disputed_by_username TEXT,
+    disputed_at_date TEXT,
+    disputed_at_time TEXT,
+    dispute_reason TEXT,
+    status TEXT NOT NULL DEFAULT 'scheduled',
+    PRIMARY KEY (tournament_id, round_number, match_number),
+    FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
+    FOREIGN KEY (left_member_username) REFERENCES users(username),
+    FOREIGN KEY (right_member_username) REFERENCES users(username),
+    FOREIGN KEY (winner_username) REFERENCES users(username),
+    FOREIGN KEY (submitted_by_username) REFERENCES users(username),
+    FOREIGN KEY (confirmed_by_username) REFERENCES users(username),
+    FOREIGN KEY (disputed_by_username) REFERENCES users(username)
+  )
+`;
+
+export const TOURNAMENT_HANDICAP_TABLES_SQL = `
+  CREATE TABLE IF NOT EXISTS tournament_handicap_tables (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_key TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    description TEXT,
+    allowance_percent INTEGER,
+    is_editable INTEGER NOT NULL DEFAULT 0,
+    updated_at_date TEXT,
+    updated_at_time TEXT,
+    updated_by_username TEXT,
+    FOREIGN KEY (updated_by_username) REFERENCES users(username)
+  )
+`;
+
+export const TOURNAMENT_HANDICAP_TABLE_ROWS_SQL = `
+  CREATE TABLE IF NOT EXISTS tournament_handicap_table_rows (
+    table_id INTEGER NOT NULL,
+    handicap_value INTEGER NOT NULL,
+    reference_score INTEGER,
+    display_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (table_id, handicap_value),
+    FOREIGN KEY (table_id) REFERENCES tournament_handicap_tables(id)
   )
 `;
 
@@ -818,11 +892,35 @@ export function bootstrapSqliteBaseSchema({
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS golden_records_integration_status (
+      status_key TEXT PRIMARY KEY,
+      status_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL DEFAULT ''
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS golden_records_lookup_cache (
+      lookup_type TEXT PRIMARY KEY,
+      item_count INTEGER NOT NULL DEFAULT 0,
+      payload_json TEXT NOT NULL DEFAULT '[]',
+      fetched_at TEXT NOT NULL DEFAULT '',
+      synced_at_date TEXT NOT NULL DEFAULT '',
+      synced_at_time TEXT NOT NULL DEFAULT '',
+      updated_by_username TEXT REFERENCES users(username)
+    )
+  `);
+
   db.exec(COACHING_SESSIONS_TABLE_SQL);
   db.exec(COACHING_SESSION_BOOKINGS_TABLE_SQL);
   db.exec(CLUB_EVENTS_TABLE_SQL);
   db.exec(EVENT_BOOKINGS_TABLE_SQL);
   db.exec(TOURNAMENTS_TABLE_SQL);
+  db.exec(TOURNAMENT_ROUNDS_TABLE_SQL);
+  db.exec(TOURNAMENT_MATCHES_TABLE_SQL);
+  db.exec(TOURNAMENT_HANDICAP_TABLES_SQL);
+  db.exec(TOURNAMENT_HANDICAP_TABLE_ROWS_SQL);
   db.exec(TOURNAMENT_REGISTRATIONS_TABLE_SQL);
   db.exec(TOURNAMENT_SCORES_TABLE_SQL);
 

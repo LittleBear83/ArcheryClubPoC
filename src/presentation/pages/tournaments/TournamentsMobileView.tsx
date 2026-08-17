@@ -57,6 +57,12 @@ function TournamentRoundSummary({ round }: { round: TournamentRound }) {
   );
 }
 
+function formatMatchStatus(status: string) {
+  return String(status ?? "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 type TournamentsMobileViewProps = {
   tournaments: TournamentRecord[];
   selectedTournament: TournamentRecord | null;
@@ -66,13 +72,23 @@ type TournamentsMobileViewProps = {
   isSubmittingScore: boolean;
   registrationStatusText: string;
   scoreValue: string;
+  matchScoreAValue: string;
+  matchScoreBValue: string;
+  matchDisputeReason: string;
   bracketGraphic: ReactNode;
+  captainOperationsContent?: ReactNode;
   onSelectTournament: (tournamentId: TournamentRecord["id"]) => void;
   onRegister: () => void;
   onWithdraw: () => void;
   onSaveCompetitorList: () => void;
   onScoreValueChange: (nextValue: string) => void;
   onSubmitScore: (event: FormEvent<HTMLFormElement>) => void;
+  onMatchScoreAValueChange: (nextValue: string) => void;
+  onMatchScoreBValueChange: (nextValue: string) => void;
+  onMatchDisputeReasonChange: (nextValue: string) => void;
+  onSubmitMatchResult: (event: FormEvent<HTMLFormElement>) => void;
+  onConfirmMatchResult: () => void;
+  onDisputeMatchResult: (event: FormEvent<HTMLFormElement>) => void;
 };
 
 export function TournamentsMobileView({
@@ -84,13 +100,23 @@ export function TournamentsMobileView({
   isSubmittingScore,
   registrationStatusText,
   scoreValue,
+  matchScoreAValue,
+  matchScoreBValue,
+  matchDisputeReason,
   bracketGraphic,
+  captainOperationsContent,
   onSelectTournament,
   onRegister,
   onWithdraw,
   onSaveCompetitorList,
   onScoreValueChange,
   onSubmitScore,
+  onMatchScoreAValueChange,
+  onMatchScoreBValueChange,
+  onMatchDisputeReasonChange,
+  onSubmitMatchResult,
+  onConfirmMatchResult,
+  onDisputeMatchResult,
 }: TournamentsMobileViewProps) {
   return (
     <section className="tournament-mobile-layout">
@@ -239,7 +265,83 @@ export function TournamentsMobileView({
             )}
           </section>
 
-          {selectedTournament.canSubmitScore ? (
+          {selectedTournament.currentMatch ? (
+            <section className="tournament-score-card tournament-mobile-score-card">
+              <MobileSectionHeader title="My Current Match" />
+              <p>
+                <strong>{selectedTournament.currentMatch.roundTitle}</strong>
+              </p>
+              <p>
+                {selectedTournament.currentMatch.competitorA?.fullName ?? "TBD"} vs{" "}
+                {selectedTournament.currentMatch.competitorB?.fullName ?? "TBD"}
+              </p>
+              <p>Status: {formatMatchStatus(selectedTournament.currentMatch.status)}</p>
+              {selectedTournament.currentMatch.submissionDeadline ? (
+                <p>
+                  Deadline: {formatDate(selectedTournament.currentMatch.submissionDeadline)}
+                </p>
+              ) : null}
+
+              {selectedTournament.currentMatch.workflow?.canSubmitResult ? (
+                <form
+                  onSubmit={onSubmitMatchResult}
+                  className="left-align-form tournament-match-action-form"
+                >
+                  <label>
+                    {selectedTournament.currentMatch.competitorA?.fullName ?? "Competitor A"} score
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={matchScoreAValue}
+                      onChange={(event) => onMatchScoreAValueChange(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    {selectedTournament.currentMatch.competitorB?.fullName ?? "Competitor B"} score
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="numeric"
+                      value={matchScoreBValue}
+                      onChange={(event) => onMatchScoreBValueChange(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <Button type="submit" disabled={isSubmittingScore}>
+                    {isSubmittingScore ? "Submitting result..." : "Submit result"}
+                  </Button>
+                </form>
+              ) : null}
+
+              {selectedTournament.currentMatch.workflow?.canConfirmResult ? (
+                <Button type="button" onClick={onConfirmMatchResult} disabled={isSubmittingScore}>
+                  {isSubmittingScore ? "Saving..." : "Confirm result"}
+                </Button>
+              ) : null}
+
+              {selectedTournament.currentMatch.workflow?.canDisputeResult ? (
+                <form
+                  onSubmit={onDisputeMatchResult}
+                  className="left-align-form tournament-match-action-form"
+                >
+                  <label>
+                    Reason for dispute
+                    <textarea
+                      value={matchDisputeReason}
+                      onChange={(event) => onMatchDisputeReasonChange(event.target.value)}
+                      rows={3}
+                      required
+                    />
+                  </label>
+                  <Button type="submit" variant="secondary" disabled={isSubmittingScore}>
+                    {isSubmittingScore ? "Sending..." : "Raise dispute"}
+                  </Button>
+                </form>
+              ) : null}
+            </section>
+          ) : selectedTournament.canSubmitScore ? (
             <form
               onSubmit={onSubmitScore}
               className="left-align-form tournament-score-card tournament-mobile-score-card"
@@ -290,6 +392,8 @@ export function TournamentsMobileView({
               </>
             )}
           </section>
+
+          {captainOperationsContent}
         </div>
       ) : (
         <section className="tournament-summary-card">

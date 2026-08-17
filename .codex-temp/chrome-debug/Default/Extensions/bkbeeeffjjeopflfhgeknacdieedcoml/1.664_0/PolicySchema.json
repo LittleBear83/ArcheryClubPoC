@@ -1,0 +1,20 @@
+{
+  "type": "object",
+
+  // https://www.chromium.org/administrators/configuring-policy-for-extensions/
+  //
+  // These policies are stored under HKLM\SOFTWARE\Policies\Google\Chrome\3rdParty\Extensions\<extensionID\policy\
+  // e.g. a REG_DWORD named 'HideProtectionToggle' with a value of 1 will result in hiding the toggle in the popup.
+  "properties": {
+    "HideProtectionToggle": {
+      "title": "Hide Protection Toggle",
+      "description": "If set to true, the user will not have the option to toggle protection off using a checkbox in the flyout.",
+      "type": "boolean"
+    },
+    "PreventBlockOverride": {
+      "title": "Prevent Block Override",
+      "description": "If set to true, the user will not have the option to 'click through' block pages.",
+      "type": "boolean"
+    }
+  }
+}

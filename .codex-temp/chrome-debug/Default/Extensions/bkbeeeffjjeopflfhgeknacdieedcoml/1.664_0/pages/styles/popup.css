@@ -1,0 +1,102 @@
+body{
+    max-height:800px;
+    font-family:"Segoe UI","Segoe WP",Arial,sans-serif;
+    font-weight:400;
+    position:relative;
+    min-width:320px;
+    margin:0 0
+}
+h1{
+    font:200 1rem "Segoe UI","Open Sans",sans-serif,serif;
+    font-weight:600;
+    line-height:1.8rem;
+    margin:0
+}
+header{
+    padding:20px 20px
+}
+footer{
+    padding:10px 0 0 0
+}
+section{
+    padding:5px 10px;
+    font:200 .8rem "Segoe UI","Open Sans",sans-serif,serif;
+    line-height:1.5rem;
+    font-weight:500
+}
+a,a:visited{
+    font:200 .75rem "Segoe UI","Open Sans",sans-serif,serif;
+    font-weight:500;
+    color: #3F77D1
+}
+.hidden{
+    display:none
+}
+.alternate{
+    background-color:#f2f2f2
+}
+.buttonPadding{
+    padding:8px 10px
+}
+.status{
+    display:inline-block;
+    font-size:.7rem
+}
+.button{
+    cursor:pointer;
+    background-color:#c2c2c2;
+    color:#000;
+    border:transparent;
+    padding:7px 15px;
+    text-decoration:none;
+    font:200 .8rem "Segoe UI","Open Sans",sans-serif,serif;
+    font-weight:500
+}
+.switch{
+    cursor:pointer;
+    width:35px;
+    height:16px;
+    display:inline-block;
+    vertical-align:middle
+}
+.leftMargin{
+    margin-left:0
+}
+.leftPadding{
+    padding-left:.75rem
+}
+.switch.on{
+    background-image:url(../images/switch_on_alt.png)
+}
+.switch.off{
+    background-image:url(../images/switch_off.png)
+}
+.icon{
+    width:48px;
+    height:48px;
+    vertical-align:middle;
+    text-align:right
+}
+.footerMainDiv{
+    background-color:#0078d7;
+    padding:5px 10px 10px 10px
+}
+.footerImageDiv{
+    display:table-cell;
+    padding:5px 5px 5px 10px
+}
+.footerTextDiv{
+    display:table-cell
+}
+.footerTextH1Font{
+    font:250 1.2rem "Segoe UI","Open Sans",sans-serif,serif;
+    font-weight:400;
+    color:#fff;
+    margin:0
+}
+.footerTextH2Font{
+    font:400 1rem "Segoe UI","Open Sans",sans-serif,serif;
+    font-weight:400;
+    color:#fff;
+    margin:0
+}

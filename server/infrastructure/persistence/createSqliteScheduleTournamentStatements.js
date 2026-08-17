@@ -207,6 +207,9 @@ export function createSqliteScheduleTournamentStatements(db) {
       tournaments.id,
       tournaments.name,
       tournaments.tournament_type,
+      tournaments.template_key,
+      tournaments.draw_date,
+      tournaments.round_schedule_json,
       tournaments.registration_start_date,
       tournaments.registration_end_date,
       tournaments.score_submission_start_date,
@@ -225,6 +228,9 @@ export function createSqliteScheduleTournamentStatements(db) {
       tournaments.id,
       tournaments.name,
       tournaments.tournament_type,
+      tournaments.template_key,
+      tournaments.draw_date,
+      tournaments.round_schedule_json,
       tournaments.registration_start_date,
       tournaments.registration_end_date,
       tournaments.score_submission_start_date,
@@ -242,6 +248,9 @@ export function createSqliteScheduleTournamentStatements(db) {
     INSERT INTO tournaments (
       name,
       tournament_type,
+      template_key,
+      draw_date,
+      round_schedule_json,
       registration_start_date,
       registration_end_date,
       score_submission_start_date,
@@ -250,7 +259,7 @@ export function createSqliteScheduleTournamentStatements(db) {
       created_at_date,
       created_at_time
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const updateTournamentById = db.prepare(`
@@ -258,6 +267,9 @@ export function createSqliteScheduleTournamentStatements(db) {
     SET
       name = ?,
       tournament_type = ?,
+      template_key = ?,
+      draw_date = ?,
+      round_schedule_json = ?,
       registration_start_date = ?,
       registration_end_date = ?,
       score_submission_start_date = ?,
@@ -272,6 +284,16 @@ export function createSqliteScheduleTournamentStatements(db) {
 
   const deleteTournamentRegistrationsByTournamentId = db.prepare(`
     DELETE FROM tournament_registrations
+    WHERE tournament_id = ?
+  `);
+
+  const deleteTournamentRoundsByTournamentId = db.prepare(`
+    DELETE FROM tournament_rounds
+    WHERE tournament_id = ?
+  `);
+
+  const deleteTournamentMatchesByTournamentId = db.prepare(`
+    DELETE FROM tournament_matches
     WHERE tournament_id = ?
   `);
 
@@ -345,6 +367,165 @@ export function createSqliteScheduleTournamentStatements(db) {
       submitted_at_date || 'T' || submitted_at_time AS submitted_at
     FROM tournament_scores
     ORDER BY tournament_id ASC, round_number ASC, member_username ASC
+  `);
+
+  const listTournamentRoundsByTournamentId = db.prepare(`
+    SELECT
+      tournament_id,
+      round_number,
+      title,
+      publish_date,
+      submission_deadline,
+      status
+    FROM tournament_rounds
+    WHERE tournament_id = ?
+    ORDER BY round_number ASC
+  `);
+
+  const listAllTournamentRounds = db.prepare(`
+    SELECT
+      tournament_id,
+      round_number,
+      title,
+      publish_date,
+      submission_deadline,
+      status
+    FROM tournament_rounds
+    ORDER BY tournament_id ASC, round_number ASC
+  `);
+
+  const listTournamentMatchesByTournamentId = db.prepare(`
+    SELECT
+      tournament_id,
+      round_number,
+      match_number,
+      left_member_username,
+      right_member_username,
+      left_score,
+      right_score,
+      winner_username,
+      submitted_by_username,
+      submitted_at_date,
+      submitted_at_time,
+      confirmed_by_username,
+      confirmed_at_date,
+      confirmed_at_time,
+      disputed_by_username,
+      disputed_at_date,
+      disputed_at_time,
+      dispute_reason,
+      status
+    FROM tournament_matches
+    WHERE tournament_id = ?
+    ORDER BY round_number ASC, match_number ASC
+  `);
+
+  const listAllTournamentMatches = db.prepare(`
+    SELECT
+      tournament_id,
+      round_number,
+      match_number,
+      left_member_username,
+      right_member_username,
+      left_score,
+      right_score,
+      winner_username,
+      submitted_by_username,
+      submitted_at_date,
+      submitted_at_time,
+      confirmed_by_username,
+      confirmed_at_date,
+      confirmed_at_time,
+      disputed_by_username,
+      disputed_at_date,
+      disputed_at_time,
+      dispute_reason,
+      status
+    FROM tournament_matches
+    ORDER BY tournament_id ASC, round_number ASC, match_number ASC
+  `);
+
+  const findTournamentMatchByKey = db.prepare(`
+    SELECT
+      tournament_id,
+      round_number,
+      match_number,
+      left_member_username,
+      right_member_username,
+      left_score,
+      right_score,
+      winner_username,
+      submitted_by_username,
+      submitted_at_date,
+      submitted_at_time,
+      confirmed_by_username,
+      confirmed_at_date,
+      confirmed_at_time,
+      disputed_by_username,
+      disputed_at_date,
+      disputed_at_time,
+      dispute_reason,
+      status
+    FROM tournament_matches
+    WHERE tournament_id = ? AND round_number = ? AND match_number = ?
+    LIMIT 1
+  `);
+
+  const insertTournamentRound = db.prepare(`
+    INSERT INTO tournament_rounds (
+      tournament_id,
+      round_number,
+      title,
+      publish_date,
+      submission_deadline,
+      status
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
+  `);
+
+  const insertTournamentMatch = db.prepare(`
+    INSERT INTO tournament_matches (
+      tournament_id,
+      round_number,
+      match_number,
+      left_member_username,
+      right_member_username,
+      left_score,
+      right_score,
+      winner_username,
+      submitted_by_username,
+      submitted_at_date,
+      submitted_at_time,
+      confirmed_by_username,
+      confirmed_at_date,
+      confirmed_at_time,
+      disputed_by_username,
+      disputed_at_date,
+      disputed_at_time,
+      dispute_reason,
+      status
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const updateTournamentMatchWorkflow = db.prepare(`
+    UPDATE tournament_matches
+    SET
+      left_score = ?,
+      right_score = ?,
+      winner_username = ?,
+      submitted_by_username = ?,
+      submitted_at_date = ?,
+      submitted_at_time = ?,
+      confirmed_by_username = ?,
+      confirmed_at_date = ?,
+      confirmed_at_time = ?,
+      disputed_by_username = ?,
+      disputed_at_date = ?,
+      disputed_at_time = ?,
+      dispute_reason = ?,
+      status = ?
+    WHERE tournament_id = ? AND round_number = ? AND match_number = ?
   `);
 
   const upsertTournamentScore = db.prepare(`
@@ -483,11 +664,14 @@ export function createSqliteScheduleTournamentStatements(db) {
     deleteTournamentById,
     deleteTournamentRegistration,
     deleteTournamentRegistrationsByTournamentId,
+    deleteTournamentMatchesByTournamentId,
+    deleteTournamentRoundsByTournamentId,
     deleteTournamentScoresByTournamentId,
     findClubEventById,
     findCoachingSessionById,
     findMemberCoachingBookingsByUserId,
     findMemberEventBookingsByUserId,
+    findTournamentMatchByKey,
     findTournamentById,
     insertClubEvent,
     insertCoachingSession,
@@ -495,19 +679,26 @@ export function createSqliteScheduleTournamentStatements(db) {
     insertEventBooking,
     insertTournament,
     insertTournamentRegistration,
+    insertTournamentMatch,
+    insertTournamentRound,
     listAllCoachingSessionBookings,
     listAllEventBookings,
     listAllTournamentRegistrations,
+    listAllTournamentMatches,
+    listAllTournamentRounds,
     listAllTournamentScores,
     listBookingsByCoachingSessionId,
     listClubEvents,
     listCoachingSessions,
     listEventBookingsByEventId,
     listTournamentRegistrationsByTournamentId,
+    listTournamentMatchesByTournamentId,
+    listTournamentRoundsByTournamentId,
     listTournamentScoresByTournamentId,
     listTournaments,
     rejectClubEventById,
     rejectCoachingSessionById,
+    updateTournamentMatchWorkflow,
     updateTournamentById,
     upsertTournamentScore,
   };

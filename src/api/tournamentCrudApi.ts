@@ -38,11 +38,16 @@ export class TournamentCrudApi {
     });
   }
 
-  async registerForTournament(actorUsername: string, tournamentId: string | number) {
+  async registerForTournament(
+    actorUsername: string,
+    tournamentId: string | number,
+    payload: { bowCode?: string } = {},
+  ) {
     return fetchApi(`/api/tournaments/${tournamentId}/register`, {
       method: "POST",
       headers: buildActorHeaders(actorUsername, true),
       cache: "no-store",
+      body: JSON.stringify(payload),
     });
   }
 

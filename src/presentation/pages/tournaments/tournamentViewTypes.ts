@@ -1,4 +1,5 @@
 export type TournamentParticipant = {
+  bowCode?: string | null;
   username?: string;
   fullName: string;
   seed?: number | null;
@@ -12,6 +13,31 @@ export type TournamentMatch = {
   leftScore?: number | null;
   rightScore?: number | null;
   winner?: TournamentParticipant | null;
+  handicap?: {
+    allowancePercent?: number | null;
+    competitorA?: {
+      allowancePoints?: number | null;
+      adjustedScore?: number | null;
+      bowClass?: string | null;
+      discipline?: string | null;
+      handicapType?: string | null;
+      handicapValue?: number | null;
+      referenceScore?: number | null;
+      tableKey?: string | null;
+      tableTitle?: string | null;
+    } | null;
+    competitorB?: {
+      allowancePoints?: number | null;
+      adjustedScore?: number | null;
+      bowClass?: string | null;
+      discipline?: string | null;
+      handicapType?: string | null;
+      handicapValue?: number | null;
+      referenceScore?: number | null;
+      tableKey?: string | null;
+      tableTitle?: string | null;
+    } | null;
+  } | null;
   workflow?: {
     resultSubmissionMode?: string;
     requiresOpponentConfirmation?: boolean;
@@ -66,6 +92,7 @@ export type TournamentRecord = {
       competitorB?: number | null;
     };
     winner?: TournamentParticipant | null;
+    handicap?: TournamentMatch["handicap"];
     submissionDeadline?: string | null;
     workflow?: {
       resultSubmissionMode?: string;
@@ -100,6 +127,7 @@ export type TournamentRecord = {
     endDate: string;
   };
   registrations: Array<{
+    bowCode?: string | null;
     username: string;
     fullName: string;
   }>;
@@ -158,6 +186,7 @@ export type TournamentRecord = {
           competitorB?: number | null;
         };
         winner?: TournamentParticipant | null;
+        handicap?: TournamentMatch["handicap"];
         submissionDeadline?: string | null;
         workflow?: {
           resultSubmissionMode?: string;
@@ -177,6 +206,7 @@ export type TournamentRecord = {
         competitorB?: number | null;
       };
       winner?: TournamentParticipant | null;
+      handicap?: TournamentMatch["handicap"];
       submissionDeadline?: string | null;
       workflow?: {
         resultSubmissionMode?: string;

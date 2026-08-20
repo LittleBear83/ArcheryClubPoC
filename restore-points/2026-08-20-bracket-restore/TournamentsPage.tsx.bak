@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import {
-  MATCH_STATES,
-  SingleEliminationBracket,
-} from "@g-loot/react-tournament-brackets";
-import type {
-  MatchComponentProps,
-  MatchType,
-} from "@g-loot/react-tournament-brackets";
 import { Button } from "../components/Button";
 import { DatePicker } from "../components/DatePicker";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -19,10 +11,9 @@ import { TournamentsDesktopView } from "./tournaments/TournamentsDesktopView";
 import { TournamentsMobileView } from "./tournaments/TournamentsMobileView";
 import type { TournamentRecord } from "./tournaments/tournamentViewTypes";
 
-const TOURNAMENT_BRACKET_MATCH_WIDTH = 320;
-const TOURNAMENT_BRACKET_MATCH_HEIGHT = 108;
-const TOURNAMENT_BRACKET_ROW_HEIGHT = 126;
-const TOURNAMENT_BRACKET_COLUMN_GAP = 44;
+const BRACKET_MATCH_HEIGHT = 62;
+const BRACKET_BASE_GAP = 18;
+const BRACKET_WINNER_CARD_HEIGHT = 58;
 const TOURNAMENT_SETUP_STEPS = [
   { key: "basics", label: "Basics" },
   { key: "windows", label: "Windows" },
@@ -159,62 +150,6 @@ function formatTournamentRegistrationName(registration) {
   return bowCode ? `${registration.fullName} ${bowCode}` : registration.fullName;
 }
 
-function buildTournamentBowCodeLookup(tournament) {
-  const bowCodeLookup = new Map<string, string>();
-
-  const registerBowCode = (participant) => {
-    const normalizedBowCode = String(participant?.bowCode ?? "").trim().toUpperCase();
-
-    if (!normalizedBowCode) {
-      return;
-    }
-
-    const usernameKey = String(participant?.username ?? "").trim().toLowerCase();
-    const fullNameKey = String(participant?.fullName ?? "").trim().toLowerCase();
-
-    if (usernameKey) {
-      bowCodeLookup.set(`user:${usernameKey}`, normalizedBowCode);
-    }
-
-    if (fullNameKey) {
-      bowCodeLookup.set(`name:${fullNameKey}`, normalizedBowCode);
-    }
-  };
-
-  tournament?.registrations?.forEach(registerBowCode);
-  tournament?.bracket?.rounds?.forEach((round) => {
-    round?.matches?.forEach((match) => {
-      registerBowCode(match?.leftParticipant);
-      registerBowCode(match?.rightParticipant);
-      registerBowCode(match?.winner);
-    });
-  });
-  registerBowCode(tournament?.currentMatch?.competitorA);
-  registerBowCode(tournament?.currentMatch?.competitorB);
-  registerBowCode(tournament?.currentMatch?.winner);
-  registerBowCode(tournament?.bracket?.winner);
-
-  return bowCodeLookup;
-}
-
-function hydrateTournamentParticipant(participant, bowCodeLookup = new Map()) {
-  if (!participant) {
-    return null;
-  }
-
-  const usernameKey = String(participant.username ?? "").trim().toLowerCase();
-  const fullNameKey = String(participant.fullName ?? "").trim().toLowerCase();
-  const lookupBowCode =
-    (usernameKey ? bowCodeLookup.get(`user:${usernameKey}`) : "") ||
-    (fullNameKey ? bowCodeLookup.get(`name:${fullNameKey}`) : "") ||
-    null;
-
-  return {
-    ...participant,
-    bowCode: participant.bowCode ?? lookupBowCode ?? null,
-  };
-}
-
 function buildExampleRoundPreview({
   roundOneStartDate,
   roundWindowDays,
@@ -275,6 +210,53 @@ function buildTournamentCompetitorExport(tournament) {
   return `${lines.join("\n")}\n`;
 }
 
+function getBracketRoundLayout(rounds) {
+  const rowStep = BRACKET_MATCH_HEIGHT + BRACKET_BASE_GAP;
+  const roundLayouts: Array<{ centers: number[]; tops: number[] }> = [];
+  let bracketHeight = 0;
+
+  rounds.forEach((round, roundIndex) => {
+    let tops: number[] = [];
+
+    if (roundIndex === 0) {
+      tops = round.matches.map((_, matchIndex) => matchIndex * rowStep);
+    } else {
+      const previousCenters = roundLayouts[roundIndex - 1]?.centers ?? [];
+
+      tops = round.matches.map((_, matchIndex) => {
+        const sourceCenters = [
+          previousCenters[matchIndex * 2],
+          previousCenters[matchIndex * 2 + 1],
+        ].filter((value) => typeof value === "number");
+
+        const fallbackCenter =
+          previousCenters[Math.min(matchIndex, Math.max(previousCenters.length - 1, 0))] ??
+          BRACKET_MATCH_HEIGHT / 2;
+        const center =
+          sourceCenters.length > 0
+            ? sourceCenters.reduce((total, value) => total + value, 0) /
+              sourceCenters.length
+            : fallbackCenter;
+
+        return Math.max(0, center - BRACKET_MATCH_HEIGHT / 2);
+      });
+    }
+
+    const centers = tops.map((top) => top + BRACKET_MATCH_HEIGHT / 2);
+    const roundBottom = tops.length
+      ? Math.max(...tops) + BRACKET_MATCH_HEIGHT
+      : BRACKET_MATCH_HEIGHT;
+
+    bracketHeight = Math.max(bracketHeight, roundBottom);
+    roundLayouts.push({ centers, tops });
+  });
+
+  return {
+    bracketHeight,
+    roundLayouts,
+  };
+}
+
 function getBracketParticipantDisplay(match, side: "left" | "right") {
   const participant =
     side === "left" ? match?.leftParticipant ?? null : match?.rightParticipant ?? null;
@@ -285,32 +267,8 @@ function getBracketParticipantDisplay(match, side: "left" | "right") {
     side === "left"
       ? handicap?.competitorA ?? null
       : handicap?.competitorB ?? null;
-  const adjustedScoreFromMatch =
-    side === "left"
-      ? match?.leftAdjustedScore ?? null
-      : match?.rightAdjustedScore ?? null;
-  const allowancePointsFromMatch =
-    side === "left"
-      ? match?.leftAllowancePoints ?? null
-      : match?.rightAllowancePoints ?? null;
-  const totalScore =
-    typeof adjustedScoreFromMatch === "number"
-      ? adjustedScoreFromMatch
-      : typeof handicapParticipant?.adjustedScore === "number"
-      ? handicapParticipant.adjustedScore
-      : typeof rawScore === "number" &&
-          typeof allowancePointsFromMatch === "number"
-        ? rawScore + allowancePointsFromMatch
-        : typeof rawScore === "number" &&
-            typeof handicapParticipant?.allowancePoints === "number"
-          ? rawScore + handicapParticipant.allowancePoints
-        : typeof rawScore === "number"
-          ? rawScore
-          : null;
-  const allowancePoints =
-    typeof allowancePointsFromMatch === "number"
-      ? allowancePointsFromMatch
-      : handicapParticipant?.allowancePoints ?? null;
+  const totalScore = handicapParticipant?.adjustedScore ?? null;
+  const allowancePoints = handicapParticipant?.allowancePoints ?? null;
 
   return {
     allowancePoints,
@@ -327,179 +285,277 @@ function getBracketParticipantDisplay(match, side: "left" | "right") {
   };
 }
 
+function BracketParticipant({
+  isWinner = false,
+  participant,
+  score,
+}) {
+  const bowCode = formatTournamentBowCode(participant?.bowCode);
+  const participantName = participant
+    ? `${participant.fullName}${bowCode ? ` ${bowCode}` : ""}`
+    : "TBD";
+
+  return (
+    <div className={`tournament-bracket-player ${isWinner ? "winner" : ""}`}>
+      <div className="tournament-bracket-player-main">
+        <span className="tournament-bracket-seed">
+          {participant?.seed ? `(${participant.seed})` : ""}
+        </span>
+        <span className="tournament-bracket-name">{participantName}</span>
+      </div>
+      <div className="tournament-bracket-player-score-block">
+        <span className="tournament-bracket-score">
+          {typeof score === "number" ? score : ""}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function formatTournamentMatchStatus(status) {
   return String(status ?? "")
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function formatTournamentParticipantName(participant, bowCodeLookup = new Map()) {
+function formatTournamentParticipantName(participant) {
   if (!participant) {
     return "TBD";
   }
 
-  const hydratedParticipant = hydrateTournamentParticipant(participant, bowCodeLookup);
-  const bowCode = formatTournamentBowCode(hydratedParticipant?.bowCode);
-  const fullName = bowCode
-    ? `${hydratedParticipant?.fullName} ${bowCode}`
-    : hydratedParticipant?.fullName;
-  return hydratedParticipant?.seed ? `(${hydratedParticipant.seed}) ${fullName}` : fullName;
+  const bowCode = formatTournamentBowCode(participant.bowCode);
+  const fullName = bowCode ? `${participant.fullName} ${bowCode}` : participant.fullName;
+  return participant.seed ? `(${participant.seed}) ${fullName}` : fullName;
 }
 
-function getTournamentBracketState(match) {
-  const leftParticipant = match?.leftParticipant ?? null;
-  const rightParticipant = match?.rightParticipant ?? null;
+function getElementVerticalCenter(element, boardRect) {
+  const rect = element.getBoundingClientRect();
+  return rect.top - boardRect.top + rect.height / 2;
+}
 
-  if (!leftParticipant && !rightParticipant) {
-    return MATCH_STATES.NO_PARTY;
+function getMatchMidpointY(matchElement, boardRect) {
+  return getElementVerticalCenter(matchElement, boardRect);
+}
+
+function getMatchParticipantAnchorY(
+  matchElement: HTMLDivElement,
+  boardRect: DOMRect,
+  side: "top" | "bottom",
+) {
+  const players = matchElement.querySelectorAll(".tournament-bracket-player");
+  const playerElement =
+    side === "top" ? players.item(0) : players.item(Math.max(players.length - 1, 0));
+
+  if (playerElement instanceof HTMLElement) {
+    return getElementVerticalCenter(playerElement, boardRect);
   }
 
-  if (match?.status === "bye") {
-    return MATCH_STATES.WALK_OVER;
-  }
-
-  if (match?.winner || match?.status === "finalised" || match?.status === "completed") {
-    return MATCH_STATES.DONE;
-  }
-
-  return MATCH_STATES.NO_SHOW;
-}
-
-function buildTournamentBracketMatches(tournament) {
-  const bowCodeLookup = buildTournamentBowCodeLookup(tournament);
-  const roundTitles = tournament.bracket.rounds.map((round) => round.title);
-  const matches: MatchType[] = tournament.bracket.rounds.flatMap((round, roundIndex) =>
-    round.matches.map((match, matchIndex) => {
-      const leftDisplay = getBracketParticipantDisplay(match, "left");
-      const rightDisplay = getBracketParticipantDisplay(match, "right");
-      const nextMatch = tournament.bracket.rounds[roundIndex + 1]?.matches?.[
-        Math.floor(matchIndex / 2)
-      ];
-      const leftBracketScore =
-        typeof leftDisplay.scoreToDisplay === "number"
-          ? String(leftDisplay.scoreToDisplay)
-          : typeof leftDisplay.rawScore === "number"
-            ? String(leftDisplay.rawScore)
-            : "";
-      const rightBracketScore =
-        typeof rightDisplay.scoreToDisplay === "number"
-          ? String(rightDisplay.scoreToDisplay)
-          : typeof rightDisplay.rawScore === "number"
-            ? String(rightDisplay.rawScore)
-            : "";
-
-      return {
-        id: String(match.id),
-        name: round.title,
-        nextMatchId: nextMatch ? String(nextMatch.id) : null,
-        startTime: "",
-        state: getTournamentBracketState(match),
-        tournamentRoundText: round.title,
-        participants: [
-          {
-            id:
-              leftDisplay.participant?.username ??
-              `match-${String(match.id)}-left`,
-            isWinner:
-              match.winner?.username === match.leftParticipant?.username,
-            name: formatTournamentParticipantName(leftDisplay.participant, bowCodeLookup),
-            resultText: leftBracketScore,
-            status: leftDisplay.participant ? MATCH_STATES.PLAYED : MATCH_STATES.NO_PARTY,
-          },
-          {
-            id:
-              rightDisplay.participant?.username ??
-              `match-${String(match.id)}-right`,
-            isWinner:
-              match.winner?.username === match.rightParticipant?.username,
-            name: formatTournamentParticipantName(rightDisplay.participant, bowCodeLookup),
-            resultText: rightBracketScore,
-            status: rightDisplay.participant ? MATCH_STATES.PLAYED : MATCH_STATES.NO_PARTY,
-          },
-        ],
-      };
-    }),
-  );
-
-  return {
-    matches,
-    roundTitles,
-  };
-}
-
-function renderTournamentMatchScoreBreakdownRow(label, rawScore, allowancePoints, totalScore) {
-  return (
-    <div className="tournament-current-match-score-row">
-      <span className="tournament-current-match-score-label">{label}</span>
-      <span>Raw {typeof rawScore === "number" ? rawScore : "-"}</span>
-      <span>Hcap {typeof allowancePoints === "number" ? allowancePoints : "-"}</span>
-      <span>Total {typeof totalScore === "number" ? totalScore : "-"}</span>
-    </div>
-  );
-}
-
-function TournamentBracketMatchCard({
-  topParty,
-  bottomParty,
-  topWon,
-  bottomWon,
-}: MatchComponentProps) {
-  return (
-    <div className="tournament-library-match">
-      <div className={`tournament-library-match-row ${topWon ? "winner" : ""}`}>
-        <span className="tournament-library-match-name">{topParty?.name ?? "TBD"}</span>
-        <span className="tournament-library-match-score">
-          {topParty?.resultText ?? ""}
-        </span>
-      </div>
-      <div className={`tournament-library-match-row ${bottomWon ? "winner" : ""}`}>
-        <span className="tournament-library-match-name">
-          {bottomParty?.name ?? "TBD"}
-        </span>
-        <span className="tournament-library-match-score">
-          {bottomParty?.resultText ?? ""}
-        </span>
-      </div>
-    </div>
-  );
+  return getMatchMidpointY(matchElement, boardRect);
 }
 
 function TournamentBracketGraphic({ tournament }) {
-  const { matches, roundTitles } = useMemo(
-    () => buildTournamentBracketMatches(tournament),
+  const totalRounds = tournament.bracket.rounds.length;
+  const boardRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const winnerCardRef = useRef<HTMLDivElement | null>(null);
+  const matchRefs = useRef(new Map<string, HTMLDivElement>());
+  const [connectorPaths, setConnectorPaths] = useState<string[]>([]);
+  const [boardSize, setBoardSize] = useState({ height: 0, width: 0 });
+  const { bracketHeight, roundLayouts } = useMemo(
+    () => getBracketRoundLayout(tournament.bracket.rounds),
     [tournament.bracket.rounds],
   );
+  const finalRoundLayout = roundLayouts[Math.max(totalRounds - 1, 0)];
+  const finalRoundCenter =
+    finalRoundLayout?.centers?.[0] ?? BRACKET_MATCH_HEIGHT / 2;
+  const winnerOffset = Math.max(
+    finalRoundCenter - BRACKET_WINNER_CARD_HEIGHT / 2,
+    0,
+  );
+
+  useEffect(() => {
+    const updateConnectorPaths = () => {
+      const boardElement = boardRef.current;
+
+      if (!boardElement) {
+        setConnectorPaths([]);
+        return;
+      }
+
+      const boardRect = boardElement.getBoundingClientRect();
+      const nextPaths: string[] = [];
+
+      tournament.bracket.rounds.forEach((round, roundIndex) => {
+        if (roundIndex >= totalRounds - 1) {
+          return;
+        }
+
+        round.matches.forEach((match, matchIndex) => {
+          const sourceElement = matchRefs.current.get(`${roundIndex}-${matchIndex}`);
+          const targetElement = matchRefs.current.get(
+            `${roundIndex + 1}-${Math.floor(matchIndex / 2)}`,
+          );
+
+          if (!sourceElement || !targetElement) {
+            return;
+          }
+
+          const sourceRect = sourceElement.getBoundingClientRect();
+          const sourceX = sourceRect.right - boardRect.left;
+          const targetRect = targetElement.getBoundingClientRect();
+          const sourceY = getMatchMidpointY(sourceElement, boardRect);
+          const targetX = targetRect.left - boardRect.left;
+          const targetY = getMatchParticipantAnchorY(
+            targetElement,
+            boardRect,
+            matchIndex % 2 === 0 ? "top" : "bottom",
+          );
+          const midpointX = sourceX + (targetX - sourceX) / 2;
+
+          nextPaths.push(
+            `M ${sourceX} ${sourceY} H ${midpointX} V ${targetY} H ${targetX}`,
+          );
+        });
+      });
+
+      const finalRound = tournament.bracket.rounds[totalRounds - 1];
+      const finalMatchElement = finalRound?.matches?.[0]
+        ? matchRefs.current.get(`${totalRounds - 1}-0`)
+        : null;
+      const winnerElement = winnerCardRef.current;
+
+      if (finalMatchElement && winnerElement) {
+        const finalRect = finalMatchElement.getBoundingClientRect();
+        const winnerRect = winnerElement.getBoundingClientRect();
+        const sourceX = finalRect.right - boardRect.left;
+        const sourceY = getMatchMidpointY(finalMatchElement, boardRect);
+        const targetX = winnerRect.left - boardRect.left;
+        const targetY = getElementVerticalCenter(winnerElement, boardRect);
+        const midpointX = sourceX + (targetX - sourceX) / 2;
+
+        nextPaths.push(
+          `M ${sourceX} ${sourceY} H ${midpointX} V ${targetY} H ${targetX}`,
+        );
+      }
+
+      setBoardSize({
+        width: boardElement.scrollWidth,
+        height: boardElement.scrollHeight,
+      });
+      setConnectorPaths(nextPaths);
+    };
+
+    const frameId = window.requestAnimationFrame(updateConnectorPaths);
+    const resizeObserver =
+      typeof ResizeObserver === "function"
+        ? new ResizeObserver(() => {
+            updateConnectorPaths();
+          })
+        : null;
+
+    if (boardRef.current && resizeObserver) {
+      resizeObserver.observe(boardRef.current);
+    }
+
+    window.addEventListener("resize", updateConnectorPaths);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateConnectorPaths);
+    };
+  }, [totalRounds, tournament.bracket.rounds]);
 
   return (
     <div className="tournament-bracket-shell">
-      <div className="tournament-bracket-scroll">
-        <div className="tournament-bracket-board tournament-bracket-board--library">
-          <SingleEliminationBracket
-            matches={matches}
-            matchComponent={TournamentBracketMatchCard}
-            options={{
-              style: {
-                boxHeight: TOURNAMENT_BRACKET_MATCH_HEIGHT,
-                canvasPadding: 24,
-                connectorColor: "#6f8fc4",
-                connectorColorHighlight: "#ffe066",
-                roundHeader: {
-                  backgroundColor: "#6d8fce",
-                  fontColor: "#f7fbff",
-                  fontFamily: "inherit",
-                  fontSize: 16,
-                  height: 42,
-                  isShown: true,
-                  marginBottom: 24,
-                  roundTextGenerator: (currentRoundNumber) =>
-                    roundTitles[currentRoundNumber - 1] ?? `Round ${currentRoundNumber}`,
-                },
-                rowHeight: TOURNAMENT_BRACKET_ROW_HEIGHT,
-                spaceBetweenColumns: TOURNAMENT_BRACKET_COLUMN_GAP,
-                width: TOURNAMENT_BRACKET_MATCH_WIDTH,
-              },
-            }}
-          />
+      <div className="tournament-bracket-scroll" ref={viewportRef}>
+        <div className="tournament-bracket-board" ref={boardRef}>
+          {boardSize.width > 0 && boardSize.height > 0 ? (
+            <svg
+              aria-hidden="true"
+              className="tournament-bracket-overlay"
+              viewBox={`0 0 ${boardSize.width} ${boardSize.height}`}
+            >
+              {connectorPaths.map((path, index) => (
+                <path key={`connector-${index}`} d={path} />
+              ))}
+            </svg>
+          ) : null}
+          <div className="tournament-bracket-graphic">
+            {tournament.bracket.rounds.map((round, roundIndex) => (
+              <div key={round.roundNumber} className="tournament-bracket-column">
+                <h5>{round.title}</h5>
+                <div
+                  className="tournament-bracket-column-matches"
+                  style={{
+                    "--tournament-column-height": `${bracketHeight}px`,
+                  } as TournamentCssVars}
+                >
+                  {round.matches.map((match, matchIndex) => {
+                    const leftDisplay = getBracketParticipantDisplay(match, "left");
+                    const rightDisplay = getBracketParticipantDisplay(match, "right");
+
+                    return (
+                      <div
+                        key={match.id}
+                        ref={(node) => {
+                          const refKey = `${roundIndex}-${matchIndex}`;
+
+                          if (node) {
+                            matchRefs.current.set(refKey, node);
+                            return;
+                          }
+
+                          matchRefs.current.delete(refKey);
+                        }}
+                        style={{
+                          "--tournament-match-top": `${roundLayouts[roundIndex]?.tops?.[matchIndex] ?? 0}px`,
+                        } as TournamentCssVars}
+                        className={`tournament-bracket-match tournament-match-${match.status}`}
+                      >
+                        <div className="tournament-bracket-match-status" aria-hidden="true">
+                          &nbsp;
+                        </div>
+                        <BracketParticipant
+                          participant={leftDisplay.participant}
+                          score={leftDisplay.scoreToDisplay}
+                          isWinner={
+                            match.winner?.username === match.leftParticipant?.username
+                          }
+                        />
+                        <BracketParticipant
+                          participant={rightDisplay.participant}
+                          score={rightDisplay.scoreToDisplay}
+                          isWinner={
+                            match.winner?.username === match.rightParticipant?.username
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <div
+              className="tournament-bracket-column tournament-bracket-winner-column"
+              style={{ "--tournament-winner-offset": `${winnerOffset}px` } as TournamentCssVars}
+            >
+              <h5>Winner</h5>
+              <div className="tournament-bracket-winner-card" ref={winnerCardRef}>
+                {tournament.bracket.winner ? (
+                  <>
+                    <span className="tournament-bracket-seed">
+                      ({tournament.bracket.winner.seed})
+                    </span>
+                    <strong>{formatTournamentParticipantName(tournament.bracket.winner)}</strong>
+                  </>
+                ) : (
+                  <span>TBD</span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1716,10 +1772,6 @@ export function TournamentsPage({
     selectedTournament?.currentMatch
       ? getTournamentMatchHandicapSummary(selectedTournament.currentMatch)
       : null;
-  const tournamentBowCodeLookup = useMemo(
-    () => buildTournamentBowCodeLookup(selectedTournament),
-    [selectedTournament],
-  );
 
   const selectedTournamentDetail = selectedTournament ? (
     <>
@@ -1865,15 +1917,8 @@ export function TournamentsPage({
             <strong>{selectedTournament.currentMatch.roundTitle}</strong>
           </p>
           <p>
-            {formatTournamentParticipantName(
-              selectedTournament.currentMatch.competitorA,
-              tournamentBowCodeLookup,
-            )}{" "}
-            vs{" "}
-            {formatTournamentParticipantName(
-              selectedTournament.currentMatch.competitorB,
-              tournamentBowCodeLookup,
-            )}
+            {formatTournamentParticipantName(selectedTournament.currentMatch.competitorA)} vs{" "}
+            {formatTournamentParticipantName(selectedTournament.currentMatch.competitorB)}
           </p>
           <p>
             Status: {formatTournamentMatchStatus(selectedTournament.currentMatch.status)}
@@ -1883,44 +1928,22 @@ export function TournamentsPage({
               Deadline: {formatDate(selectedTournament.currentMatch.submissionDeadline)}
             </p>
           ) : null}
-          {currentMatchHandicapSummary?.allowancePercent ? (
+          {currentMatchHandicapSummary?.rawScoreText ? (
             <p>
-              Handicap allowance: {currentMatchHandicapSummary.allowancePercent}%
+              Score: {currentMatchHandicapSummary.rawScoreText}
             </p>
           ) : null}
-          {selectedTournament.currentMatch.handicap ? (
-            <div className="tournament-current-match-score-breakdown">
-              {renderTournamentMatchScoreBreakdownRow(
-                formatTournamentParticipantName(
-                  selectedTournament.currentMatch.competitorA,
-                  tournamentBowCodeLookup,
-                ),
-                selectedTournament.currentMatch.score?.competitorA,
-                selectedTournament.currentMatch.handicap?.competitorA?.allowancePoints,
-                typeof selectedTournament.currentMatch.handicap?.competitorA?.adjustedScore === "number"
-                  ? selectedTournament.currentMatch.handicap.competitorA.adjustedScore
-                  : typeof selectedTournament.currentMatch.score?.competitorA === "number" &&
-                      typeof selectedTournament.currentMatch.handicap?.competitorA?.allowancePoints === "number"
-                    ? selectedTournament.currentMatch.score.competitorA +
-                      selectedTournament.currentMatch.handicap.competitorA.allowancePoints
-                    : selectedTournament.currentMatch.score?.competitorA,
-              )}
-              {renderTournamentMatchScoreBreakdownRow(
-                formatTournamentParticipantName(
-                  selectedTournament.currentMatch.competitorB,
-                  tournamentBowCodeLookup,
-                ),
-                selectedTournament.currentMatch.score?.competitorB,
-                selectedTournament.currentMatch.handicap?.competitorB?.allowancePoints,
-                typeof selectedTournament.currentMatch.handicap?.competitorB?.adjustedScore === "number"
-                  ? selectedTournament.currentMatch.handicap.competitorB.adjustedScore
-                  : typeof selectedTournament.currentMatch.score?.competitorB === "number" &&
-                      typeof selectedTournament.currentMatch.handicap?.competitorB?.allowancePoints === "number"
-                    ? selectedTournament.currentMatch.score.competitorB +
-                      selectedTournament.currentMatch.handicap.competitorB.allowancePoints
-                    : selectedTournament.currentMatch.score?.competitorB,
-              )}
-            </div>
+          {currentMatchHandicapSummary?.handicapScoreText ? (
+            <p>
+              Handicap score
+              {typeof currentMatchHandicapSummary.allowancePercent === "number"
+                ? ` (${currentMatchHandicapSummary.allowancePercent}%)`
+                : ""}
+              : {currentMatchHandicapSummary.handicapScoreText}
+            </p>
+          ) : null}
+          {currentMatchHandicapSummary?.totalScoreText ? (
+            <p>Total score: {currentMatchHandicapSummary.totalScoreText}</p>
           ) : null}
           {selectedTournament.currentMatch.workflow?.submittedByUsername ? (
             <p>

@@ -550,6 +550,16 @@ export function registerAuthRoutes({
   });
 
   app.get("/api/guest-inviter-members", async (_req, res) => {
+    const sessionUsername = getSessionUsername(_req);
+
+    if (!sessionUsername) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
     const users = await memberAuthGateway.listAllUsers();
 
     res.json({

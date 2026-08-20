@@ -24,6 +24,12 @@ type QuestionToastSource = {
   questionTitle: string;
 };
 
+type BeginnersRescheduleToastSource = {
+  id: string;
+  message: string;
+  targetPath: string;
+};
+
 function readSeenLostArrowToastIds(username: string) {
   if (!username || typeof window === "undefined") {
     return new Set<string>();
@@ -74,6 +80,7 @@ export function useHomePageToasts({
 }) {
   const queryClient = useQueryClient();
   const [lostArrowToasts, setLostArrowToasts] = useState<HomePageToast[]>([]);
+  const [beginnersRescheduleToasts, setBeginnersRescheduleToasts] = useState<HomePageToast[]>([]);
   const [dismissedQuestionToastIds, setDismissedQuestionToastIds] = useState<string[]>([]);
   const previousOpenLostArrowIdsRef = useRef<number[] | null>(null);
   const seenLostArrowToastIdsRef = useRef<Set<string>>(new Set());
@@ -100,6 +107,38 @@ export function useHomePageToasts({
       });
     });
   }, [actorUsername, queryClient]);
+
+  useEffect(() => {
+    if (!actorUsername) {
+      setBeginnersRescheduleToasts([]);
+      return undefined;
+    }
+
+    return subscribeToServerEvent("beginners.rescheduled", (payload) => {
+      const toastPayload = payload as BeginnersRescheduleToastSource | null;
+
+      if (
+        !toastPayload ||
+        typeof toastPayload.id !== "string" ||
+        typeof toastPayload.message !== "string" ||
+        typeof toastPayload.targetPath !== "string"
+      ) {
+        return;
+      }
+
+      setBeginnersRescheduleToasts((current) => {
+        const deduped = current.filter((toast) => toast.id !== toastPayload.id);
+        return [
+          ...deduped,
+          {
+            id: toastPayload.id,
+            message: toastPayload.message,
+            targetPath: toastPayload.targetPath,
+          },
+        ].slice(-3);
+      });
+    });
+  }, [actorUsername]);
 
   useEffect(() => {
     if (!actorUsername) {
@@ -199,9 +238,35 @@ export function useHomePageToasts({
     };
   }, [lostArrowToasts]);
 
+  useEffect(() => {
+    if (beginnersRescheduleToasts.length === 0) {
+      return undefined;
+    }
+
+    const timerIds = beginnersRescheduleToasts.map((toast) =>
+      setTimeout(() => {
+        setBeginnersRescheduleToasts((current) =>
+          current.filter((item) => item.id !== toast.id),
+        );
+      }, 8000),
+    );
+
+    return () => {
+      for (const timerId of timerIds) {
+        clearTimeout(timerId);
+      }
+    };
+  }, [beginnersRescheduleToasts]);
+
   return {
+    beginnersRescheduleToasts: actorUsername ? beginnersRescheduleToasts : [],
     lostArrowToasts: actorUsername ? lostArrowToasts : [],
     questionResponseToasts,
+    dismissBeginnersRescheduleToast: (toastId: string) => {
+      setBeginnersRescheduleToasts((current) =>
+        current.filter((toast) => toast.id !== toastId),
+      );
+    },
     dismissLostArrowToast: (toastId: string) => {
       setLostArrowToasts((current) => current.filter((toast) => toast.id !== toastId));
     },

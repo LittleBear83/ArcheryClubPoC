@@ -186,6 +186,7 @@ export const TOURNAMENT_REGISTRATIONS_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS tournament_registrations (
     tournament_id INTEGER NOT NULL,
     member_username TEXT NOT NULL,
+    bow_code TEXT,
     registered_at_date TEXT NOT NULL,
     registered_at_time TEXT NOT NULL,
     PRIMARY KEY (tournament_id, member_username),
@@ -241,6 +242,25 @@ export const TOURNAMENT_MATCHES_TABLE_SQL = `
     disputed_at_date TEXT,
     disputed_at_time TEXT,
     dispute_reason TEXT,
+    handicap_allowance_percent INTEGER,
+    left_handicap_value INTEGER,
+    left_handicap_type TEXT,
+    left_handicap_bow_class TEXT,
+    left_handicap_discipline TEXT,
+    left_reference_score INTEGER,
+    left_allowance_points INTEGER,
+    left_adjusted_score INTEGER,
+    left_handicap_table_key TEXT,
+    left_handicap_table_title TEXT,
+    right_handicap_value INTEGER,
+    right_handicap_type TEXT,
+    right_handicap_bow_class TEXT,
+    right_handicap_discipline TEXT,
+    right_reference_score INTEGER,
+    right_allowance_points INTEGER,
+    right_adjusted_score INTEGER,
+    right_handicap_table_key TEXT,
+    right_handicap_table_title TEXT,
     status TEXT NOT NULL DEFAULT 'scheduled',
     PRIMARY KEY (tournament_id, round_number, match_number),
     FOREIGN KEY (tournament_id) REFERENCES tournaments(id),
@@ -303,6 +323,84 @@ export function bootstrapSqliteBaseSchema({
       programme_type TEXT NOT NULL DEFAULT 'none'
     )
   `);
+
+  const tournamentMatchColumns = db.prepare(`PRAGMA table_info(tournament_matches)`).all();
+
+  if (!tournamentMatchColumns.some((column) => column.name === "handicap_allowance_percent")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN handicap_allowance_percent INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_value")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_value INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_type")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_type TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_bow_class")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_bow_class TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_discipline")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_discipline TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_reference_score")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_reference_score INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_allowance_points")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_allowance_points INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_adjusted_score")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_adjusted_score INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_table_key")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_table_key TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_table_title")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_table_title TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_value")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_value INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_type")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_type TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_bow_class")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_bow_class TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_discipline")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_discipline TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_reference_score")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_reference_score INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_allowance_points")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_allowance_points INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_adjusted_score")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_adjusted_score INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_table_key")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_table_key TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_table_title")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_table_title TEXT`);
+  }
 
   db.exec(LOGIN_EVENTS_TABLE_SQL);
 
@@ -922,6 +1020,13 @@ export function bootstrapSqliteBaseSchema({
   db.exec(TOURNAMENT_HANDICAP_TABLES_SQL);
   db.exec(TOURNAMENT_HANDICAP_TABLE_ROWS_SQL);
   db.exec(TOURNAMENT_REGISTRATIONS_TABLE_SQL);
+  const tournamentRegistrationColumns = db
+    .prepare(`PRAGMA table_info(tournament_registrations)`)
+    .all();
+
+  if (!tournamentRegistrationColumns.some((column) => column.name === "bow_code")) {
+    db.exec(`ALTER TABLE tournament_registrations ADD COLUMN bow_code TEXT`);
+  }
   db.exec(TOURNAMENT_SCORES_TABLE_SQL);
 
   db.exec(`
@@ -1139,6 +1244,7 @@ export function bootstrapSqliteBaseSchema({
         beginner_size_category IN ('senior', 'junior')
       ),
       height_text TEXT,
+      draw_length TEXT,
       handedness TEXT CHECK (handedness IN ('left', 'right')),
       eye_dominance TEXT CHECK (eye_dominance IN ('left', 'right')),
       initial_email_sent INTEGER NOT NULL DEFAULT 0,
@@ -1173,6 +1279,10 @@ export function bootstrapSqliteBaseSchema({
     db.exec(
       `ALTER TABLE beginners_course_participants ADD COLUMN origin_course_type TEXT NOT NULL DEFAULT 'beginners'`,
     );
+  }
+
+  if (!beginnersParticipantColumns.some((column) => column.name === "draw_length")) {
+    db.exec(`ALTER TABLE beginners_course_participants ADD COLUMN draw_length TEXT`);
   }
 
   if (!beginnersParticipantColumns.some((column) => column.name === "converted_at_date")) {

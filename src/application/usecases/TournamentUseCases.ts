@@ -65,7 +65,7 @@ export class DeleteTournamentUseCase {
     this.tournamentRepository = tournamentRepository;
   }
 
-  async execute({ actorUsername, tournamentId }) {
+  async execute({ actorUsername, bowCode, tournamentId }) {
     if (!actorUsername?.trim()) {
       throw new Error("An authenticated member is required.");
     }
@@ -94,7 +94,9 @@ export class RegisterForTournamentUseCase {
       throw new Error("A tournament id is required.");
     }
 
-    return this.tournamentRepository.registerForTournament(actorUsername, tournamentId);
+    return this.tournamentRepository.registerForTournament(actorUsername, tournamentId, {
+      bowCode,
+    });
   }
 }
 

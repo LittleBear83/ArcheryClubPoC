@@ -9,7 +9,11 @@ type TournamentDataSource = {
     form: unknown,
   ): Promise<unknown>;
   deleteTournament(actorUsername: string, tournamentId: string | number): Promise<unknown>;
-  registerForTournament(actorUsername: string, tournamentId: string | number): Promise<unknown>;
+  registerForTournament(
+    actorUsername: string,
+    tournamentId: string | number,
+    payload?: { bowCode?: string },
+  ): Promise<unknown>;
   withdrawFromTournament(actorUsername: string, tournamentId: string | number): Promise<unknown>;
   submitTournamentScore(
     actorUsername: string,
@@ -63,8 +67,8 @@ export class TournamentRepositoryImpl extends TournamentRepository {
     return this.dataSource.deleteTournament(actorUsername, tournamentId);
   }
 
-  async registerForTournament(actorUsername, tournamentId) {
-    return this.dataSource.registerForTournament(actorUsername, tournamentId);
+  async registerForTournament(actorUsername, tournamentId, payload) {
+    return this.dataSource.registerForTournament(actorUsername, tournamentId, payload);
   }
 
   async withdrawFromTournament(actorUsername, tournamentId) {

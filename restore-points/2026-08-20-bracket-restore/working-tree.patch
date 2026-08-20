@@ -1,0 +1,1709 @@
+diff --git a/src/App.css b/src/App.css
+index 802926b..75c485f 100644
+--- a/src/App.css
++++ b/src/App.css
+@@ -2743,16 +2743,53 @@ button:disabled {
+   margin-bottom: 10px;
+ }
+ 
++.tournament-bracket-board {
++  position: relative;
++  width: max-content;
++  min-width: max-content;
++}
++
++.tournament-bracket-shell {
++  display: grid;
++  min-width: 0;
++}
++
++.tournament-bracket-scroll {
++  overflow-x: auto;
++  overflow-y: hidden;
++  padding-bottom: 6px;
++  scrollbar-gutter: stable both-edges;
++}
++
++.tournament-bracket-overlay {
++  position: absolute;
++  inset: 0;
++  width: 100%;
++  height: 100%;
++  overflow: visible;
++  pointer-events: none;
++  z-index: 0;
++}
++
++.tournament-bracket-overlay path {
++  fill: none;
++  stroke: color-mix(in srgb, #7b98c8 88%, transparent);
++  stroke-width: 1.4;
++  stroke-linecap: square;
++  stroke-linejoin: round;
++}
++
+ .tournament-bracket-graphic {
+   display: flex;
+-  gap: 48px;
++  gap: 24px;
+   align-items: flex-start;
+-  overflow-x: auto;
+-  padding: 6px 8px 14px 2px;
++  padding: 8px 8px 18px 2px;
++  position: relative;
++  z-index: 1;
+ }
+ 
+ .tournament-bracket-column {
+-  min-width: 240px;
++  min-width: 300px;
+   display: grid;
+   grid-template-rows: auto 1fr;
+   gap: 14px;
+@@ -2760,112 +2797,144 @@ button:disabled {
+ 
+ .tournament-bracket-column h5 {
+   margin: 0;
+-  color: var(--accent);
+-  text-transform: uppercase;
+-  letter-spacing: 0.05em;
+-  font-size: 0.82rem;
++  justify-self: start;
++  padding: 8px 18px;
++  border: 1px solid color-mix(in srgb, #7c9cda 72%, transparent);
++  border-radius: 0;
++  background: color-mix(in srgb, #6d8fce 82%, transparent);
++  color: #f7fbff;
++  text-transform: none;
++  letter-spacing: 0.02em;
++  font-size: 0.9rem;
++  font-weight: 700;
+ }
+ 
+ .tournament-bracket-column-matches {
+-  display: grid;
+-  gap: var(--tournament-match-gap, 18px);
+-  padding-top: var(--tournament-column-padding, 0);
++  position: relative;
++  min-height: var(--tournament-column-height, 0);
+ }
+ 
+ .tournament-bracket-match {
+-  position: relative;
+-  display: grid;
+-  grid-template-rows: repeat(2, minmax(0, 1fr));
+-  gap: 12px;
+-  min-width: 240px;
+-  min-height: 92px;
++  --tournament-bracket-status-height: 6px;
++  --tournament-bracket-player-height: 28px;
++  --tournament-bracket-player-gap: 0px;
++  --tournament-bracket-connector-width: 22px;
++  --tournament-bracket-line-start: calc(
++    var(--tournament-bracket-status-height) +
++      var(--tournament-bracket-player-gap) +
++      (var(--tournament-bracket-player-height) / 2)
++  );
++  --tournament-bracket-line-height: calc(
++    var(--tournament-bracket-player-height) + var(--tournament-bracket-player-gap)
++  );
++  --tournament-bracket-line-midpoint: calc(
++    var(--tournament-bracket-line-start) +
++      (var(--tournament-bracket-line-height) / 2)
++  );
++  --tournament-bracket-line-width: 24px;
++  display: grid;
++  grid-template-rows: auto repeat(2, minmax(0, 1fr));
++  gap: 0;
++  min-width: 300px;
++  min-height: 62px;
++  padding: 0;
++  position: absolute;
++  top: var(--tournament-match-top, 0);
++  left: 0;
++  z-index: 1;
++}
++
++.tournament-bracket-match-status {
++  min-height: 6px;
+ }
+ 
+ .tournament-bracket-player {
+-  min-height: 40px;
+   display: grid;
+-  grid-template-columns: auto minmax(0, 1fr) auto;
+-  gap: 10px;
+-  align-items: center;
+-  padding: 0 12px 0 0;
+-  border-radius: 0;
+-  border-top: 3px solid var(--connector);
+-  background: transparent;
++  grid-template-columns: minmax(0, 1fr) 54px;
++  grid-template-areas: "main score";
++  gap: 0;
++  min-height: var(--tournament-bracket-player-height);
++  padding: 0;
++  border: 1px solid color-mix(in srgb, #87a6dc 76%, transparent);
++  border-radius: 2px;
++  background: color-mix(in srgb, var(--surface) 98%, white 2%);
++  box-shadow: none;
++  overflow: hidden;
+ }
+ 
+ .tournament-bracket-player.winner {
+-  border-top-color: var(--accent);
+-  color: var(--accent);
++  border-color: color-mix(in srgb, #e1b11a 78%, #87a6dc 22%);
++  background: color-mix(in srgb, #e1b11a 38%, var(--surface) 62%);
++}
++
++.tournament-bracket-player-main {
++  grid-area: main;
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  min-width: 0;
++  padding: 4px 10px;
+ }
+ 
+ .tournament-bracket-seed {
+   color: var(--muted);
+-  font-size: 0.82rem;
++  font-size: 0.68rem;
++  flex: 0 0 auto;
+ }
+ 
+ .tournament-bracket-name {
+   text-align: left;
++  min-width: 0;
++  color: var(--text-h);
++  font-weight: 500;
++  line-height: 1.1;
++  font-size: 0.82rem;
++  display: block;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
+ }
+ 
+-.tournament-bracket-score {
+-  min-width: 18px;
+-  text-align: right;
+-  font-weight: 700;
+-}
+-
+-.tournament-bracket-match::before {
+-  position: absolute;
+-  content: "";
+-  top: 25%;
+-  right: 0;
+-  height: 50%;
+-  border-right: 3px solid var(--connector);
+-}
+-
+-.tournament-bracket-match::after {
+-  position: absolute;
+-  content: "";
+-  top: 50%;
+-  right: -48px;
+-  width: 48px;
+-  border-top: 3px solid var(--connector);
+-  transform: translateY(-50%);
+-}
+-
+-.tournament-match-completed::before,
+-.tournament-match-completed::after {
+-  border-color: var(--connector-accent);
++.tournament-bracket-player-score-block {
++  grid-area: score;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  border-left: 1px solid color-mix(in srgb, #87a6dc 76%, transparent);
++  background: color-mix(in srgb, var(--surface) 93%, white 7%);
+ }
+ 
+-.tournament-match-bye::before,
+-.tournament-match-bye::after {
+-  border-color: var(--connector-accent-soft);
++.tournament-bracket-score {
++  min-width: 0;
++  text-align: center;
++  font-size: 0.84rem;
++  font-weight: 700;
++  color: var(--text-h);
+ }
+ 
+ .tournament-bracket-winner-column {
+-  min-width: 180px;
++  min-width: 300px;
+ }
+ 
+ .tournament-bracket-winner-card {
+   position: relative;
+-  min-height: 72px;
++  width: 100%;
++  box-sizing: border-box;
++  min-height: 58px;
+   display: grid;
+   align-content: center;
+-  gap: 6px;
+-  padding: 12px;
++  gap: 4px;
++  padding: 10px 12px;
+   margin-top: var(--tournament-winner-offset, 0);
+-  border: 1px solid var(--panel-border-strong);
+-  background: var(--accent-bg);
++  border: 1px solid color-mix(in srgb, #87a6dc 76%, transparent);
++  border-radius: 2px;
++  background: color-mix(in srgb, #8fb766 34%, var(--surface) 66%);
++  box-shadow: none;
++  z-index: 1;
+ }
+ 
+ .tournament-bracket-winner-card::before {
+-  content: "";
+-  position: absolute;
+-  top: 50%;
+-  left: -48px;
+-  width: 48px;
+-  border-top: 3px solid var(--connector-accent);
+-  transform: translateY(-50%);
++  content: none;
+ }
+ 
+ .tournament-bracket-card p {
+@@ -3864,25 +3933,12 @@ button:disabled {
+ 
+ @media (max-width: 820px) {
+   .tournament-bracket-graphic {
+-    gap: 28px;
++    gap: 20px;
+   }
+ 
+   .tournament-bracket-column,
+   .tournament-bracket-match {
+-    min-width: 210px;
+-  }
+-
+-  .tournament-bracket-match::after,
+-  .tournament-bracket-winner-card::before {
+-    width: 28px;
+-  }
+-
+-  .tournament-bracket-match::after {
+-    right: -28px;
+-  }
+-
+-  .tournament-bracket-winner-card::before {
+-    left: -28px;
++    min-width: 260px;
+   }
+ }
+ 
+@@ -5171,12 +5227,12 @@ button:disabled {
+   }
+ 
+   .tournament-bracket-graphic {
+-    gap: 22px;
++    gap: 16px;
+   }
+ 
+   .tournament-bracket-column,
+   .tournament-bracket-match {
+-    min-width: 190px;
++    min-width: 220px;
+   }
+ 
+   .beginners-course-page,
+@@ -5314,7 +5370,7 @@ button:disabled {
+   }
+ }
+ 
+-@media (max-width: 900px) {
++@media (min-width: 721px) and (max-width: 900px) {
+   .profile-admin-actions,
+   .profile-card-issue-actions,
+   .profile-distance-signoff-header,
+@@ -5665,12 +5721,12 @@ button:disabled {
+   }
+ 
+   .tournament-bracket-graphic {
+-    gap: 18px;
++    gap: 14px;
+   }
+ 
+   .tournament-bracket-column,
+   .tournament-bracket-match {
+-    min-width: 176px;
++    min-width: 210px;
+   }
+ 
+   .beginners-course-actions-heading,
+@@ -6187,6 +6243,18 @@ button:disabled {
+ 
+ .beginners-course-checkbox input[type="checkbox"] {
+   order: 2;
++  display: block;
++  width: 16px;
++  height: 16px;
++  min-height: auto;
++  padding: 0;
++  border: 0;
++  border-radius: 0;
++  margin: 0;
++  background: transparent;
++  appearance: auto;
++  -webkit-appearance: checkbox;
++  accent-color: var(--accent);
+ }
+ 
+ .beginners-course-checkbox-row {
+@@ -6290,6 +6358,80 @@ button:disabled {
+   gap: 12px;
+ }
+ 
++.beginners-course-reschedule-modal {
++  display: grid;
++  gap: 18px;
++}
++
++.beginners-course-reschedule-note {
++  margin: 0;
++  padding: 14px 16px;
++  border: 1px solid var(--warning-panel-border);
++  border-radius: 14px;
++  background: var(--warning-panel-bg);
++  color: var(--warning-panel-copy);
++  line-height: 1.5;
++}
++
++.beginners-course-reschedule-grid {
++  display: grid;
++  grid-template-columns: minmax(0, 1.15fr) repeat(2, minmax(0, 1fr));
++  gap: 14px;
++  align-items: start;
++}
++
++.beginners-course-reschedule-field {
++  display: grid;
++  gap: 8px;
++  min-width: 0;
++}
++
++.beginners-course-reschedule-label {
++  color: var(--text-h);
++  font-weight: 700;
++}
++
++.beginners-course-reschedule-field input {
++  width: 100%;
++  min-height: calc(var(--control-height) * 1.5);
++  padding: 12px 14px;
++  border: 2px solid var(--panel-border-strong);
++  border-radius: 12px;
++  background: var(--input-bg);
++  color: var(--input-text);
++  font: inherit;
++}
++
++.beginners-course-reschedule-field .custom-date-picker-trigger {
++  min-height: calc(var(--control-height) * 1.5);
++  align-items: center;
++}
++
++.beginners-course-reschedule-field .custom-date-picker-copy {
++  gap: 6px;
++}
++
++.beginners-course-reschedule-field .custom-date-picker-value-row {
++  display: block;
++}
++
++.beginners-course-reschedule-field .custom-date-picker-value {
++  display: block;
++  font-size: 1.06rem;
++  line-height: 1.2;
++}
++
++.beginners-course-reschedule-field .custom-date-picker-helper {
++  font-size: 0.77rem;
++}
++
++.beginners-course-reschedule-actions {
++  display: flex;
++  justify-content: flex-end;
++  gap: 10px;
++  flex-wrap: wrap;
++}
++
+ .beginners-course-subpanel-header {
+   display: flex;
+   align-items: center;
+@@ -6547,6 +6689,45 @@ button:disabled {
+   line-height: 1.5;
+ }
+ 
++.records-handicap-panel {
++  display: grid;
++  gap: 16px;
++}
++
++.records-handicap-header {
++  display: flex;
++  justify-content: space-between;
++  align-items: flex-start;
++  gap: 16px;
++  flex-wrap: wrap;
++}
++
++.records-handicap-header h3 {
++  margin: 0 0 8px;
++  color: var(--text-h);
++}
++
++.records-handicap-source {
++  margin: 0;
++  color: var(--text-soft);
++  font-size: 0.92rem;
++}
++
++.records-handicap-controls {
++  display: grid;
++  grid-template-columns: repeat(4, minmax(0, 1fr));
++  gap: 14px;
++}
++
++.records-handicap-description {
++  margin: 0;
++  color: var(--muted);
++}
++
++.records-handicap-table-wrap {
++  overflow-x: auto;
++}
++
+ .records-records-panel {
+   width: min(100%, 420px);
+   padding: 18px 20px;
+@@ -6658,6 +6839,10 @@ button:disabled {
+   border-collapse: collapse;
+ }
+ 
++.records-score-table--comparison {
++  min-width: 100%;
++}
++
+ .records-score-table th,
+ .records-score-table td {
+   padding: 12px 10px;
+@@ -6670,6 +6855,12 @@ button:disabled {
+   color: var(--text-h);
+ }
+ 
++.records-score-table--comparison th:first-child,
++.records-score-table--comparison td:first-child {
++  width: 120px;
++  min-width: 120px;
++}
++
+ .records-form-actions {
+   display: flex;
+   justify-content: flex-end;
+@@ -7007,6 +7198,10 @@ button:disabled {
+     grid-template-columns: 1fr;
+   }
+ 
++  .records-handicap-controls {
++    grid-template-columns: 1fr;
++  }
++
+   .records-form {
+     gap: 14px;
+   }
+@@ -7043,6 +7238,10 @@ button:disabled {
+     width: 100%;
+   }
+ 
++  .records-handicap-controls {
++    grid-template-columns: repeat(3, minmax(0, 1fr));
++  }
++
+   .page-shell,
+   .page-shell--wide {
+     width: calc(100% - 24px);
+@@ -7099,6 +7298,7 @@ button:disabled {
+   .modal-body .loan-bow-return-actions,
+   .modal-body .event-modal-actions,
+   .modal-body .beginners-course-actions,
++  .modal-body .beginners-course-reschedule-actions,
+   .modal-body .tournament-setup-actions,
+   .modal-body .records-form-actions {
+     position: sticky;
+@@ -7133,6 +7333,19 @@ button:disabled {
+     grid-template-columns: 1fr;
+   }
+ 
++  .beginners-course-reschedule-grid {
++    grid-template-columns: 1fr;
++  }
++
++  .beginners-course-reschedule-actions {
++    justify-content: stretch;
++  }
++
++  .beginners-course-reschedule-actions .app-button,
++  .beginners-course-reschedule-actions button {
++    width: 100%;
++  }
++
+   .equipment-action-card,
+   .equipment-case-card,
+   .reporting-panel {
+diff --git a/src/presentation/pages/TournamentsPage.tsx b/src/presentation/pages/TournamentsPage.tsx
+index 8115941..62bd021 100644
+--- a/src/presentation/pages/TournamentsPage.tsx
++++ b/src/presentation/pages/TournamentsPage.tsx
+@@ -11,9 +11,9 @@ import { TournamentsDesktopView } from "./tournaments/TournamentsDesktopView";
+ import { TournamentsMobileView } from "./tournaments/TournamentsMobileView";
+ import type { TournamentRecord } from "./tournaments/tournamentViewTypes";
+ 
+-const BRACKET_MATCH_HEIGHT = 92;
++const BRACKET_MATCH_HEIGHT = 62;
+ const BRACKET_BASE_GAP = 18;
+-const BRACKET_WINNER_CARD_HEIGHT = 72;
++const BRACKET_WINNER_CARD_HEIGHT = 58;
+ const TOURNAMENT_SETUP_STEPS = [
+   { key: "basics", label: "Basics" },
+   { key: "windows", label: "Windows" },
+@@ -21,6 +21,12 @@ const TOURNAMENT_SETUP_STEPS = [
+   { key: "review", label: "Review" },
+ ];
+ type TournamentCssVars = CSSProperties & Record<string, string>;
++const TOURNAMENT_BOW_OPTIONS = [
++  { code: "BB", discipline: "Bare Bow" },
++  { code: "CB", discipline: "Compound Bow" },
++  { code: "LB", discipline: "Long Bow" },
++  { code: "RC", discipline: "Recurve Bow" },
++];
+ 
+ function createEmptyTournamentForm(
+   today,
+@@ -90,6 +96,60 @@ function addDays(dateString, daysToAdd) {
+   return parsed.toISOString().slice(0, 10);
+ }
+ 
++function getTournamentMatchHandicapSummary(match) {
++  const handicap = match?.handicap;
++
++  if (!handicap) {
++    return null;
++  }
++
++  const hasAdjustedScores =
++    typeof handicap.competitorA?.adjustedScore === "number" ||
++    typeof handicap.competitorB?.adjustedScore === "number";
++  const hasAllowances =
++    typeof handicap.competitorA?.allowancePoints === "number" ||
++    typeof handicap.competitorB?.allowancePoints === "number";
++
++  if (!hasAdjustedScores && !hasAllowances) {
++    return null;
++  }
++
++  return {
++    handicapScoreText: hasAllowances
++      ? `${typeof handicap.competitorA?.allowancePoints === "number" ? handicap.competitorA.allowancePoints : "-"} - ${
++          typeof handicap.competitorB?.allowancePoints === "number"
++            ? handicap.competitorB.allowancePoints
++            : "-"
++        }`
++      : "",
++    rawScoreText:
++      typeof match?.score?.competitorA === "number" ||
++      typeof match?.score?.competitorB === "number"
++        ? `${typeof match.score?.competitorA === "number" ? match.score.competitorA : "-"} - ${
++            typeof match.score?.competitorB === "number" ? match.score.competitorB : "-"
++          }`
++        : "",
++    totalScoreText: hasAdjustedScores
++      ? `${typeof handicap.competitorA?.adjustedScore === "number" ? handicap.competitorA.adjustedScore : "-"} - ${
++          typeof handicap.competitorB?.adjustedScore === "number"
++            ? handicap.competitorB.adjustedScore
++            : "-"
++        }`
++      : "",
++    allowancePercent: handicap.allowancePercent ?? null,
++  };
++}
++
++function formatTournamentBowCode(bowCode) {
++  const normalizedBowCode = String(bowCode ?? "").trim().toUpperCase();
++  return normalizedBowCode ? `(${normalizedBowCode})` : "";
++}
++
++function formatTournamentRegistrationName(registration) {
++  const bowCode = formatTournamentBowCode(registration?.bowCode);
++  return bowCode ? `${registration.fullName} ${bowCode}` : registration.fullName;
++}
++
+ function buildExampleRoundPreview({
+   roundOneStartDate,
+   roundWindowDays,
+@@ -141,7 +201,8 @@ function buildTournamentCompetitorExport(tournament) {
+     "Competing members:",
+     ...(tournament.registrations.length > 0
+       ? tournament.registrations.map(
+-          (registration, index) => `${index + 1}. ${registration.fullName}`,
++          (registration, index) =>
++            `${index + 1}. ${formatTournamentRegistrationName(registration)}`,
+         )
+       : ["No registered competitors."]),
+   ];
+@@ -149,27 +210,104 @@ function buildTournamentCompetitorExport(tournament) {
+   return `${lines.join("\n")}\n`;
+ }
+ 
+-function getBracketRoundMetrics(roundIndex) {
+-  const unit = BRACKET_MATCH_HEIGHT + BRACKET_BASE_GAP;
++function getBracketRoundLayout(rounds) {
++  const rowStep = BRACKET_MATCH_HEIGHT + BRACKET_BASE_GAP;
++  const roundLayouts: Array<{ centers: number[]; tops: number[] }> = [];
++  let bracketHeight = 0;
++
++  rounds.forEach((round, roundIndex) => {
++    let tops: number[] = [];
++
++    if (roundIndex === 0) {
++      tops = round.matches.map((_, matchIndex) => matchIndex * rowStep);
++    } else {
++      const previousCenters = roundLayouts[roundIndex - 1]?.centers ?? [];
++
++      tops = round.matches.map((_, matchIndex) => {
++        const sourceCenters = [
++          previousCenters[matchIndex * 2],
++          previousCenters[matchIndex * 2 + 1],
++        ].filter((value) => typeof value === "number");
++
++        const fallbackCenter =
++          previousCenters[Math.min(matchIndex, Math.max(previousCenters.length - 1, 0))] ??
++          BRACKET_MATCH_HEIGHT / 2;
++        const center =
++          sourceCenters.length > 0
++            ? sourceCenters.reduce((total, value) => total + value, 0) /
++              sourceCenters.length
++            : fallbackCenter;
++
++        return Math.max(0, center - BRACKET_MATCH_HEIGHT / 2);
++      });
++    }
++
++    const centers = tops.map((top) => top + BRACKET_MATCH_HEIGHT / 2);
++    const roundBottom = tops.length
++      ? Math.max(...tops) + BRACKET_MATCH_HEIGHT
++      : BRACKET_MATCH_HEIGHT;
++
++    bracketHeight = Math.max(bracketHeight, roundBottom);
++    roundLayouts.push({ centers, tops });
++  });
+ 
+   return {
+-    gap: unit * 2 ** roundIndex - BRACKET_MATCH_HEIGHT,
+-    padding: (unit * (2 ** roundIndex - 1)) / 2,
++    bracketHeight,
++    roundLayouts,
+   };
+ }
+ 
+-function BracketParticipant({ participant, score, isWinner = false }) {
++function getBracketParticipantDisplay(match, side: "left" | "right") {
++  const participant =
++    side === "left" ? match?.leftParticipant ?? null : match?.rightParticipant ?? null;
++  const rawScore =
++    side === "left" ? match?.leftScore ?? null : match?.rightScore ?? null;
++  const handicap = match?.handicap ?? null;
++  const handicapParticipant =
++    side === "left"
++      ? handicap?.competitorA ?? null
++      : handicap?.competitorB ?? null;
++  const totalScore = handicapParticipant?.adjustedScore ?? null;
++  const allowancePoints = handicapParticipant?.allowancePoints ?? null;
++
++  return {
++    allowancePoints,
++    participant,
++    rawScore,
++    scoreToDisplay:
++      typeof totalScore === "number"
++        ? totalScore
++        : typeof rawScore === "number"
++          ? rawScore
++          : null,
++    showAdjustedLabel:
++      typeof totalScore === "number" && totalScore !== rawScore,
++  };
++}
++
++function BracketParticipant({
++  isWinner = false,
++  participant,
++  score,
++}) {
++  const bowCode = formatTournamentBowCode(participant?.bowCode);
++  const participantName = participant
++    ? `${participant.fullName}${bowCode ? ` ${bowCode}` : ""}`
++    : "TBD";
++
+   return (
+     <div className={`tournament-bracket-player ${isWinner ? "winner" : ""}`}>
+-      <span className="tournament-bracket-seed">
+-        {participant?.seed ? `(${participant.seed})` : ""}
+-      </span>
+-      <span className="tournament-bracket-name">
+-        {participant?.fullName ?? "TBD"}
+-      </span>
+-      <span className="tournament-bracket-score">
+-        {typeof score === "number" ? score : ""}
+-      </span>
++      <div className="tournament-bracket-player-main">
++        <span className="tournament-bracket-seed">
++          {participant?.seed ? `(${participant.seed})` : ""}
++        </span>
++        <span className="tournament-bracket-name">{participantName}</span>
++      </div>
++      <div className="tournament-bracket-player-score-block">
++        <span className="tournament-bracket-score">
++          {typeof score === "number" ? score : ""}
++        </span>
++      </div>
+     </div>
+   );
+ }
+@@ -185,72 +323,240 @@ function formatTournamentParticipantName(participant) {
+     return "TBD";
+   }
+ 
+-  return participant.seed
+-    ? `(${participant.seed}) ${participant.fullName}`
+-    : participant.fullName;
++  const bowCode = formatTournamentBowCode(participant.bowCode);
++  const fullName = bowCode ? `${participant.fullName} ${bowCode}` : participant.fullName;
++  return participant.seed ? `(${participant.seed}) ${fullName}` : fullName;
++}
++
++function getElementVerticalCenter(element, boardRect) {
++  const rect = element.getBoundingClientRect();
++  return rect.top - boardRect.top + rect.height / 2;
++}
++
++function getMatchMidpointY(matchElement, boardRect) {
++  return getElementVerticalCenter(matchElement, boardRect);
++}
++
++function getMatchParticipantAnchorY(
++  matchElement: HTMLDivElement,
++  boardRect: DOMRect,
++  side: "top" | "bottom",
++) {
++  const players = matchElement.querySelectorAll(".tournament-bracket-player");
++  const playerElement =
++    side === "top" ? players.item(0) : players.item(Math.max(players.length - 1, 0));
++
++  if (playerElement instanceof HTMLElement) {
++    return getElementVerticalCenter(playerElement, boardRect);
++  }
++
++  return getMatchMidpointY(matchElement, boardRect);
+ }
+ 
+ function TournamentBracketGraphic({ tournament }) {
+-  const finalRoundMetrics = getBracketRoundMetrics(
+-    Math.max(tournament.bracket.rounds.length - 1, 0),
++  const totalRounds = tournament.bracket.rounds.length;
++  const boardRef = useRef<HTMLDivElement | null>(null);
++  const viewportRef = useRef<HTMLDivElement | null>(null);
++  const winnerCardRef = useRef<HTMLDivElement | null>(null);
++  const matchRefs = useRef(new Map<string, HTMLDivElement>());
++  const [connectorPaths, setConnectorPaths] = useState<string[]>([]);
++  const [boardSize, setBoardSize] = useState({ height: 0, width: 0 });
++  const { bracketHeight, roundLayouts } = useMemo(
++    () => getBracketRoundLayout(tournament.bracket.rounds),
++    [tournament.bracket.rounds],
+   );
++  const finalRoundLayout = roundLayouts[Math.max(totalRounds - 1, 0)];
++  const finalRoundCenter =
++    finalRoundLayout?.centers?.[0] ?? BRACKET_MATCH_HEIGHT / 2;
+   const winnerOffset = Math.max(
+-    finalRoundMetrics.padding +
+-      BRACKET_MATCH_HEIGHT / 2 -
+-      BRACKET_WINNER_CARD_HEIGHT / 2,
++    finalRoundCenter - BRACKET_WINNER_CARD_HEIGHT / 2,
+     0,
+   );
+ 
++  useEffect(() => {
++    const updateConnectorPaths = () => {
++      const boardElement = boardRef.current;
++
++      if (!boardElement) {
++        setConnectorPaths([]);
++        return;
++      }
++
++      const boardRect = boardElement.getBoundingClientRect();
++      const nextPaths: string[] = [];
++
++      tournament.bracket.rounds.forEach((round, roundIndex) => {
++        if (roundIndex >= totalRounds - 1) {
++          return;
++        }
++
++        round.matches.forEach((match, matchIndex) => {
++          const sourceElement = matchRefs.current.get(`${roundIndex}-${matchIndex}`);
++          const targetElement = matchRefs.current.get(
++            `${roundIndex + 1}-${Math.floor(matchIndex / 2)}`,
++          );
++
++          if (!sourceElement || !targetElement) {
++            return;
++          }
++
++          const sourceRect = sourceElement.getBoundingClientRect();
++          const sourceX = sourceRect.right - boardRect.left;
++          const targetRect = targetElement.getBoundingClientRect();
++          const sourceY = getMatchMidpointY(sourceElement, boardRect);
++          const targetX = targetRect.left - boardRect.left;
++          const targetY = getMatchParticipantAnchorY(
++            targetElement,
++            boardRect,
++            matchIndex % 2 === 0 ? "top" : "bottom",
++          );
++          const midpointX = sourceX + (targetX - sourceX) / 2;
++
++          nextPaths.push(
++            `M ${sourceX} ${sourceY} H ${midpointX} V ${targetY} H ${targetX}`,
++          );
++        });
++      });
++
++      const finalRound = tournament.bracket.rounds[totalRounds - 1];
++      const finalMatchElement = finalRound?.matches?.[0]
++        ? matchRefs.current.get(`${totalRounds - 1}-0`)
++        : null;
++      const winnerElement = winnerCardRef.current;
++
++      if (finalMatchElement && winnerElement) {
++        const finalRect = finalMatchElement.getBoundingClientRect();
++        const winnerRect = winnerElement.getBoundingClientRect();
++        const sourceX = finalRect.right - boardRect.left;
++        const sourceY = getMatchMidpointY(finalMatchElement, boardRect);
++        const targetX = winnerRect.left - boardRect.left;
++        const targetY = getElementVerticalCenter(winnerElement, boardRect);
++        const midpointX = sourceX + (targetX - sourceX) / 2;
++
++        nextPaths.push(
++          `M ${sourceX} ${sourceY} H ${midpointX} V ${targetY} H ${targetX}`,
++        );
++      }
++
++      setBoardSize({
++        width: boardElement.scrollWidth,
++        height: boardElement.scrollHeight,
++      });
++      setConnectorPaths(nextPaths);
++    };
++
++    const frameId = window.requestAnimationFrame(updateConnectorPaths);
++    const resizeObserver =
++      typeof ResizeObserver === "function"
++        ? new ResizeObserver(() => {
++            updateConnectorPaths();
++          })
++        : null;
++
++    if (boardRef.current && resizeObserver) {
++      resizeObserver.observe(boardRef.current);
++    }
++
++    window.addEventListener("resize", updateConnectorPaths);
++
++    return () => {
++      window.cancelAnimationFrame(frameId);
++      resizeObserver?.disconnect();
++      window.removeEventListener("resize", updateConnectorPaths);
++    };
++  }, [totalRounds, tournament.bracket.rounds]);
++
+   return (
+-    <div className="tournament-bracket-graphic">
+-      {tournament.bracket.rounds.map((round, roundIndex) => (
+-        <div key={round.roundNumber} className="tournament-bracket-column">
+-          <h5>{round.title}</h5>
+-          <div
+-            className="tournament-bracket-column-matches"
+-            style={{
+-              "--tournament-match-gap": `${getBracketRoundMetrics(roundIndex).gap}px`,
+-              "--tournament-column-padding": `${getBracketRoundMetrics(roundIndex).padding}px`,
+-            } as TournamentCssVars}
+-          >
+-            {round.matches.map((match) => (
+-              <div
+-                key={match.id}
+-                className={`tournament-bracket-match tournament-match-${match.status}`}
+-              >
+-                <BracketParticipant
+-                  participant={match.leftParticipant}
+-                  score={match.leftScore}
+-                  isWinner={match.winner?.username === match.leftParticipant?.username}
+-                />
+-                <BracketParticipant
+-                  participant={match.rightParticipant}
+-                  score={match.rightScore}
+-                  isWinner={match.winner?.username === match.rightParticipant?.username}
+-                />
++    <div className="tournament-bracket-shell">
++      <div className="tournament-bracket-scroll" ref={viewportRef}>
++        <div className="tournament-bracket-board" ref={boardRef}>
++          {boardSize.width > 0 && boardSize.height > 0 ? (
++            <svg
++              aria-hidden="true"
++              className="tournament-bracket-overlay"
++              viewBox={`0 0 ${boardSize.width} ${boardSize.height}`}
++            >
++              {connectorPaths.map((path, index) => (
++                <path key={`connector-${index}`} d={path} />
++              ))}
++            </svg>
++          ) : null}
++          <div className="tournament-bracket-graphic">
++            {tournament.bracket.rounds.map((round, roundIndex) => (
++              <div key={round.roundNumber} className="tournament-bracket-column">
++                <h5>{round.title}</h5>
++                <div
++                  className="tournament-bracket-column-matches"
++                  style={{
++                    "--tournament-column-height": `${bracketHeight}px`,
++                  } as TournamentCssVars}
++                >
++                  {round.matches.map((match, matchIndex) => {
++                    const leftDisplay = getBracketParticipantDisplay(match, "left");
++                    const rightDisplay = getBracketParticipantDisplay(match, "right");
++
++                    return (
++                      <div
++                        key={match.id}
++                        ref={(node) => {
++                          const refKey = `${roundIndex}-${matchIndex}`;
++
++                          if (node) {
++                            matchRefs.current.set(refKey, node);
++                            return;
++                          }
++
++                          matchRefs.current.delete(refKey);
++                        }}
++                        style={{
++                          "--tournament-match-top": `${roundLayouts[roundIndex]?.tops?.[matchIndex] ?? 0}px`,
++                        } as TournamentCssVars}
++                        className={`tournament-bracket-match tournament-match-${match.status}`}
++                      >
++                        <div className="tournament-bracket-match-status" aria-hidden="true">
++                          &nbsp;
++                        </div>
++                        <BracketParticipant
++                          participant={leftDisplay.participant}
++                          score={leftDisplay.scoreToDisplay}
++                          isWinner={
++                            match.winner?.username === match.leftParticipant?.username
++                          }
++                        />
++                        <BracketParticipant
++                          participant={rightDisplay.participant}
++                          score={rightDisplay.scoreToDisplay}
++                          isWinner={
++                            match.winner?.username === match.rightParticipant?.username
++                          }
++                        />
++                      </div>
++                    );
++                  })}
++                </div>
+               </div>
+             ))}
++
++            <div
++              className="tournament-bracket-column tournament-bracket-winner-column"
++              style={{ "--tournament-winner-offset": `${winnerOffset}px` } as TournamentCssVars}
++            >
++              <h5>Winner</h5>
++              <div className="tournament-bracket-winner-card" ref={winnerCardRef}>
++                {tournament.bracket.winner ? (
++                  <>
++                    <span className="tournament-bracket-seed">
++                      ({tournament.bracket.winner.seed})
++                    </span>
++                    <strong>{formatTournamentParticipantName(tournament.bracket.winner)}</strong>
++                  </>
++                ) : (
++                  <span>TBD</span>
++                )}
++              </div>
++            </div>
+           </div>
+         </div>
+-      ))}
+-
+-      <div
+-        className="tournament-bracket-column tournament-bracket-winner-column"
+-        style={{ "--tournament-winner-offset": `${winnerOffset}px` } as TournamentCssVars}
+-      >
+-        <h5>Winner</h5>
+-        <div className="tournament-bracket-winner-card">
+-          {tournament.bracket.winner ? (
+-            <>
+-              <span className="tournament-bracket-seed">
+-                ({tournament.bracket.winner.seed})
+-              </span>
+-              <strong>{tournament.bracket.winner.fullName}</strong>
+-            </>
+-          ) : (
+-            <span>TBD</span>
+-          )}
+-        </div>
+       </div>
+     </div>
+   );
+@@ -445,6 +751,7 @@ export function TournamentsPage({
+   const [matchScoreAValue, setMatchScoreAValue] = useState("");
+   const [matchScoreBValue, setMatchScoreBValue] = useState("");
+   const [matchDisputeReason, setMatchDisputeReason] = useState("");
++  const [selectedRegistrationBowCode, setSelectedRegistrationBowCode] = useState("");
+   const [captainDecisionNotes, setCaptainDecisionNotes] = useState<Record<string, string>>({});
+   const [captainDecisionErrors, setCaptainDecisionErrors] = useState<Record<string, string>>({});
+   const [captainOverrideScores, setCaptainOverrideScores] = useState<
+@@ -471,6 +778,24 @@ export function TournamentsPage({
+     "manage_tournaments",
+   );
+   const actorUsername = currentUserProfile?.auth?.username ?? "";
++  const registrationBowOptions = useMemo(
++    () =>
++      TOURNAMENT_BOW_OPTIONS.filter((option) =>
++        (currentUserProfile?.membership?.disciplines ?? []).includes(option.discipline),
++      ),
++    [currentUserProfile?.membership?.disciplines],
++  );
++
++  useEffect(() => {
++    if (registrationBowOptions.length === 1) {
++      setSelectedRegistrationBowCode(registrationBowOptions[0].code);
++      return;
++    }
++
++    setSelectedRegistrationBowCode((current) =>
++      registrationBowOptions.some((option) => option.code === current) ? current : "",
++    );
++  }, [registrationBowOptions]);
+ 
+   const loadTournaments = useCallback(async () => {
+     if (!hasLoadedTournaments) {
+@@ -842,6 +1167,11 @@ export function TournamentsPage({
+       return;
+     }
+ 
++    if (registrationBowOptions.length > 1 && !selectedRegistrationBowCode) {
++      setError("Choose which bow you will be shooting with before you register.");
++      return;
++    }
++
+     setIsSaving(true);
+     setError("");
+     setMessage("");
+@@ -849,6 +1179,10 @@ export function TournamentsPage({
+     try {
+       const result = await tournamentCrud.registerForTournamentUseCase.execute({
+         actorUsername,
++        bowCode:
++          registrationBowOptions.length === 1
++            ? registrationBowOptions[0].code
++            : selectedRegistrationBowCode,
+         tournamentId: selectedTournament.id,
+       });
+ 
+@@ -1186,233 +1520,258 @@ export function TournamentsPage({
+         <div className="tournament-captain-operations-list">
+           {captainOperationMatches.map((match) => (
+             <div key={`captain-op-${match.id}`} className="tournament-score-card">
+-              <div className="tournament-captain-card-layout">
+-                <div className="tournament-captain-editor">
+-                  <p>
+-                    <strong>{match.roundTitle}</strong>
+-                  </p>
+-                  <p>
+-                    {formatTournamentParticipantName(match.competitorA)} vs{" "}
+-                    {formatTournamentParticipantName(match.competitorB)}
+-                  </p>
+-                  <p>Status: {formatTournamentMatchStatus(match.status)}</p>
+-                  {match.submissionDeadline ? (
+-                    <p>Deadline: {formatDate(match.submissionDeadline)}</p>
+-                  ) : null}
+-                  {match.workflow?.disputeReason ? (
+-                    <p>Member dispute: {match.workflow.disputeReason}</p>
+-                  ) : null}
+-                  <div className="tournament-field-group">
+-                    <label
+-                      className="tournament-field-label"
+-                      htmlFor={`captain-decision-note-${match.id}`}
+-                    >
+-                      Captain decision note
+-                    </label>
+-                    <textarea
+-                      id={`captain-decision-note-${match.id}`}
+-                      value={captainDecisionNotes[String(match.id)] ?? ""}
+-                      onChange={(event) =>
+-                        {
+-                          const nextValue = event.target.value;
++              {(() => {
++                const handicapSummary = getTournamentMatchHandicapSummary(match);
+ 
+-                          setCaptainDecisionNotes((current) => ({
+-                            ...current,
+-                            [String(match.id)]: nextValue,
+-                          }));
+-                          setCaptainDecisionErrors((current) => ({
+-                            ...current,
+-                            [String(match.id)]: nextValue.trim()
+-                              ? ""
+-                              : current[String(match.id)] ?? "",
+-                          }));
+-                        }
+-                      }
+-                      rows={3}
+-                      placeholder="Record why this decision was made."
+-                    />
+-                  </div>
+-                  {captainDecisionErrors[String(match.id)] ? (
+-                    <p className="profile-error">
+-                      {captainDecisionErrors[String(match.id)]}
+-                    </p>
+-                  ) : null}
+-                  <div className="tournament-captain-score-grid">
+-                    <label>
+-                      Override {match.competitorA?.fullName ?? "A"} score
+-                      <input
+-                        type="number"
+-                        min="0"
+-                        inputMode="numeric"
+-                        value={captainOverrideScores[String(match.id)]?.leftScore ?? ""}
+-                        onChange={(event) =>
+-                          setCaptainOverrideScores((current) => ({
+-                            ...current,
+-                            [String(match.id)]: {
+-                              leftScore: event.target.value,
+-                              rightScore:
+-                                current[String(match.id)]?.rightScore ??
+-                                (typeof match.score?.competitorB === "number"
+-                                  ? String(match.score.competitorB)
+-                                  : ""),
+-                            },
+-                          }))
+-                        }
+-                        placeholder="Optional for override"
+-                      />
+-                    </label>
+-                    <label>
+-                      Override {match.competitorB?.fullName ?? "B"} score
+-                      <input
+-                        type="number"
+-                        min="0"
+-                        inputMode="numeric"
+-                        value={captainOverrideScores[String(match.id)]?.rightScore ?? ""}
+-                        onChange={(event) =>
+-                          setCaptainOverrideScores((current) => ({
+-                            ...current,
+-                            [String(match.id)]: {
+-                              leftScore:
+-                                current[String(match.id)]?.leftScore ??
+-                                (typeof match.score?.competitorA === "number"
+-                                  ? String(match.score.competitorA)
+-                                  : ""),
+-                              rightScore: event.target.value,
+-                            },
+-                          }))
+-                        }
+-                        placeholder="Optional for override"
+-                      />
+-                    </label>
+-                  </div>
+-                </div>
+-                <div className="tournament-captain-actions-grid">
+-                  <div className="tournament-captain-action-group">
+-                    <p className="tournament-captain-action-group-title">Override winner</p>
+-                    <Button
+-                      type="button"
+-                      variant="secondary"
+-                      disabled={
+-                        isApplyingCaptainDecision ||
+-                        !String(captainDecisionNotes[String(match.id)] ?? "").trim()
+-                      }
+-                      onClick={() => {
+-                        void handleCaptainMatchDecision({
+-                          action: "override",
+-                          leftScoreOverride:
+-                            captainOverrideScores[String(match.id)]?.leftScore ?? "",
+-                          match,
+-                          rightScoreOverride:
+-                            captainOverrideScores[String(match.id)]?.rightScore ?? "",
+-                          winnerUsername: match.competitorA?.username ?? "",
+-                        });
+-                      }}
+-                    >
+-                      {match.competitorA?.fullName ?? "A"}
+-                    </Button>
+-                    <Button
+-                      type="button"
+-                      variant="secondary"
+-                      disabled={
+-                        isApplyingCaptainDecision ||
+-                        !String(captainDecisionNotes[String(match.id)] ?? "").trim()
+-                      }
+-                      onClick={() => {
+-                        void handleCaptainMatchDecision({
+-                          action: "override",
+-                          leftScoreOverride:
+-                            captainOverrideScores[String(match.id)]?.leftScore ?? "",
+-                          match,
+-                          rightScoreOverride:
+-                            captainOverrideScores[String(match.id)]?.rightScore ?? "",
+-                          winnerUsername: match.competitorB?.username ?? "",
+-                        });
+-                      }}
+-                    >
+-                      {match.competitorB?.fullName ?? "B"}
+-                    </Button>
+-                  </div>
+-                  <div className="tournament-captain-action-group">
+-                    <p className="tournament-captain-action-group-title">Push forward</p>
+-                    <Button
+-                      type="button"
+-                      variant="secondary"
+-                      disabled={
+-                        isApplyingCaptainDecision ||
+-                        !String(captainDecisionNotes[String(match.id)] ?? "").trim()
+-                      }
+-                      onClick={() => {
+-                        void handleCaptainMatchDecision({
+-                          action: "walkover",
+-                          match,
+-                          winnerUsername: match.competitorA?.username ?? "",
+-                        });
+-                      }}
+-                    >
+-                      {match.competitorA?.fullName ?? "A"}
+-                    </Button>
+-                    <Button
+-                      type="button"
+-                      variant="secondary"
+-                      disabled={
+-                        isApplyingCaptainDecision ||
+-                        !String(captainDecisionNotes[String(match.id)] ?? "").trim()
+-                      }
+-                      onClick={() => {
+-                        void handleCaptainMatchDecision({
+-                          action: "walkover",
+-                          match,
+-                          winnerUsername: match.competitorB?.username ?? "",
+-                        });
+-                      }}
+-                    >
+-                      {match.competitorB?.fullName ?? "B"}
+-                    </Button>
+-                  </div>
+-                  <div className="tournament-captain-action-group">
+-                    <p className="tournament-captain-action-group-title">Disqualify</p>
+-                    <Button
+-                      type="button"
+-                      variant="danger"
+-                      disabled={
+-                        isApplyingCaptainDecision ||
+-                        !String(captainDecisionNotes[String(match.id)] ?? "").trim()
+-                      }
+-                      onClick={() => {
+-                        void handleCaptainMatchDecision({
+-                          action: "disqualify",
+-                          match,
+-                          winnerUsername: match.competitorA?.username ?? "",
+-                        });
+-                      }}
+-                    >
+-                      {match.competitorB?.fullName ?? "B"}
+-                    </Button>
+-                    <Button
+-                      type="button"
+-                      variant="danger"
+-                      disabled={
+-                        isApplyingCaptainDecision ||
+-                        !String(captainDecisionNotes[String(match.id)] ?? "").trim()
+-                      }
+-                      onClick={() => {
+-                        void handleCaptainMatchDecision({
+-                          action: "disqualify",
+-                          match,
+-                          winnerUsername: match.competitorB?.username ?? "",
+-                        });
+-                      }}
+-                    >
+-                      {match.competitorA?.fullName ?? "A"}
+-                    </Button>
++                return (
++                  <div className="tournament-captain-card-layout">
++                    <div className="tournament-captain-editor">
++                      <p>
++                        <strong>{match.roundTitle}</strong>
++                      </p>
++                      <p>
++                        {formatTournamentParticipantName(match.competitorA)} vs{" "}
++                        {formatTournamentParticipantName(match.competitorB)}
++                      </p>
++                      <p>Status: {formatTournamentMatchStatus(match.status)}</p>
++                      {match.submissionDeadline ? (
++                        <p>Deadline: {formatDate(match.submissionDeadline)}</p>
++                      ) : null}
++                      {handicapSummary?.rawScoreText ? (
++                        <p>Score: {handicapSummary.rawScoreText}</p>
++                      ) : null}
++                      {handicapSummary?.handicapScoreText ? (
++                        <p>
++                          Handicap score
++                          {typeof handicapSummary.allowancePercent === "number"
++                            ? ` (${handicapSummary.allowancePercent}%)`
++                            : ""}
++                          : {handicapSummary.handicapScoreText}
++                        </p>
++                      ) : null}
++                      {handicapSummary?.totalScoreText ? (
++                        <p>Total score: {handicapSummary.totalScoreText}</p>
++                      ) : null}
++                      {match.workflow?.disputeReason ? (
++                        <p>Member dispute: {match.workflow.disputeReason}</p>
++                      ) : null}
++                      <div className="tournament-field-group">
++                        <label
++                          className="tournament-field-label"
++                          htmlFor={`captain-decision-note-${match.id}`}
++                        >
++                          Captain decision note
++                        </label>
++                        <textarea
++                          id={`captain-decision-note-${match.id}`}
++                          value={captainDecisionNotes[String(match.id)] ?? ""}
++                          onChange={(event) =>
++                            {
++                              const nextValue = event.target.value;
++
++                              setCaptainDecisionNotes((current) => ({
++                                ...current,
++                                [String(match.id)]: nextValue,
++                              }));
++                              setCaptainDecisionErrors((current) => ({
++                                ...current,
++                                [String(match.id)]: nextValue.trim()
++                                  ? ""
++                                  : current[String(match.id)] ?? "",
++                              }));
++                            }
++                          }
++                          rows={3}
++                          placeholder="Record why this decision was made."
++                        />
++                      </div>
++                      {captainDecisionErrors[String(match.id)] ? (
++                        <p className="profile-error">
++                          {captainDecisionErrors[String(match.id)]}
++                        </p>
++                      ) : null}
++                      <div className="tournament-captain-score-grid">
++                        <label>
++                          Override {match.competitorA?.fullName ?? "A"} score
++                          <input
++                            type="number"
++                            min="0"
++                            inputMode="numeric"
++                            value={captainOverrideScores[String(match.id)]?.leftScore ?? ""}
++                            onChange={(event) =>
++                              setCaptainOverrideScores((current) => ({
++                                ...current,
++                                [String(match.id)]: {
++                                  leftScore: event.target.value,
++                                  rightScore:
++                                    current[String(match.id)]?.rightScore ??
++                                    (typeof match.score?.competitorB === "number"
++                                      ? String(match.score.competitorB)
++                                      : ""),
++                                },
++                              }))
++                            }
++                            placeholder="Optional for override"
++                          />
++                        </label>
++                        <label>
++                          Override {match.competitorB?.fullName ?? "B"} score
++                          <input
++                            type="number"
++                            min="0"
++                            inputMode="numeric"
++                            value={captainOverrideScores[String(match.id)]?.rightScore ?? ""}
++                            onChange={(event) =>
++                              setCaptainOverrideScores((current) => ({
++                                ...current,
++                                [String(match.id)]: {
++                                  leftScore:
++                                    current[String(match.id)]?.leftScore ??
++                                    (typeof match.score?.competitorA === "number"
++                                      ? String(match.score.competitorA)
++                                      : ""),
++                                  rightScore: event.target.value,
++                                },
++                              }))
++                            }
++                            placeholder="Optional for override"
++                          />
++                        </label>
++                      </div>
++                    </div>
++                    <div className="tournament-captain-actions-grid">
++                      <div className="tournament-captain-action-group">
++                        <p className="tournament-captain-action-group-title">Override winner</p>
++                        <Button
++                          type="button"
++                          variant="secondary"
++                          disabled={
++                            isApplyingCaptainDecision ||
++                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
++                          }
++                          onClick={() => {
++                            void handleCaptainMatchDecision({
++                              action: "override",
++                              leftScoreOverride:
++                                captainOverrideScores[String(match.id)]?.leftScore ?? "",
++                              match,
++                              rightScoreOverride:
++                                captainOverrideScores[String(match.id)]?.rightScore ?? "",
++                              winnerUsername: match.competitorA?.username ?? "",
++                            });
++                          }}
++                        >
++                          {match.competitorA?.fullName ?? "A"}
++                        </Button>
++                        <Button
++                          type="button"
++                          variant="secondary"
++                          disabled={
++                            isApplyingCaptainDecision ||
++                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
++                          }
++                          onClick={() => {
++                            void handleCaptainMatchDecision({
++                              action: "override",
++                              leftScoreOverride:
++                                captainOverrideScores[String(match.id)]?.leftScore ?? "",
++                              match,
++                              rightScoreOverride:
++                                captainOverrideScores[String(match.id)]?.rightScore ?? "",
++                              winnerUsername: match.competitorB?.username ?? "",
++                            });
++                          }}
++                        >
++                          {match.competitorB?.fullName ?? "B"}
++                        </Button>
++                      </div>
++                      <div className="tournament-captain-action-group">
++                        <p className="tournament-captain-action-group-title">Push forward</p>
++                        <Button
++                          type="button"
++                          variant="secondary"
++                          disabled={
++                            isApplyingCaptainDecision ||
++                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
++                          }
++                          onClick={() => {
++                            void handleCaptainMatchDecision({
++                              action: "walkover",
++                              match,
++                              winnerUsername: match.competitorA?.username ?? "",
++                            });
++                          }}
++                        >
++                          {match.competitorA?.fullName ?? "A"}
++                        </Button>
++                        <Button
++                          type="button"
++                          variant="secondary"
++                          disabled={
++                            isApplyingCaptainDecision ||
++                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
++                          }
++                          onClick={() => {
++                            void handleCaptainMatchDecision({
++                              action: "walkover",
++                              match,
++                              winnerUsername: match.competitorB?.username ?? "",
++                            });
++                          }}
++                        >
++                          {match.competitorB?.fullName ?? "B"}
++                        </Button>
++                      </div>
++                      <div className="tournament-captain-action-group">
++                        <p className="tournament-captain-action-group-title">Disqualify</p>
++                        <Button
++                          type="button"
++                          variant="danger"
++                          disabled={
++                            isApplyingCaptainDecision ||
++                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
++                          }
++                          onClick={() => {
++                            void handleCaptainMatchDecision({
++                              action: "disqualify",
++                              match,
++                              winnerUsername: match.competitorA?.username ?? "",
++                            });
++                          }}
++                        >
++                          {match.competitorB?.fullName ?? "B"}
++                        </Button>
++                        <Button
++                          type="button"
++                          variant="danger"
++                          disabled={
++                            isApplyingCaptainDecision ||
++                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
++                          }
++                          onClick={() => {
++                            void handleCaptainMatchDecision({
++                              action: "disqualify",
++                              match,
++                              winnerUsername: match.competitorB?.username ?? "",
++                            });
++                          }}
++                        >
++                          {match.competitorA?.fullName ?? "A"}
++                        </Button>
++                      </div>
++                    </div>
+                   </div>
+-                </div>
+-              </div>
++                );
++              })()}
+             </div>
+           ))}
+         </div>
+       </div>
+     ) : null;
++  const currentMatchHandicapSummary =
++    selectedTournament?.currentMatch
++      ? getTournamentMatchHandicapSummary(selectedTournament.currentMatch)
++      : null;
+ 
+   const selectedTournamentDetail = selectedTournament ? (
+     <>
+@@ -1472,13 +1831,33 @@ export function TournamentsPage({
+         >
+           {registrationStatusText}
+         </p>
++        {registrationBowOptions.length > 1 && selectedTournament.canRegister ? (
++          <label className="tournament-field-label">
++            Shooting bow
++            <select
++              value={selectedRegistrationBowCode}
++              onChange={(event) => setSelectedRegistrationBowCode(event.target.value)}
++            >
++              <option value="">Choose your bow</option>
++              {registrationBowOptions.map((option) => (
++                <option key={option.code} value={option.code}>
++                  {option.discipline} ({option.code})
++                </option>
++              ))}
++            </select>
++          </label>
++        ) : null}
+ 
+         <div className="tournament-action-row">
+           <Button
+             type="button"
+             className="tournament-primary-button"
+             onClick={handleRegister}
+-            disabled={!selectedTournament.canRegister || isSaving}
++            disabled={
++              !selectedTournament.canRegister ||
++              isSaving ||
++              (registrationBowOptions.length > 1 && !selectedRegistrationBowCode)
++            }
+           >
+             {isSaving && selectedTournament.canRegister
+               ? "Registering..."
+@@ -1521,7 +1900,9 @@ export function TournamentsPage({
+         {selectedTournament.registrations.length > 0 ? (
+           <ul className="event-summary-list">
+             {selectedTournament.registrations.map((registration) => (
+-              <li key={registration.username}>{registration.fullName}</li>
++              <li key={registration.username}>
++                {formatTournamentRegistrationName(registration)}
++              </li>
+             ))}
+           </ul>
+         ) : (
+@@ -1547,19 +1928,23 @@ export function TournamentsPage({
+               Deadline: {formatDate(selectedTournament.currentMatch.submissionDeadline)}
+             </p>
+           ) : null}
+-          {(typeof selectedTournament.currentMatch.score?.competitorA === "number" ||
+-            typeof selectedTournament.currentMatch.score?.competitorB === "number") ? (
++          {currentMatchHandicapSummary?.rawScoreText ? (
+             <p>
+-              Submitted score:{" "}
+-              {typeof selectedTournament.currentMatch.score?.competitorA === "number"
+-                ? selectedTournament.currentMatch.score.competitorA
+-                : "-"}{" "}
+-              -{" "}
+-              {typeof selectedTournament.currentMatch.score?.competitorB === "number"
+-                ? selectedTournament.currentMatch.score.competitorB
+-                : "-"}
++              Score: {currentMatchHandicapSummary.rawScoreText}
+             </p>
+           ) : null}
++          {currentMatchHandicapSummary?.handicapScoreText ? (
++            <p>
++              Handicap score
++              {typeof currentMatchHandicapSummary.allowancePercent === "number"
++                ? ` (${currentMatchHandicapSummary.allowancePercent}%)`
++                : ""}
++              : {currentMatchHandicapSummary.handicapScoreText}
++            </p>
++          ) : null}
++          {currentMatchHandicapSummary?.totalScoreText ? (
++            <p>Total score: {currentMatchHandicapSummary.totalScoreText}</p>
++          ) : null}
+           {selectedTournament.currentMatch.workflow?.submittedByUsername ? (
+             <p>
+               Submitted by: {selectedTournament.currentMatch.workflow.submittedByUsername}
+@@ -2281,12 +2666,18 @@ export function TournamentsPage({
+               ) : null
+             }
+             captainOperationsContent={captainOperationsContent}
++            registrationBowOptions={registrationBowOptions}
++            requireRegistrationBowSelection={
++              registrationBowOptions.length > 1 && !selectedRegistrationBowCode
++            }
++            selectedRegistrationBowCode={selectedRegistrationBowCode}
+             onSelectTournament={(tournamentId) => {
+               setSelectedTournamentId(tournamentId);
+               if (showSetupForm && canManageTournaments) {
+                 setIsEditingTournament(true);
+               }
+             }}
++            onRegistrationBowCodeChange={setSelectedRegistrationBowCode}
+             onRegister={handleRegister}
+             onWithdraw={handleWithdraw}
+             onSaveCompetitorList={handleSaveCompetitorList}

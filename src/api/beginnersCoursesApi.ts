@@ -187,6 +187,27 @@ export async function cancelBeginnersCourse(
   );
 }
 
+export async function rescheduleBeginnersCourse(
+  actor: ActorIdentity | string,
+  courseId: string | number,
+  schedule: {
+    firstLessonDate: string;
+    startTime: string;
+    endTime: string;
+    courseType?: string;
+  },
+) {
+  return fetchApi<{ success: true; course?: Record<string, unknown>; approvalReset?: boolean }>(
+    `/api/beginners-courses/${courseId}/reschedule`,
+    {
+      method: "POST",
+      headers: buildActorHeaders(actor, true),
+      body: JSON.stringify(schedule),
+      cache: "no-store",
+    },
+  );
+}
+
 export async function assignLessonCoaches(
   actor: ActorIdentity | string,
   lessonId: string | number,
@@ -209,6 +230,17 @@ export async function updateBeginnerParticipant(
     method: "PUT",
     headers: buildActorHeaders(actor, true),
     body: JSON.stringify(beginner),
+    cache: "no-store",
+  });
+}
+
+export async function removeBeginnerParticipant(
+  actor: ActorIdentity | string,
+  beginnerId: string | number,
+) {
+  return fetchApi<{ success: true }>(`/api/beginners-course-participants/${beginnerId}`, {
+    method: "DELETE",
+    headers: buildActorHeaders(actor, true),
     cache: "no-store",
   });
 }

@@ -66,6 +66,7 @@ import { createLostArrowGateway } from "./infrastructure/persistence/lostArrowGa
 import { createOutdoorTableGateway } from "./infrastructure/persistence/outdoorTableGateway.js";
 import { createRangeRulesGateway } from "./infrastructure/persistence/rangeRulesGateway.js";
 import { createGeneralInfoGateway } from "./infrastructure/persistence/generalInfoGateway.js";
+import { createHandicapTableGateway } from "./infrastructure/persistence/handicapTableGateway.js";
 import { createGoldenRecordsSyncGateway } from "./infrastructure/persistence/goldenRecordsSyncGateway.js";
 import { createGoldenRecordsIntegrationGateway } from "./infrastructure/persistence/goldenRecordsIntegrationGateway.js";
 import { createGoldenRecordsCurrentHandicapService } from "./infrastructure/golden-records/goldenRecordsCurrentHandicapService.js";
@@ -94,6 +95,7 @@ import { registerLostArrowRoutes } from "./presentation/http/registerLostArrowRo
 import { registerOutdoorTableRoutes } from "./presentation/http/registerOutdoorTableRoutes.js";
 import { registerRangeRulesRoutes } from "./presentation/http/registerRangeRulesRoutes.js";
 import { registerGeneralInfoRoutes } from "./presentation/http/registerGeneralInfoRoutes.js";
+import { registerHandicapTableRoutes } from "./presentation/http/registerHandicapTableRoutes.js";
 import { registerSseRoutes } from "./presentation/http/registerSseRoutes.js";
 import { registerSuggestionRoutes } from "./presentation/http/registerSuggestionRoutes.js";
 import { registerMemberQuestionRoutes } from "./presentation/http/registerMemberQuestionRoutes.js";
@@ -444,9 +446,9 @@ function apiErrorHandler(error, req, res, next) {
 }
 
 const COURSE_PARTICIPANT_USER_TYPES = {
-  beginners: "non-member",
-  "have-a-go": "non-member",
-  "taster-session": "non-member",
+  beginners: "prospect",
+  "have-a-go": "prospect",
+  "taster-session": "prospect",
 };
 
 const COURSE_PARTICIPANT_PROGRAMME_TYPES = {
@@ -566,6 +568,11 @@ const generalInfoGateway = createGeneralInfoGateway({
   db,
   pool: db.pool,
 });
+const handicapTableGateway = createHandicapTableGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
+});
 const goldenRecordsSyncGateway = createGoldenRecordsSyncGateway({
   databaseEngine: serverRuntime.databaseEngine,
   db,
@@ -589,7 +596,12 @@ const publicServerEventBus = createServerEventBus();
 let cachedAssignableRoleKeys = [];
 let cachedKnownRoleKeys = new Set();
 let cachedRolePermissionsByKey = new Map();
-const LEGACY_NON_MEMBER_ROLE_KEYS = new Set(["beginner", "have-a-go", "non-member"]);
+const LEGACY_NON_MEMBER_ROLE_KEYS = new Set([
+  "beginner",
+  "have-a-go",
+  "non-member",
+  "prospect",
+]);
 
 async function refreshRoleAccessSnapshot() {
   const roles = await roleCommitteeGateway.listRoleDefinitions();
@@ -729,6 +741,7 @@ const sqliteBeginnersCourseStatements =
     : null;
 const {
   cancelBeginnersCourse,
+  deleteBeginnersCourseParticipant,
   deleteBeginnersLessonCoachesByLessonId,
   findBeginnersCourseById,
   findBeginnersCourseLessonById,
@@ -750,8 +763,10 @@ const {
   markBeginnersCourseParticipantConverted,
   transferBeginnersCourseParticipant,
   updateBeginnersCourseApproval,
+  updateBeginnersCourseLessonSchedule,
   updateBeginnersCourseParticipant,
   updateBeginnersCourseParticipantCase,
+  updateBeginnersCourseSchedule,
 } = sqliteBeginnersCourseStatements ?? {};
 
 const tournamentGateway = createTournamentGateway({
@@ -1041,6 +1056,7 @@ const beginnersCourseWriteGateway = createBeginnersCourseWriteGateway({
   cancelBeginnersCourse,
   databaseEngine: serverRuntime.databaseEngine,
   db,
+  deleteBeginnersCourseParticipant,
   deleteBeginnersLessonCoachesByLessonId,
   insertBeginnersCourse,
   insertBeginnersCourseLesson,
@@ -1050,8 +1066,10 @@ const beginnersCourseWriteGateway = createBeginnersCourseWriteGateway({
   transferBeginnersCourseParticipant,
   pool: db.pool,
   updateBeginnersCourseApproval,
+  updateBeginnersCourseLessonSchedule,
   updateBeginnersCourseParticipant,
   updateBeginnersCourseParticipantCase,
+  updateBeginnersCourseSchedule,
   updateUserPassword,
   upsertUser,
 });
@@ -1502,6 +1520,40 @@ async function sanitizeBeginnersCoursePayload(payload) {
   };
 }
 
+function sanitizeBeginnersCourseReschedulePayload(payload) {
+  const firstLessonDate =
+    typeof payload?.firstLessonDate === "string" ? payload.firstLessonDate.trim() : "";
+  const startTime =
+    typeof payload?.startTime === "string" ? payload.startTime.trim() : "";
+  const endTime =
+    typeof payload?.endTime === "string" ? payload.endTime.trim() : "";
+
+  if (!firstLessonDate) {
+    return {
+      success: false,
+      status: 400,
+      message: "Choose the new first lesson date.",
+    };
+  }
+
+  if (!startTime || !endTime || endTime <= startTime) {
+    return {
+      success: false,
+      status: 400,
+      message: "Choose a valid lesson start and end time.",
+    };
+  }
+
+  return {
+    success: true,
+    value: {
+      firstLessonDate,
+      startTime,
+      endTime,
+    },
+  };
+}
+
 function normalizeOptionalDirection(value) {
   if (value === "left" || value === "right") {
     return value;
@@ -1535,6 +1587,10 @@ function sanitizeBeginnersParticipantPayload(payload) {
       surname,
       sizeCategory,
       heightText: heightText || null,
+      drawLength:
+        typeof payload?.drawLength === "string"
+          ? payload.drawLength.trim().slice(0, 40) || null
+          : null,
       handedness: normalizeOptionalDirection(payload?.handedness),
       eyeDominance: normalizeOptionalDirection(payload?.eyeDominance),
       initialEmailSent: Boolean(payload?.initialEmailSent),
@@ -1700,6 +1756,7 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
       fullName: `${participant.first_name} ${participant.surname}`.trim(),
       sizeCategory: participant.beginner_size_category,
       heightText: participant.height_text ?? "",
+      drawLength: participant.draw_length ?? "",
       handedness: participant.handedness ?? "",
       eyeDominance: participant.eye_dominance ?? "",
       initialEmailSent: Boolean(participant.initial_email_sent),
@@ -1842,6 +1899,33 @@ function buildBeginnersLessonAuditLabel(lesson) {
   }
 
   return `Lesson ${lesson.lessonNumber} ${lesson.date}`;
+}
+
+function buildBeginnersRescheduleNotification(course) {
+  if (!course) {
+    return null;
+  }
+
+  const courseType = normalizeCourseType(course.courseType ?? course.course_type);
+  const label =
+    courseType === "taster-session"
+      ? "Taster Session"
+      : courseType === "have-a-go"
+        ? "Have a Go session"
+        : "Beginners course";
+
+  return {
+    courseId: course.id,
+    courseType,
+    firstLessonDate: course.firstLessonDate ?? course.first_lesson_date ?? "",
+    id: `beginners-reschedule-${courseType}-${course.id}-${course.firstLessonDate ?? course.first_lesson_date ?? ""}-${course.startTime ?? course.start_time ?? ""}-${course.endTime ?? course.end_time ?? ""}`,
+    message: `${label} on ${formatDate(course.firstLessonDate ?? course.first_lesson_date ?? "")} was rescheduled to ${formatClockTime(course.startTime ?? course.start_time ?? "")}-${formatClockTime(course.endTime ?? course.end_time ?? "")}.`,
+    title: `${label} rescheduled`,
+    targetPath:
+      courseType === "taster-session"
+        ? "/beginners-courses?tab=taster-session"
+        : "/beginners-courses",
+  };
 }
 
 async function hasBeginnersCourseCompleted(course) {
@@ -2781,6 +2865,44 @@ function normalizePersistedTournamentMatches(matchRows = []) {
           ? `${match.disputed_at_date}T${match.disputed_at_time}`
           : match?.disputedAt ?? null,
       disputeReason: match?.dispute_reason ?? match?.disputeReason ?? null,
+      handicapAllowancePercent:
+        match?.handicap_allowance_percent ?? match?.handicapAllowancePercent ?? null,
+      leftHandicapValue:
+        match?.left_handicap_value ?? match?.leftHandicapValue ?? null,
+      leftHandicapType:
+        match?.left_handicap_type ?? match?.leftHandicapType ?? null,
+      leftHandicapBowClass:
+        match?.left_handicap_bow_class ?? match?.leftHandicapBowClass ?? null,
+      leftHandicapDiscipline:
+        match?.left_handicap_discipline ?? match?.leftHandicapDiscipline ?? null,
+      leftReferenceScore:
+        match?.left_reference_score ?? match?.leftReferenceScore ?? null,
+      leftAllowancePoints:
+        match?.left_allowance_points ?? match?.leftAllowancePoints ?? null,
+      leftAdjustedScore:
+        match?.left_adjusted_score ?? match?.leftAdjustedScore ?? null,
+      leftHandicapTableKey:
+        match?.left_handicap_table_key ?? match?.leftHandicapTableKey ?? null,
+      leftHandicapTableTitle:
+        match?.left_handicap_table_title ?? match?.leftHandicapTableTitle ?? null,
+      rightHandicapValue:
+        match?.right_handicap_value ?? match?.rightHandicapValue ?? null,
+      rightHandicapType:
+        match?.right_handicap_type ?? match?.rightHandicapType ?? null,
+      rightHandicapBowClass:
+        match?.right_handicap_bow_class ?? match?.rightHandicapBowClass ?? null,
+      rightHandicapDiscipline:
+        match?.right_handicap_discipline ?? match?.rightHandicapDiscipline ?? null,
+      rightReferenceScore:
+        match?.right_reference_score ?? match?.rightReferenceScore ?? null,
+      rightAllowancePoints:
+        match?.right_allowance_points ?? match?.rightAllowancePoints ?? null,
+      rightAdjustedScore:
+        match?.right_adjusted_score ?? match?.rightAdjustedScore ?? null,
+      rightHandicapTableKey:
+        match?.right_handicap_table_key ?? match?.rightHandicapTableKey ?? null,
+      rightHandicapTableTitle:
+        match?.right_handicap_table_title ?? match?.rightHandicapTableTitle ?? null,
       status:
         typeof match?.status === "string" && match.status.trim()
           ? match.status.trim()
@@ -2831,6 +2953,37 @@ function mapBracketMatchToEngineMatch(match, round, tournament, scoreWindow, act
     },
     winner: match.winner ?? null,
     submissionDeadline: scoreWindow?.endDate ?? null,
+    handicap:
+      match.leftHandicapValue !== null ||
+      match.rightHandicapValue !== null ||
+      match.leftAdjustedScore !== null ||
+      match.rightAdjustedScore !== null
+        ? {
+            allowancePercent: match.handicapAllowancePercent ?? null,
+            competitorA: {
+              allowancePoints: match.leftAllowancePoints ?? null,
+              adjustedScore: match.leftAdjustedScore ?? null,
+              bowClass: match.leftHandicapBowClass ?? null,
+              discipline: match.leftHandicapDiscipline ?? null,
+              handicapType: match.leftHandicapType ?? null,
+              handicapValue: match.leftHandicapValue ?? null,
+              referenceScore: match.leftReferenceScore ?? null,
+              tableKey: match.leftHandicapTableKey ?? null,
+              tableTitle: match.leftHandicapTableTitle ?? null,
+            },
+            competitorB: {
+              allowancePoints: match.rightAllowancePoints ?? null,
+              adjustedScore: match.rightAdjustedScore ?? null,
+              bowClass: match.rightHandicapBowClass ?? null,
+              discipline: match.rightHandicapDiscipline ?? null,
+              handicapType: match.rightHandicapType ?? null,
+              handicapValue: match.rightHandicapValue ?? null,
+              referenceScore: match.rightReferenceScore ?? null,
+              tableKey: match.rightHandicapTableKey ?? null,
+              tableTitle: match.rightHandicapTableTitle ?? null,
+            },
+          }
+        : null,
     workflow: {
       resultSubmissionMode:
         tournament?.template?.defaults?.resultWorkflow ?? "single-submit",
@@ -2934,6 +3087,7 @@ function buildTournamentBracket(registrations, scoresByRound, persistedMatchesBy
   const entrants = [...registrations]
     .sort((left, right) => left.fullName.localeCompare(right.fullName))
     .map((registration, index) => ({
+      bowCode: registration.bowCode ?? null,
       username: registration.username,
       fullName: registration.fullName,
       seed: index + 1,
@@ -3033,6 +3187,44 @@ function buildTournamentBracket(registrations, scoresByRound, persistedMatchesBy
         status = persistedStatus;
       }
 
+      const persistedMatchFields = persistedParticipantsMatch
+        ? {
+            confirmedAt: persistedMatch.confirmedAt ?? null,
+            confirmedByUsername: persistedMatch.confirmedByUsername ?? null,
+            disputeReason: persistedMatch.disputeReason ?? null,
+            disputedAt: persistedMatch.disputedAt ?? null,
+            disputedByUsername: persistedMatch.disputedByUsername ?? null,
+            handicapAllowancePercent:
+              persistedMatch.handicapAllowancePercent ?? null,
+            leftAdjustedScore: persistedMatch.leftAdjustedScore ?? null,
+            leftAllowancePoints: persistedMatch.leftAllowancePoints ?? null,
+            leftHandicapBowClass: persistedMatch.leftHandicapBowClass ?? null,
+            leftHandicapDiscipline:
+              persistedMatch.leftHandicapDiscipline ?? null,
+            leftHandicapTableKey:
+              persistedMatch.leftHandicapTableKey ?? null,
+            leftHandicapTableTitle:
+              persistedMatch.leftHandicapTableTitle ?? null,
+            leftHandicapType: persistedMatch.leftHandicapType ?? null,
+            leftHandicapValue: persistedMatch.leftHandicapValue ?? null,
+            leftReferenceScore: persistedMatch.leftReferenceScore ?? null,
+            rightAdjustedScore: persistedMatch.rightAdjustedScore ?? null,
+            rightAllowancePoints: persistedMatch.rightAllowancePoints ?? null,
+            rightHandicapBowClass: persistedMatch.rightHandicapBowClass ?? null,
+            rightHandicapDiscipline:
+              persistedMatch.rightHandicapDiscipline ?? null,
+            rightHandicapTableKey:
+              persistedMatch.rightHandicapTableKey ?? null,
+            rightHandicapTableTitle:
+              persistedMatch.rightHandicapTableTitle ?? null,
+            rightHandicapType: persistedMatch.rightHandicapType ?? null,
+            rightHandicapValue: persistedMatch.rightHandicapValue ?? null,
+            rightReferenceScore: persistedMatch.rightReferenceScore ?? null,
+            submittedAt: persistedMatch.submittedAt ?? null,
+            submittedByUsername: persistedMatch.submittedByUsername ?? null,
+          }
+        : {};
+
       matches.push({
         id: `round-${roundIndex}-match-${matchNumber}`,
         leftParticipant,
@@ -3041,6 +3233,7 @@ function buildTournamentBracket(registrations, scoresByRound, persistedMatchesBy
         rightScore,
         winner,
         status,
+        ...persistedMatchFields,
       });
     }
 
@@ -3085,6 +3278,7 @@ function buildTournament(
     registrations.map((entry) => entry.member_username),
   );
   const normalizedRegistrations = registrations.map((registration) => ({
+    bowCode: registration.bow_code ?? registration.bowCode ?? null,
     username: registration.member_username,
     fullName: `${registration.first_name} ${registration.surname}`,
     role: registration.user_type,
@@ -4146,6 +4340,13 @@ function getUtcTimestampParts(date = new Date()) {
   return [isoTimestamp.slice(0, 10), isoTimestamp.slice(11)];
 }
 
+const [handicapTablesUpdatedAtDate, handicapTablesUpdatedAtTime] = getUtcTimestampParts();
+await handicapTableGateway.syncSourceTables({
+  updatedAtDate: handicapTablesUpdatedAtDate,
+  updatedAtTime: handicapTablesUpdatedAtTime,
+  updatedByUsername: null,
+});
+
 function startOfUtcDay(date) {
   return new Date(
     Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
@@ -4688,6 +4889,14 @@ registerGeneralInfoRoutes({
   PERMISSIONS,
   serverEventBus,
 });
+registerHandicapTableRoutes({
+  actorHasPermission,
+  app,
+  getActorUser,
+  getUtcTimestampParts,
+  handicapTableGateway,
+  PERMISSIONS,
+});
 
 registerSseRoutes({
   app,
@@ -4923,6 +5132,145 @@ app.post("/api/beginners-courses", async (req, res) => {
     course:
       (await buildBeginnersCourseDashboard(courseType)).find(
         (course) => course.id === courseId,
+      ) ?? null,
+  });
+});
+
+app.post("/api/beginners-courses/:id/reschedule", async (req, res) => {
+  const actor = getActorUser(req);
+  const course = await beginnersCourseReadGateway.findCourseById(req.params.id);
+
+  if (!actor) {
+    res.status(401).json({
+      success: false,
+      message: "An authenticated member is required.",
+    });
+    return;
+  }
+
+  if (!course) {
+    res.status(404).json({
+      success: false,
+      message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  if (!requestMatchesCourseType(req, course)) {
+    res.status(404).json({
+      success: false,
+      message: "Course not found for the requested course type.",
+    });
+    return;
+  }
+
+  const courseType = normalizeCourseType(course.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
+
+  if (!actorHasPermission(actor, coursePermissions.manage)) {
+    res.status(403).json({
+      success: false,
+      message:
+        courseType === "taster-session"
+          ? "You do not have permission to reschedule Taster Sessions."
+          : "You do not have permission to reschedule beginners courses.",
+    });
+    return;
+  }
+
+  if (courseType === "have-a-go") {
+    res.status(400).json({
+      success: false,
+      message: "Have a Go sessions cannot be rescheduled from this screen.",
+    });
+    return;
+  }
+
+  if (course.is_cancelled) {
+    res.status(400).json({
+      success: false,
+      message: "Cancelled sessions cannot be rescheduled.",
+    });
+    return;
+  }
+
+  if (hasScheduleEntryStarted(course.first_lesson_date, course.start_time)) {
+    res.status(400).json({
+      success: false,
+      message: "Only future sessions can be rescheduled.",
+    });
+    return;
+  }
+
+  const sanitized = sanitizeBeginnersCourseReschedulePayload(req.body);
+
+  if (!sanitized.success) {
+    res.status(sanitized.status).json(sanitized);
+    return;
+  }
+
+  const sameDayMove = course.first_lesson_date === sanitized.value.firstLessonDate;
+  const nextApprovalStatus = sameDayMove ? (course.approval_status ?? "pending") : "pending";
+  const actorUsername = await resolveCanonicalUsername(actor.username);
+  const [changedAtDate, changedAtTime] = getUtcTimestampParts();
+  const previousCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
+
+  await beginnersCourseWriteGateway.rescheduleCourse({
+    approvalStatus: nextApprovalStatus,
+    approvedAtDate: sameDayMove ? course.approved_at_date ?? null : null,
+    approvedAtTime: sameDayMove ? course.approved_at_time ?? null : null,
+    approvedByUsername: sameDayMove ? course.approved_by_username ?? null : null,
+    courseId: course.id,
+    endTime: sanitized.value.endTime,
+    firstLessonDate: sanitized.value.firstLessonDate,
+    lessonDates: buildBeginnersLessonDates(
+      sanitized.value.firstLessonDate,
+      course.lesson_count,
+    ),
+    rejectionReason: null,
+    startTime: sanitized.value.startTime,
+  });
+
+  const updatedCourse = await findBeginnersCourseAuditSnapshot(course.id, courseType);
+
+  if (auditChangeLogger && updatedCourse) {
+    void auditChangeLogger.recordEntityChange({
+      action: "rescheduled",
+      actorUsername,
+      after: updatedCourse,
+      before: previousCourse,
+      changedAtDate,
+      changedAtTime,
+      entityId: String(course.id),
+      entityLabel: buildBeginnersCourseAuditLabel(updatedCourse),
+      entityType: "beginners_course",
+      req,
+      target: `/api/beginners-courses/${course.id}/reschedule`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners course reschedule audit event", auditError);
+    });
+  }
+
+  if (sameDayMove && updatedCourse) {
+    serverEventBus.broadcastToAnyPermission(
+      [coursePermissions.approve],
+      "beginners.rescheduled",
+      buildBeginnersRescheduleNotification(updatedCourse),
+    );
+  }
+
+  broadcastBeginnersUpdated(courseType, "beginners.reschedule");
+  broadcastCalendarUpdated("beginners.reschedule");
+  if (!sameDayMove) {
+    broadcastApprovalsUpdated("beginners.reschedule");
+  }
+
+  res.json({
+    success: true,
+    approvalReset: !sameDayMove,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === course.id,
       ) ?? null,
   });
 });
@@ -5504,6 +5852,118 @@ app.put("/api/beginners-course-participants/:id", async (req, res) => {
   }
   broadcastBeginnersUpdated(courseType, "beginners.participant-update");
   broadcastMembersUpdated("beginners.participant-update", participant.username);
+
+  res.json({
+    success: true,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === participant.course_id,
+      ) ?? null,
+  });
+});
+
+app.delete("/api/beginners-course-participants/:id", async (req, res) => {
+  const actor = getActorUser(req);
+  const participant = await beginnersCourseReadGateway.findParticipantById(req.params.id);
+
+  if (!participant) {
+    res.status(404).json({
+      success: false,
+      message: "Participant record not found.",
+    });
+    return;
+  }
+
+  const course = await beginnersCourseReadGateway.findCourseById(participant.course_id);
+  const courseType = normalizeCourseType(course?.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
+
+  if (!actor || !actorHasPermission(actor, coursePermissions.manage)) {
+    res.status(403).json({
+      success: false,
+      message:
+        courseType === "taster-session"
+          ? "You do not have permission to remove Taster Session attendees."
+          : "You do not have permission to remove beginners.",
+    });
+    return;
+  }
+
+  if (courseType === "have-a-go") {
+    res.status(400).json({
+      success: false,
+      message: "Have a Go participants cannot be removed from this screen.",
+    });
+    return;
+  }
+
+  if (participant.converted_to_member) {
+    res.status(400).json({
+      success: false,
+      message: "Converted beginners cannot be removed from the course register.",
+    });
+    return;
+  }
+
+  const existingUser = await memberDirectoryGateway.findUserByUsername(participant.username);
+  const previousParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    courseType,
+  );
+
+  if (existingUser) {
+    const saveResult = await memberPersistenceService.saveMemberProfile({
+      username: existingUser.username,
+      firstName: existingUser.first_name,
+      surname: existingUser.surname,
+      archeryGbMembershipNumber: existingUser.archery_gb_membership_number ?? "",
+      emailAddress: existingUser.email_address ?? "",
+      password: existingUser.password,
+      rfidTag: existingUser.rfid_tag ?? "",
+      activeMember: false,
+      affiliateMember: Boolean(existingUser.affiliate_member),
+      juniorMember: Boolean(existingUser.junior_member),
+      membershipFeesDue: existingUser.membership_fees_due ?? "",
+      coachingVolunteer: Boolean(existingUser.coaching_volunteer),
+      userType: existingUser.user_type,
+      membershipStatus: existingUser.membership_status,
+      programmeType: existingUser.programme_type,
+      disciplines: await memberDirectoryGateway.findDisciplinesByUsername(existingUser.username),
+      loanBow: buildLoanBowRecord(
+        await memberDirectoryGateway.findLoanBowByUsername(existingUser.username),
+      ),
+      existingUser,
+    });
+
+    if (!saveResult.success) {
+      res.status(saveResult.status).json(saveResult);
+      return;
+    }
+  }
+
+  await beginnersCourseWriteGateway.deleteParticipant(participant.id);
+
+  const [removedAtDate, removedAtTime] = getUtcTimestampParts();
+  if (auditChangeLogger) {
+    void auditChangeLogger.recordEntityChange({
+      action: "removed",
+      actorUsername: actor.username,
+      after: null,
+      before: previousParticipant,
+      changedAtDate: removedAtDate,
+      changedAtTime: removedAtTime,
+      entityId: String(participant.id),
+      entityLabel: `${participant.first_name} ${participant.surname}`.trim(),
+      entityType: "beginners_participant",
+      req,
+      target: `/api/beginners-course-participants/${participant.id}`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners participant removal audit event", auditError);
+    });
+  }
+
+  broadcastBeginnersUpdated(courseType, "beginners.participant-delete");
+  broadcastMembersUpdated("beginners.participant-delete", participant.username);
 
   res.json({
     success: true,
@@ -6245,8 +6705,11 @@ registerTournamentRoutes({
   buildTournament,
   buildTournamentDataMaps,
   exportsDirectory: serverRuntime.exportsDirectory,
+  goldenRecordsCurrentHandicapService,
   getActorUser,
   getUtcTimestampParts,
+  handicapTableGateway,
+  memberDirectoryGateway,
   path,
   PERMISSIONS,
   sanitizeFileNameSegment,

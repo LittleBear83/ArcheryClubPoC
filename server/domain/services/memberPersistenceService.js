@@ -73,7 +73,8 @@ export function createMemberPersistenceService({
     if (
       normalizedRole === "beginner" ||
       normalizedRole === "have-a-go" ||
-      normalizedRole === "non-member"
+      normalizedRole === "non-member" ||
+      normalizedRole === "prospect"
     ) {
       return "non-member";
     }

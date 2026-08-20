@@ -1,10 +1,11 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import net from "node:net";
 
 const API_PORT = 3001;
 const WEB_PORT = 5173;
 const API_READY_TIMEOUT_MS = 30000;
 const API_READY_POLL_MS = 250;
+const isWindows = process.platform === "win32";
 
 function log(message) {
   process.stdout.write(`${message}\n`);
@@ -45,7 +46,7 @@ const childProcesses = [];
 function spawnCommand(command, args, name) {
   const child = spawn(command, args, {
     stdio: "inherit",
-    shell: true,
+    shell: false,
     env: process.env,
   });
 
@@ -63,11 +64,43 @@ function spawnCommand(command, args, name) {
   return child;
 }
 
+function spawnNpmScript(scriptName, name) {
+  if (isWindows) {
+    const comspec = process.env.ComSpec || "cmd.exe";
+
+    return spawnCommand(
+      comspec,
+      ["/d", "/s", "/c", `npm run ${scriptName}`],
+      name,
+    );
+  }
+
+  return spawnCommand("npm", ["run", scriptName], name);
+}
+
+function terminateChildProcessTree(child) {
+  if (!child?.pid) {
+    return;
+  }
+
+  if (isWindows) {
+    spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    return;
+  }
+
+  try {
+    process.kill(child.pid, "SIGTERM");
+  } catch {
+    return;
+  }
+}
+
 function shutdown() {
   for (const child of childProcesses) {
-    if (!child.killed) {
-      child.kill();
-    }
+    terminateChildProcessTree(child);
   }
 }
 
@@ -84,7 +117,7 @@ process.on("SIGTERM", () => {
 log(`Open the app at http://localhost:${WEB_PORT}`);
 log(`Backend API runs at http://localhost:${API_PORT}`);
 
-spawnCommand("npm", ["run", "dev:server"], "api");
+spawnNpmScript("dev:server", "api");
 
 try {
   await waitForPort(API_PORT, API_READY_TIMEOUT_MS);
@@ -93,4 +126,4 @@ try {
   throw error;
 }
 
-spawnCommand("npm", ["run", "dev"], "web");
+spawnNpmScript("dev", "web");

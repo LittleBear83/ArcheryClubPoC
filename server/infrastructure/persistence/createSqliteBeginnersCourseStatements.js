@@ -81,6 +81,20 @@ export function createSqliteBeginnersCourseStatements(db) {
     WHERE id = ?
   `);
 
+  const updateBeginnersCourseSchedule = db.prepare(`
+    UPDATE beginners_courses
+    SET
+      first_lesson_date = ?,
+      start_time = ?,
+      end_time = ?,
+      approval_status = ?,
+      rejection_reason = ?,
+      approved_by_username = ?,
+      approved_at_date = ?,
+      approved_at_time = ?
+    WHERE id = ?
+  `);
+
   const cancelBeginnersCourse = db.prepare(`
     UPDATE beginners_courses
     SET
@@ -123,6 +137,15 @@ export function createSqliteBeginnersCourseStatements(db) {
     VALUES (?, ?, ?, ?, ?)
   `);
 
+  const updateBeginnersCourseLessonSchedule = db.prepare(`
+    UPDATE beginners_course_lessons
+    SET
+      lesson_date = ?,
+      start_time = ?,
+      end_time = ?
+    WHERE course_id = ? AND lesson_number = ?
+  `);
+
   const listBeginnersCourseParticipants = db.prepare(`
     SELECT
       beginners_course_participants.*,
@@ -162,6 +185,11 @@ export function createSqliteBeginnersCourseStatements(db) {
     WHERE id = ?
   `);
 
+  const deleteBeginnersCourseParticipant = db.prepare(`
+    DELETE FROM beginners_course_participants
+    WHERE id = ?
+  `);
+
   const findBeginnersCourseParticipantByUsername = db.prepare(`
     SELECT *
     FROM beginners_course_participants
@@ -191,6 +219,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       surname,
       beginner_size_category,
       height_text,
+      draw_length,
       handedness,
       eye_dominance,
       initial_email_sent,
@@ -205,7 +234,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       created_at_date,
       created_at_time
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const updateBeginnersCourseParticipant = db.prepare(`
@@ -215,6 +244,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       surname = @surname,
       beginner_size_category = @sizeCategory,
       height_text = @heightText,
+      draw_length = @drawLength,
       handedness = @handedness,
       eye_dominance = @eyeDominance,
       initial_email_sent = @initialEmailSent,
@@ -334,6 +364,7 @@ export function createSqliteBeginnersCourseStatements(db) {
 
   return {
     cancelBeginnersCourse,
+    deleteBeginnersCourseParticipant,
     deleteBeginnersLessonCoachesByLessonId,
     findBeginnersCourseById,
     findBeginnersCourseLessonById,
@@ -355,7 +386,9 @@ export function createSqliteBeginnersCourseStatements(db) {
     markBeginnersCourseParticipantConverted,
     transferBeginnersCourseParticipant,
     updateBeginnersCourseApproval,
+    updateBeginnersCourseLessonSchedule,
     updateBeginnersCourseParticipant,
     updateBeginnersCourseParticipantCase,
+    updateBeginnersCourseSchedule,
   };
 }

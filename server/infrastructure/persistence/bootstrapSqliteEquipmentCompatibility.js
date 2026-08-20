@@ -212,6 +212,7 @@ export function bootstrapSqliteEquipmentCompatibility({ db }) {
           beginner_size_category IN ('senior', 'junior')
         ),
         height_text TEXT,
+        draw_length TEXT,
         handedness TEXT CHECK (handedness IN ('left', 'right')),
         eye_dominance TEXT CHECK (eye_dominance IN ('left', 'right')),
         initial_email_sent INTEGER NOT NULL DEFAULT 0,
@@ -239,6 +240,7 @@ export function bootstrapSqliteEquipmentCompatibility({ db }) {
         surname,
         beginner_size_category,
         height_text,
+        draw_length,
         handedness,
         eye_dominance,
         initial_email_sent,
@@ -261,6 +263,7 @@ export function bootstrapSqliteEquipmentCompatibility({ db }) {
         surname,
         beginner_size_category,
         height_text,
+        NULL,
         handedness,
         eye_dominance,
         initial_email_sent,

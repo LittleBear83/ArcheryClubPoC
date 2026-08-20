@@ -446,11 +446,15 @@ function buildInitialSchemaSql() {
     CREATE TABLE IF NOT EXISTS tournament_registrations (
       tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
       member_username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+      bow_code TEXT,
       registered_at_date TEXT NOT NULL,
       registered_at_time TEXT NOT NULL,
       member_user_id BIGINT REFERENCES users(id),
       PRIMARY KEY (tournament_id, member_username)
     );
+
+    ALTER TABLE tournament_registrations
+    ADD COLUMN IF NOT EXISTS bow_code TEXT;
 
     CREATE TABLE IF NOT EXISTS tournament_rounds (
       tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
@@ -481,6 +485,25 @@ function buildInitialSchemaSql() {
       disputed_at_date TEXT,
       disputed_at_time TEXT,
       dispute_reason TEXT,
+      handicap_allowance_percent INTEGER,
+      left_handicap_value INTEGER,
+      left_handicap_type TEXT,
+      left_handicap_bow_class TEXT,
+      left_handicap_discipline TEXT,
+      left_reference_score INTEGER,
+      left_allowance_points INTEGER,
+      left_adjusted_score INTEGER,
+      left_handicap_table_key TEXT,
+      left_handicap_table_title TEXT,
+      right_handicap_value INTEGER,
+      right_handicap_type TEXT,
+      right_handicap_bow_class TEXT,
+      right_handicap_discipline TEXT,
+      right_reference_score INTEGER,
+      right_allowance_points INTEGER,
+      right_adjusted_score INTEGER,
+      right_handicap_table_key TEXT,
+      right_handicap_table_title TEXT,
       status TEXT NOT NULL DEFAULT 'scheduled',
       PRIMARY KEY (tournament_id, round_number, match_number)
     );
@@ -514,6 +537,63 @@ function buildInitialSchemaSql() {
 
     ALTER TABLE tournament_matches
     ADD COLUMN IF NOT EXISTS dispute_reason TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS handicap_allowance_percent INTEGER;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS left_handicap_value INTEGER;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS left_handicap_type TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS left_handicap_bow_class TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS left_handicap_discipline TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS left_reference_score INTEGER;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS left_allowance_points INTEGER;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS left_adjusted_score INTEGER;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS left_handicap_table_key TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS left_handicap_table_title TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS right_handicap_value INTEGER;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS right_handicap_type TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS right_handicap_bow_class TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS right_handicap_discipline TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS right_reference_score INTEGER;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS right_allowance_points INTEGER;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS right_adjusted_score INTEGER;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS right_handicap_table_key TEXT;
+
+    ALTER TABLE tournament_matches
+    ADD COLUMN IF NOT EXISTS right_handicap_table_title TEXT;
 
     CREATE TABLE IF NOT EXISTS tournament_handicap_tables (
       id BIGSERIAL PRIMARY KEY,
@@ -663,6 +743,7 @@ function buildInitialSchemaSql() {
       surname TEXT NOT NULL,
       beginner_size_category TEXT NOT NULL,
       height_text TEXT,
+      draw_length TEXT,
       handedness TEXT,
       eye_dominance TEXT,
       initial_email_sent INTEGER NOT NULL DEFAULT 0,
@@ -1325,6 +1406,10 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE beginners_course_participants
       ADD COLUMN IF NOT EXISTS origin_course_type TEXT NOT NULL DEFAULT 'beginners'
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS draw_length TEXT
     `);
     await client.query(`
       ALTER TABLE beginners_course_participants

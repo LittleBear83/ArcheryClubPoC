@@ -124,6 +124,23 @@ export function registerMemberActivityRoutes({
     });
   };
 
+  const sanitizeRangePresenceProfile = (profile) => {
+    if (!profile || typeof profile !== "object") {
+      return profile;
+    }
+
+    return {
+      ...profile,
+      personal: {
+        firstName: profile.personal?.firstName ?? "",
+        surname: profile.personal?.surname ?? "",
+        fullName:
+          profile.personal?.fullName ??
+          `${profile.personal?.firstName ?? ""} ${profile.personal?.surname ?? ""}`.trim(),
+      },
+    };
+  };
+
   app.get("/api/my-coaching-bookings", async (req, res) => {
     const actor = getActorUser(req);
 
@@ -315,20 +332,20 @@ export function registerMemberActivityRoutes({
           return null;
         }
 
-        return buildMemberUserProfile(
+        return sanitizeRangePresenceProfile(buildMemberUserProfile(
           member,
           disciplinesByUsername.get(member.username) ?? [],
           {
             activeRangePresenceEndsAt,
             lastLoggedInAt: member.last_logged_in_at,
           },
-        );
+        ));
       })
       .filter(Boolean);
     const guests = (await activityReportingGateway.findRecentGuestLogins(cutoff)).map((guest) =>
-      buildGuestUserProfile(guest, {
+      sanitizeRangePresenceProfile(buildGuestUserProfile(guest, {
         lastLoggedInAt: guest.last_logged_in_at,
-      }),
+      })),
     );
     const distinctEntries = new Map();
 

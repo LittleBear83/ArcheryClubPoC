@@ -20,6 +20,8 @@ import {
   getBeginnersCoursesDashboard,
   getHaveAGoSessionsDashboard,
   getTasterSessionsDashboard,
+  removeBeginnerParticipant,
+  rescheduleBeginnersCourse,
   resetBeginnerPassword,
   transferParticipantToBeginnersCourse,
   updateBeginnerParticipant,
@@ -45,6 +47,7 @@ const EMPTY_BEGINNER_FORM = {
   surname: "",
   sizeCategory: "senior",
   heightText: "",
+  drawLength: "",
   handedness: "",
   eyeDominance: "",
   initialEmailSent: false,
@@ -75,6 +78,7 @@ type CourseBeginner = {
   fullName: string;
   sizeCategory: string;
   heightText: string;
+  drawLength: string;
   handedness: string;
   eyeDominance: string;
   initialEmailSent: boolean;
@@ -142,6 +146,13 @@ type CancelledCourseSummary = {
   firstLessonDate: string;
   coordinatorName: string;
   archiveReason: string;
+};
+
+type RescheduleSelection = {
+  courseId: number;
+  firstLessonDate: string;
+  startTime: string;
+  endTime: string;
 };
 
 function hasCourseFinished(course: CourseRecord) {
@@ -223,6 +234,14 @@ function BeginnerFormFields({ copy, form, onChange, onToggle }) {
           type="text"
           value={form.heightText}
           onChange={onChange("heightText")}
+        />
+      </label>
+      <label>
+        Draw Length
+        <input
+          type="text"
+          value={form.drawLength}
+          onChange={onChange("drawLength")}
         />
       </label>
       <label>
@@ -484,6 +503,9 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const [temporaryPasswords, setTemporaryPasswords] = useState<Record<string, string>>({});
   const [collapsedCourseIds, setCollapsedCourseIds] = useState<Record<number, boolean>>({});
   const [showCancelledCourses, setShowCancelledCourses] = useState(false);
+  const [rescheduleSelection, setRescheduleSelection] = useState<RescheduleSelection | null>(
+    null,
+  );
   const [localCancelledCourses, setLocalCancelledCourses] = useState<CancelledCourseSummary[]>(
     [],
   );
@@ -718,6 +740,38 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     await refreshDashboard();
   };
 
+  const openRescheduleModal = (course: CourseRecord) => {
+    setRescheduleSelection({
+      courseId: course.id,
+      firstLessonDate: course.firstLessonDate,
+      startTime: course.startTime,
+      endTime: course.endTime,
+    });
+  };
+
+  const submitReschedule = async () => {
+    if (!rescheduleSelection) {
+      return;
+    }
+
+    const result = await mutation.mutateAsync(() =>
+      rescheduleBeginnersCourse(currentUserProfile, rescheduleSelection.courseId, {
+        courseType: copy.courseType,
+        firstLessonDate: rescheduleSelection.firstLessonDate,
+        startTime: rescheduleSelection.startTime,
+        endTime: rescheduleSelection.endTime,
+      }),
+    ) as Awaited<ReturnType<typeof rescheduleBeginnersCourse>>;
+
+    setRescheduleSelection(null);
+    setMessage(
+      result.approvalReset
+        ? `${copy.itemLabel} rescheduled and sent back for approval.`
+        : `${copy.itemLabel} rescheduled. Admin approvers have been notified.`,
+    );
+    await refreshDashboard();
+  };
+
   const openCoachModal = (lesson: CourseLesson) => {
     setCoachLesson(lesson);
     setSelectedCoachUsernames(lesson.coaches.map((coach) => coach.username));
@@ -792,6 +846,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       surname: beginner.surname,
       sizeCategory: beginner.sizeCategory,
       heightText: beginner.heightText,
+      drawLength: beginner.drawLength,
       handedness: beginner.handedness,
       eyeDominance: beginner.eyeDominance,
       initialEmailSent: beginner.initialEmailSent,
@@ -810,6 +865,22 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     );
     setEditingBeginner(null);
     setMessage(copy.participantUpdated);
+    await refreshDashboard();
+  };
+
+  const removeParticipant = async (beginner: CourseBeginner) => {
+    const confirmed = window.confirm(
+      `Remove ${formatMemberDisplayName(beginner)} from this ${copy.itemLowerLabel}?`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    await mutation.mutateAsync(() =>
+      removeBeginnerParticipant(currentUserProfile, beginner.id),
+    );
+    setMessage(`${formatMemberDisplayName(beginner)} removed from this ${copy.itemLowerLabel}.`);
     await refreshDashboard();
   };
 
@@ -976,6 +1047,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
           const canCancelCourse =
             permissions.canApproveBeginnersCourses ||
             course.coordinatorUsername === actorUsername;
+          const canRescheduleCourse =
+            permissions.canManageBeginnersCourses &&
+            copy.courseType !== "have-a-go" &&
+            !hasCourseStarted(course);
           const isCollapsed = collapsedCourseIds[course.id] ?? true;
 
           return (
@@ -999,6 +1074,26 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                   ) : null}
                 </div>
                 <div className="beginners-course-actions">
+                  {canRescheduleCourse ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => openRescheduleModal(course)}
+                    >
+                      Reschedule
+                    </Button>
+                  ) : null}
+                  {canCancelCourse ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="danger"
+                      onClick={() => void cancelCourse(course.id)}
+                    >
+                      {copy.cancelButtonLabel}
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="unstyled"
@@ -1057,6 +1152,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                             const canTransferToBeginners =
                               copy.courseType === "taster-session" &&
                               permissions.canManageBeginnersCourses;
+                            const canRemoveParticipant =
+                              permissions.canManageBeginnersCourses &&
+                              copy.courseType !== "have-a-go" &&
+                              !beginner.convertedToMember;
                             const convertButtonLabel = beginner.convertedToMember
                               ? "Converted"
                               : "Convert to member";
@@ -1088,6 +1187,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                       label: "Type",
                                       value:
                                         beginner.sizeCategory === "junior" ? "Junior" : "Senior",
+                                    },
+                                    {
+                                      label: "Draw Length",
+                                      value: beginner.drawLength || "Not recorded",
                                     },
                                     {
                                       label: "Initial Email",
@@ -1192,6 +1295,16 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                       Reset password
                                     </Button>
                                   ) : null}
+                                  {canRemoveParticipant ? (
+                                    <Button
+                                      className="beginners-course-row-action-button"
+                                      size="sm"
+                                      variant="danger"
+                                      onClick={() => void removeParticipant(beginner)}
+                                    >
+                                      Remove
+                                    </Button>
+                                  ) : null}
                                 </div>
                               </article>
                             );
@@ -1209,6 +1322,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                               <th>Username</th>
                               <th>Password</th>
                               <th>Type</th>
+                              <th>Draw Length</th>
                               <th>Initial Email</th>
                               <th>30 Day</th>
                               <th>Fee Paid</th>
@@ -1231,6 +1345,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                       (beginner.passwordSet ? "Set" : "Not set")}
                                   </td>
                                   <td>{beginner.sizeCategory === "junior" ? "Jr" : "Snr"}</td>
+                                  <td>{beginner.drawLength || "-"}</td>
                                   <td>{beginner.initialEmailSent ? "Yes" : "No"}</td>
                                   <td>{beginner.thirtyDayReminderSent ? "Yes" : "No"}</td>
                                   <td>{beginner.courseFeePaid ? "Yes" : "No"}</td>
@@ -1281,6 +1396,18 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                           onClick={() => openTransferModal(beginner)}
                                         >
                                           {copy.transferActionLabel}
+                                          </Button>
+                                        ) : null}
+                                      {permissions.canManageBeginnersCourses &&
+                                      copy.courseType !== "have-a-go" &&
+                                      !beginner.convertedToMember ? (
+                                        <Button
+                                          className="beginners-course-row-action-button"
+                                          size="sm"
+                                          variant="danger"
+                                          onClick={() => void removeParticipant(beginner)}
+                                        >
+                                          Remove
                                         </Button>
                                       ) : null}
                                       {usesEquipmentAssignment
@@ -1334,7 +1461,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                               ))
                             ) : (
                               <tr>
-                                <td colSpan={usesEquipmentAssignment ? 9 : 8}>
+                                <td colSpan={usesEquipmentAssignment ? 10 : 9}>
                                   {copy.emptyParticipantText}
                                 </td>
                               </tr>
@@ -1549,16 +1676,6 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                     )}
                   </section>
 
-                  {canCancelCourse ? (
-                    <div className="beginners-course-actions beginners-course-footer-actions">
-                      <Button
-                        variant="danger"
-                        onClick={() => void cancelCourse(course.id)}
-                      >
-                        {copy.cancelButtonLabel}
-                      </Button>
-                    </div>
-                  ) : null}
                 </>
               )}
             </section>
@@ -1810,6 +1927,82 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
             </p>
           )}
         </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(rescheduleSelection)}
+        onClose={() => setRescheduleSelection(null)}
+        title={`Reschedule ${copy.itemLabel}`}
+      >
+        {rescheduleSelection ? (
+          <div className="beginners-course-reschedule-modal">
+            <p className="beginners-course-reschedule-note">
+              Same-day time changes keep the current approval state and notify the admin team.
+              Moving to a different day sends this {copy.itemLowerLabel} back for approval.
+            </p>
+            <div className="beginners-course-reschedule-grid">
+              <label className="beginners-course-reschedule-field beginners-course-reschedule-field--date">
+                <span className="beginners-course-reschedule-label">{copy.firstDateLabel}</span>
+                <DatePicker
+                  value={rescheduleSelection.firstLessonDate}
+                  helperText="Choose a different session date"
+                  onChange={(value) =>
+                    setRescheduleSelection((current) =>
+                      current
+                        ? {
+                            ...current,
+                            firstLessonDate: value,
+                          }
+                      : current,
+                    )
+                  }
+                />
+              </label>
+              <label className="beginners-course-reschedule-field">
+                <span className="beginners-course-reschedule-label">Start time</span>
+                <input
+                  type="time"
+                  value={rescheduleSelection.startTime}
+                  onChange={(event) =>
+                    setRescheduleSelection((current) =>
+                      current
+                        ? {
+                            ...current,
+                            startTime: event.target.value,
+                          }
+                        : current,
+                    )
+                  }
+                />
+              </label>
+              <label className="beginners-course-reschedule-field">
+                <span className="beginners-course-reschedule-label">End time</span>
+                <input
+                  type="time"
+                  value={rescheduleSelection.endTime}
+                  onChange={(event) =>
+                    setRescheduleSelection((current) =>
+                      current
+                        ? {
+                            ...current,
+                            endTime: event.target.value,
+                          }
+                        : current,
+                    )
+                  }
+                />
+              </label>
+            </div>
+            <div className="beginners-course-reschedule-actions">
+              <Button type="button" variant="secondary" onClick={() => setRescheduleSelection(null)}>
+                Close
+              </Button>
+              <Button type="button" onClick={() => void submitReschedule()}>
+                Save schedule
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Modal>
     </div>
   );

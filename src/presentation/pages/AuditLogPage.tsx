@@ -180,6 +180,7 @@ function formatAuditAction(event: AuditEventRecord) {
     ["post /api/beginners-courses/:id/beginners", "beginner added to course"],
     ["post /api/beginners-course-participants/:id/reset-password", "beginner password reset"],
     ["put /api/beginners-course-participants/:id", "beginner updated"],
+    ["delete /api/beginners-course-participants/:id", "beginner removed from course"],
     ["post /api/beginners-course-participants/:id/transfer-to-beginners-course", "beginner transferred to course"],
     ["post /api/beginners-course-participants/:id/convert", "beginner converted to member"],
     ["post /api/beginners-course-participants/:id/assign-case", "beginner case assigned"],

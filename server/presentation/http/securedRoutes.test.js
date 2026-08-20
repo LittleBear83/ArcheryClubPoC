@@ -369,9 +369,38 @@ function createCsrfHeaders(csrf, { includeSession = true, sessionValue = "valid"
   };
 }
 
-test("guest inviter members are available before login", async () => {
+test("guest inviter members require an authenticated member session", async () => {
   const app = express();
   registerAuthTestRoutes(app, () => null);
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const invitersResponse = await requestJson(baseUrl, "/api/guest-inviter-members");
+
+    assert.equal(invitersResponse.status, 401);
+    assert.deepEqual(invitersResponse.body, {
+      success: false,
+      message: "An authenticated member is required.",
+    });
+  } finally {
+    server.close();
+  }
+});
+
+test("guest inviter members remain available to signed-in members", async () => {
+  const app = express();
+  registerAuthTestRoutes(app, () => "signed-in-member", {
+    memberAuthGateway: {
+      listAllUsers: async () => [
+        {
+          username: "signed-in-member",
+          first_name: "Signed",
+          surname: "In Member",
+          user_type: "general",
+        },
+      ],
+    },
+  });
   const { baseUrl, server } = await startTestServer(app);
 
   try {
@@ -380,7 +409,15 @@ test("guest inviter members are available before login", async () => {
     assert.equal(invitersResponse.status, 200);
     assert.deepEqual(invitersResponse.body, {
       success: true,
-      members: [],
+      members: [
+        {
+          username: "signed-in-member",
+          firstName: "Signed",
+          surname: "In Member",
+          fullName: "Signed In Member",
+          userType: "general",
+        },
+      ],
     });
   } finally {
     server.close();
@@ -820,6 +857,156 @@ test("member activity routes reject unauthenticated range visibility APIs", asyn
     assert.equal(dashboardResponse.status, 401);
     assert.equal(dashboardResponse.body.success, false);
   } finally {
+    server.close();
+  }
+});
+
+test("range members omit private contact and membership fields", async () => {
+  const app = express();
+  app.use(express.json());
+
+  registerMemberActivityRoutes({
+    activityReportingGateway: {
+      countGuestLoginsInRange: async () => ({ count: 0 }),
+      countMemberLoginsForUserInRange: async () => ({ count: 0 }),
+      countMemberLoginsInRange: async () => ({ count: 0 }),
+      findLatestRangeMembers: async () => [
+        {
+          active_member: 1,
+          email_address: "member@example.com",
+          first_name: "Robin",
+          id: 7,
+          last_logged_in_at: "2026-04-21T09:30:00.000Z",
+          surname: "Archer",
+          username: "robin",
+        },
+      ],
+      findMemberCoachingBookingsByUserId: async () => [],
+      findMemberEventBookingsByUserId: async () => [],
+      findRecentGuestLogins: async () => [
+        {
+          archery_gb_membership_number: "1234567",
+          first_name: "Guest",
+          last_logged_in_at: "2026-04-21T09:45:00.000Z",
+          surname: "Visitor",
+        },
+      ],
+      findRecentRangeMembers: async () => [],
+      guestLoginsByDateInRange: async () => [],
+      guestLoginsByHourInRange: async () => [],
+      guestLoginsByWeekdayInRange: async () => [],
+      listAllUserDisciplines: async () => [
+        { username: "robin", discipline: "Recurve Bow" },
+      ],
+      listMemberJourneyParticipants: async () => [],
+      listReportingGuestLogins: async () => [],
+      listReportingMemberLogins: async () => [],
+      memberLoginsByDateForUserInRange: async () => [],
+      memberLoginsByDateInRange: async () => [],
+      memberLoginsByHourForUserInRange: async () => [],
+      memberLoginsByHourInRange: async () => [],
+      memberLoginsByWeekdayForUserInRange: async () => [],
+      memberLoginsByWeekdayInRange: async () => [],
+    },
+    addUtcDays: (date, days) => {
+      const next = new Date(date);
+      next.setUTCDate(next.getUTCDate() + days);
+      return next;
+    },
+    app,
+    actorHasPermission: () => true,
+    auditChangeLogger: null,
+    buildGuestUserProfile: (guest, meta = {}) => ({
+      id: "guest:1234567",
+      personal: {
+        firstName: guest.first_name,
+        surname: guest.surname,
+        fullName: `${guest.first_name} ${guest.surname}`,
+        archeryGbMembershipNumber: guest.archery_gb_membership_number,
+      },
+      meta,
+    }),
+    buildMemberUserProfile: (user, disciplines, meta = {}) => ({
+      id: user.username,
+      personal: {
+        firstName: user.first_name,
+        surname: user.surname,
+        fullName: `${user.first_name} ${user.surname}`,
+        emailAddress: user.email_address,
+        archeryGbMembershipNumber: "7654321",
+      },
+      membership: {
+        disciplines,
+      },
+      meta,
+    }),
+    buildPersonalUsageWindow: () => ({}),
+    buildTournament: () => ({}),
+    buildTournamentDataMaps: () => ({
+      registrationsByTournamentId: new Map(),
+      scoresByTournamentId: new Map(),
+    }),
+    buildUsageWindow: () => ({}),
+    getActorUser: () => ({
+      id: 1,
+      username: "viewer",
+    }),
+    getUtcTimestampParts: () => ["2026-04-21", "10:00:00"],
+    listTournaments: async () => [],
+    memberAuthGateway: {
+      findRangePresenceExtensionByUsername: async () => null,
+      recordLoginEvent: async () => {},
+    },
+    PERMISSIONS: {
+      VIEW_REPORTS: "view_reports",
+    },
+    serverEventBus: {
+      broadcastToAll: () => {},
+    },
+    startOfUtcDay: (date) =>
+      new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())),
+    toUtcDateString: (date) => date.toISOString().slice(0, 10),
+  });
+
+  const realNow = Date.now;
+  Date.now = () => new Date("2026-04-21T10:00:00.000Z").getTime();
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/range-members");
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.members, [
+      {
+        id: "robin",
+        personal: {
+          firstName: "Robin",
+          surname: "Archer",
+          fullName: "Robin Archer",
+        },
+        membership: {
+          disciplines: ["Recurve Bow"],
+        },
+        meta: {
+          activeRangePresenceEndsAt: "2026-04-21T11:30:00.000Z",
+          lastLoggedInAt: "2026-04-21T09:30:00.000Z",
+        },
+      },
+      {
+        id: "guest:1234567",
+        personal: {
+          firstName: "Guest",
+          surname: "Visitor",
+          fullName: "Guest Visitor",
+        },
+        meta: {
+          lastLoggedInAt: "2026-04-21T09:45:00.000Z",
+        },
+      },
+    ]);
+  } finally {
+    Date.now = realNow;
     server.close();
   }
 });

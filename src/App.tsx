@@ -304,6 +304,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   // against the server and refreshes the canonical member profile after login.
   const inactivityTimeoutRef = useRef<number | null>(null);
   const lastActivityAtRef = useRef(Date.now());
+  const lastSuccessfulSignInAtRef = useRef(0);
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
@@ -383,6 +384,10 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     });
   }, [queryClient]);
 
+  const markFreshSignIn = () => {
+    lastSuccessfulSignInAtRef.current = Date.now();
+  };
+
   const persistAuthenticatedUser = (userProfile: unknown) => {
     // Normalize before persisting so old API shapes and current API shapes are
     // read consistently by the rest of the frontend.
@@ -425,6 +430,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         deviceType ?? "desktop",
       );
 
+      markFreshSignIn();
       persistAuthenticatedUser(result.userProfile);
 
       return { success: true, username: result.userProfile.auth.username };
@@ -468,6 +474,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     try {
       const result = await loginWithRfid(rfidTag);
 
+      markFreshSignIn();
       persistAuthenticatedUser(result.userProfile);
 
       return {
@@ -534,9 +541,38 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       return;
     }
 
+    let cancelled = false;
+    let validationTimeoutId: number | null = null;
+
     const validateServerSession = async () => {
       try {
-        const result = await getCurrentSession();
+        let result;
+
+        try {
+          result = await getCurrentSession();
+        } catch (error) {
+          const signedInMomentsAgo =
+            Date.now() - lastSuccessfulSignInAtRef.current < 5_000;
+
+          if (!signedInMomentsAgo) {
+            throw error;
+          }
+
+          await new Promise((resolve) => {
+            validationTimeoutId = window.setTimeout(resolve, 400);
+          });
+
+          if (cancelled) {
+            return;
+          }
+
+          result = await getCurrentSession();
+        }
+
+        if (cancelled) {
+          return;
+        }
+
         const sessionProfile = normalizeUserProfile(result.userProfile);
         const storedUsername = currentUserProfile?.auth?.username;
         const sessionUsername = sessionProfile?.auth?.username;
@@ -552,6 +588,10 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
 
         persistAuthenticatedUser(result.userProfile);
       } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
         handleLogout(
           error instanceof Error
             ? error.message
@@ -560,7 +600,20 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       }
     };
 
-    void validateServerSession();
+    const delayMs =
+      Math.max(0, 300 - (Date.now() - lastSuccessfulSignInAtRef.current));
+
+    validationTimeoutId = window.setTimeout(() => {
+      void validateServerSession();
+    }, delayMs);
+
+    return () => {
+      cancelled = true;
+
+      if (validationTimeoutId) {
+        window.clearTimeout(validationTimeoutId);
+      }
+    };
   }, [currentUserProfile?.auth?.username, handleLogout, isAuthenticated]);
 
   useEffect(() => {

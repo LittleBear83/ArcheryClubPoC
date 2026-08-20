@@ -203,6 +203,11 @@ export const SYSTEM_ROLE_DEFINITIONS = [
     permissions: [],
   },
   {
+    roleKey: "prospect",
+    title: "Prospect",
+    permissions: [],
+  },
+  {
     roleKey: "associate-member",
     title: "Associate Member",
     permissions: [],

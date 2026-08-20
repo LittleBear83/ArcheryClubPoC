@@ -43,7 +43,73 @@ function normalizePersistedWorkflowValues(existingMatch, nextMatch) {
     disputedByUsername: existingMatch.disputed_by_username ?? null,
     disputedAtDate: existingMatch.disputed_at_date ?? null,
     disputedAtTime: existingMatch.disputed_at_time ?? null,
-    disputeReason: existingMatch.dispute_reason ?? null,
+      disputeReason: existingMatch.dispute_reason ?? null,
+    };
+}
+
+function normalizePersistedHandicapValues(existingMatch, nextMatch) {
+  if (!existingMatch || !areSameMatchParticipants(existingMatch, nextMatch)) {
+    return {
+      allowancePercent: nextMatch?.handicapAllowancePercent ?? null,
+      leftAdjustedScore: nextMatch?.leftAdjustedScore ?? null,
+      leftAllowancePoints: nextMatch?.leftAllowancePoints ?? null,
+      leftBowClass: nextMatch?.leftHandicapBowClass ?? null,
+      leftDiscipline: nextMatch?.leftHandicapDiscipline ?? null,
+      leftHandicapTableKey: nextMatch?.leftHandicapTableKey ?? null,
+      leftHandicapTableTitle: nextMatch?.leftHandicapTableTitle ?? null,
+      leftHandicapType: nextMatch?.leftHandicapType ?? null,
+      leftHandicapValue: nextMatch?.leftHandicapValue ?? null,
+      leftReferenceScore: nextMatch?.leftReferenceScore ?? null,
+      rightAdjustedScore: nextMatch?.rightAdjustedScore ?? null,
+      rightAllowancePoints: nextMatch?.rightAllowancePoints ?? null,
+      rightBowClass: nextMatch?.rightHandicapBowClass ?? null,
+      rightDiscipline: nextMatch?.rightHandicapDiscipline ?? null,
+      rightHandicapTableKey: nextMatch?.rightHandicapTableKey ?? null,
+      rightHandicapTableTitle: nextMatch?.rightHandicapTableTitle ?? null,
+      rightHandicapType: nextMatch?.rightHandicapType ?? null,
+      rightHandicapValue: nextMatch?.rightHandicapValue ?? null,
+      rightReferenceScore: nextMatch?.rightReferenceScore ?? null,
+    };
+  }
+
+  return {
+    allowancePercent:
+      nextMatch?.handicapAllowancePercent ?? existingMatch.handicap_allowance_percent ?? null,
+    leftAdjustedScore: nextMatch?.leftAdjustedScore ?? existingMatch.left_adjusted_score ?? null,
+    leftAllowancePoints:
+      nextMatch?.leftAllowancePoints ?? existingMatch.left_allowance_points ?? null,
+    leftBowClass:
+      nextMatch?.leftHandicapBowClass ?? existingMatch.left_handicap_bow_class ?? null,
+    leftDiscipline:
+      nextMatch?.leftHandicapDiscipline ?? existingMatch.left_handicap_discipline ?? null,
+    leftHandicapTableKey:
+      nextMatch?.leftHandicapTableKey ?? existingMatch.left_handicap_table_key ?? null,
+    leftHandicapTableTitle:
+      nextMatch?.leftHandicapTableTitle ?? existingMatch.left_handicap_table_title ?? null,
+    leftHandicapType:
+      nextMatch?.leftHandicapType ?? existingMatch.left_handicap_type ?? null,
+    leftHandicapValue:
+      nextMatch?.leftHandicapValue ?? existingMatch.left_handicap_value ?? null,
+    leftReferenceScore:
+      nextMatch?.leftReferenceScore ?? existingMatch.left_reference_score ?? null,
+    rightAdjustedScore:
+      nextMatch?.rightAdjustedScore ?? existingMatch.right_adjusted_score ?? null,
+    rightAllowancePoints:
+      nextMatch?.rightAllowancePoints ?? existingMatch.right_allowance_points ?? null,
+    rightBowClass:
+      nextMatch?.rightHandicapBowClass ?? existingMatch.right_handicap_bow_class ?? null,
+    rightDiscipline:
+      nextMatch?.rightHandicapDiscipline ?? existingMatch.right_handicap_discipline ?? null,
+    rightHandicapTableKey:
+      nextMatch?.rightHandicapTableKey ?? existingMatch.right_handicap_table_key ?? null,
+    rightHandicapTableTitle:
+      nextMatch?.rightHandicapTableTitle ?? existingMatch.right_handicap_table_title ?? null,
+    rightHandicapType:
+      nextMatch?.rightHandicapType ?? existingMatch.right_handicap_type ?? null,
+    rightHandicapValue:
+      nextMatch?.rightHandicapValue ?? existingMatch.right_handicap_value ?? null,
+    rightReferenceScore:
+      nextMatch?.rightReferenceScore ?? existingMatch.right_reference_score ?? null,
   };
 }
 
@@ -136,8 +202,8 @@ function createSqliteTournamentGateway({
     async listTournaments() {
       return listTournaments.all();
     },
-    async registerForTournament({ tournamentId, username, timestampParts }) {
-      insertTournamentRegistration.run(tournamentId, username, ...timestampParts);
+    async registerForTournament({ bowCode = null, tournamentId, username, timestampParts }) {
+      insertTournamentRegistration.run(tournamentId, username, bowCode, ...timestampParts);
     },
     async submitTournamentScore({
       tournamentId,
@@ -183,6 +249,7 @@ function createSqliteTournamentGateway({
           `${match.roundNumber}:${match.matchNumber}`,
         );
         const workflowValues = normalizePersistedWorkflowValues(existingMatch, match);
+        const handicapValues = normalizePersistedHandicapValues(existingMatch, match);
         insertTournamentMatch.run(
           tournamentId,
           match.roundNumber,
@@ -202,6 +269,25 @@ function createSqliteTournamentGateway({
           workflowValues.disputedAtDate,
           workflowValues.disputedAtTime,
           workflowValues.disputeReason,
+          handicapValues.allowancePercent,
+          handicapValues.leftHandicapValue,
+          handicapValues.leftHandicapType,
+          handicapValues.leftBowClass,
+          handicapValues.leftDiscipline,
+          handicapValues.leftReferenceScore,
+          handicapValues.leftAllowancePoints,
+          handicapValues.leftAdjustedScore,
+          handicapValues.leftHandicapTableKey,
+          handicapValues.leftHandicapTableTitle,
+          handicapValues.rightHandicapValue,
+          handicapValues.rightHandicapType,
+          handicapValues.rightBowClass,
+          handicapValues.rightDiscipline,
+          handicapValues.rightReferenceScore,
+          handicapValues.rightAllowancePoints,
+          handicapValues.rightAdjustedScore,
+          handicapValues.rightHandicapTableKey,
+          handicapValues.rightHandicapTableTitle,
           match.status ?? "scheduled",
         );
       }
@@ -220,6 +306,25 @@ function createSqliteTournamentGateway({
       submittedByUsername = null,
       submittedTimestampParts = [null, null],
       tournamentId,
+      handicapAllowancePercent = null,
+      leftAdjustedScore = null,
+      leftAllowancePoints = null,
+      leftHandicapBowClass = null,
+      leftHandicapDiscipline = null,
+      leftHandicapTableKey = null,
+      leftHandicapTableTitle = null,
+      leftHandicapType = null,
+      leftHandicapValue = null,
+      leftReferenceScore = null,
+      rightAdjustedScore = null,
+      rightAllowancePoints = null,
+      rightHandicapBowClass = null,
+      rightHandicapDiscipline = null,
+      rightHandicapTableKey = null,
+      rightHandicapTableTitle = null,
+      rightHandicapType = null,
+      rightHandicapValue = null,
+      rightReferenceScore = null,
       winnerUsername = null,
     }) {
       updateTournamentMatchWorkflow.run(
@@ -233,6 +338,25 @@ function createSqliteTournamentGateway({
         disputedByUsername,
         ...disputedTimestampParts,
         disputeReason,
+        handicapAllowancePercent,
+        leftHandicapValue,
+        leftHandicapType,
+        leftHandicapBowClass,
+        leftHandicapDiscipline,
+        leftReferenceScore,
+        leftAllowancePoints,
+        leftAdjustedScore,
+        leftHandicapTableKey,
+        leftHandicapTableTitle,
+        rightHandicapValue,
+        rightHandicapType,
+        rightHandicapBowClass,
+        rightHandicapDiscipline,
+        rightReferenceScore,
+        rightAllowancePoints,
+        rightAdjustedScore,
+        rightHandicapTableKey,
+        rightHandicapTableTitle,
         status,
         tournamentId,
         roundNumber,
@@ -390,6 +514,25 @@ function createPostgresTournamentGateway({ pool }) {
             disputed_at_date,
             disputed_at_time,
             dispute_reason,
+            handicap_allowance_percent,
+            left_handicap_value,
+            left_handicap_type,
+            left_handicap_bow_class,
+            left_handicap_discipline,
+            left_reference_score,
+            left_allowance_points,
+            left_adjusted_score,
+            left_handicap_table_key,
+            left_handicap_table_title,
+            right_handicap_value,
+            right_handicap_type,
+            right_handicap_bow_class,
+            right_handicap_discipline,
+            right_reference_score,
+            right_allowance_points,
+            right_adjusted_score,
+            right_handicap_table_key,
+            right_handicap_table_title,
             status
           FROM tournament_matches
           WHERE tournament_id = $1 AND round_number = $2 AND match_number = $3
@@ -422,6 +565,25 @@ function createPostgresTournamentGateway({ pool }) {
             disputed_at_date,
             disputed_at_time,
             dispute_reason,
+            handicap_allowance_percent,
+            left_handicap_value,
+            left_handicap_type,
+            left_handicap_bow_class,
+            left_handicap_discipline,
+            left_reference_score,
+            left_allowance_points,
+            left_adjusted_score,
+            left_handicap_table_key,
+            left_handicap_table_title,
+            right_handicap_value,
+            right_handicap_type,
+            right_handicap_bow_class,
+            right_handicap_discipline,
+            right_reference_score,
+            right_allowance_points,
+            right_adjusted_score,
+            right_handicap_table_key,
+            right_handicap_table_title,
             status
           FROM tournament_matches
           ORDER BY tournament_id ASC, round_number ASC, match_number ASC
@@ -436,6 +598,7 @@ function createPostgresTournamentGateway({ pool }) {
           SELECT
             tournament_registrations.tournament_id,
             tournament_registrations.member_username,
+            tournament_registrations.bow_code,
             tournament_registrations.registered_at_date || 'T' || tournament_registrations.registered_at_time AS registered_at,
             users.first_name,
             users.surname,
@@ -503,6 +666,25 @@ function createPostgresTournamentGateway({ pool }) {
             disputed_at_date,
             disputed_at_time,
             dispute_reason,
+            handicap_allowance_percent,
+            left_handicap_value,
+            left_handicap_type,
+            left_handicap_bow_class,
+            left_handicap_discipline,
+            left_reference_score,
+            left_allowance_points,
+            left_adjusted_score,
+            left_handicap_table_key,
+            left_handicap_table_title,
+            right_handicap_value,
+            right_handicap_type,
+            right_handicap_bow_class,
+            right_handicap_discipline,
+            right_reference_score,
+            right_allowance_points,
+            right_adjusted_score,
+            right_handicap_table_key,
+            right_handicap_table_title,
             status
           FROM tournament_matches
           WHERE tournament_id = $1
@@ -519,6 +701,7 @@ function createPostgresTournamentGateway({ pool }) {
           SELECT
             tournament_registrations.tournament_id,
             tournament_registrations.member_username,
+            tournament_registrations.bow_code,
             tournament_registrations.registered_at_date || 'T' || tournament_registrations.registered_at_time AS registered_at,
             users.first_name,
             users.surname,
@@ -596,18 +779,19 @@ function createPostgresTournamentGateway({ pool }) {
 
       return result.rows;
     },
-    async registerForTournament({ tournamentId, username, timestampParts }) {
+    async registerForTournament({ bowCode = null, tournamentId, username, timestampParts }) {
       await pool.query(
         `
           INSERT INTO tournament_registrations (
             tournament_id,
             member_username,
+            bow_code,
             registered_at_date,
             registered_at_time
           )
-          VALUES ($1, $2, $3, $4)
+          VALUES ($1, $2, $3, $4, $5)
         `,
-        [tournamentId, username, ...timestampParts],
+        [tournamentId, username, bowCode, ...timestampParts],
       );
     },
     async submitTournamentScore({
@@ -690,19 +874,38 @@ function createPostgresTournamentGateway({ pool }) {
               round_number,
               match_number,
               left_member_username,
-              right_member_username,
-              submitted_by_username,
-              submitted_at_date,
-              submitted_at_time,
-              confirmed_by_username,
-              confirmed_at_date,
-              confirmed_at_time,
-              disputed_by_username,
-              disputed_at_date,
-              disputed_at_time,
-              dispute_reason
-            FROM tournament_matches
-            WHERE tournament_id = $1
+            right_member_username,
+            submitted_by_username,
+            submitted_at_date,
+            submitted_at_time,
+            confirmed_by_username,
+            confirmed_at_date,
+            confirmed_at_time,
+            disputed_by_username,
+            disputed_at_date,
+            disputed_at_time,
+            dispute_reason,
+            handicap_allowance_percent,
+            left_handicap_value,
+            left_handicap_type,
+            left_handicap_bow_class,
+            left_handicap_discipline,
+            left_reference_score,
+            left_allowance_points,
+            left_adjusted_score,
+            left_handicap_table_key,
+            left_handicap_table_title,
+            right_handicap_value,
+            right_handicap_type,
+            right_handicap_bow_class,
+            right_handicap_discipline,
+            right_reference_score,
+            right_allowance_points,
+            right_adjusted_score,
+            right_handicap_table_key,
+            right_handicap_table_title
+          FROM tournament_matches
+          WHERE tournament_id = $1
           `,
           [tournamentId],
         );
@@ -722,6 +925,7 @@ function createPostgresTournamentGateway({ pool }) {
             `${match.roundNumber}:${match.matchNumber}`,
           );
           const workflowValues = normalizePersistedWorkflowValues(existingMatch, match);
+          const handicapValues = normalizePersistedHandicapValues(existingMatch, match);
           await client.query(
             `
               INSERT INTO tournament_matches (
@@ -743,9 +947,28 @@ function createPostgresTournamentGateway({ pool }) {
                 disputed_at_date,
                 disputed_at_time,
                 dispute_reason,
+                handicap_allowance_percent,
+                left_handicap_value,
+                left_handicap_type,
+                left_handicap_bow_class,
+                left_handicap_discipline,
+                left_reference_score,
+                left_allowance_points,
+                left_adjusted_score,
+                left_handicap_table_key,
+                left_handicap_table_title,
+                right_handicap_value,
+                right_handicap_type,
+                right_handicap_bow_class,
+                right_handicap_discipline,
+                right_reference_score,
+                right_allowance_points,
+                right_adjusted_score,
+                right_handicap_table_key,
+                right_handicap_table_title,
                 status
               )
-              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)
             `,
             [
               tournamentId,
@@ -766,6 +989,25 @@ function createPostgresTournamentGateway({ pool }) {
               workflowValues.disputedAtDate,
               workflowValues.disputedAtTime,
               workflowValues.disputeReason,
+              handicapValues.allowancePercent,
+              handicapValues.leftHandicapValue,
+              handicapValues.leftHandicapType,
+              handicapValues.leftBowClass,
+              handicapValues.leftDiscipline,
+              handicapValues.leftReferenceScore,
+              handicapValues.leftAllowancePoints,
+              handicapValues.leftAdjustedScore,
+              handicapValues.leftHandicapTableKey,
+              handicapValues.leftHandicapTableTitle,
+              handicapValues.rightHandicapValue,
+              handicapValues.rightHandicapType,
+              handicapValues.rightBowClass,
+              handicapValues.rightDiscipline,
+              handicapValues.rightReferenceScore,
+              handicapValues.rightAllowancePoints,
+              handicapValues.rightAdjustedScore,
+              handicapValues.rightHandicapTableKey,
+              handicapValues.rightHandicapTableTitle,
               match.status ?? "scheduled",
             ],
           );
@@ -793,6 +1035,25 @@ function createPostgresTournamentGateway({ pool }) {
       submittedByUsername = null,
       submittedTimestampParts = [null, null],
       tournamentId,
+      handicapAllowancePercent = null,
+      leftAdjustedScore = null,
+      leftAllowancePoints = null,
+      leftHandicapBowClass = null,
+      leftHandicapDiscipline = null,
+      leftHandicapTableKey = null,
+      leftHandicapTableTitle = null,
+      leftHandicapType = null,
+      leftHandicapValue = null,
+      leftReferenceScore = null,
+      rightAdjustedScore = null,
+      rightAllowancePoints = null,
+      rightHandicapBowClass = null,
+      rightHandicapDiscipline = null,
+      rightHandicapTableKey = null,
+      rightHandicapTableTitle = null,
+      rightHandicapType = null,
+      rightHandicapValue = null,
+      rightReferenceScore = null,
       winnerUsername = null,
     }) {
       await pool.query(
@@ -812,8 +1073,27 @@ function createPostgresTournamentGateway({ pool }) {
             disputed_at_date = $11,
             disputed_at_time = $12,
             dispute_reason = $13,
-            status = $14
-          WHERE tournament_id = $15 AND round_number = $16 AND match_number = $17
+            handicap_allowance_percent = $14,
+            left_handicap_value = $15,
+            left_handicap_type = $16,
+            left_handicap_bow_class = $17,
+            left_handicap_discipline = $18,
+            left_reference_score = $19,
+            left_allowance_points = $20,
+            left_adjusted_score = $21,
+            left_handicap_table_key = $22,
+            left_handicap_table_title = $23,
+            right_handicap_value = $24,
+            right_handicap_type = $25,
+            right_handicap_bow_class = $26,
+            right_handicap_discipline = $27,
+            right_reference_score = $28,
+            right_allowance_points = $29,
+            right_adjusted_score = $30,
+            right_handicap_table_key = $31,
+            right_handicap_table_title = $32,
+            status = $33
+          WHERE tournament_id = $34 AND round_number = $35 AND match_number = $36
         `,
         [
           leftScore,
@@ -826,6 +1106,25 @@ function createPostgresTournamentGateway({ pool }) {
           disputedByUsername,
           ...disputedTimestampParts,
           disputeReason,
+          handicapAllowancePercent,
+          leftHandicapValue,
+          leftHandicapType,
+          leftHandicapBowClass,
+          leftHandicapDiscipline,
+          leftReferenceScore,
+          leftAllowancePoints,
+          leftAdjustedScore,
+          leftHandicapTableKey,
+          leftHandicapTableTitle,
+          rightHandicapValue,
+          rightHandicapType,
+          rightHandicapBowClass,
+          rightHandicapDiscipline,
+          rightReferenceScore,
+          rightAllowancePoints,
+          rightAdjustedScore,
+          rightHandicapTableKey,
+          rightHandicapTableTitle,
           status,
           tournamentId,
           roundNumber,

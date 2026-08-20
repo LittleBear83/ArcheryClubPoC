@@ -9,20 +9,55 @@ type RecordsPageState = ReturnType<typeof useRecordsPageState>;
 
 export function RecordsMobileView({
   assignFieldRef,
+  bowDisciplineOptions,
+  comparisonTables,
   disciplineOptions,
+  filteredHandicapRows,
   form,
+  groupedVisibleTables,
+  handicapFamilies,
+  handicapFilter,
+  handicapTablesError,
+  handicapTablesLoaded,
+  handicapTablesLoading,
+  handleBowDisciplineChange,
   handleCloseModal,
+  handleFamilyChange,
   handleOpenModal,
   handleSubmit,
+  handleTableChange,
+  handleHandicapFilterChange,
   isFieldMissing,
   isFormComplete,
   isModalOpen,
   missingFields,
   roundOptions,
   scoreStatusOptions,
+  selectedBowDiscipline,
+  selectedFamily,
+  selectedFamilyKey,
+  selectedTable,
+  selectedTableKey,
+  sourceRevision,
+  sourceTitle,
   submitMessage,
   updateField,
+  visibleTables,
 }: RecordsPageState) {
+  const groupedRoundOptions = groupedVisibleTables.flatMap((group) => [
+    {
+      type: "group-label" as const,
+      key: `group-${group.groupKey}`,
+      label: "────────────",
+    },
+    ...group.tables.map((table) => ({
+      type: "table-option" as const,
+      key: table.tableKey,
+      value: table.tableKey,
+      label: `  ${table.title}`,
+    })),
+  ]);
+
   return (
     <section className="records-page records-page--mobile">
       <div className="records-page-main">
@@ -31,7 +66,8 @@ export function RecordsMobileView({
             <p className="records-page-eyebrow">Records</p>
             <h2>Club records and score submissions</h2>
             <p className="records-page-note">
-              <strong>future inprovment planned</strong>
+              Allowance tables are available here now, with score submission workflow
+              still scheduled for later expansion.
             </p>
           </div>
         </div>
@@ -43,6 +79,117 @@ export function RecordsMobileView({
             Score submission for formal records will be expanded here, including approval
             flow, historical views, and record tracking.
           </p>
+        </div>
+
+        <div className="records-page-panel records-handicap-panel">
+          <MobileSectionHeader
+            title="Allowance tables"
+            description="Choose a table family and bow discipline, then filter to a handicap value if you want a quick lookup."
+          />
+          <p className="records-handicap-source">
+            {sourceTitle}
+            {sourceRevision ? ` (${sourceRevision})` : ""}
+          </p>
+
+          {handicapTablesLoading ? <p>Loading handicap tables...</p> : null}
+          {handicapTablesError ? <p className="profile-error">{handicapTablesError}</p> : null}
+
+          {handicapTablesLoaded && selectedFamily && selectedTable ? (
+            <>
+              <div className="records-handicap-controls">
+                <label className="records-field">
+                  Table family
+                  <select
+                    value={selectedFamilyKey}
+                    onChange={(event) => handleFamilyChange(event.target.value)}
+                  >
+                    {handicapFamilies.map((family) => (
+                      <option key={family.familyKey} value={family.familyKey}>
+                        {family.familyTitle}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="records-field">
+                  Bow discipline
+                  <select
+                    value={selectedBowDiscipline}
+                    onChange={(event) => handleBowDisciplineChange(event.target.value)}
+                  >
+                    {bowDisciplineOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="records-field">
+                  Round table
+                  <select
+                    value={selectedTableKey}
+                    onChange={(event) => handleTableChange(event.target.value)}
+                  >
+                    {groupedRoundOptions.map((entry) =>
+                      entry.type === "group-label" ? (
+                        <option key={entry.key} disabled>
+                          {entry.label}
+                        </option>
+                      ) : (
+                        <option key={entry.key} value={entry.value}>
+                          {entry.label}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </label>
+                <label className="records-field">
+                  Handicap filter
+                  <input
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={handicapFilter}
+                    onChange={(event) => handleHandicapFilterChange(event.target.value)}
+                    placeholder="All handicaps"
+                  />
+                </label>
+              </div>
+
+              <p className="records-handicap-description">{selectedFamily.description}</p>
+              <MobileCardList className="records-mobile-card-list">
+                {filteredHandicapRows.length > 0 ? (
+                  filteredHandicapRows.map((row) => (
+                    <article
+                      key={`${selectedTable.tableKey}-${row.handicapValue}`}
+                      className="records-mobile-card"
+                    >
+                      <p className="records-mobile-card-title">Handicap {row.handicapValue}</p>
+                      <div className="records-mobile-card-values">
+                        {comparisonTables.map((table) => {
+                          const matchingRow = table.rows.find(
+                            (tableRow) => tableRow.handicapValue === row.handicapValue,
+                          );
+
+                          return (
+                            <span key={`${table.tableKey}-${row.handicapValue}`}>
+                              {table.title}: {matchingRow?.referenceScore ?? "-"}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <article className="records-mobile-card">
+                    <p className="records-mobile-card-title">No matching rows</p>
+                    <div className="records-mobile-card-values">
+                      <span>Try another handicap value or clear the filter.</span>
+                    </div>
+                  </article>
+                )}
+              </MobileCardList>
+            </>
+          ) : null}
         </div>
 
         <div className="records-page-actions">

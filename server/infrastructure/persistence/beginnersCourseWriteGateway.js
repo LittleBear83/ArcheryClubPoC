@@ -1,6 +1,7 @@
 function createSqliteBeginnersCourseWriteGateway({
   cancelBeginnersCourse,
   db,
+  deleteBeginnersCourseParticipant,
   deleteBeginnersLessonCoachesByLessonId,
   insertBeginnersCourse,
   insertBeginnersCourseLesson,
@@ -9,8 +10,10 @@ function createSqliteBeginnersCourseWriteGateway({
   markBeginnersCourseParticipantConverted,
   transferBeginnersCourseParticipant,
   updateBeginnersCourseApproval,
+  updateBeginnersCourseLessonSchedule,
   updateBeginnersCourseParticipant,
   updateBeginnersCourseParticipantCase,
+  updateBeginnersCourseSchedule,
   updateUserPassword,
   upsertUser,
 }) {
@@ -29,6 +32,9 @@ function createSqliteBeginnersCourseWriteGateway({
         cancelledAtTime,
         courseId,
       );
+    },
+    async deleteParticipant(participantId) {
+      deleteBeginnersCourseParticipant.run(participantId);
     },
     async createCourseWithLessons({
       actorUsername,
@@ -93,6 +99,7 @@ function createSqliteBeginnersCourseWriteGateway({
         participant.surname,
         participant.sizeCategory,
         participant.heightText,
+        participant.drawLength,
         participant.handedness,
         participant.eyeDominance,
         participant.initialEmailSent ? 1 : 0,
@@ -167,6 +174,44 @@ function createSqliteBeginnersCourseWriteGateway({
         courseId,
       );
     },
+    async rescheduleCourse({
+      approvalStatus,
+      approvedAtDate,
+      approvedAtTime,
+      approvedByUsername,
+      courseId,
+      endTime,
+      firstLessonDate,
+      lessonDates,
+      rejectionReason,
+      startTime,
+    }) {
+      const transaction = db.transaction(() => {
+        updateBeginnersCourseSchedule.run(
+          firstLessonDate,
+          startTime,
+          endTime,
+          approvalStatus,
+          rejectionReason,
+          approvedByUsername,
+          approvedAtDate,
+          approvedAtTime,
+          courseId,
+        );
+
+        for (const lesson of lessonDates) {
+          updateBeginnersCourseLessonSchedule.run(
+            lesson.lessonDate,
+            startTime,
+            endTime,
+            courseId,
+            lesson.lessonNumber,
+          );
+        }
+      });
+
+      transaction();
+    },
     async updateParticipant({
       existingUser,
       participant,
@@ -178,6 +223,7 @@ function createSqliteBeginnersCourseWriteGateway({
         surname: participant.surname,
         sizeCategory: participant.sizeCategory,
         heightText: participant.heightText,
+        drawLength: participant.drawLength,
         handedness: participant.handedness,
         eyeDominance: participant.eyeDominance,
         initialEmailSent: participant.initialEmailSent ? 1 : 0,
@@ -238,6 +284,15 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
           WHERE id = $5
         `,
         [reason, actorUsername, cancelledAtDate, cancelledAtTime, courseId],
+      );
+    },
+    async deleteParticipant(participantId) {
+      await pool.query(
+        `
+          DELETE FROM beginners_course_participants
+          WHERE id = $1
+        `,
+        [participantId],
       );
     },
     async createCourseWithLessons({
@@ -336,6 +391,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
             surname,
             beginner_size_category,
             height_text,
+            draw_length,
             handedness,
             eye_dominance,
             initial_email_sent,
@@ -351,7 +407,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
             created_at_time
           )
           VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NULL, NULL, NULL, NULL, $12, $13, $14
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, NULL, NULL, NULL, $14, $15, $16
           )
         `,
         [
@@ -361,6 +417,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
           participant.surname,
           participant.sizeCategory,
           participant.heightText,
+          participant.drawLength,
           participant.handedness,
           participant.eyeDominance,
           participant.initialEmailSent ? 1 : 0,
@@ -488,6 +545,75 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
         ],
       );
     },
+    async rescheduleCourse({
+      approvalStatus,
+      approvedAtDate,
+      approvedAtTime,
+      approvedByUsername,
+      courseId,
+      endTime,
+      firstLessonDate,
+      lessonDates,
+      rejectionReason,
+      startTime,
+    }) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `
+            UPDATE beginners_courses
+            SET
+              first_lesson_date = $1,
+              start_time = $2,
+              end_time = $3,
+              approval_status = $4,
+              rejection_reason = $5,
+              approved_by_username = $6,
+              approved_at_date = $7,
+              approved_at_time = $8
+            WHERE id = $9
+          `,
+          [
+            firstLessonDate,
+            startTime,
+            endTime,
+            approvalStatus,
+            rejectionReason,
+            approvedByUsername,
+            approvedAtDate,
+            approvedAtTime,
+            courseId,
+          ],
+        );
+
+        for (const lesson of lessonDates) {
+          await client.query(
+            `
+              UPDATE beginners_course_lessons
+              SET
+                lesson_date = $1,
+                start_time = $2,
+                end_time = $3
+              WHERE course_id = $4 AND lesson_number = $5
+            `,
+            [
+              lesson.lessonDate,
+              startTime,
+              endTime,
+              courseId,
+              lesson.lessonNumber,
+            ],
+          );
+        }
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async updateParticipant({
       existingUser,
       participant,
@@ -504,18 +630,20 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
               surname = $2,
               beginner_size_category = $3,
               height_text = $4,
-              handedness = $5,
-              eye_dominance = $6,
-              initial_email_sent = $7,
-              thirty_day_reminder_sent = $8,
-              course_fee_paid = $9
-            WHERE id = $10
+              draw_length = $5,
+              handedness = $6,
+              eye_dominance = $7,
+              initial_email_sent = $8,
+              thirty_day_reminder_sent = $9,
+              course_fee_paid = $10
+            WHERE id = $11
           `,
           [
             participant.firstName,
             participant.surname,
             participant.sizeCategory,
             participant.heightText,
+            participant.drawLength,
             participant.handedness,
             participant.eyeDominance,
             participant.initialEmailSent ? 1 : 0,

@@ -16,7 +16,9 @@ function getParticipantLabel(participant?: TournamentMatch["leftParticipant"]) {
     return "TBD";
   }
 
-  return participant.seed ? `(${participant.seed}) ${participant.fullName}` : participant.fullName;
+  const bowCode = String(participant.bowCode ?? "").trim().toUpperCase();
+  const fullName = bowCode ? `${participant.fullName} (${bowCode})` : participant.fullName;
+  return participant.seed ? `(${participant.seed}) ${fullName}` : fullName;
 }
 
 function getMatchSummary(match: TournamentMatch) {
@@ -33,6 +35,49 @@ function getMatchSummary(match: TournamentMatch) {
   return { competitors, scoreText, winnerText };
 }
 
+function getHandicapSummary(match: TournamentMatch) {
+  const handicap = match.handicap;
+
+  if (!handicap) {
+    return null;
+  }
+
+  const adjustedScoreText =
+    typeof handicap.competitorA?.adjustedScore === "number" ||
+    typeof handicap.competitorB?.adjustedScore === "number"
+      ? `${typeof handicap.competitorA?.adjustedScore === "number" ? handicap.competitorA.adjustedScore : "-"} - ${
+          typeof handicap.competitorB?.adjustedScore === "number"
+            ? handicap.competitorB.adjustedScore
+            : "-"
+        }`
+      : "";
+  const allowanceText =
+    typeof handicap.competitorA?.allowancePoints === "number" ||
+    typeof handicap.competitorB?.allowancePoints === "number"
+      ? `${typeof handicap.competitorA?.allowancePoints === "number" ? handicap.competitorA.allowancePoints : "-"} - ${
+          typeof handicap.competitorB?.allowancePoints === "number"
+            ? handicap.competitorB.allowancePoints
+            : "-"
+        }`
+      : "";
+
+  if (!adjustedScoreText && !allowanceText) {
+    return null;
+  }
+
+  return {
+    handicapScoreText: allowanceText,
+    rawScoreText:
+      typeof match.leftScore === "number" || typeof match.rightScore === "number"
+        ? `${typeof match.leftScore === "number" ? match.leftScore : "-"} - ${
+            typeof match.rightScore === "number" ? match.rightScore : "-"
+          }`
+        : "",
+    totalScoreText: adjustedScoreText,
+    allowancePercent: handicap.allowancePercent ?? null,
+  };
+}
+
 function TournamentRoundSummary({ round }: { round: TournamentRound }) {
   return (
     <article className="tournament-mobile-round-card">
@@ -40,6 +85,7 @@ function TournamentRoundSummary({ round }: { round: TournamentRound }) {
       <div className="tournament-mobile-round-matches">
         {round.matches.map((match) => {
           const summary = getMatchSummary(match);
+          const handicapSummary = getHandicapSummary(match);
 
           return (
             <div
@@ -47,7 +93,19 @@ function TournamentRoundSummary({ round }: { round: TournamentRound }) {
               className={`tournament-mobile-match tournament-mobile-match--${match.status}`}
             >
               <strong>{summary.competitors}</strong>
-              <span>{summary.scoreText}</span>
+              <span>Score: {summary.scoreText}</span>
+              {handicapSummary?.handicapScoreText ? (
+                <span>
+                  Handicap score
+                  {typeof handicapSummary.allowancePercent === "number"
+                    ? ` (${handicapSummary.allowancePercent}%)`
+                    : ""}
+                  : {handicapSummary.handicapScoreText}
+                </span>
+              ) : null}
+              {handicapSummary?.totalScoreText ? (
+                <span>Total score: {handicapSummary.totalScoreText}</span>
+              ) : null}
               <span>{summary.winnerText}</span>
             </div>
           );
@@ -71,13 +129,17 @@ type TournamentsMobileViewProps = {
   isSaving: boolean;
   isSubmittingScore: boolean;
   registrationStatusText: string;
+  requireRegistrationBowSelection?: boolean;
   scoreValue: string;
   matchScoreAValue: string;
   matchScoreBValue: string;
   matchDisputeReason: string;
   bracketGraphic: ReactNode;
   captainOperationsContent?: ReactNode;
+  registrationBowOptions: Array<{ code: string; discipline: string }>;
+  selectedRegistrationBowCode: string;
   onSelectTournament: (tournamentId: TournamentRecord["id"]) => void;
+  onRegistrationBowCodeChange: (nextValue: string) => void;
   onRegister: () => void;
   onWithdraw: () => void;
   onSaveCompetitorList: () => void;
@@ -99,13 +161,17 @@ export function TournamentsMobileView({
   isSaving,
   isSubmittingScore,
   registrationStatusText,
+  requireRegistrationBowSelection = false,
   scoreValue,
   matchScoreAValue,
   matchScoreBValue,
   matchDisputeReason,
   bracketGraphic,
   captainOperationsContent,
+  registrationBowOptions,
+  selectedRegistrationBowCode,
   onSelectTournament,
+  onRegistrationBowCodeChange,
   onRegister,
   onWithdraw,
   onSaveCompetitorList,
@@ -211,7 +277,11 @@ export function TournamentsMobileView({
                 type="button"
                 className="tournament-primary-button"
                 onClick={onRegister}
-                disabled={!selectedTournament.canRegister || isSaving}
+                disabled={
+                  !selectedTournament.canRegister ||
+                  isSaving ||
+                  requireRegistrationBowSelection
+                }
               >
                 {isSaving && selectedTournament.canRegister
                   ? "Registering..."
@@ -245,6 +315,22 @@ export function TournamentsMobileView({
                 </Button>
               ) : null}
             </div>
+            {registrationBowOptions.length > 1 && selectedTournament.canRegister ? (
+              <label>
+                Shooting bow
+                <select
+                  value={selectedRegistrationBowCode}
+                  onChange={(event) => onRegistrationBowCodeChange(event.target.value)}
+                >
+                  <option value="">Choose your bow</option>
+                  {registrationBowOptions.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.discipline} ({option.code})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </section>
 
           <section className="tournament-registrations-card">
@@ -257,6 +343,7 @@ export function TournamentsMobileView({
                 {selectedTournament.registrations.map((registration) => (
                   <div key={registration.username} className="tournament-mobile-registration-card">
                     {registration.fullName}
+                    {registration.bowCode ? ` (${registration.bowCode})` : ""}
                   </div>
                 ))}
               </MobileCardList>
@@ -267,19 +354,41 @@ export function TournamentsMobileView({
 
           {selectedTournament.currentMatch ? (
             <section className="tournament-score-card tournament-mobile-score-card">
+              {(() => {
+                const handicapSummary = getHandicapSummary(selectedTournament.currentMatch);
+
+                return (
+                  <>
               <MobileSectionHeader title="My Current Match" />
               <p>
                 <strong>{selectedTournament.currentMatch.roundTitle}</strong>
               </p>
               <p>
-                {selectedTournament.currentMatch.competitorA?.fullName ?? "TBD"} vs{" "}
-                {selectedTournament.currentMatch.competitorB?.fullName ?? "TBD"}
+                {getParticipantLabel(selectedTournament.currentMatch.competitorA)} vs{" "}
+                {getParticipantLabel(selectedTournament.currentMatch.competitorB)}
               </p>
               <p>Status: {formatMatchStatus(selectedTournament.currentMatch.status)}</p>
               {selectedTournament.currentMatch.submissionDeadline ? (
                 <p>
                   Deadline: {formatDate(selectedTournament.currentMatch.submissionDeadline)}
                 </p>
+              ) : null}
+              {handicapSummary?.rawScoreText ? (
+                <p>
+                  Score: {handicapSummary.rawScoreText}
+                </p>
+              ) : null}
+              {handicapSummary?.handicapScoreText ? (
+                <p>
+                  Handicap score
+                  {typeof handicapSummary.allowancePercent === "number"
+                    ? ` (${handicapSummary.allowancePercent}%)`
+                    : ""}
+                  : {handicapSummary.handicapScoreText}
+                </p>
+              ) : null}
+              {handicapSummary?.totalScoreText ? (
+                <p>Total score: {handicapSummary.totalScoreText}</p>
               ) : null}
 
               {selectedTournament.currentMatch.workflow?.canSubmitResult ? (
@@ -340,6 +449,9 @@ export function TournamentsMobileView({
                   </Button>
                 </form>
               ) : null}
+                  </>
+                );
+              })()}
             </section>
           ) : selectedTournament.canSubmitScore ? (
             <form

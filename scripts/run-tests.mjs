@@ -97,11 +97,15 @@ await import(
   )
 );
 await import(
+  pathToFileURL(path.join(root, "server/infrastructure/persistence/handicapTableGateway.test.js"))
+);
+await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/sqliteToPostgresMigration.test.js"))
 );
 await import(
   pathToFileURL(path.join(root, "server/domain/services/memberPersistenceService.test.js"))
 );
+await import(pathToFileURL(path.join(root, "server/index.test.js")));
 await import(
   pathToFileURL(path.join(root, "server/domain/services/goldenRecordsMemberSyncService.test.js"))
 );

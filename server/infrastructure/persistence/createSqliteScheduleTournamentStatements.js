@@ -306,6 +306,7 @@ export function createSqliteScheduleTournamentStatements(db) {
     SELECT
       tournament_registrations.tournament_id,
       tournament_registrations.member_username,
+      tournament_registrations.bow_code,
       tournament_registrations.registered_at_date || 'T' || tournament_registrations.registered_at_time AS registered_at,
       users.first_name,
       users.surname,
@@ -321,6 +322,7 @@ export function createSqliteScheduleTournamentStatements(db) {
     SELECT
       tournament_registrations.tournament_id,
       tournament_registrations.member_username,
+      tournament_registrations.bow_code,
       tournament_registrations.registered_at_date || 'T' || tournament_registrations.registered_at_time AS registered_at,
       users.first_name,
       users.surname,
@@ -335,10 +337,11 @@ export function createSqliteScheduleTournamentStatements(db) {
     INSERT INTO tournament_registrations (
       tournament_id,
       member_username,
+      bow_code,
       registered_at_date,
       registered_at_time
     )
-    VALUES (?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?)
   `);
 
   const deleteTournamentRegistration = db.prepare(`
@@ -414,6 +417,25 @@ export function createSqliteScheduleTournamentStatements(db) {
       disputed_at_date,
       disputed_at_time,
       dispute_reason,
+      handicap_allowance_percent,
+      left_handicap_value,
+      left_handicap_type,
+      left_handicap_bow_class,
+      left_handicap_discipline,
+      left_reference_score,
+      left_allowance_points,
+      left_adjusted_score,
+      left_handicap_table_key,
+      left_handicap_table_title,
+      right_handicap_value,
+      right_handicap_type,
+      right_handicap_bow_class,
+      right_handicap_discipline,
+      right_reference_score,
+      right_allowance_points,
+      right_adjusted_score,
+      right_handicap_table_key,
+      right_handicap_table_title,
       status
     FROM tournament_matches
     WHERE tournament_id = ?
@@ -440,6 +462,25 @@ export function createSqliteScheduleTournamentStatements(db) {
       disputed_at_date,
       disputed_at_time,
       dispute_reason,
+      handicap_allowance_percent,
+      left_handicap_value,
+      left_handicap_type,
+      left_handicap_bow_class,
+      left_handicap_discipline,
+      left_reference_score,
+      left_allowance_points,
+      left_adjusted_score,
+      left_handicap_table_key,
+      left_handicap_table_title,
+      right_handicap_value,
+      right_handicap_type,
+      right_handicap_bow_class,
+      right_handicap_discipline,
+      right_reference_score,
+      right_allowance_points,
+      right_adjusted_score,
+      right_handicap_table_key,
+      right_handicap_table_title,
       status
     FROM tournament_matches
     ORDER BY tournament_id ASC, round_number ASC, match_number ASC
@@ -465,6 +506,25 @@ export function createSqliteScheduleTournamentStatements(db) {
       disputed_at_date,
       disputed_at_time,
       dispute_reason,
+      handicap_allowance_percent,
+      left_handicap_value,
+      left_handicap_type,
+      left_handicap_bow_class,
+      left_handicap_discipline,
+      left_reference_score,
+      left_allowance_points,
+      left_adjusted_score,
+      left_handicap_table_key,
+      left_handicap_table_title,
+      right_handicap_value,
+      right_handicap_type,
+      right_handicap_bow_class,
+      right_handicap_discipline,
+      right_reference_score,
+      right_allowance_points,
+      right_adjusted_score,
+      right_handicap_table_key,
+      right_handicap_table_title,
       status
     FROM tournament_matches
     WHERE tournament_id = ? AND round_number = ? AND match_number = ?
@@ -503,9 +563,28 @@ export function createSqliteScheduleTournamentStatements(db) {
       disputed_at_date,
       disputed_at_time,
       dispute_reason,
+      handicap_allowance_percent,
+      left_handicap_value,
+      left_handicap_type,
+      left_handicap_bow_class,
+      left_handicap_discipline,
+      left_reference_score,
+      left_allowance_points,
+      left_adjusted_score,
+      left_handicap_table_key,
+      left_handicap_table_title,
+      right_handicap_value,
+      right_handicap_type,
+      right_handicap_bow_class,
+      right_handicap_discipline,
+      right_reference_score,
+      right_allowance_points,
+      right_adjusted_score,
+      right_handicap_table_key,
+      right_handicap_table_title,
       status
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const updateTournamentMatchWorkflow = db.prepare(`
@@ -524,6 +603,25 @@ export function createSqliteScheduleTournamentStatements(db) {
       disputed_at_date = ?,
       disputed_at_time = ?,
       dispute_reason = ?,
+      handicap_allowance_percent = ?,
+      left_handicap_value = ?,
+      left_handicap_type = ?,
+      left_handicap_bow_class = ?,
+      left_handicap_discipline = ?,
+      left_reference_score = ?,
+      left_allowance_points = ?,
+      left_adjusted_score = ?,
+      left_handicap_table_key = ?,
+      left_handicap_table_title = ?,
+      right_handicap_value = ?,
+      right_handicap_type = ?,
+      right_handicap_bow_class = ?,
+      right_handicap_discipline = ?,
+      right_reference_score = ?,
+      right_allowance_points = ?,
+      right_adjusted_score = ?,
+      right_handicap_table_key = ?,
+      right_handicap_table_title = ?,
       status = ?
     WHERE tournament_id = ? AND round_number = ? AND match_number = ?
   `);

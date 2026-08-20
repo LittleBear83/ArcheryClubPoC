@@ -843,6 +843,8 @@ export function HomePage({
     currentUserProfile,
   });
   const {
+    beginnersRescheduleToasts,
+    dismissBeginnersRescheduleToast,
     lostArrowToasts,
     questionResponseToasts,
     dismissLostArrowToast,
@@ -1305,6 +1307,38 @@ export function HomePage({
                   className="lost-arrow-toast-dismiss"
                   onClick={() => dismissLostArrowToast(toast.id)}
                   aria-label="Dismiss lost arrow notification"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {beginnersRescheduleToasts.length > 0 ? (
+        <div className="lost-arrow-toast-stack" aria-live="polite" aria-atomic="true">
+          {beginnersRescheduleToasts.map((toast) => (
+            <div key={toast.id} className="lost-arrow-toast" role="status">
+              <div className="lost-arrow-toast-copy">
+                <strong>Session rescheduled</strong>
+                <p>{toast.message}</p>
+              </div>
+              <div className="lost-arrow-toast-actions">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => navigate(toast.targetPath)}
+                >
+                  Open sessions
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="lost-arrow-toast-dismiss"
+                  onClick={() => dismissBeginnersRescheduleToast(toast.id)}
+                  aria-label="Dismiss session reschedule notification"
                 >
                   Close
                 </Button>

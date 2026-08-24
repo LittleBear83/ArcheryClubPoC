@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@g-loot/react-tournament-brackets": "^1.0.31-rc",
+    "@nivo/sankey": "^0.99.0",
     "@tanstack/react-query": "^5.97.0",
     "better-sqlite3": "^12.8.0",
     "concurrently": "^9.2.1",

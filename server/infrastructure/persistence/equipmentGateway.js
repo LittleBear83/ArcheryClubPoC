@@ -95,6 +95,9 @@ function createSqliteEquipmentGateway(deps) {
     async updateEquipmentAssignmentMetadata(payload) {
       deps.updateEquipmentAssignmentMetadata.run(payload);
     },
+    async updateEquipmentItemDetails(payload) {
+      deps.updateEquipmentItemDetails.run(payload);
+    },
     async updateEquipmentItemForDecommission(payload) {
       deps.updateEquipmentItemForDecommission.run(payload);
     },
@@ -402,6 +405,28 @@ function createPostgresEquipmentGateway({ pool }) {
           payload.assignedByUsername,
           payload.assignedAtDate,
           payload.assignedAtTime,
+          payload.id,
+        ],
+      );
+    },
+    async updateEquipmentItemDetails(payload) {
+      await pool.query(
+        `
+          UPDATE equipment_items
+          SET
+            item_number = $1,
+            size_category = $2,
+            arrow_length = $3,
+            arrow_quantity = $4,
+            details_json = $5
+          WHERE id = $6
+        `,
+        [
+          payload.itemNumber,
+          payload.sizeCategory,
+          payload.arrowLength,
+          payload.arrowQuantity,
+          payload.detailsJson,
           payload.id,
         ],
       );

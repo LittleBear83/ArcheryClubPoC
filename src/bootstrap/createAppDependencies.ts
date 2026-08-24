@@ -42,6 +42,7 @@ import {
   AddEquipmentStorageLocationUseCase,
   AddEquipmentItemUseCase,
   AssignEquipmentItemUseCase,
+  CorrectEquipmentItemUseCase,
   DecommissionEquipmentItemUseCase,
   GetEquipmentDashboardUseCase,
   RemoveEquipmentStorageLocationUseCase,
@@ -152,6 +153,9 @@ export function createAppDependencies() {
       equipmentRepository,
     }),
     addEquipmentItemUseCase: new AddEquipmentItemUseCase({
+      equipmentRepository,
+    }),
+    correctEquipmentItemUseCase: new CorrectEquipmentItemUseCase({
       equipmentRepository,
     }),
     decommissionEquipmentItemUseCase: new DecommissionEquipmentItemUseCase({

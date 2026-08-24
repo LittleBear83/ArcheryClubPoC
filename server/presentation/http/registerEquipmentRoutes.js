@@ -17,6 +17,7 @@ export function registerEquipmentRoutes({
   memberDirectoryGateway,
   PERMISSIONS,
   sanitizeCupboardLabel,
+  sanitizeEquipmentCorrectionPayload,
   sanitizeEquipmentCreatePayload,
   serverEventBus,
   validateCaseAssignment,
@@ -152,6 +153,7 @@ export function registerEquipmentRoutes({
         sizeCategory: payload.sizeCategory,
         arrowLength: payload.arrowLength,
         arrowQuantity: payload.arrowQuantity,
+        detailsJson: payload.detailsJson,
         locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
         locationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
         locationCaseId: null,
@@ -210,6 +212,95 @@ export function registerEquipmentRoutes({
         message: "Unable to add equipment.",
       });
     }
+  });
+
+  app.post("/api/equipment/items/:id/corrections", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.ADD_DECOMMISSION_EQUIPMENT)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to correct equipment details.",
+      });
+      return;
+    }
+
+    const item = await equipmentGateway.findEquipmentItemById(req.params.id);
+
+    if (!item) {
+      res.status(404).json({
+        success: false,
+        message: "Equipment item not found.",
+      });
+      return;
+    }
+
+    const sanitized = sanitizeEquipmentCorrectionPayload(req.body, item);
+
+    if (!sanitized.success) {
+      res.status(sanitized.status).json(sanitized);
+      return;
+    }
+
+    const previousItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
+
+    try {
+      await equipmentGateway.updateEquipmentItemDetails({
+        id: item.id,
+        itemNumber: sanitized.value.itemNumber,
+        sizeCategory: sanitized.value.sizeCategory,
+        arrowLength: sanitized.value.arrowLength,
+        arrowQuantity: sanitized.value.arrowQuantity,
+        detailsJson: sanitized.value.detailsJson,
+      });
+    } catch (error) {
+      if (
+        error?.message?.includes("UNIQUE constraint failed") ||
+        error?.message?.includes("duplicate key value violates unique constraint")
+      ) {
+        res.status(409).json({
+          success: false,
+          message: "An active equipment item with that number already exists.",
+        });
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        message: "Unable to correct the equipment details.",
+      });
+      return;
+    }
+
+    const [date, time] = getUtcTimestampParts();
+    const maps = await buildEquipmentMaps();
+    const updatedItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
+    const updatedItemResponse = buildEquipmentItemResponse(updatedItem, maps);
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "corrected",
+        actorUsername: actor.username,
+        after: updatedItemResponse,
+        before: previousItem ? buildEquipmentItemResponse(previousItem, maps) : item,
+        changedAtDate: date,
+        changedAtTime: time,
+        entityId: item.id,
+        entityLabel: item.item_number ?? item.equipment_type,
+        entityType: "equipment_item",
+        req,
+        target: `/api/equipment/items/${item.id}/corrections`,
+      }).catch((auditError) => {
+        console.error("Failed to record equipment audit event", auditError);
+      });
+    }
+
+    broadcastEquipmentUpdated("equipment.correction");
+
+    res.json({
+      success: true,
+      item: updatedItemResponse,
+    });
   });
 
   app.post("/api/equipment/items/:id/decommission", async (req, res) => {

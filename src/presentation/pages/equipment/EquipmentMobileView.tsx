@@ -1,15 +1,18 @@
+import { useState } from "react";
 import { Button } from "../../components/Button";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { Modal } from "../../components/Modal";
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
 import { MobileCardList } from "../../components/mobile/MobileCardList";
 import { MobileEmptyState } from "../../components/mobile/MobileEmptyState";
 import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
-import { MobileSectionHeader } from "../../components/mobile/MobileSectionHeader";
 import { formatShortDateTime } from "../../../utils/dateTime";
 import { formatMemberDisplayName } from "../../../utils/userProfile";
 import {
+  CASE_ASSIGNMENT_FIELDS,
   describeCaseContentLocation,
+  getEquipmentDetailsLabel,
   getEquipmentLoanDateLabel,
   getEquipmentLocationLabel,
   getEquipmentMemberLabel,
@@ -29,10 +32,14 @@ export function EquipmentMobileView({
   assignMutation,
   assignTargetType,
   cases,
+  closeEquipmentCorrectionModal,
+  correctEquipmentMutation,
   cupboardLabel,
   cupboardOptions,
   decommissionMutation,
   decommissionReason,
+  editForm,
+  editingItem,
   equipmentQuery,
   equipmentTypeOptions,
   error,
@@ -40,6 +47,7 @@ export function EquipmentMobileView({
   handleAddEquipmentSubmit,
   handleAddStorageLocation,
   handleAssignEquipment,
+  handleCorrectEquipmentSubmit,
   handleDecommissionEquipment,
   handleRemoveStorageLocation,
   handleReturnEquipment,
@@ -52,6 +60,7 @@ export function EquipmentMobileView({
   message,
   newStorageLocation,
   openCaseAssignmentModal,
+  openEquipmentCorrectionModal,
   permissions,
   removableStorageOptions,
   removeStorageLocationMutation,
@@ -77,9 +86,12 @@ export function EquipmentMobileView({
   targetCaseId,
   targetMemberUsername,
   updateAddFormField,
+  updateEditFormField,
   updateInventorySortColumn,
   updateInventorySortDirection,
 }: EquipmentPageState) {
+  const [activeCaseContents, setActiveCaseContents] = useState<(typeof cases)[number] | null>(null);
+
   return (
     <div className="profile-page equipment-page equipment-page--mobile">
       <p>
@@ -96,7 +108,11 @@ export function EquipmentMobileView({
 
       {permissions.canAddDecommissionEquipment ? (
         <>
-          <SectionPanel className="profile-form" title="Add Equipment">
+          <SectionPanel
+            className="profile-form"
+            title="Add Equipment"
+            description="Create a new equipment record with its key details."
+          >
             <form className="left-align-form" onSubmit={handleAddEquipmentSubmit}>
               <div className="profile-form-grid">
                 <LabeledSelect
@@ -130,69 +146,90 @@ export function EquipmentMobileView({
           </SectionPanel>
 
           {permissions.canManageEquipmentStorageLocations ? (
-            <SectionPanel className="profile-form" title="Manage Storage Locations">
-              <div className="profile-form-grid">
-                <label>
-                  New storage location
-                  <input
-                    value={newStorageLocation}
-                    onChange={(event) => setNewStorageLocation(event.target.value)}
-                    placeholder="Limb Cupboard"
-                  />
-                </label>
+            <SectionPanel
+              className="profile-form"
+              title="Manage Storage Locations"
+              description="Add, rename, or retire the storage places used by the club."
+            >
+              <div className="equipment-storage-management-grid">
+                <div className="equipment-storage-management-card">
+                  <label className="equipment-storage-management-field">
+                    New storage location
+                    <input
+                      value={newStorageLocation}
+                      onChange={(event) => setNewStorageLocation(event.target.value)}
+                      placeholder="Limb Cupboard"
+                    />
+                  </label>
 
-                <LabeledSelect
-                  label="Remove storage location"
-                  value={removeStorageLocation}
-                  onChange={(event) =>
-                    setRemoveStorageLocation(event.target.value)
-                  }
-                  disabled={removableStorageOptions.length === 0}
-                >
-                  {removableStorageOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </LabeledSelect>
-              </div>
+                  <p className="profile-field-helper">
+                    Add a new named storage area so equipment can be booked into it.
+                  </p>
 
-              <div className="loan-bow-return-actions">
-                <Button
-                  type="button"
-                  disabled={
-                    !newStorageLocation.trim() ||
-                    addStorageLocationMutation.isPending
-                  }
-                  onClick={handleAddStorageLocation}
-                  fullWidth
-                >
-                  {addStorageLocationMutation.isPending
-                    ? "Adding location..."
-                    : "Add location"}
-                </Button>
+                  <Button
+                    type="button"
+                    disabled={
+                      !newStorageLocation.trim() ||
+                      addStorageLocationMutation.isPending
+                    }
+                    onClick={handleAddStorageLocation}
+                    fullWidth
+                  >
+                    {addStorageLocationMutation.isPending
+                      ? "Adding location..."
+                      : "Add location"}
+                  </Button>
+                </div>
 
-                <Button
-                  type="button"
-                  variant="danger"
-                  disabled={
-                    !removeStorageLocation ||
-                    removeStorageLocationMutation.isPending
-                  }
-                  onClick={handleRemoveStorageLocation}
-                  fullWidth
-                >
-                  {removeStorageLocationMutation.isPending
-                    ? "Removing location..."
-                    : "Remove location"}
-                </Button>
+                <div className="equipment-storage-management-card">
+                  <LabeledSelect
+                    className="equipment-storage-management-field"
+                    label="Remove storage location"
+                    value={removeStorageLocation}
+                    onChange={(event) =>
+                      setRemoveStorageLocation(event.target.value)
+                    }
+                    disabled={removableStorageOptions.length === 0}
+                  >
+                    {removableStorageOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </LabeledSelect>
+
+                  <p className="profile-field-helper">
+                    Only empty storage locations can be removed. Locations still holding equipment stay unavailable here.
+                  </p>
+
+                  <Button
+                    type="button"
+                    variant="danger"
+                    disabled={
+                      !removeStorageLocation ||
+                      removeStorageLocationMutation.isPending
+                    }
+                    onClick={handleRemoveStorageLocation}
+                    fullWidth
+                  >
+                    {removeStorageLocationMutation.isPending
+                      ? "Removing location..."
+                      : "Remove location"}
+                  </Button>
+                </div>
               </div>
             </SectionPanel>
           ) : null}
         </>
       ) : null}
 
-      <SectionPanel className="profile-form" title="Equipment Actions">
+      <SectionPanel
+        className="profile-form"
+        title="Equipment Actions"
+        description="Assign, return, store, or retire equipment."
+        collapsible
+        defaultCollapsed
+      >
         <div className="left-align-form equipment-mobile-action-list">
           <LabeledSelect
             label="Selected equipment"
@@ -211,58 +248,93 @@ export function EquipmentMobileView({
             <p className="equipment-meta-copy">{selectedItemSummary}</p>
           ) : null}
 
-          {permissions.canAssignEquipment ? (
-            <div className="equipment-action-card">
-              <h3>Assign equipment</h3>
-              <div className="profile-form-grid">
-                <LabeledSelect
-                  label="Assign to"
-                  value={assignTargetType}
-                  onChange={(event) => setAssignTargetType(event.target.value)}
-                >
-                  <option value="member">Member</option>
-                  <option value="case">Case</option>
-                </LabeledSelect>
+          {permissions.canAddDecommissionEquipment ? (
+            <Button
+              type="button"
+              disabled={!selectedItem}
+              onClick={openEquipmentCorrectionModal}
+              fullWidth
+            >
+              Correct equipment details
+            </Button>
+          ) : null}
 
-                {assignTargetType === "member" ? (
-                  <LabeledSelect
-                    label="Borrowing member"
-                    value={targetMemberUsername}
-                    onChange={(event) => setTargetMemberUsername(event.target.value)}
-                  >
-                    {members.map((member) => (
-                      <option key={member.username} value={member.username}>
-                        {formatMemberDisplayName(member)}
-                      </option>
-                    ))}
-                  </LabeledSelect>
-                ) : (
-                  <LabeledSelect
-                    label="Target case"
-                    value={targetCaseId}
-                    onChange={(event) => setTargetCaseId(event.target.value)}
-                  >
-                    {cases
-                      .filter((caseItem) => String(caseItem.id) !== selectedItemId)
-                      .map((caseItem) => (
-                        <option key={caseItem.id} value={caseItem.id}>
-                          {caseItem.label}
+          {permissions.canAssignEquipment ? (
+            <div className="equipment-action-card equipment-action-card--assign">
+              <h3>Assign equipment</h3>
+              <p className="equipment-meta-copy">
+                Choose whether this item is being signed out to a member or packed into a case.
+              </p>
+              <div className="equipment-assign-layout">
+                <div className="equipment-assign-target-card">
+                  <span className="equipment-assign-target-label">Assign to</span>
+                  <div className="equipment-assign-target-toggle" role="group" aria-label="Assign target type">
+                    <Button
+                      type="button"
+                      variant={assignTargetType === "member" ? "primary" : "secondary"}
+                      className="equipment-assign-target-button"
+                      onClick={() => setAssignTargetType("member")}
+                      fullWidth
+                    >
+                      Member
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={assignTargetType === "case" ? "primary" : "secondary"}
+                      className="equipment-assign-target-button"
+                      onClick={() => setAssignTargetType("case")}
+                      fullWidth
+                    >
+                      Case
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="equipment-inline-control-grid equipment-assign-fields">
+                  {assignTargetType === "member" ? (
+                    <LabeledSelect
+                      className="equipment-inline-control"
+                      label="Borrowing member"
+                      value={targetMemberUsername}
+                      onChange={(event) => setTargetMemberUsername(event.target.value)}
+                    >
+                      {members.map((member) => (
+                        <option key={member.username} value={member.username}>
+                          {formatMemberDisplayName(member)}
                         </option>
                       ))}
-                  </LabeledSelect>
-                )}
+                    </LabeledSelect>
+                  ) : (
+                    <LabeledSelect
+                      className="equipment-inline-control"
+                      label="Target case"
+                      value={targetCaseId}
+                      onChange={(event) => setTargetCaseId(event.target.value)}
+                    >
+                      {cases
+                        .filter((caseItem) => String(caseItem.id) !== selectedItemId)
+                        .map((caseItem) => (
+                          <option key={caseItem.id} value={caseItem.id}>
+                            {caseItem.label}
+                          </option>
+                        ))}
+                    </LabeledSelect>
+                  )}
+                </div>
               </div>
 
-              <Button
-                type="button"
-                disabled={!selectedItem || assignMutation.isPending}
-                onClick={handleAssignEquipment}
-                fullWidth
-              >
-                {assignMutation.isPending
-                  ? "Saving assignment..."
-                  : "Assign equipment"}
-              </Button>
+              <div className="equipment-assign-footer">
+                <Button
+                  type="button"
+                  disabled={!selectedItem || assignMutation.isPending}
+                  onClick={handleAssignEquipment}
+                  fullWidth
+                >
+                  {assignMutation.isPending
+                    ? "Saving assignment..."
+                    : "Assign equipment"}
+                </Button>
+              </div>
             </div>
           ) : null}
 
@@ -407,7 +479,13 @@ export function EquipmentMobileView({
         </div>
       </SectionPanel>
 
-      <SectionPanel className="profile-form" title="Cases And Contents">
+      <SectionPanel
+        className="profile-form"
+        title="Cases And Contents"
+        description="Review each case and manage what belongs in it."
+        collapsible
+        defaultCollapsed
+      >
         {cases.length > 0 ? (
           <MobileCardList className="equipment-mobile-case-list">
             {cases.map((caseItem) => (
@@ -418,6 +496,8 @@ export function EquipmentMobileView({
                     <p className="equipment-meta-copy">
                       {caseItem.currentLocation.type === "member"
                         ? `With ${caseItem.currentLocation.label}`
+                        : caseItem.currentReservation
+                          ? `Reserved for ${caseItem.currentReservation.participantName} at ${caseItem.currentLocation.label}`
                         : `Stored in ${caseItem.currentLocation.label}`}
                     </p>
                   </div>
@@ -434,34 +514,27 @@ export function EquipmentMobileView({
                   </p>
                 ) : null}
 
-                {permissions.canAssignEquipment ? (
+                <div className="equipment-case-action-row">
+                  {permissions.canAssignEquipment ? (
+                    <Button
+                      type="button"
+                      className="equipment-case-action-button"
+                      onClick={() => openCaseAssignmentModal(caseItem)}
+                      fullWidth
+                    >
+                      Assign Equipment To Case
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
+                    variant="secondary"
                     className="equipment-case-action-button"
-                    onClick={() => openCaseAssignmentModal(caseItem)}
+                    onClick={() => setActiveCaseContents(caseItem)}
                     fullWidth
                   >
-                    Assign Equipment To Case
+                    Show Equipment In Case
                   </Button>
-                ) : null}
-
-                <details className="equipment-mobile-case-details">
-                  <summary>
-                    Contents ({caseItem.contents.length})
-                  </summary>
-                  {caseItem.contents.length > 0 ? (
-                    <ul className="home-info-list equipment-case-list">
-                      {caseItem.contents.map((item) => (
-                        <li key={item.id}>
-                          <strong>{item.label}</strong>
-                          {`: ${describeCaseContentLocation(item, caseItem)}`}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <MobileEmptyState message="No equipment currently stored in this case." />
-                  )}
-                </details>
+                </div>
               </article>
             ))}
           </MobileCardList>
@@ -470,11 +543,77 @@ export function EquipmentMobileView({
         )}
       </SectionPanel>
 
-      <section className="profile-form">
-        <MobileSectionHeader
-          title="Inventory Register"
-          description={`${filteredInventoryItems.length} matching item${filteredInventoryItems.length === 1 ? "" : "s"}.`}
-        />
+      <Modal
+        open={Boolean(activeCaseContents)}
+        onClose={() => setActiveCaseContents(null)}
+        title={activeCaseContents ? `${activeCaseContents.label} Contents` : "Case Contents"}
+        contentClassName="modal-content--wide"
+      >
+        {activeCaseContents ? (
+            <div className="equipment-inventory-table-wrap equipment-case-contents-table-wrap">
+              <table className="equipment-inventory-table equipment-case-contents-table">
+                <colgroup>
+                  <col className="equipment-case-contents-col-type" />
+                  <col className="equipment-case-contents-col-reference" />
+                  <col className="equipment-case-contents-col-reference" />
+                  <col className="equipment-case-contents-col-details" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Slot</th>
+                    <th>Type</th>
+                    <th>Reference</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {CASE_ASSIGNMENT_FIELDS
+                    .map((field) => ({
+                      field,
+                      item: activeCaseContents.contents.find(
+                        (entry) => entry.type === field.type,
+                      ) ?? null,
+                    }))
+                    .sort((left, right) => {
+                      if (left.item && !right.item) {
+                        return -1;
+                      }
+
+                      if (!left.item && right.item) {
+                        return 1;
+                      }
+
+                      return 0;
+                    })
+                    .map(({ field, item }) => (
+                      <tr key={field.key}>
+                        <td>{field.label}</td>
+                        <td>{item ? getEquipmentTypeDisplayLabel(item) : "Missing"}</td>
+                        <td>
+                          {item
+                            ? item.number || (
+                              item.type === "arrows"
+                                ? `${item.arrowQuantity} x ${item.arrowLength}"`
+                                : "-"
+                            )
+                            : "-"}
+                        </td>
+                        <td>{item ? getEquipmentDetailsLabel(item) : "No item currently assigned"}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+        ) : null}
+      </Modal>
+
+      <SectionPanel
+        className="profile-form"
+        title={`Inventory Register (${filteredInventoryItems.length})`}
+        description="Search and review the full equipment list."
+        collapsible
+        defaultCollapsed
+      >
         <div className="equipment-table-toolbar equipment-table-toolbar--mobile">
           <label className="profile-member-select">
             Filter inventory
@@ -521,6 +660,7 @@ export function EquipmentMobileView({
                 <MobileKeyValueList
                   items={[
                     { label: "Reference", value: getEquipmentReferenceLabel(item) },
+                    { label: "Details", value: getEquipmentDetailsLabel(item) },
                     { label: "Location", value: getEquipmentLocationLabel(item) },
                     { label: "Member", value: getEquipmentMemberLabel(item) || "-" },
                     { label: "Loan Date", value: getEquipmentLoanDateLabel(item) || "-" },
@@ -533,7 +673,55 @@ export function EquipmentMobileView({
         ) : (
           <MobileEmptyState message="No equipment matches the current filter." />
         )}
-      </section>
+      </SectionPanel>
+
+      <Modal
+        open={Boolean(editingItem)}
+        onClose={closeEquipmentCorrectionModal}
+        title={
+          editingItem
+            ? `Correct ${getEquipmentTypeDisplayLabel(editingItem)}`
+            : "Correct equipment details"
+        }
+      >
+        {editingItem ? (
+          <form
+            className="left-align-form equipment-correction-form"
+            onSubmit={handleCorrectEquipmentSubmit}
+          >
+            <p className="equipment-meta-copy">
+              Update the recorded details for {editingItem.label}. This corrects
+              the equipment record without changing its assignment or loan history.
+            </p>
+            <div className="profile-form-grid">
+              <EquipmentAddDetailsFields
+                addForm={editForm}
+                updateAddFormField={updateEditFormField}
+              />
+            </div>
+            <div className="equipment-correction-actions">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={closeEquipmentCorrectionModal}
+                disabled={correctEquipmentMutation.isPending}
+                fullWidth
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={correctEquipmentMutation.isPending}
+                fullWidth
+              >
+                {correctEquipmentMutation.isPending
+                  ? "Saving correction..."
+                  : "Save correction"}
+              </Button>
+            </div>
+          </form>
+        ) : null}
+      </Modal>
     </div>
   );
 }

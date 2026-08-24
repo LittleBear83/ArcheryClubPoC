@@ -3,6 +3,11 @@ import { EquipmentRepository } from "../../domain/repositories/EquipmentReposito
 type EquipmentDataSource = {
   getEquipmentDashboard(actorUsername: string): Promise<unknown>;
   addEquipmentItem(actorUsername: string, payload: unknown): Promise<unknown>;
+  correctEquipmentItem(
+    actorUsername: string,
+    itemId: string | number,
+    payload: unknown,
+  ): Promise<unknown>;
   decommissionEquipmentItem(
     actorUsername: string,
     itemId: string | number,
@@ -34,6 +39,10 @@ export class EquipmentRepositoryImpl extends EquipmentRepository {
 
   async addItem(actorUsername, payload) {
     return this.dataSource.addEquipmentItem(actorUsername, payload);
+  }
+
+  async correctItem(actorUsername, itemId, payload) {
+    return this.dataSource.correctEquipmentItem(actorUsername, itemId, payload);
   }
 
   async decommissionItem(actorUsername, itemId, payload) {

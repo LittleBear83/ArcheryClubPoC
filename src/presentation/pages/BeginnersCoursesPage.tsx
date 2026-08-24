@@ -66,6 +66,8 @@ type CaseOption = {
   reference: string;
   locationLabel: string;
   memberUsername: string;
+  reservedParticipantUsername: string;
+  reservedParticipantName: string;
 };
 
 type CourseBeginner = {
@@ -300,6 +302,9 @@ function getAvailableCasesForBeginner(
       caseItem.reference !== "Main Cupboard" &&
       (!caseItem.memberUsername ||
         caseItem.memberUsername === beginner.username ||
+        String(caseItem.id) === String(beginner.assignedCaseId ?? "")) &&
+      (!caseItem.reservedParticipantUsername ||
+        caseItem.reservedParticipantUsername === beginner.username ||
         String(caseItem.id) === String(beginner.assignedCaseId ?? "")),
   );
 }

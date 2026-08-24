@@ -17,18 +17,25 @@ export function getEquipmentLocationLabel(item) {
     return "On loan";
   }
 
+  if (item.currentReservation) {
+    return "Reserved at range";
+  }
+
   return item.currentLocation?.label || "";
 }
 
 export function getEquipmentMemberLabel(item) {
-  return item.currentLoan?.memberName || (
-    item.currentLocation?.type === "member" ? item.currentLocation.label : ""
-  );
+  return item.currentLoan?.memberName ||
+    item.currentReservation?.participantName ||
+    (
+      item.currentLocation?.type === "member" ? item.currentLocation.label : ""
+    );
 }
 
 export function getEquipmentLoanDateLabel(item) {
   return formatShortDateTime(
     item.currentLoan?.loanedAt ||
+      (item.currentReservation ? item.lastAssignedAt : "") ||
       (item.currentLocation?.type === "member" ? item.lastAssignedAt : ""),
   );
 }
@@ -45,10 +52,14 @@ export function getEquipmentReferenceLabel(item) {
   return item.number || item.detailSummary || "-";
 }
 
+export function getEquipmentDetailsLabel(item) {
+  return item.detailSummary || "-";
+}
+
 export function getEquipmentTypeDisplayLabel(item) {
   switch (item.type) {
     case "case":
-      return item.sizeCategory === "junior" ? "Long Case" : "Short Case";
+      return item.sizeCategory === "junior" ? "Compound Case" : "Recurve Case";
     case "quiver":
       return item.sizeCategory === "junior" ? "Junior Quiver" : "Adult Quiver";
     case "long_rod":
@@ -66,6 +77,9 @@ export const EMPTY_ADD_FORM = {
   itemNumber: "",
   arrowLength: "20",
   arrowQuantity: "6",
+  arrowMaterial: "",
+  arrowColour: "",
+  arrowIdentifier: "",
   makeModel: "",
   equipmentLength: "",
   handedness: "",
@@ -73,10 +87,46 @@ export const EMPTY_ADD_FORM = {
   poundage: "",
   ageGroup: "",
   fitSize: "",
-  fletchingColour: "",
+  fletchingColour1: "",
+  fletchingColour2: "",
+  fletchingColour3: "",
   nockColour: "",
   arrowSpine: "",
 };
+
+export function buildEquipmentFormFromItem(item) {
+  const details = item?.details ?? {};
+
+  return {
+    ...EMPTY_ADD_FORM,
+    equipmentType: item?.type ?? EMPTY_ADD_FORM.equipmentType,
+    sizeCategory: item?.sizeCategory ?? EMPTY_ADD_FORM.sizeCategory,
+    itemNumber: item?.number ?? "",
+    arrowLength:
+      item?.arrowLength != null
+        ? String(item.arrowLength)
+        : EMPTY_ADD_FORM.arrowLength,
+    arrowQuantity:
+      item?.arrowQuantity != null
+        ? String(item.arrowQuantity)
+        : EMPTY_ADD_FORM.arrowQuantity,
+    arrowMaterial: details.arrowMaterial ?? "",
+    arrowColour: details.arrowColour ?? "",
+    arrowIdentifier: details.arrowIdentifier ?? "",
+    makeModel: details.makeModel ?? "",
+    equipmentLength: details.length ?? "",
+    handedness: details.handedness ?? "",
+    colour: details.colour ?? "",
+    poundage: details.poundage != null ? String(details.poundage) : "",
+    ageGroup: details.ageGroup ?? "",
+    fitSize: details.fitSize ?? "",
+    fletchingColour1: details.fletchingColour1 ?? "",
+    fletchingColour2: details.fletchingColour2 ?? "",
+    fletchingColour3: details.fletchingColour3 ?? "",
+    nockColour: details.nockColour ?? "",
+    arrowSpine: details.spine ?? "",
+  };
+}
 
 export const EQUIPMENT_HANDEDNESS_OPTIONS = [
   { value: "", label: "Not recorded" },
@@ -103,7 +153,7 @@ export function shouldShowEquipmentSizeField(equipmentType) {
 export function getEquipmentSizeFieldLabel(equipmentType) {
   switch (equipmentType) {
     case "case":
-      return "Case size";
+      return "Case style";
     case "quiver":
       return "Quiver group";
     case "long_rod":
@@ -117,8 +167,8 @@ export function getEquipmentSizeOptions(equipmentType) {
   switch (equipmentType) {
     case "case":
       return [
-        { value: "standard", label: "Short" },
-        { value: "junior", label: "Long" },
+        { value: "standard", label: "Recurve" },
+        { value: "junior", label: "Compound" },
       ];
     case "quiver":
       return [

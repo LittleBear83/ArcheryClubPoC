@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
+import { Modal } from "../components/Modal";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import {
@@ -41,6 +42,10 @@ export function SuggestionsAdminPage({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [resolutionNotes, setResolutionNotes] = useState<Record<number, string>>({});
+  const [showArchive, setShowArchive] = useState(false);
+  const [archiveSearch, setArchiveSearch] = useState("");
+  const [activeArchivedSuggestion, setActiveArchivedSuggestion] =
+    useState<SuggestionRecord | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: suggestionQueryKeys.suggestions(actorUsername),
@@ -68,6 +73,31 @@ export function SuggestionsAdminPage({
       ),
     [suggestions],
   );
+  const filteredCompletedSuggestions = useMemo(() => {
+    const term = archiveSearch.trim().toLowerCase();
+
+    if (!term) {
+      return completedSuggestions;
+    }
+
+    return completedSuggestions.filter((suggestion) =>
+      [
+        suggestion.suggestionTitle,
+        suggestion.submittedByName,
+        suggestion.submittedByUsername,
+        suggestion.status,
+        suggestion.resolutionNote,
+        suggestion.suggestionDetails,
+        suggestion.improvementText,
+        suggestion.createdAtDate,
+        suggestion.createdAtTime,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term),
+    );
+  }, [archiveSearch, completedSuggestions]);
 
   const statusMutation = useMutation({
     mutationFn: ({
@@ -319,26 +349,142 @@ export function SuggestionsAdminPage({
 
             <section className="suggestion-inbox-group">
               <div className="suggestion-inbox-group-header">
-                <h3>Completed suggestions</h3>
+                <h3>Suggestion archive</h3>
                 <p>
-                  {completedSuggestions.length} marked implemented or declined
+                  {completedSuggestions.length} closed suggestions
                 </p>
               </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="suggestion-archive-toggle"
+                onClick={() => setShowArchive((current) => !current)}
+              >
+                {showArchive
+                  ? "Hide archive"
+                  : `Show archive (${completedSuggestions.length})`}
+              </Button>
               {completedSuggestions.length === 0 ? (
                 <p className="suggestion-inbox-empty-copy">
-                  Completed suggestions will appear here once they are closed out.
+                  Closed suggestions will appear here once they are completed.
+                </p>
+              ) : !showArchive ? (
+                <p className="suggestion-inbox-empty-copy">
+                  Use the archive button to review closed suggestions.
                 </p>
               ) : (
-                <div className="suggestion-inbox-list">
-                  {completedSuggestions.map((suggestion) =>
-                    renderSuggestionCard(suggestion),
-                  )}
+                <div className="archive-table-section">
+                  <label className="archive-table-search">
+                    Search archive
+                    <input
+                      type="search"
+                      value={archiveSearch}
+                      onChange={(event) => setArchiveSearch(event.target.value)}
+                      placeholder="Search title, member, note, status, or date"
+                    />
+                  </label>
+                  <div className="archive-table-wrap">
+                  <table className="archive-table">
+                    <thead>
+                      <tr>
+                        <th>Suggestion</th>
+                        <th>Submitted by</th>
+                        <th>Closed status</th>
+                        <th>Submitted</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredCompletedSuggestions.map((suggestion) => (
+                        <tr key={suggestion.id}>
+                          <td>{suggestion.suggestionTitle}</td>
+                          <td>{suggestion.submittedByName}</td>
+                          <td>
+                            <span
+                              className={`suggestion-status-pill suggestion-status-pill--${suggestion.status}`}
+                            >
+                              {statusOptions.find((option) => option.value === suggestion.status)?.label ?? suggestion.status}
+                            </span>
+                          </td>
+                          <td>
+                            {formatCompactDateTimeWithSeconds(
+                              `${suggestion.createdAtDate} ${suggestion.createdAtTime}`,
+                            )}
+                          </td>
+                          <td>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="archive-table-action"
+                              onClick={() => setActiveArchivedSuggestion(suggestion)}
+                            >
+                              View
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredCompletedSuggestions.length === 0 ? (
+                        <tr>
+                          <td colSpan={5}>No archived suggestions match the current search.</td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
                 </div>
               )}
             </section>
           </div>
         )}
       </SectionPanel>
+
+      <Modal
+        open={Boolean(activeArchivedSuggestion)}
+        onClose={() => setActiveArchivedSuggestion(null)}
+        title={activeArchivedSuggestion?.suggestionTitle ?? "Suggestion details"}
+      >
+        {activeArchivedSuggestion ? (
+          <div className="suggestion-member-modal">
+            <div className="suggestion-member-modal-meta">
+              <p>
+                <span className="suggestion-member-modal-label">Submitted by</span>
+                {activeArchivedSuggestion.submittedByName}
+              </p>
+              <p>
+                <span className="suggestion-member-modal-label">Status</span>
+                <span
+                  className={`suggestion-status-pill suggestion-status-pill--${activeArchivedSuggestion.status}`}
+                >
+                  {statusOptions.find((option) => option.value === activeArchivedSuggestion.status)?.label ?? activeArchivedSuggestion.status}
+                </span>
+              </p>
+              <p>
+                <span className="suggestion-member-modal-label">Submitted</span>
+                {formatCompactDateTimeWithSeconds(
+                  `${activeArchivedSuggestion.createdAtDate} ${activeArchivedSuggestion.createdAtTime}`,
+                )}
+              </p>
+            </div>
+
+            <section className="suggestion-member-modal-section">
+              <h4>Suggestion</h4>
+              <p>{activeArchivedSuggestion.suggestionDetails || "No extra detail was provided."}</p>
+            </section>
+
+            <section className="suggestion-member-modal-section">
+              <h4>Improvement</h4>
+              <p>{activeArchivedSuggestion.improvementText}</p>
+            </section>
+
+            {activeArchivedSuggestion.resolutionNote ? (
+              <section className="suggestion-member-modal-section">
+                <h4>Committee outcome note</h4>
+                <p>{activeArchivedSuggestion.resolutionNote}</p>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

@@ -79,6 +79,12 @@ import { createCommitteeMinutesGateway } from "./infrastructure/persistence/comm
 import { createTournamentGateway } from "./infrastructure/persistence/tournamentGateway.js";
 import { createMemberDistanceSignOffRepository } from "./infrastructure/persistence/memberDistanceSignOffRepository.js";
 import {
+  ARROW_COLOUR_VALUE_SET,
+  ARROW_FLETCHING_COLOUR_VALUE_SET,
+  ARROW_MATERIAL_OPTION_SET,
+  ARROW_NOCK_COLOUR_VALUE_SET,
+} from "../shared/arrowSchema.js";
+import {
   createSecurityEventLogger,
   logServerError,
 } from "./observability/securityEventLogger.js";
@@ -1804,6 +1810,35 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
       placesRemaining: Math.max(course.beginner_capacity - beginners.length, 0),
     };
   });
+}
+
+function buildCaseReservationMap(allParticipants, allCourses) {
+  const coursesById = new Map(allCourses.map((course) => [course.id, course]));
+  const reservationsByCaseId = new Map();
+
+  for (const participant of allParticipants) {
+    if (!participant.assigned_case_id || participant.converted_to_member) {
+      continue;
+    }
+
+    const course = coursesById.get(participant.course_id);
+
+    if (!course || Boolean(course.is_cancelled)) {
+      continue;
+    }
+
+    if (!reservationsByCaseId.has(participant.assigned_case_id)) {
+      reservationsByCaseId.set(participant.assigned_case_id, {
+        participantId: participant.id,
+        participantUsername: participant.username,
+        participantName: `${participant.first_name} ${participant.surname}`.trim(),
+        courseId: participant.course_id,
+        courseType: normalizeCourseType(course.course_type),
+      });
+    }
+  }
+
+  return reservationsByCaseId;
 }
 
 async function findBeginnersCourseAuditSnapshot(courseId, courseType = null) {
@@ -3764,8 +3799,30 @@ function sanitizeEquipmentDetailText(value, maxLength = 60) {
   return value.trim().slice(0, maxLength);
 }
 
+function sanitizeInchMeasurement(value, maxLength = 20) {
+  const sanitized = sanitizeEquipmentDetailText(value, maxLength);
+
+  if (!sanitized) {
+    return "";
+  }
+
+  return sanitized
+    .replace(/\s*(?:inches|inch|in)\s*$/i, "")
+    .replace(/"+$/g, "")
+    .trim();
+}
+
 function sanitizeEquipmentDetailOption(value, allowedValues) {
   return allowedValues.includes(value) ? value : "";
+}
+
+function sanitizeEquipmentSharedOption(value, allowedValues) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  return allowedValues.has(trimmed) ? trimmed : "";
 }
 
 function sanitizeEquipmentDetails(payload, equipmentType) {
@@ -3773,7 +3830,7 @@ function sanitizeEquipmentDetails(payload, equipmentType) {
     case EQUIPMENT_TYPES.RISER:
       return {
         makeModel: sanitizeEquipmentDetailText(payload?.makeModel, 80),
-        length: sanitizeEquipmentDetailText(payload?.equipmentLength, 20),
+        length: sanitizeInchMeasurement(payload?.equipmentLength, 20),
         handedness: sanitizeEquipmentDetailOption(payload?.handedness, ["left", "right"]),
         colour: sanitizeEquipmentDetailText(payload?.colour, 40),
       };
@@ -3811,8 +3868,31 @@ function sanitizeEquipmentDetails(payload, equipmentType) {
       };
     case EQUIPMENT_TYPES.ARROWS:
       return {
-        fletchingColour: sanitizeEquipmentDetailText(payload?.fletchingColour, 40),
-        nockColour: sanitizeEquipmentDetailText(payload?.nockColour, 40),
+        arrowMaterial: sanitizeEquipmentSharedOption(
+          payload?.arrowMaterial,
+          ARROW_MATERIAL_OPTION_SET,
+        ),
+        arrowColour: sanitizeEquipmentSharedOption(
+          payload?.arrowColour,
+          ARROW_COLOUR_VALUE_SET,
+        ),
+        arrowIdentifier: sanitizeEquipmentDetailText(payload?.arrowIdentifier, 64),
+        fletchingColour1: sanitizeEquipmentSharedOption(
+          payload?.fletchingColour1,
+          ARROW_FLETCHING_COLOUR_VALUE_SET,
+        ),
+        fletchingColour2: sanitizeEquipmentSharedOption(
+          payload?.fletchingColour2,
+          ARROW_FLETCHING_COLOUR_VALUE_SET,
+        ),
+        fletchingColour3: sanitizeEquipmentSharedOption(
+          payload?.fletchingColour3,
+          ARROW_FLETCHING_COLOUR_VALUE_SET,
+        ),
+        nockColour: sanitizeEquipmentSharedOption(
+          payload?.nockColour,
+          ARROW_NOCK_COLOUR_VALUE_SET,
+        ),
         spine: sanitizeEquipmentDetailText(payload?.arrowSpine, 20),
       };
     default:
@@ -3834,7 +3914,7 @@ function buildEquipmentDisplayLabel(item) {
   const details = parseEquipmentDetails(item.details_json);
 
   if (item.equipment_type === EQUIPMENT_TYPES.CASE) {
-    const caseSize = item.size_category === "junior" ? "Long" : "Short";
+    const caseSize = item.size_category === "junior" ? "Compound" : "Recurve";
     return `${caseSize} ${typeLabel} ${item.item_number || ""}`.trim();
   }
 
@@ -3876,14 +3956,41 @@ function parseEquipmentDetails(detailsJson) {
   }
 }
 
+function buildArrowFletchingSummary(details) {
+  const fletchingColours = [
+    details.fletchingColour1,
+    details.fletchingColour2,
+    details.fletchingColour3,
+  ].filter(Boolean);
+
+  if (fletchingColours.length > 0) {
+    return `Fletch ${fletchingColours.join("/")}`;
+  }
+
+  if (details.fletchingColour) {
+    return `Fletch ${details.fletchingColour}`;
+  }
+
+  return "";
+}
+
 function buildEquipmentDetailSummary(item, details) {
   switch (item.equipment_type) {
     case EQUIPMENT_TYPES.RISER:
-      return [details.makeModel, details.length ? `${details.length}"` : "", details.handedness, details.colour]
+      return [
+        details.makeModel,
+        details.length ? `${sanitizeInchMeasurement(details.length, 20)}"` : "",
+        details.handedness ? `${details.handedness}-handed` : "",
+        details.colour ? `${details.colour} finish` : "",
+      ]
         .filter(Boolean)
         .join(" | ");
     case EQUIPMENT_TYPES.LIMB:
-      return [details.makeModel, details.length, details.poundage]
+      return [
+        details.makeModel,
+        details.length || "",
+        details.poundage ? `${details.poundage} lb` : "",
+      ]
         .filter(Boolean)
         .join(" | ");
     case EQUIPMENT_TYPES.QUIVER:
@@ -3894,7 +4001,14 @@ function buildEquipmentDetailSummary(item, details) {
     case EQUIPMENT_TYPES.CHEST_GUARD:
       return [details.fitSize, details.handedness].filter(Boolean).join(" | ");
     case EQUIPMENT_TYPES.ARROWS:
-      return [details.fletchingColour, details.nockColour, details.spine ? `Spine ${details.spine}` : ""]
+      return [
+        details.arrowMaterial,
+        details.arrowColour,
+        details.arrowIdentifier ? `marked ${details.arrowIdentifier}` : "",
+        buildArrowFletchingSummary(details),
+        details.nockColour ? `Nock ${details.nockColour}` : "",
+        details.spine ? `Spine ${details.spine}` : "",
+      ]
         .filter(Boolean)
         .join(" | ");
     default:
@@ -3921,13 +4035,16 @@ function buildEquipmentIdentity(item) {
 }
 
 async function buildEquipmentMaps() {
-  const [items, loans] = await Promise.all([
+  const [items, loans, allParticipants, allCourses] = await Promise.all([
     equipmentGateway.listEquipmentItems(),
     equipmentGateway.listEquipmentLoans(),
+    beginnersCourseReadGateway.listParticipants(),
+    beginnersCourseReadGateway.listCourses(),
   ]);
   const itemsById = new Map(items.map((item) => [item.id, item]));
   const contentsByCaseId = new Map();
   const openLoanByItemId = new Map();
+  const caseReservationByCaseId = buildCaseReservationMap(allParticipants, allCourses);
 
   for (const loan of loans) {
     if (!loan.returned_at_date) {
@@ -3951,6 +4068,7 @@ async function buildEquipmentMaps() {
     loans,
     contentsByCaseId,
     openLoanByItemId,
+    caseReservationByCaseId,
   };
 }
 
@@ -4011,6 +4129,7 @@ function getEquipmentCurrentLocation(item, maps) {
 function buildEquipmentItemResponse(item, maps) {
   const currentLocation = getEquipmentCurrentLocation(item, maps);
   const openLoan = maps.openLoanByItemId.get(item.id) ?? null;
+  const currentReservation = maps.caseReservationByCaseId.get(item.id) ?? null;
   const isCaseContentLoan =
     item.location_type === EQUIPMENT_LOCATION_TYPES.CASE &&
     item.location_case_id &&
@@ -4042,6 +4161,7 @@ function buildEquipmentItemResponse(item, maps) {
       ? `${item.last_storage_updated_at_date} ${item.last_storage_updated_at_time}`.trim()
       : "",
     currentLocation,
+    currentReservation,
     currentLoan: openLoan && !isCaseContentLoan
       ? {
           memberUsername: openLoan.member_username,
@@ -4190,6 +4310,13 @@ function sanitizeEquipmentCreatePayload(payload) {
       detailsJson: JSON.stringify(details),
     },
   };
+}
+
+function sanitizeEquipmentCorrectionPayload(payload, existingItem) {
+  return sanitizeEquipmentCreatePayload({
+    ...payload,
+    equipmentType: existingItem?.equipment_type,
+  });
 }
 
 function sanitizeLoanBow(loanBow) {
@@ -4815,6 +4942,7 @@ registerEquipmentRoutes({
   memberDirectoryGateway,
   PERMISSIONS,
   sanitizeCupboardLabel,
+  sanitizeEquipmentCorrectionPayload,
   sanitizeEquipmentCreatePayload,
   serverEventBus,
   validateCaseAssignment,
@@ -5051,6 +5179,10 @@ app.get("/api/beginners-courses/dashboard", async (req, res) => {
       reference: caseItem.number || caseItem.label || "",
       locationLabel: caseItem.currentLocation?.label ?? "",
       memberUsername: caseItem.currentLocation?.memberUsername ?? "",
+      reservedParticipantUsername:
+        caseItem.currentReservation?.participantUsername ?? "",
+      reservedParticipantName:
+        caseItem.currentReservation?.participantName ?? "",
     })),
   });
 });
@@ -6244,6 +6376,114 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     courseType,
   );
   const [convertedAtDate, convertedAtTime] = getUtcTimestampParts();
+
+  try {
+    if (participant.assigned_case_id) {
+      const caseItem = await equipmentGateway.findEquipmentItemById(
+        participant.assigned_case_id,
+      );
+
+      if (!caseItem || caseItem.equipment_type !== EQUIPMENT_TYPES.CASE) {
+        res.status(400).json({
+          success: false,
+          message: "The assigned case could not be found.",
+        });
+        return;
+      }
+
+      if (caseItem.status !== "active") {
+        res.status(400).json({
+          success: false,
+          message: "The assigned case is not active.",
+        });
+        return;
+      }
+
+      if (
+        caseItem.location_type === EQUIPMENT_LOCATION_TYPES.MEMBER &&
+        caseItem.location_member_username &&
+        caseItem.location_member_username !== existingUser.username
+      ) {
+        res.status(400).json({
+          success: false,
+          message: "The assigned case is already with another member.",
+        });
+        return;
+      }
+
+      if (await equipmentGateway.findOpenEquipmentLoanByItemId(caseItem.id)) {
+        res.status(400).json({
+          success: false,
+          message: "The assigned case is already on loan.",
+        });
+        return;
+      }
+
+      const caseContents = await equipmentGateway.listEquipmentItemsByCaseId(caseItem.id);
+
+      for (const content of caseContents) {
+        if (await equipmentGateway.findOpenEquipmentLoanByItemId(content.id)) {
+          res.status(400).json({
+            success: false,
+            message: "The assigned case contains equipment that is already on loan.",
+          });
+          return;
+        }
+      }
+
+      await equipmentGateway.createEquipmentLoan(
+        caseItem.id,
+        existingUser.username,
+        actor.username,
+        convertedAtDate,
+        convertedAtTime,
+        null,
+      );
+      await equipmentGateway.updateEquipmentItemStorage({
+        id: caseItem.id,
+        locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
+        locationLabel: null,
+        locationCaseId: null,
+        locationMemberUsername: existingUser.username,
+        storageByUsername: actor.username,
+        storageAtDate: convertedAtDate,
+        storageAtTime: convertedAtTime,
+      });
+      await equipmentGateway.updateEquipmentAssignmentMetadata({
+        id: caseItem.id,
+        assignedByUsername: actor.username,
+        assignedAtDate: convertedAtDate,
+        assignedAtTime: convertedAtTime,
+      });
+
+      for (const content of caseContents) {
+        await equipmentGateway.createEquipmentLoan(
+          content.id,
+          existingUser.username,
+          actor.username,
+          convertedAtDate,
+          convertedAtTime,
+          caseItem.id,
+        );
+        await equipmentGateway.updateEquipmentAssignmentMetadata({
+          id: content.id,
+          assignedByUsername: actor.username,
+          assignedAtDate: convertedAtDate,
+          assignedAtTime: convertedAtTime,
+        });
+      }
+    }
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Unable to convert the beginner with the assigned case.",
+    });
+    return;
+  }
+
   await beginnersCourseWriteGateway.markParticipantConverted({
     actorUsername: actor.username,
     convertedAtDate,
@@ -6327,9 +6567,6 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
   const nextCase = nextCaseId
     ? await equipmentGateway.findEquipmentItemById(nextCaseId)
     : null;
-  const currentCase = participant.assigned_case_id
-    ? await equipmentGateway.findEquipmentItemById(participant.assigned_case_id)
-    : null;
   const [date, time] = getUtcTimestampParts();
 
   if (nextCase) {
@@ -6365,70 +6602,12 @@ app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) 
     }
   }
 
-  const clearLegacyCaseLoans = async (caseItem) => {
-    if (!caseItem) {
-      return;
-    }
-
-    const openCaseLoan = await equipmentGateway.findOpenEquipmentLoanByItemId(caseItem.id);
-    const relatedOpenLoans = await equipmentGateway.listOpenEquipmentLoansByCaseId(caseItem.id);
-
-    if (openCaseLoan) {
-      await equipmentGateway.closeEquipmentLoan({
-        id: openCaseLoan.id,
-        returnCaseId: null,
-        returnLocationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
-        returnLocationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-        returnedAtDate: date,
-        returnedAtTime: time,
-        returnedByUsername: actor.username,
-      });
-    }
-
-    for (const loan of relatedOpenLoans) {
-      await equipmentGateway.closeEquipmentLoan({
-        id: loan.id,
-        returnCaseId: caseItem.id,
-        returnLocationLabel: null,
-        returnLocationType: EQUIPMENT_LOCATION_TYPES.CASE,
-        returnedAtDate: date,
-        returnedAtTime: time,
-        returnedByUsername: actor.username,
-      });
-    }
-  };
-
   const previousParticipant = await findBeginnersParticipantAuditSnapshot(
     participant.id,
     courseType,
   );
   try {
-    if (currentCase && (!nextCase || currentCase.id !== nextCase.id)) {
-      await clearLegacyCaseLoans(currentCase);
-      await equipmentGateway.updateEquipmentItemStorage({
-        id: currentCase.id,
-        locationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-        locationLabel: DEFAULT_EQUIPMENT_CUPBOARD_LABEL,
-        locationCaseId: null,
-        locationMemberUsername: null,
-        storageByUsername: actor.username,
-        storageAtDate: date,
-        storageAtTime: time,
-      });
-    }
-
     if (nextCase) {
-      await clearLegacyCaseLoans(nextCase);
-      await equipmentGateway.updateEquipmentItemStorage({
-        id: nextCase.id,
-        locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
-        locationLabel: null,
-        locationCaseId: null,
-        locationMemberUsername: participant.username,
-        storageByUsername: actor.username,
-        storageAtDate: date,
-        storageAtTime: time,
-      });
       await equipmentGateway.updateEquipmentAssignmentMetadata({
         id: nextCase.id,
         assignedByUsername: actor.username,

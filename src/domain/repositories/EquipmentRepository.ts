@@ -3,6 +3,12 @@ export abstract class EquipmentRepository {
 
   abstract addItem(actorUsername: string, payload: unknown): Promise<unknown>;
 
+  abstract correctItem(
+    actorUsername: string,
+    itemId: string | number,
+    payload: unknown,
+  ): Promise<unknown>;
+
   abstract decommissionItem(
     actorUsername: string,
     itemId: string | number,

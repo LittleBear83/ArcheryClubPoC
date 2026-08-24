@@ -1,4 +1,11 @@
+import { ColourDropdown } from "../../components/ColourDropdown";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import {
+  ARROW_COLOUR_OPTIONS,
+  ARROW_FLETCHING_COLOUR_OPTIONS,
+  ARROW_MATERIAL_OPTIONS,
+  ARROW_NOCK_COLOUR_OPTIONS,
+} from "../../../../shared/arrowSchema.js";
 import {
   EQUIPMENT_EXTENDED_HANDEDNESS_OPTIONS,
   EQUIPMENT_HANDEDNESS_OPTIONS,
@@ -57,20 +64,62 @@ export function EquipmentAddDetailsFields({
           </label>
 
           <label>
-            Fletching colour
+            Arrow material
+            <select
+              value={addForm.arrowMaterial}
+              onChange={updateAddFormField("arrowMaterial")}
+            >
+              <option value="">Select material</option>
+              {ARROW_MATERIAL_OPTIONS.map((material) => (
+                <option key={material} value={material}>
+                  {material.charAt(0).toUpperCase() + material.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <ColourDropdown
+            label="Arrow colour"
+            options={ARROW_COLOUR_OPTIONS}
+            value={addForm.arrowColour}
+            onChange={updateAddFormField("arrowColour")}
+          />
+
+          <label>
+            Arrow initial or number
             <input
-              value={addForm.fletchingColour}
-              onChange={updateAddFormField("fletchingColour")}
+              value={addForm.arrowIdentifier}
+              onChange={updateAddFormField("arrowIdentifier")}
             />
           </label>
 
-          <label>
-            Nock colour
-            <input
-              value={addForm.nockColour}
-              onChange={updateAddFormField("nockColour")}
-            />
-          </label>
+          <ColourDropdown
+            label="Fletching colour 1"
+            options={ARROW_FLETCHING_COLOUR_OPTIONS}
+            value={addForm.fletchingColour1}
+            onChange={updateAddFormField("fletchingColour1")}
+          />
+
+          <ColourDropdown
+            label="Fletching colour 2"
+            options={ARROW_FLETCHING_COLOUR_OPTIONS}
+            value={addForm.fletchingColour2}
+            onChange={updateAddFormField("fletchingColour2")}
+          />
+
+          <ColourDropdown
+            label="Fletching colour 3"
+            options={ARROW_FLETCHING_COLOUR_OPTIONS}
+            value={addForm.fletchingColour3}
+            onChange={updateAddFormField("fletchingColour3")}
+          />
+
+          <ColourDropdown
+            label="Nock colour"
+            options={ARROW_NOCK_COLOUR_OPTIONS}
+            value={addForm.nockColour}
+            onChange={updateAddFormField("nockColour")}
+          />
 
           <label>
             Spine

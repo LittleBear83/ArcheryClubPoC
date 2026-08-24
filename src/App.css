@@ -4806,6 +4806,15 @@ button:disabled {
   color: var(--muted);
 }
 
+.reporting-desktop-only {
+  display: block;
+  min-width: 0;
+}
+
+.reporting-mobile-only {
+  display: none;
+}
+
 .reporting-detail-panel {
   display: grid;
   gap: 18px;
@@ -4857,6 +4866,33 @@ button:disabled {
 .reporting-table--compact th,
 .reporting-table--compact td {
   padding: 9px 10px;
+}
+
+.reporting-mobile-flow-list,
+.reporting-mobile-row-list,
+.reporting-mobile-row-card .mobile-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.reporting-mobile-row-card--nested {
+  padding: 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 78%, var(--surface-deep));
+}
+
+.reporting-summary-cards .reporting-summary-card {
+  display: grid;
+  gap: 10px;
+}
+
+.reporting-summary-cards .reporting-breakdown-list {
+  display: grid;
+  gap: 6px;
+}
+
+.reporting-summary-cards .reporting-breakdown-list p {
+  margin: 0;
 }
 
 .mobile-section-header {
@@ -5172,6 +5208,65 @@ button:disabled {
   color: var(--text-h);
   font-size: 1rem;
   font-weight: 800;
+}
+
+.reporting-mobile-journey-card {
+  gap: 10px;
+}
+
+.reporting-mobile-journey-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 10px;
+}
+
+.reporting-mobile-journey-title-block {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.reporting-mobile-journey-route {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.reporting-mobile-journey-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.reporting-mobile-journey-status--converted {
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 45%, var(--panel-border));
+}
+
+.reporting-mobile-journey-status--active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text-h);
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--panel-border));
+}
+
+.reporting-mobile-journey-flow {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 70%, var(--surface-deep));
+  color: var(--text-h);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .range-usage-filter-form--mobile {
@@ -8197,6 +8292,137 @@ button:disabled {
 }
 
 @media (max-width: 720px) {
+  .reporting-desktop-only {
+    display: none !important;
+  }
+
+  .reporting-mobile-only {
+    display: block !important;
+    min-width: 0;
+  }
+
+  .beginners-journey-reporting-page,
+  .beginners-journey-reporting-page > *,
+  .beginners-journey-reporting-page .usage-hourly-panel,
+  .beginners-journey-reporting-page .usage-card {
+    min-width: 0;
+  }
+
+  .beginners-journey-reporting-filters,
+  .reporting-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-cards.reporting-summary-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .beginners-journey-reporting-page .usage-card,
+  .beginners-journey-reporting-page .usage-hourly-panel,
+  .beginners-journey-reporting-page .reporting-detail-card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .beginners-journey-reporting-page .usage-hourly-header {
+    margin-bottom: 10px;
+  }
+
+  .beginners-journey-reporting-page .usage-hourly-header h3 {
+    font-size: 1.05rem;
+  }
+
+  .beginners-journey-reporting-page .usage-hourly-header p,
+  .beginners-journey-reporting-page .usage-card-range,
+  .beginners-journey-reporting-page .reporting-breakdown-list p,
+  .beginners-journey-reporting-page .reporting-table-note {
+    overflow-wrap: anywhere;
+  }
+
+  .beginners-journey-reporting-page .usage-card-stats {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .beginners-journey-reporting-page .usage-card-stats strong {
+    font-size: 1.35rem;
+  }
+
+  .beginners-journey-reporting-page .usage-card-title {
+    margin-bottom: 2px;
+    font-size: 1rem;
+  }
+
+  .beginners-journey-reporting-page .usage-card-range {
+    margin-bottom: 10px;
+    font-size: 0.92rem;
+  }
+
+  .beginners-journey-reporting-page .usage-stat-label {
+    font-size: 0.76rem;
+  }
+
+  .beginners-journey-reporting-page .mobile-key-value-row {
+    grid-template-columns: minmax(0, 82px) minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .beginners-journey-reporting-page .reporting-mobile-row-card {
+    gap: 8px;
+    padding: 11px;
+  }
+
+  .beginners-journey-reporting-page .reporting-mobile-row-card--nested {
+    padding: 9px 10px;
+  }
+
+  .beginners-journey-reporting-page .reporting-mobile-row-title {
+    font-size: 0.92rem;
+  }
+
+  .beginners-journey-reporting-page .reporting-mobile-journey-route {
+    font-size: 0.78rem;
+  }
+
+  .beginners-journey-reporting-page .reporting-mobile-journey-status {
+    min-height: 24px;
+    padding: 3px 8px;
+    font-size: 0.74rem;
+  }
+
+  .beginners-journey-reporting-page .reporting-mobile-journey-flow {
+    padding: 9px 10px;
+    font-size: 0.86rem;
+  }
+
+  .beginners-journey-reporting-page .mobile-section-header {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .beginners-journey-reporting-page .mobile-section-header-copy {
+    gap: 4px;
+  }
+
+  .beginners-journey-reporting-page .mobile-section-header-copy h3 {
+    font-size: 0.96rem;
+  }
+
+  .beginners-journey-reporting-page .mobile-section-header-copy p,
+  .beginners-journey-reporting-page .mobile-key-value-row dt,
+  .beginners-journey-reporting-page .mobile-key-value-row dd {
+    font-size: 0.88rem;
+  }
+
+  .beginners-journey-reporting-page .reporting-table,
+  .beginners-journey-reporting-page .reporting-table th,
+  .beginners-journey-reporting-page .reporting-table td {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
   .server-events-diagnostics {
     right: 12px;
     bottom: 12px;
@@ -8212,6 +8438,49 @@ button:disabled {
 
   .server-events-diagnostics-panel {
     padding: 0 12px 10px;
+  }
+}
+
+@media (max-width: 560px) {
+  .usage-cards.reporting-summary-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .beginners-journey-reporting-page .usage-card-stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .beginners-journey-reporting-page .usage-card-stats strong {
+    font-size: 1.2rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .beginners-journey-reporting-page .usage-card-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .beginners-journey-reporting-page .mobile-key-value-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .beginners-journey-reporting-page .mobile-key-value-row dt {
+    font-size: 0.8rem;
+  }
+
+  .beginners-journey-reporting-page .mobile-key-value-row dd {
+    font-size: 0.9rem;
+  }
+
+  .beginners-journey-reporting-page .reporting-mobile-journey-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .beginners-journey-reporting-page .reporting-mobile-journey-status {
+    width: fit-content;
   }
 }
 

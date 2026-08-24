@@ -37,6 +37,8 @@ export function AskQuestionPage({ currentUserProfile }: AskQuestionPageProps) {
   });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showArchive, setShowArchive] = useState(false);
+  const [archiveSearch, setArchiveSearch] = useState("");
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -46,6 +48,39 @@ export function AskQuestionPage({ currentUserProfile }: AskQuestionPageProps) {
   });
 
   const questions = useMemo(() => data?.questions ?? [], [data?.questions]);
+  const openQuestions = useMemo(
+    () => questions.filter((question) => question.status !== "answered"),
+    [questions],
+  );
+  const archivedQuestions = useMemo(
+    () => questions.filter((question) => question.status === "answered"),
+    [questions],
+  );
+  const filteredArchivedQuestions = useMemo(() => {
+    const term = archiveSearch.trim().toLowerCase();
+
+    if (!term) {
+      return archivedQuestions;
+    }
+
+    return archivedQuestions.filter((question) =>
+      [
+        question.questionTitle,
+        question.questionBody,
+        question.responseText,
+        question.status,
+        question.respondedByName,
+        question.createdAtDate,
+        question.createdAtTime,
+        question.respondedAtDate,
+        question.respondedAtTime,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term),
+    );
+  }, [archiveSearch, archivedQuestions]);
   const unreadResponseCount = useMemo(
     () => questions.filter((question) => question.status === "answered" && !question.memberSeenResponse).length,
     [questions],
@@ -191,29 +226,127 @@ export function AskQuestionPage({ currentUserProfile }: AskQuestionPageProps) {
               You have not asked the committee any questions yet.
             </p>
           ) : (
-            <div className="suggestion-member-history-list" role="list">
-              {questions.map((question) => (
-                <button
-                  key={question.id}
-                  type="button"
-                  className="suggestion-member-history-row"
-                  onClick={() => openQuestion(question)}
-                >
-                  <div className="suggestion-member-history-main">
-                    <strong>{question.questionTitle}</strong>
-                    <span>
-                      {formatCompactDateTimeWithSeconds(
-                        `${question.createdAtDate} ${question.createdAtTime}`,
-                      )}
-                    </span>
+            <div className="suggestion-member-history-sections">
+              <section className="suggestion-member-history-group">
+                <div className="suggestion-member-history-group-header">
+                  <h3>Open questions</h3>
+                  <p>{openQuestions.length} waiting for a reply</p>
+                </div>
+                {openQuestions.length === 0 ? (
+                  <p className="suggestion-member-history-empty">
+                    No open questions right now.
+                  </p>
+                ) : (
+                  <div className="suggestion-member-history-list" role="list">
+                    {openQuestions.map((question) => (
+                      <button
+                        key={question.id}
+                        type="button"
+                        className="suggestion-member-history-row"
+                        onClick={() => openQuestion(question)}
+                      >
+                        <div className="suggestion-member-history-main">
+                          <strong>{question.questionTitle}</strong>
+                          <span>
+                            {formatCompactDateTimeWithSeconds(
+                              `${question.createdAtDate} ${question.createdAtTime}`,
+                            )}
+                          </span>
+                        </div>
+                        <span
+                          className={`suggestion-status-pill suggestion-status-pill--${question.status}`}
+                        >
+                          {statusLabelMap[question.status]}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                  <span
-                    className={`suggestion-status-pill suggestion-status-pill--${question.status}`}
-                  >
-                    {statusLabelMap[question.status]}
-                  </span>
-                </button>
-              ))}
+                )}
+              </section>
+
+              <section className="suggestion-member-history-group">
+                <div className="suggestion-member-history-group-header">
+                  <h3>Question archive</h3>
+                  <p>{archivedQuestions.length} closed questions</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="suggestion-archive-toggle"
+                  onClick={() => setShowArchive((current) => !current)}
+                >
+                  {showArchive
+                    ? "Hide archive"
+                    : `Show archive (${archivedQuestions.length})`}
+                </Button>
+                {archivedQuestions.length === 0 ? (
+                  <p className="suggestion-member-history-empty">
+                    Closed questions will appear here once they have been answered.
+                  </p>
+                ) : !showArchive ? (
+                  <p className="suggestion-member-history-empty">
+                    Use the archive button to review closed questions.
+                  </p>
+                ) : (
+                  <div className="archive-table-section">
+                    <label className="archive-table-search">
+                      Search archive
+                      <input
+                        type="search"
+                        value={archiveSearch}
+                        onChange={(event) => setArchiveSearch(event.target.value)}
+                        placeholder="Search title, response, status, or date"
+                      />
+                    </label>
+                    <div className="archive-table-wrap">
+                    <table className="archive-table">
+                      <thead>
+                        <tr>
+                          <th>Question</th>
+                          <th>Asked</th>
+                          <th>Status</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredArchivedQuestions.map((question) => (
+                          <tr key={question.id}>
+                            <td>{question.questionTitle}</td>
+                            <td>
+                              {formatCompactDateTimeWithSeconds(
+                                `${question.createdAtDate} ${question.createdAtTime}`,
+                              )}
+                            </td>
+                            <td>
+                              <span
+                                className={`suggestion-status-pill suggestion-status-pill--${question.status}`}
+                              >
+                                {statusLabelMap[question.status]}
+                              </span>
+                            </td>
+                            <td>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="archive-table-action"
+                                onClick={() => openQuestion(question)}
+                              >
+                                View
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {filteredArchivedQuestions.length === 0 ? (
+                          <tr>
+                            <td colSpan={4}>No archived questions match the current search.</td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                  </div>
+                )}
+              </section>
             </div>
           )}
         </section>

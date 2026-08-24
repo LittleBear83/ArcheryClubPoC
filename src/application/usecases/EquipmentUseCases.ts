@@ -34,6 +34,26 @@ export class AddEquipmentItemUseCase {
   }
 }
 
+export class CorrectEquipmentItemUseCase {
+  private readonly equipmentRepository: EquipmentRepository;
+
+  constructor({ equipmentRepository }) {
+    this.equipmentRepository = equipmentRepository;
+  }
+
+  async execute({ actorUsername, itemId, payload }) {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!itemId) {
+      throw new Error("An equipment item id is required.");
+    }
+
+    return this.equipmentRepository.correctItem(actorUsername, itemId, payload);
+  }
+}
+
 export class DecommissionEquipmentItemUseCase {
   private readonly equipmentRepository: EquipmentRepository;
 

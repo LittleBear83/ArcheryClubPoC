@@ -35,24 +35,25 @@ export function EquipmentCaseAssignmentModal({
 
           <div className="equipment-case-modal-grid">
             {CASE_ASSIGNMENT_FIELDS.map((field) => (
-              <LabeledSelect
-                key={field.key}
-                className="equipment-case-select"
-                label={field.label}
-                value={caseAssignmentSelections[field.key] ?? ""}
-                onChange={updateCaseAssignmentSelection(field.key)}
-              >
-                <option value="">No selection</option>
-                {getCaseAssignmentOptions(
-                  field.type,
-                  activeCaseModal,
-                  field.key,
-                ).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </LabeledSelect>
+              <div key={field.key} className="equipment-case-modal-field">
+                <LabeledSelect
+                  className="equipment-case-select"
+                  label={field.label}
+                  value={caseAssignmentSelections[field.key] ?? ""}
+                  onChange={updateCaseAssignmentSelection(field.key)}
+                >
+                  <option value="">No selection</option>
+                  {getCaseAssignmentOptions(
+                    field.type,
+                    activeCaseModal,
+                    field.key,
+                  ).map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </LabeledSelect>
+              </div>
             ))}
           </div>
 

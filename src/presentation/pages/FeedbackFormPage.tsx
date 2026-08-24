@@ -41,6 +41,8 @@ export function FeedbackFormPage({
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [activeSuggestion, setActiveSuggestion] = useState<SuggestionRecord | null>(null);
+  const [showArchive, setShowArchive] = useState(false);
+  const [archiveSearch, setArchiveSearch] = useState("");
   const queryClient = useQueryClient();
 
   const { data, isLoading: isLoadingSuggestions } = useQuery({
@@ -50,6 +52,45 @@ export function FeedbackFormPage({
   });
 
   const suggestions = useMemo(() => data?.suggestions ?? [], [data?.suggestions]);
+  const activeSuggestions = useMemo(
+    () =>
+      suggestions.filter(
+        (suggestion) =>
+          suggestion.status !== "implemented" && suggestion.status !== "declined",
+      ),
+    [suggestions],
+  );
+  const archivedSuggestions = useMemo(
+    () =>
+      suggestions.filter(
+        (suggestion) =>
+          suggestion.status === "implemented" || suggestion.status === "declined",
+      ),
+    [suggestions],
+  );
+  const filteredArchivedSuggestions = useMemo(() => {
+    const term = archiveSearch.trim().toLowerCase();
+
+    if (!term) {
+      return archivedSuggestions;
+    }
+
+    return archivedSuggestions.filter((suggestion) =>
+      [
+        suggestion.suggestionTitle,
+        suggestion.submittedByName,
+        suggestion.status,
+        suggestion.resolutionNote,
+        suggestion.suggestionDetails,
+        suggestion.improvementText,
+        suggestion.createdAtDate,
+        suggestion.createdAtTime,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(term),
+    );
+  }, [archiveSearch, archivedSuggestions]);
 
   const submitMutation = useMutation({
     mutationFn: () => createSuggestion(currentUserProfile, form),
@@ -182,29 +223,127 @@ export function FeedbackFormPage({
               You have not submitted any suggestions yet.
             </p>
           ) : (
-            <div className="suggestion-member-history-list" role="list">
-              {suggestions.map((suggestion) => (
-                <button
-                  key={suggestion.id}
-                  type="button"
-                  className="suggestion-member-history-row"
-                  onClick={() => setActiveSuggestion(suggestion)}
-                >
-                  <div className="suggestion-member-history-main">
-                    <strong>{suggestion.suggestionTitle}</strong>
-                    <span>
-                      {formatCompactDateTimeWithSeconds(
-                        `${suggestion.createdAtDate} ${suggestion.createdAtTime}`,
-                      )}
-                    </span>
+            <div className="suggestion-member-history-sections">
+              <section className="suggestion-member-history-group">
+                <div className="suggestion-member-history-group-header">
+                  <h3>Active suggestions</h3>
+                  <p>{activeSuggestions.length} still under review</p>
+                </div>
+                {activeSuggestions.length === 0 ? (
+                  <p className="suggestion-member-history-empty">
+                    No active suggestions right now.
+                  </p>
+                ) : (
+                  <div className="suggestion-member-history-list" role="list">
+                    {activeSuggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.id}
+                        type="button"
+                        className="suggestion-member-history-row"
+                        onClick={() => setActiveSuggestion(suggestion)}
+                      >
+                        <div className="suggestion-member-history-main">
+                          <strong>{suggestion.suggestionTitle}</strong>
+                          <span>
+                            {formatCompactDateTimeWithSeconds(
+                              `${suggestion.createdAtDate} ${suggestion.createdAtTime}`,
+                            )}
+                          </span>
+                        </div>
+                        <span
+                          className={`suggestion-status-pill suggestion-status-pill--${suggestion.status}`}
+                        >
+                          {statusLabelMap[suggestion.status]}
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                  <span
-                    className={`suggestion-status-pill suggestion-status-pill--${suggestion.status}`}
-                  >
-                    {statusLabelMap[suggestion.status]}
-                  </span>
-                </button>
-              ))}
+                )}
+              </section>
+
+              <section className="suggestion-member-history-group">
+                <div className="suggestion-member-history-group-header">
+                  <h3>Suggestion archive</h3>
+                  <p>{archivedSuggestions.length} closed suggestions</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="suggestion-archive-toggle"
+                  onClick={() => setShowArchive((current) => !current)}
+                >
+                  {showArchive
+                    ? "Hide archive"
+                    : `Show archive (${archivedSuggestions.length})`}
+                </Button>
+                {archivedSuggestions.length === 0 ? (
+                  <p className="suggestion-member-history-empty">
+                    Closed suggestions will appear here once they have been completed.
+                  </p>
+                ) : !showArchive ? (
+                  <p className="suggestion-member-history-empty">
+                    Use the archive button to review closed suggestions.
+                  </p>
+                ) : (
+                  <div className="archive-table-section">
+                    <label className="archive-table-search">
+                      Search archive
+                      <input
+                        type="search"
+                        value={archiveSearch}
+                        onChange={(event) => setArchiveSearch(event.target.value)}
+                        placeholder="Search title, status, notes, or date"
+                      />
+                    </label>
+                    <div className="archive-table-wrap">
+                    <table className="archive-table">
+                      <thead>
+                        <tr>
+                          <th>Suggestion</th>
+                          <th>Submitted</th>
+                          <th>Status</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredArchivedSuggestions.map((suggestion) => (
+                          <tr key={suggestion.id}>
+                            <td>{suggestion.suggestionTitle}</td>
+                            <td>
+                              {formatCompactDateTimeWithSeconds(
+                                `${suggestion.createdAtDate} ${suggestion.createdAtTime}`,
+                              )}
+                            </td>
+                            <td>
+                              <span
+                                className={`suggestion-status-pill suggestion-status-pill--${suggestion.status}`}
+                              >
+                                {statusLabelMap[suggestion.status]}
+                              </span>
+                            </td>
+                            <td>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className="archive-table-action"
+                                onClick={() => setActiveSuggestion(suggestion)}
+                              >
+                                View
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                        {filteredArchivedSuggestions.length === 0 ? (
+                          <tr>
+                            <td colSpan={4}>No archived suggestions match the current search.</td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                  </div>
+                )}
+              </section>
             </div>
           )}
         </section>

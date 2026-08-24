@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { hasPermission } from "../../../utils/userProfile";
 import {
+  buildEquipmentFormFromItem,
   CASE_ASSIGNMENT_FIELDS,
   EMPTY_ADD_FORM,
   getEquipmentLoanDateLabel,
@@ -26,6 +27,8 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   const [newStorageLocation, setNewStorageLocation] = useState("");
   const [removeStorageLocation, setRemoveStorageLocation] = useState("");
   const [decommissionReason, setDecommissionReason] = useState("");
+  const [editForm, setEditForm] = useState(EMPTY_ADD_FORM);
+  const [editingItemId, setEditingItemId] = useState("");
   const [inventoryFilter, setInventoryFilter] = useState("");
   const [inventorySort, setInventorySort] = useState({
     column: "type",
@@ -111,24 +114,6 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     }
   }, [cupboardLabel, cupboardOptions]);
 
-  useEffect(() => {
-    const removableLocations = cupboardOptions.filter(
-      (option) => option !== "Main Cupboard",
-    );
-
-    if (
-      removableLocations.length > 0 &&
-      !removableLocations.includes(removeStorageLocation)
-    ) {
-      setRemoveStorageLocation(removableLocations[0]);
-      return;
-    }
-
-    if (removableLocations.length === 0 && removeStorageLocation) {
-      setRemoveStorageLocation("");
-    }
-  }, [cupboardOptions, removeStorageLocation]);
-
   const activeItems = useMemo(
     () => items.filter((item) => item.status === "active"),
     [items],
@@ -158,9 +143,35 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     [activeCaseModalId, cases],
   );
   const removableStorageOptions = useMemo(
-    () => cupboardOptions.filter((option) => option !== "Main Cupboard"),
-    [cupboardOptions],
+    () => {
+      const occupiedLocations = new Set(
+        activeItems
+          .filter((item) => item.currentLocation?.type === "cupboard")
+          .map((item) => item.currentLocation.label)
+          .filter(Boolean),
+      );
+
+      return cupboardOptions.filter(
+        (option) =>
+          option !== "Main Cupboard" && !occupiedLocations.has(option),
+      );
+    },
+    [activeItems, cupboardOptions],
   );
+
+  useEffect(() => {
+    if (
+      removableStorageOptions.length > 0 &&
+      !removableStorageOptions.includes(removeStorageLocation)
+    ) {
+      setRemoveStorageLocation(removableStorageOptions[0]);
+      return;
+    }
+
+    if (removableStorageOptions.length === 0 && removeStorageLocation) {
+      setRemoveStorageLocation("");
+    }
+  }, [removableStorageOptions, removeStorageLocation]);
 
   const filteredInventoryItems = useMemo(() => {
     const normalizedFilter = inventoryFilter.trim().toLowerCase();
@@ -172,10 +183,12 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
       const memberName = getEquipmentMemberLabel(item);
       const loanDate = getEquipmentLoanDateLabel(item);
       const lastAssignedBy = item.lastAssignedBy || "";
+      const details = item.detailSummary || "";
 
       return [
         item.typeLabel,
         getEquipmentReferenceLabel(item),
+        details,
         getEquipmentLocationLabel(item),
         memberName,
         loanDate,
@@ -284,6 +297,28 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     onSuccess: async () => {
       setMessage("Equipment decommissioned successfully.");
       setDecommissionReason("");
+      await refreshDashboard();
+    },
+    onError: (mutationError) => {
+      setError(mutationError.message);
+    },
+  });
+
+  const correctEquipmentMutation = useMutation({
+    mutationFn: () =>
+      equipmentCrud.correctEquipmentItemUseCase.execute({
+        actorUsername,
+        itemId: editingItemId,
+        payload: editForm,
+      }),
+    onMutate: () => {
+      setError("");
+      setMessage("");
+    },
+    onSuccess: async () => {
+      setMessage("Equipment details corrected successfully.");
+      setEditingItemId("");
+      setEditForm(EMPTY_ADD_FORM);
       await refreshDashboard();
     },
     onError: (mutationError) => {
@@ -404,8 +439,11 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     },
   });
 
-  const updateAddFormField = (field) => (event) => {
-    const nextValue = event.target.value;
+  const updateAddFormField = (field) => (eventOrValue) => {
+    const nextValue =
+      typeof eventOrValue === "string"
+        ? eventOrValue
+        : eventOrValue.target.value;
 
     setAddForm((current) =>
       field === "equipmentType"
@@ -420,9 +458,44 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     );
   };
 
+  const updateEditFormField = (field) => (eventOrValue) => {
+    const nextValue =
+      typeof eventOrValue === "string"
+        ? eventOrValue
+        : eventOrValue.target.value;
+
+    setEditForm((current) => ({
+      ...current,
+      [field]: nextValue,
+    }));
+  };
+
   const handleAddEquipmentSubmit = (event) => {
     event.preventDefault();
     void addEquipmentMutation.mutateAsync();
+  };
+
+  const openEquipmentCorrectionModal = () => {
+    if (!selectedItem) {
+      return;
+    }
+
+    setEditingItemId(String(selectedItem.id));
+    setEditForm(buildEquipmentFormFromItem(selectedItem));
+  };
+
+  const closeEquipmentCorrectionModal = () => {
+    if (correctEquipmentMutation.isPending) {
+      return;
+    }
+
+    setEditingItemId("");
+    setEditForm(EMPTY_ADD_FORM);
+  };
+
+  const handleCorrectEquipmentSubmit = (event) => {
+    event.preventDefault();
+    void correctEquipmentMutation.mutateAsync();
   };
 
   const handleAssignEquipment = () => {
@@ -585,6 +658,10 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   const selectedItemSummary = selectedItem
     ? `${getEquipmentTypeDisplayLabel(selectedItem)} | ${getEquipmentReferenceLabel(selectedItem)} | ${selectedItem.status} | ${getEquipmentLocationLabel(selectedItem)}`
     : "";
+  const editingItem = useMemo(
+    () => items.find((item) => String(item.id) === editingItemId) ?? null,
+    [editingItemId, items],
+  );
 
   return {
     activeCaseModal,
@@ -596,6 +673,8 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     cases,
     caseAssignmentSelections,
     closeCaseAssignmentModal,
+    closeEquipmentCorrectionModal,
+    correctEquipmentMutation,
     cupboardLabel,
     cupboardOptions,
     currentUserProfile,
@@ -603,12 +682,15 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     decommissionReason,
     equipmentQuery,
     equipmentTypeOptions,
+    editForm,
+    editingItem,
     error,
     filteredInventoryItems,
     getCaseAssignmentOptions,
     handleAddEquipmentSubmit,
     handleAddStorageLocation,
     handleAssignEquipment,
+    handleCorrectEquipmentSubmit,
     handleDecommissionEquipment,
     handleRemoveStorageLocation,
     handleReturnEquipment,
@@ -623,6 +705,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     message,
     newStorageLocation,
     openCaseAssignmentModal,
+    openEquipmentCorrectionModal,
     permissions,
     removableStorageOptions,
     removeStorageLocationMutation,
@@ -650,6 +733,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     targetMemberUsername,
     toggleInventorySort,
     updateAddFormField,
+    updateEditFormField,
     updateCaseAssignmentSelection,
     updateInventorySortColumn,
     updateInventorySortDirection,

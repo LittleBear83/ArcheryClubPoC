@@ -4,6 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { DatePicker } from "../components/DatePicker";
 import { SectionPanel } from "../components/SectionPanel";
+import { MobileCardList } from "../components/mobile/MobileCardList";
+import { MobileKeyValueList } from "../components/mobile/MobileKeyValueList";
+import { MobileSectionHeader } from "../components/mobile/MobileSectionHeader";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { getMemberJourneyReport, type MemberJourneyReportRow } from "../../api/reportingApi";
 import { formatDate } from "../../utils/dateTime";
@@ -29,6 +32,25 @@ function buildStageRate(numerator: number, denominator: number) {
   }
 
   return Math.round((numerator / denominator) * 1000) / 10;
+}
+
+function formatCourseTypeLabel(value: string) {
+  if (value === "taster-session") {
+    return "Taster Session";
+  }
+
+  if (value === "beginners") {
+    return "Beginners Course";
+  }
+
+  if (value === "member") {
+    return "Full Member";
+  }
+
+  return value
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function BeginnersJourneySankey({
@@ -604,13 +626,81 @@ export function BeginnersAndTasterReportingPage({
                     selected date range.
                   </p>
                 </div>
-                <BeginnersJourneySankey
-                  tasterCount={tasterRows.length}
-                  tasterToBeginnersCount={tasterToBeginnersRows.length}
-                  tasterToMembersCount={tasterToMembersRows.length}
-                  directBeginnersCount={directBeginnersRows.length}
-                  directBeginnersToMembersCount={directBeginnersToMembersRows.length}
-                />
+                <div className="reporting-desktop-only">
+                  <BeginnersJourneySankey
+                    tasterCount={tasterRows.length}
+                    tasterToBeginnersCount={tasterToBeginnersRows.length}
+                    tasterToMembersCount={tasterToMembersRows.length}
+                    directBeginnersCount={directBeginnersRows.length}
+                    directBeginnersToMembersCount={directBeginnersToMembersRows.length}
+                  />
+                </div>
+                <div className="reporting-mobile-only">
+                  <MobileCardList className="reporting-mobile-flow-list">
+                    <article className="reporting-mobile-row-card">
+                      <MobileSectionHeader
+                        title="Taster Route"
+                        description="Taster Session through to full member."
+                      />
+                      <MobileKeyValueList
+                        items={[
+                          { label: "Start", value: `${tasterRows.length} Taster Session` },
+                          {
+                            label: "Reached beginners",
+                            value: String(tasterToBeginnersRows.length),
+                          },
+                          {
+                            label: "Converted",
+                            value: String(tasterToMembersRows.length),
+                          },
+                          {
+                            label: "Taster drop-off",
+                            value: String(
+                              Math.max(tasterRows.length - tasterToBeginnersRows.length, 0),
+                            ),
+                          },
+                          {
+                            label: "Beginners drop-off",
+                            value: String(
+                              Math.max(
+                                tasterToBeginnersRows.length - tasterToMembersRows.length,
+                                0,
+                              ),
+                            ),
+                          },
+                        ]}
+                      />
+                    </article>
+                    <article className="reporting-mobile-row-card">
+                      <MobileSectionHeader
+                        title="Direct Route"
+                        description="Beginners Course direct to full member."
+                      />
+                      <MobileKeyValueList
+                        items={[
+                          {
+                            label: "Start",
+                            value: `${directBeginnersRows.length} Beginners Course`,
+                          },
+                          {
+                            label: "Converted",
+                            value: String(directBeginnersToMembersRows.length),
+                          },
+                          {
+                            label: "Drop-off",
+                            value: String(
+                              Math.max(
+                                directBeginnersRows.length -
+                                  directBeginnersToMembersRows.length,
+                                0,
+                              ),
+                            ),
+                          },
+                        ]}
+                      />
+                    </article>
+                  </MobileCardList>
+                </div>
               </section>
 
               <section className="usage-hourly-panel reporting-panel reporting-detail-panel">
@@ -622,7 +712,7 @@ export function BeginnersAndTasterReportingPage({
                   </p>
                 </div>
 
-                <div className="reporting-detail-grid">
+                <div className="reporting-detail-grid reporting-desktop-only">
                   <article className="reporting-detail-card">
                     <div className="reporting-detail-card-header">
                       <h4>Taster Conversion Funnel</h4>
@@ -682,7 +772,7 @@ export function BeginnersAndTasterReportingPage({
                   </article>
                 </div>
 
-                <div className="reporting-detail-grid">
+                <div className="reporting-detail-grid reporting-desktop-only">
                   <article className="reporting-detail-card">
                     <div className="reporting-detail-card-header">
                       <h4>Combined Beginners To Member Funnel</h4>
@@ -739,6 +829,105 @@ export function BeginnersAndTasterReportingPage({
                     </div>
                   </article>
                 </div>
+
+                <div className="reporting-mobile-only">
+                  <MobileCardList>
+                    <article className="reporting-mobile-row-card">
+                      <MobileSectionHeader
+                        title="Taster Conversion Funnel"
+                        description="Step-by-step movement from taster attendee to member."
+                      />
+                      <MobileCardList>
+                        {tasterFunnelRows.map((row) => (
+                          <article
+                            key={`mobile-taster-${row.stage}`}
+                            className="reporting-mobile-row-card reporting-mobile-row-card--nested"
+                          >
+                            <p className="reporting-mobile-row-title">{row.stage}</p>
+                            <MobileKeyValueList
+                              items={[
+                                { label: "People", value: String(row.people) },
+                                { label: "Prev.", value: row.previous },
+                                { label: "From start", value: row.overall },
+                              ]}
+                            />
+                          </article>
+                        ))}
+                      </MobileCardList>
+                    </article>
+
+                    <article className="reporting-mobile-row-card">
+                      <MobileSectionHeader
+                        title="Direct Beginners Funnel"
+                        description="People who joined a Beginners Course directly."
+                      />
+                      <MobileCardList>
+                        {directBeginnersFunnelRows.map((row) => (
+                          <article
+                            key={`mobile-direct-${row.stage}`}
+                            className="reporting-mobile-row-card reporting-mobile-row-card--nested"
+                          >
+                            <p className="reporting-mobile-row-title">{row.stage}</p>
+                            <MobileKeyValueList
+                              items={[
+                                { label: "People", value: String(row.people) },
+                                { label: "Prev.", value: row.previous },
+                                { label: "From start", value: row.overall },
+                              ]}
+                            />
+                          </article>
+                        ))}
+                      </MobileCardList>
+                    </article>
+
+                    <article className="reporting-mobile-row-card">
+                      <MobileSectionHeader
+                        title="Combined Beginners Funnel"
+                        description="All Beginners attendees across both routes."
+                      />
+                      <MobileCardList>
+                        {beginnersFunnelRows.map((row) => (
+                          <article
+                            key={`mobile-beginners-${row.stage}`}
+                            className="reporting-mobile-row-card reporting-mobile-row-card--nested"
+                          >
+                            <p className="reporting-mobile-row-title">{row.stage}</p>
+                            <MobileKeyValueList
+                              items={[
+                                { label: "People", value: String(row.people) },
+                                { label: "Share", value: row.share },
+                              ]}
+                            />
+                          </article>
+                        ))}
+                      </MobileCardList>
+                    </article>
+
+                    <article className="reporting-mobile-row-card">
+                      <MobileSectionHeader
+                        title="Route Comparison"
+                        description="Compare conversion strength across the entry routes."
+                      />
+                      <MobileCardList>
+                        {beginnersBreakdownRows.map((row) => (
+                          <article
+                            key={`mobile-breakdown-${row.route}`}
+                            className="reporting-mobile-row-card reporting-mobile-row-card--nested"
+                          >
+                            <p className="reporting-mobile-row-title">{row.route}</p>
+                            <MobileKeyValueList
+                              items={[
+                                { label: "Cohort", value: String(row.cohort) },
+                                { label: "Converted", value: String(row.converted) },
+                                { label: "Rate", value: row.rate },
+                              ]}
+                            />
+                          </article>
+                        ))}
+                      </MobileCardList>
+                    </article>
+                  </MobileCardList>
+                </div>
               </section>
 
               <section className="usage-hourly-panel reporting-panel">
@@ -746,15 +935,16 @@ export function BeginnersAndTasterReportingPage({
                   <h3>Journey Detail</h3>
                   <p>
                     Individual attendee journeys across both entry routes for the
-                    selected period.
-                  </p>
-                </div>
+                  selected period.
+                </p>
+              </div>
                 {combinedJourneyRows.length === 0 ? (
                   <p className="usage-empty-state">
                     No attendee journeys started in the selected date range.
                   </p>
                 ) : (
-                  <div className="reporting-table-wrap">
+                  <>
+                  <div className="reporting-table-wrap reporting-desktop-only">
                     <table className="committee-roles-table reporting-table">
                       <thead>
                         <tr>
@@ -779,7 +969,7 @@ export function BeginnersAndTasterReportingPage({
                                 <td>{row.route}</td>
                                 <td>{row.name || row.username}</td>
                                 <td>{row.journey}</td>
-                                <td>{row.currentCourseType}</td>
+                                <td>{formatCourseTypeLabel(row.currentCourseType)}</td>
                                 <td>{row.convertedToMember ? "Yes" : "No"}</td>
                                 <td>
                                   {row.convertedAtDate
@@ -798,6 +988,64 @@ export function BeginnersAndTasterReportingPage({
                       </p>
                     ) : null}
                   </div>
+                  <div className="reporting-mobile-only">
+                    <MobileCardList className="reporting-mobile-row-list">
+                      {combinedJourneyRows.slice(0, 50).map((row) => (
+                        <article
+                          key={`journey-mobile-${row.id}`}
+                          className="reporting-mobile-row-card reporting-mobile-journey-card"
+                        >
+                          <div className="reporting-mobile-journey-header">
+                            <div className="reporting-mobile-journey-title-block">
+                              <p className="reporting-mobile-row-title">
+                                {row.name || row.username}
+                              </p>
+                              <p className="reporting-mobile-journey-route">
+                                {row.originCourseType === "taster-session"
+                                  ? "Taster Session route"
+                                  : "Direct Beginners route"}
+                              </p>
+                            </div>
+                            <span
+                              className={[
+                                "reporting-mobile-journey-status",
+                                row.convertedToMember
+                                  ? "reporting-mobile-journey-status--converted"
+                                  : "reporting-mobile-journey-status--active",
+                              ].join(" ")}
+                            >
+                              {row.convertedToMember ? "Converted" : "In progress"}
+                            </span>
+                          </div>
+                          <div className="reporting-mobile-journey-flow">
+                            {row.journey}
+                          </div>
+                          <MobileKeyValueList
+                            items={[
+                              { label: "Joined", value: formatDate(row.joinedAtDate) },
+                              {
+                                label: "Current stage",
+                                value: formatCourseTypeLabel(row.currentCourseType),
+                              },
+                              {
+                                label: "Converted date",
+                                value: row.convertedAtDate
+                                  ? formatDate(row.convertedAtDate)
+                                  : "-",
+                              },
+                            ]}
+                          />
+                        </article>
+                      ))}
+                    </MobileCardList>
+                    {combinedJourneyRows.length > 50 ? (
+                      <p className="reporting-table-note">
+                        Showing the first 50 journeys from {combinedJourneyRows.length}{" "}
+                        starters across both entry routes in this cohort.
+                      </p>
+                    ) : null}
+                  </div>
+                  </>
                 )}
               </section>
 

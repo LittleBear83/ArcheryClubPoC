@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
+import { Modal } from "../components/Modal";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import {
@@ -32,6 +33,10 @@ export function QuestionInboxPage({ currentUserProfile }: QuestionInboxPageProps
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [responses, setResponses] = useState<Record<number, string>>({});
+  const [showArchive, setShowArchive] = useState(false);
+  const [archiveSearch, setArchiveSearch] = useState("");
+  const [activeArchivedQuestion, setActiveArchivedQuestion] =
+    useState<MemberQuestionRecord | null>(null);
 
   const { data, isLoading, error: loadError } = useQuery({
     queryKey: memberQuestionQueryKeys.inbox(actorUsername),
@@ -48,6 +53,34 @@ export function QuestionInboxPage({ currentUserProfile }: QuestionInboxPageProps
     () => questions.filter((question) => question.status === "answered"),
     [questions],
   );
+  const filteredAnsweredQuestions = useMemo(() => {
+    const term = archiveSearch.trim().toLowerCase();
+
+    if (!term) {
+      return answeredQuestions;
+    }
+
+    return answeredQuestions.filter((question) =>
+      [
+        question.questionTitle,
+        question.questionBody,
+        question.responseText,
+        question.submittedByName,
+        question.submittedByUsername,
+        question.respondedByName,
+        question.respondedByUsername,
+        question.status,
+        question.createdAtDate,
+        question.createdAtTime,
+        question.respondedAtDate,
+        question.respondedAtTime,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(term),
+    );
+  }, [archiveSearch, answeredQuestions]);
 
   const responseMutation = useMutation({
     mutationFn: ({ questionId, responseText }: { questionId: number; responseText: string }) =>
@@ -224,22 +257,131 @@ export function QuestionInboxPage({ currentUserProfile }: QuestionInboxPageProps
 
             <section className="suggestion-inbox-group">
               <div className="suggestion-inbox-group-header">
-                <h3>Answered questions</h3>
-                <p>{answeredQuestions.length} already answered</p>
+                <h3>Question archive</h3>
+                <p>{answeredQuestions.length} closed questions</p>
               </div>
+              <Button
+                type="button"
+                variant="secondary"
+                className="suggestion-archive-toggle"
+                onClick={() => setShowArchive((current) => !current)}
+              >
+                {showArchive
+                  ? "Hide archive"
+                  : `Show archive (${answeredQuestions.length})`}
+              </Button>
               {answeredQuestions.length === 0 ? (
                 <p className="suggestion-inbox-empty-copy">
-                  Answered questions will appear here once the committee replies.
+                  Closed questions will appear here once the committee replies.
+                </p>
+              ) : !showArchive ? (
+                <p className="suggestion-inbox-empty-copy">
+                  Use the archive button to review closed questions.
                 </p>
               ) : (
-                <div className="suggestion-inbox-list">
-                  {answeredQuestions.map((question) => renderQuestionCard(question))}
+                <div className="archive-table-section">
+                  <label className="archive-table-search">
+                    Search archive
+                    <input
+                      type="search"
+                      value={archiveSearch}
+                      onChange={(event) => setArchiveSearch(event.target.value)}
+                      placeholder="Search title, member, response, or date"
+                    />
+                  </label>
+                  <div className="archive-table-wrap">
+                  <table className="archive-table">
+                    <thead>
+                      <tr>
+                        <th>Question</th>
+                        <th>Member</th>
+                        <th>Status</th>
+                        <th>Asked</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAnsweredQuestions.map((question) => (
+                        <tr key={question.id}>
+                          <td>{question.questionTitle}</td>
+                          <td>{question.submittedByName}</td>
+                          <td>
+                            <span
+                              className={`suggestion-status-pill suggestion-status-pill--${question.status}`}
+                            >
+                              {statusLabelMap[question.status]}
+                            </span>
+                          </td>
+                          <td>
+                            {formatCompactDateTimeWithSeconds(
+                              `${question.createdAtDate} ${question.createdAtTime}`,
+                            )}
+                          </td>
+                          <td>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="archive-table-action"
+                              onClick={() => setActiveArchivedQuestion(question)}
+                            >
+                              View
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredAnsweredQuestions.length === 0 ? (
+                        <tr>
+                          <td colSpan={5}>No archived questions match the current search.</td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
                 </div>
               )}
             </section>
           </div>
         )}
       </SectionPanel>
+
+      <Modal
+        open={Boolean(activeArchivedQuestion)}
+        onClose={() => setActiveArchivedQuestion(null)}
+        title={activeArchivedQuestion?.questionTitle ?? "Question details"}
+      >
+        {activeArchivedQuestion ? (
+          <div className="suggestion-member-modal">
+            <div className="suggestion-member-modal-meta">
+              <p>
+                <span className="suggestion-member-modal-label">Asked by</span>
+                {activeArchivedQuestion.submittedByName}
+              </p>
+              <p>
+                <span className="suggestion-member-modal-label">Asked</span>
+                {formatCompactDateTimeWithSeconds(
+                  `${activeArchivedQuestion.createdAtDate} ${activeArchivedQuestion.createdAtTime}`,
+                )}
+              </p>
+              <p>
+                <span className="suggestion-member-modal-label">Answered</span>
+                {formatCompactDateTimeWithSeconds(
+                  `${activeArchivedQuestion.respondedAtDate} ${activeArchivedQuestion.respondedAtTime}`,
+                )}
+              </p>
+            </div>
+
+            <section className="suggestion-member-modal-section">
+              <h4>Question</h4>
+              <p>{activeArchivedQuestion.questionBody}</p>
+            </section>
+
+            <section className="suggestion-member-modal-section">
+              <h4>Committee response</h4>
+              <p>{activeArchivedQuestion.responseText || "No response saved."}</p>
+            </section>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

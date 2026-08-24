@@ -16,6 +16,18 @@ export class EquipmentApi {
     });
   }
 
+  async correctEquipmentItem(
+    actorUsername: string,
+    itemId: string | number,
+    payload: unknown,
+  ) {
+    return fetchApi(`/api/equipment/items/${itemId}/corrections`, {
+      method: "POST",
+      headers: buildActorHeaders(actorUsername, true),
+      body: JSON.stringify(payload),
+    });
+  }
+
   async decommissionEquipmentItem(
     actorUsername: string,
     itemId: string | number,

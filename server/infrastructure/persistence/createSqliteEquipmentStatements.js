@@ -119,6 +119,17 @@ export function createSqliteEquipmentStatements(db) {
     WHERE id = @id
   `);
 
+  const updateEquipmentItemDetails = db.prepare(`
+    UPDATE equipment_items
+    SET
+      item_number = @itemNumber,
+      size_category = @sizeCategory,
+      arrow_length = @arrowLength,
+      arrow_quantity = @arrowQuantity,
+      details_json = @detailsJson
+    WHERE id = @id
+  `);
+
   const updateEquipmentItemStorage = db.prepare(`
     UPDATE equipment_items
     SET
@@ -271,6 +282,7 @@ export function createSqliteEquipmentStatements(db) {
     listOpenEquipmentLoansByCaseId,
     listOpenEquipmentLoansByMemberUserId,
     updateEquipmentAssignmentMetadata,
+    updateEquipmentItemDetails,
     updateEquipmentItemForDecommission,
     updateEquipmentItemStorage,
   };

@@ -2,6 +2,7 @@ import { useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "../components/Button";
 import { BeginnersCoursesPage } from "./BeginnersCoursesPage";
+import { BeginnersAndTasterReportingPage } from "./BeginnersAndTasterReportingPage";
 import { hasPermission } from "../../utils/userProfile";
 
 const TAB_OPTIONS = [
@@ -14,6 +15,11 @@ const TAB_OPTIONS = [
     id: "beginners",
     label: "Beginners Courses",
     permissionKeys: ["manage_beginners_courses", "approve_beginners_courses"],
+  },
+  {
+    id: "reporting",
+    label: "Reporting",
+    permissionKeys: ["view_reports"],
   },
 ] as const;
 
@@ -59,7 +65,7 @@ export function BeginnersAndTasterPage({
   }, [activeTab, requestedTab, searchParams, setSearchParams]);
 
   if (availableTabs.length === 0) {
-    return <p>You do not have permission to manage beginners courses or Taster Sessions.</p>;
+    return <p>You do not have permission to manage beginners courses, Taster Sessions, or view this reporting.</p>;
   }
 
   return (
@@ -94,10 +100,14 @@ export function BeginnersAndTasterPage({
         </div>
       ) : null}
 
-      <BeginnersCoursesPage
-        currentUserProfile={currentUserProfile}
-        variant={activeTab}
-      />
+      {activeTab === "reporting" ? (
+        <BeginnersAndTasterReportingPage currentUserProfile={currentUserProfile} />
+      ) : (
+        <BeginnersCoursesPage
+          currentUserProfile={currentUserProfile}
+          variant={activeTab}
+        />
+      )}
     </div>
   );
 }

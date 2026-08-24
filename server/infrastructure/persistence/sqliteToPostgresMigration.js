@@ -369,6 +369,7 @@ const orderedTableCopies = [
       "size_category",
       "arrow_length",
       "arrow_quantity",
+      "details_json",
       "status",
       "location_type",
       "location_label",

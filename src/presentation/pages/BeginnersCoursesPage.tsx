@@ -146,6 +146,8 @@ type BulkCoachAssignmentCourse = {
 type CancelledCourseSummary = {
   id: number;
   firstLessonDate: string;
+  startTime: string;
+  endTime: string;
   coordinatorName: string;
   archiveReason: string;
 };
@@ -202,6 +204,20 @@ function hasCourseStarted(course: CourseRecord) {
   }
 
   return courseStart.getTime() <= Date.now();
+}
+
+function formatCourseTimeRange(startTime: string, endTime: string) {
+  const formatShortClockTime = (value: string) => formatClockTime(value).slice(0, 5);
+
+  if (!startTime && !endTime) {
+    return "";
+  }
+
+  if (startTime && endTime) {
+    return `${formatShortClockTime(startTime)} to ${formatShortClockTime(endTime)}`;
+  }
+
+  return formatShortClockTime(startTime || endTime);
 }
 
 function BeginnerFormFields({ copy, form, onChange, onToggle }) {
@@ -551,6 +567,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
         .map((course) => ({
           id: course.id,
           firstLessonDate: course.firstLessonDate,
+          startTime: course.startTime,
+          endTime: course.endTime,
           coordinatorName: course.coordinatorName,
           archiveReason:
             course.cancellationReason ||
@@ -735,6 +753,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       {
         id: course.id,
         firstLessonDate: course.firstLessonDate,
+        startTime: course.startTime,
+        endTime: course.endTime,
         coordinatorName: course.coordinatorName,
         archiveReason: reason,
       },
@@ -1066,7 +1086,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                     {copy.itemLabel} from {formatDate(course.firstLessonDate)}
                   </h3>
                   <p className="equipment-meta-copy">
-                    Coordinator: {course.coordinatorName} | {copy.countMetaLabel}: {course.lessonCount} | {copy.capacityMetaLabel}:
+                    Time: {formatCourseTimeRange(course.startTime, course.endTime)} | Coordinator: {course.coordinatorName} | {copy.countMetaLabel}: {course.lessonCount} | {copy.capacityMetaLabel}:
                     {" "}
                     {course.beginnerCapacity} | {copy.remainingMetaLabel}: {course.placesRemaining}
                   </p>
@@ -1700,7 +1720,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
             {showCancelledCourses ? copy.hideCancelledLabel : copy.showCancelledLabel}
           </Button>
         </div>
-        {showCancelledCourses ? (
+              {showCancelledCourses ? (
           cancelledCourses.length > 0 ? (
             <div className="beginners-course-cancelled-list">
               {cancelledCourses.map((course) => (
@@ -1709,6 +1729,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                   className="beginners-course-cancelled-item"
                 >
                   <strong>{formatDate(course.firstLessonDate)}</strong>
+                  <span>Time: {formatCourseTimeRange(course.startTime, course.endTime)}</span>
                   <span>Coordinator: {course.coordinatorName}</span>
                   <span>Reason: {course.archiveReason || "No reason recorded."}</span>
                 </div>
@@ -1915,6 +1936,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
             availableBeginnersTransferCourses.map((course) => (
               <div key={course.id} className="beginners-course-cancelled-item">
                 <strong>{formatDate(course.firstLessonDate)}</strong>
+                <span>Time: {formatCourseTimeRange(course.startTime, course.endTime)}</span>
                 <span>Coordinator: {course.coordinatorName}</span>
                 <span>
                   Places remaining: {course.placesRemaining} of {course.beginnerCapacity}

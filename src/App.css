@@ -2576,13 +2576,20 @@ button:disabled {
 }
 
 .home-approval-summary-link:hover {
-  color: var(--accent);
+  background: transparent;
+  color: var(--text);
+  outline: 2px solid #ffffff;
+  outline-offset: 3px;
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .home-approval-summary-link:focus-visible {
-  outline: 2px solid var(--accent);
+  background: transparent;
+  outline: 2px solid #ffffff;
   outline-offset: 3px;
   border-radius: 6px;
+  box-shadow: none;
 }
 
 .home-approval-summary-list strong {

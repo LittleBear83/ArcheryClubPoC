@@ -1,5 +1,5 @@
 import { Button } from "../components/Button";
-import { formatDate } from "../../utils/dateTime";
+import { formatClockTime, formatDate } from "../../utils/dateTime";
 import {
   formatRangeMemberDisplayName,
   getUserProfileKey,
@@ -26,6 +26,10 @@ function formatCoachedSessionLabel(courseType) {
     default:
       return "Beginners course";
   }
+}
+
+function formatShortClockTime(timeInput) {
+  return formatClockTime(timeInput).slice(0, 5);
 }
 
 function MobileOnSiteFeatureCard({ mobileOnSiteFeature }) {
@@ -193,6 +197,7 @@ function SignedUpEventsList({ events, coachAssignments }) {
           clubEventItems.map((event) => (
             <li key={event.id}>
               <strong>{formatDate(event.date)}</strong>
+              {event.startTime ? ` ${formatShortClockTime(event.startTime)}` : ""}
               {`: ${event.title}`}
             </li>
           ))
@@ -320,6 +325,11 @@ function BeginnerTodayCard({ dashboard }) {
           <p>
             Lesson {dashboard.lessonToday.lessonNumber} on{" "}
             <strong>{formatDate(dashboard.lessonToday.date)}</strong>
+            {" at "}
+            <strong>
+              {formatShortClockTime(dashboard.lessonToday.startTime)} to{" "}
+              {formatShortClockTime(dashboard.lessonToday.endTime)}
+            </strong>
           </p>
           <p>
             Coaches:{" "}

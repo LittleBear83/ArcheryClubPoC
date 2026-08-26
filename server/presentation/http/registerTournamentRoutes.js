@@ -177,6 +177,49 @@ export function registerTournamentRoutes({
 
     return eligibleBowOptions.length === 1 ? eligibleBowOptions[0].code : "";
   };
+  const buildRegistrationContext = async (tournament, username) => {
+    const user = await memberDirectoryGateway.findUserByUsername(username);
+
+    if (!user) {
+      return null;
+    }
+
+    const disciplines = memberDirectoryGateway?.findDisciplinesByUsername
+      ? await memberDirectoryGateway.findDisciplinesByUsername(username)
+      : [];
+    const eligibleBowOptions = resolveBowOptionsForDisciplines(disciplines);
+
+    let suggestedBowCode =
+      eligibleBowOptions.length === 1 ? eligibleBowOptions[0].code : "";
+
+    if (
+      !suggestedBowCode &&
+      isCaptainsSwordTournament(tournament) &&
+      goldenRecordsCurrentHandicapService?.isEnabled
+    ) {
+      const goldenRecordsSnapshot =
+        await goldenRecordsCurrentHandicapService.getSnapshotForMember({
+          archeryGbMembershipNumber: user.archery_gb_membership_number ?? "",
+          firstName: user.first_name ?? "",
+          goldenRecordsId: user.gr_id ?? "",
+          surname: user.surname ?? "",
+          username: user.username,
+        });
+      const recentIndoorHandicap = getMostRecentIndoorHandicapEntry(
+        goldenRecordsSnapshot?.handicaps ?? [],
+      );
+
+      suggestedBowCode = mapGoldenRecordsBowClassToBowCode(
+        recentIndoorHandicap?.bowClass,
+      );
+    }
+
+    return {
+      eligibleBowOptions,
+      suggestedBowCode,
+      user,
+    };
+  };
   const enrichTournamentRegistrations = async (tournament, registrations = []) =>
     Promise.all(
       registrations.map(async (registration) => {
@@ -505,6 +548,74 @@ export function registerTournamentRoutes({
       tournaments,
       tournamentTemplates: TOURNAMENT_TEMPLATE_OPTIONS,
       tournamentTypes: TOURNAMENT_TYPE_OPTIONS,
+    });
+  });
+
+  app.get("/api/tournaments/:id/registration-candidates", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor) {
+      res.status(401).json({
+        success: false,
+        message: "An authenticated member is required.",
+      });
+      return;
+    }
+
+    if (!actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to manage tournament registrations.",
+      });
+      return;
+    }
+
+    const tournament = await tournamentGateway.findTournamentById(req.params.id);
+
+    if (!tournament) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament not found.",
+      });
+      return;
+    }
+
+    const registrations =
+      await tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id);
+    const registeredUsernames = new Set(
+      registrations.map((registration) =>
+        String(registration.member_username ?? registration.username ?? "").trim().toLowerCase()),
+    );
+    const users = await memberDirectoryGateway.listAllUsers();
+    const candidates = await Promise.all(
+      users.map(async (user) => {
+        if (registeredUsernames.has(String(user.username ?? "").trim().toLowerCase())) {
+          return null;
+        }
+
+        const registrationContext = await buildRegistrationContext(
+          tournament,
+          user.username,
+        );
+
+        if (!registrationContext) {
+          return null;
+        }
+
+        return {
+          bowOptions: registrationContext.eligibleBowOptions,
+          fullName: `${user.first_name} ${user.surname}`.trim(),
+          suggestedBowCode: registrationContext.suggestedBowCode || null,
+          username: user.username,
+        };
+      }),
+    );
+
+    res.json({
+      success: true,
+      members: candidates
+        .filter(Boolean)
+        .sort((left, right) => left.fullName.localeCompare(right.fullName)),
     });
   });
 
@@ -846,18 +957,48 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const actorDisciplines = await memberDirectoryGateway.findDisciplinesByUsername(
-      actor.username,
+    const requestedUsername = String(req.body?.memberUsername ?? "").trim();
+    const isManagerRegistration =
+      Boolean(requestedUsername) && requestedUsername !== actor.username;
+
+    if (
+      isManagerRegistration &&
+      !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)
+    ) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to register another member.",
+      });
+      return;
+    }
+
+    const registrationUsername = requestedUsername || actor.username;
+    const registrationContext = await buildRegistrationContext(
+      tournament,
+      registrationUsername,
     );
-    const eligibleBowOptions = resolveBowOptionsForDisciplines(actorDisciplines);
+
+    if (!registrationContext) {
+      res.status(404).json({
+        success: false,
+        message: "Member not found.",
+      });
+      return;
+    }
+
+    const { eligibleBowOptions, suggestedBowCode } = registrationContext;
     const requestedBowCode = normalizeBowCode(req.body?.bowCode);
     const resolvedBowCode =
-      eligibleBowOptions.length === 1 ? eligibleBowOptions[0].code : requestedBowCode;
+      eligibleBowOptions.length === 1
+        ? eligibleBowOptions[0].code
+        : requestedBowCode || suggestedBowCode;
 
     if (eligibleBowOptions.length > 1 && !resolvedBowCode) {
       res.status(400).json({
         success: false,
-        message: "Choose which bow you will be shooting with for this tournament.",
+        message: isManagerRegistration
+          ? "Choose which bow this member will be shooting with for this tournament."
+          : "Choose which bow you will be shooting with for this tournament.",
       });
       return;
     }
@@ -888,7 +1029,7 @@ export function registerTournamentRoutes({
         bowCode: resolvedBowCode || null,
         timestampParts: [registeredAtDate, registeredAtTime],
         tournamentId: tournament.id,
-        username: actor.username,
+        username: registrationUsername,
       });
 
       if (auditChangeLogger) {
@@ -898,12 +1039,12 @@ export function registerTournamentRoutes({
           after: {
             bowCode: resolvedBowCode || null,
             tournamentId: tournament.id,
-            username: actor.username,
+            username: registrationUsername,
           },
           before: null,
           changedAtDate: registeredAtDate,
           changedAtTime: registeredAtTime,
-          entityId: `${tournament.id}:${actor.username}`,
+          entityId: `${tournament.id}:${registrationUsername}`,
           entityLabel: tournament.name,
           entityType: "tournament_registration",
           req,
@@ -920,7 +1061,9 @@ export function registerTournamentRoutes({
       ) {
         res.status(409).json({
           success: false,
-          message: "You are already registered for this tournament.",
+          message: isManagerRegistration
+            ? "That member is already registered for this tournament."
+            : "You are already registered for this tournament.",
         });
         return;
       }
@@ -978,15 +1121,45 @@ export function registerTournamentRoutes({
       return;
     }
 
+    const requestedUsername = String(req.body?.memberUsername ?? "").trim();
+    const isManagerWithdrawal =
+      Boolean(requestedUsername) && requestedUsername !== actor.username;
+
+    if (
+      isManagerWithdrawal &&
+      !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)
+    ) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to remove another member.",
+      });
+      return;
+    }
+
+    const withdrawalUsername = requestedUsername || actor.username;
+    const withdrawalUser = await memberDirectoryGateway.findUserByUsername(
+      withdrawalUsername,
+    );
+
+    if (!withdrawalUser) {
+      res.status(404).json({
+        success: false,
+        message: "Member not found.",
+      });
+      return;
+    }
+
     const deleteResult = await tournamentGateway.deleteTournamentRegistration(
       tournament.id,
-      actor.id,
+      withdrawalUser.id,
     );
 
     if (deleteResult.changes === 0) {
       res.status(404).json({
         success: false,
-        message: "You are not registered for this tournament.",
+        message: isManagerWithdrawal
+          ? "That member is not registered for this tournament."
+          : "You are not registered for this tournament.",
       });
       return;
     }
@@ -999,11 +1172,11 @@ export function registerTournamentRoutes({
         after: null,
         before: {
           tournamentId: tournament.id,
-          username: actor.username,
+          username: withdrawalUsername,
         },
         changedAtDate: withdrawnAtDate,
         changedAtTime: withdrawnAtTime,
-        entityId: `${tournament.id}:${actor.username}`,
+        entityId: `${tournament.id}:${withdrawalUsername}`,
         entityLabel: tournament.name,
         entityType: "tournament_registration",
         req,

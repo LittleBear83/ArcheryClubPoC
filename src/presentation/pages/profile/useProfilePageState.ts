@@ -134,8 +134,12 @@ export function useProfilePageState({
     setSelectedUsername,
   });
 
-  const handleSelectMember = (event) => {
-    setSelectedUsername(event.target.value);
+  const handleSelectMember = (nextSelection) => {
+    setSelectedUsername(
+      typeof nextSelection === "string"
+        ? nextSelection
+        : nextSelection?.target?.value ?? "",
+    );
   };
 
   const handleChange = (field) => (event) => {

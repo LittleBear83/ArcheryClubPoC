@@ -1,5 +1,5 @@
 import { Button } from "../../components/Button";
-import { LabeledSelect } from "../../components/LabeledSelect";
+import { MemberAutocomplete } from "../../components/MemberAutocomplete";
 import { MemberProfileForm } from "../../components/MemberProfileForm";
 import { DeleteMemberModal } from "./DeleteMemberModal";
 import { SectionPanel } from "../../components/SectionPanel";
@@ -10,10 +10,7 @@ import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { MobileSectionHeader } from "../../components/mobile/MobileSectionHeader";
 import { formatDate, formatDateTime } from "../../../utils/dateTime";
 import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
-import {
-  formatMemberDisplayName,
-  formatMemberDisplayUsername,
-} from "../../../utils/userProfile";
+import { formatMemberDisplayName, formatMemberDisplayUsername } from "../../../utils/userProfile";
 import type { useProfilePageState } from "./useProfilePageState";
 
 type ProfilePageState = ReturnType<typeof useProfilePageState>;
@@ -94,19 +91,20 @@ export function ProfileMobileView({
       {canSelectMembers ? (
         <SectionPanel className="profile-admin-panel" title="Member Selection">
           <div className="profile-mobile-stack">
-            <LabeledSelect
+            <MemberAutocomplete
+              clearDisplayOnFocus
+              fullWidth
+              maxWidth="28rem"
               label="Select member"
+              options={memberOptions.map((member) => ({
+                keywords: [formatMemberDisplayUsername(member), member.username],
+                label: formatMemberDisplayName(member),
+                value: member.username,
+              }))}
               value={selectedUsername}
-              onChange={handleSelectMember}
+              onValueChange={handleSelectMember}
               disabled={isInitialLoading || isRefreshingProfile || isSaving}
-            >
-              {memberOptions.map((member) => (
-                <option key={member.username} value={member.username}>
-                  {formatMemberDisplayName(member)} (
-                  {formatMemberDisplayUsername(member)})
-                </option>
-              ))}
-            </LabeledSelect>
+            />
             {canManageMembers && editableProfile ? (
               <>
                 <Button
@@ -117,7 +115,7 @@ export function ProfileMobileView({
                   variant="danger"
                   fullWidth
                 >
-                  {editableProfile.rfidTag?.trim() ? "Issue new card" : "Add tag"}
+                  {editableProfile.rfidTag?.trim() ? "Issue new fob" : "Add fob"}
                 </Button>
                 {editableProfile.username !== currentUserProfile?.auth?.username ? (
                   <Button

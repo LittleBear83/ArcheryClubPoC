@@ -3,7 +3,7 @@ import net from "node:net";
 
 const API_PORT = 3001;
 const WEB_PORT = 5173;
-const API_READY_TIMEOUT_MS = 30000;
+const API_READY_TIMEOUT_MS = Number(process.env.API_READY_TIMEOUT_MS ?? 90000);
 const API_READY_POLL_MS = 250;
 const isWindows = process.platform === "win32";
 
@@ -11,23 +11,54 @@ function log(message) {
   process.stdout.write(`${message}\n`);
 }
 
-function waitForPort(port, timeoutMs) {
+function waitForPort(port, timeoutMs, child) {
   const start = Date.now();
 
   return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const rejectOnce = (error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      reject(error);
+    };
+
+    const resolveOnce = () => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      resolve();
+    };
+
+    child?.once("exit", (code, signal) => {
+      const reason = signal
+        ? `signal ${signal}`
+        : `code ${code ?? 0}`;
+      rejectOnce(
+        new Error(
+          `Backend process exited with ${reason} before http://127.0.0.1:${port} became available.`,
+        ),
+      );
+    });
+
     const tryConnect = () => {
       const socket = net.createConnection({ port, host: "127.0.0.1" });
 
       socket.once("connect", () => {
         socket.end();
-        resolve();
+        resolveOnce();
       });
 
       socket.once("error", () => {
         socket.destroy();
 
         if (Date.now() - start >= timeoutMs) {
-          reject(
+          rejectOnce(
             new Error(`Timed out waiting for http://127.0.0.1:${port} to accept connections.`),
           );
           return;
@@ -117,10 +148,10 @@ process.on("SIGTERM", () => {
 log(`Open the app at http://localhost:${WEB_PORT}`);
 log(`Backend API runs at http://localhost:${API_PORT}`);
 
-spawnNpmScript("dev:server", "api");
+const apiProcess = spawnNpmScript("dev:server", "api");
 
 try {
-  await waitForPort(API_PORT, API_READY_TIMEOUT_MS);
+  await waitForPort(API_PORT, API_READY_TIMEOUT_MS, apiProcess);
 } catch (error) {
   shutdown();
   throw error;

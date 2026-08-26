@@ -12,9 +12,13 @@ type TournamentDataSource = {
   registerForTournament(
     actorUsername: string,
     tournamentId: string | number,
-    payload?: { bowCode?: string },
+    payload?: { bowCode?: string; memberUsername?: string },
   ): Promise<unknown>;
-  withdrawFromTournament(actorUsername: string, tournamentId: string | number): Promise<unknown>;
+  withdrawFromTournament(
+    actorUsername: string,
+    tournamentId: string | number,
+    payload?: { memberUsername?: string },
+  ): Promise<unknown>;
   submitTournamentScore(
     actorUsername: string,
     tournamentId: string | number,
@@ -71,8 +75,8 @@ export class TournamentRepositoryImpl extends TournamentRepository {
     return this.dataSource.registerForTournament(actorUsername, tournamentId, payload);
   }
 
-  async withdrawFromTournament(actorUsername, tournamentId) {
-    return this.dataSource.withdrawFromTournament(actorUsername, tournamentId);
+  async withdrawFromTournament(actorUsername, tournamentId, payload) {
+    return this.dataSource.withdrawFromTournament(actorUsername, tournamentId, payload);
   }
 
   async submitTournamentScore(actorUsername, tournamentId, scoreSubmission) {

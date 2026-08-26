@@ -66,10 +66,6 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     () => equipmentQuery.data?.items ?? [],
     [equipmentQuery.data?.items],
   );
-  const cases = useMemo(
-    () => equipmentQuery.data?.cases ?? [],
-    [equipmentQuery.data?.cases],
-  );
   const members = useMemo(
     () => equipmentQuery.data?.members ?? [],
     [equipmentQuery.data?.members],
@@ -118,6 +114,10 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     () => items.filter((item) => item.status === "active"),
     [items],
   );
+  const cases = useMemo(
+    () => (equipmentQuery.data?.cases ?? []).filter((caseItem) => caseItem.status === "active"),
+    [equipmentQuery.data?.cases],
+  );
   const loanedItems = useMemo(
     () => activeItems.filter((item) => item.currentLoan),
     [activeItems],
@@ -127,8 +127,8 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     [activeItems],
   );
   const selectedItem = useMemo(
-    () => items.find((item) => String(item.id) === selectedItemId) ?? null,
-    [items, selectedItemId],
+    () => activeItems.find((item) => String(item.id) === selectedItemId) ?? null,
+    [activeItems, selectedItemId],
   );
   const selectedReturnItem = useMemo(
     () => loanedItems.find((item) => String(item.id) === selectedItemId) ?? null,
@@ -175,7 +175,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
 
   const filteredInventoryItems = useMemo(() => {
     const normalizedFilter = inventoryFilter.trim().toLowerCase();
-    const rows = items.filter((item) => {
+    const rows = activeItems.filter((item) => {
       if (!normalizedFilter) {
         return true;
       }
@@ -231,7 +231,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     });
 
     return sortedRows;
-  }, [inventoryFilter, inventorySort, items]);
+  }, [activeItems, inventoryFilter, inventorySort]);
 
   const toggleInventorySort = (column) => {
     setInventorySort((current) => ({
@@ -659,8 +659,8 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     ? `${getEquipmentTypeDisplayLabel(selectedItem)} | ${getEquipmentReferenceLabel(selectedItem)} | ${selectedItem.status} | ${getEquipmentLocationLabel(selectedItem)}`
     : "";
   const editingItem = useMemo(
-    () => items.find((item) => String(item.id) === editingItemId) ?? null,
-    [editingItemId, items],
+    () => activeItems.find((item) => String(item.id) === editingItemId) ?? null,
+    [activeItems, editingItemId],
   );
 
   return {

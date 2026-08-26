@@ -140,6 +140,8 @@ type TournamentsMobileViewProps = {
   selectedRegistrationBowCode: string;
   onSelectTournament: (tournamentId: TournamentRecord["id"]) => void;
   onRegistrationBowCodeChange: (nextValue: string) => void;
+  onOpenCaptainRegistrationModal: () => void;
+  onOpenCaptainRemovalModal: () => void;
   onRegister: () => void;
   onWithdraw: () => void;
   onSaveCompetitorList: () => void;
@@ -172,6 +174,8 @@ export function TournamentsMobileView({
   selectedRegistrationBowCode,
   onSelectTournament,
   onRegistrationBowCodeChange,
+  onOpenCaptainRegistrationModal,
+  onOpenCaptainRemovalModal,
   onRegister,
   onWithdraw,
   onSaveCompetitorList,
@@ -303,6 +307,33 @@ export function TournamentsMobileView({
               >
                 {isSaving && selectedTournament.canWithdraw ? "Updating..." : "Withdraw"}
               </Button>
+
+              {canManageTournaments ? (
+                <Button
+                  type="button"
+                  className="tournament-secondary-button"
+                  onClick={onOpenCaptainRegistrationModal}
+                  disabled={
+                    isSaving ||
+                    !selectedTournament.registrationWindow.isOpen
+                  }
+                  variant="secondary"
+                >
+                  Add member
+                </Button>
+              ) : null}
+
+              {canManageTournaments ? (
+                <Button
+                  type="button"
+                  className="tournament-secondary-button"
+                  onClick={onOpenCaptainRemovalModal}
+                  disabled={isSaving || selectedTournament.registrations.length === 0}
+                  variant="secondary"
+                >
+                  Remove member
+                </Button>
+              ) : null}
 
               {canManageTournaments ? (
                 <Button

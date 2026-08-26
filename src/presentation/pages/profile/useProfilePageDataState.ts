@@ -181,28 +181,12 @@ export function useProfilePageDataState({
   });
 
   useEffect(() => {
-    if (!canSelectMembers || isGuest || selectedUsername || memberOptions.length === 0) {
-      return;
-    }
-
-    const currentActorUsername = currentUserProfile?.auth?.username ?? "";
-    const matchingActorOption = memberOptions.find(
-      (member) => member.username === currentActorUsername,
-    );
-
-    setSelectedUsername(
-      matchingActorOption?.username ?? memberOptions[0]?.username ?? "",
-    );
-  }, [
-    canSelectMembers,
-    currentUserProfile?.auth?.username,
-    isGuest,
-    memberOptions,
-    selectedUsername,
-  ]);
-
-  useEffect(() => {
     if (!activeUsername) {
+      hasLoadedProfileRef.current = false;
+      setEditableProfile(null);
+      setEquipmentLoans([]);
+      setError("");
+      setMessage("");
       setIsInitialLoading(false);
       return undefined;
     }

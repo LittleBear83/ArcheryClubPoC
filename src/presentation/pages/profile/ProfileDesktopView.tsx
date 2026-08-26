@@ -1,15 +1,12 @@
 import { Button } from "../../components/Button";
-import { LabeledSelect } from "../../components/LabeledSelect";
+import { MemberAutocomplete } from "../../components/MemberAutocomplete";
 import { MemberProfileForm } from "../../components/MemberProfileForm";
 import { DeleteMemberModal } from "./DeleteMemberModal";
 import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
 import { formatDate, formatDateTime } from "../../../utils/dateTime";
-import {
-  formatMemberDisplayName,
-  formatMemberDisplayUsername,
-} from "../../../utils/userProfile";
+import { formatMemberDisplayName, formatMemberDisplayUsername } from "../../../utils/userProfile";
 import type { useProfilePageState } from "./useProfilePageState";
 
 type ProfilePageState = ReturnType<typeof useProfilePageState>;
@@ -80,19 +77,20 @@ export function ProfileDesktopView({
 
       {canSelectMembers ? (
         <SectionPanel className="profile-admin-panel" title="Member Selection">
-          <LabeledSelect
+          <MemberAutocomplete
+            clearDisplayOnFocus
+            fullWidth
+            maxWidth="28rem"
             label="Select member"
+            options={memberOptions.map((member) => ({
+              keywords: [formatMemberDisplayUsername(member), member.username],
+              label: formatMemberDisplayName(member),
+              value: member.username,
+            }))}
             value={selectedUsername}
-            onChange={handleSelectMember}
+            onValueChange={handleSelectMember}
             disabled={isInitialLoading || isRefreshingProfile || isSaving}
-          >
-            {memberOptions.map((member) => (
-              <option key={member.username} value={member.username}>
-                {formatMemberDisplayName(member)} (
-                {formatMemberDisplayUsername(member)})
-              </option>
-            ))}
-          </LabeledSelect>
+          />
           {canManageMembers && editableProfile ? (
             <div className="profile-admin-actions">
               <Button
@@ -102,7 +100,7 @@ export function ProfileDesktopView({
                 disabled={isInitialLoading || isRefreshingProfile || isSaving}
                 variant="danger"
               >
-                {editableProfile.rfidTag?.trim() ? "Issue new card" : "Add tag"}
+                {editableProfile.rfidTag?.trim() ? "Issue new fob" : "Add fob"}
               </Button>
               {editableProfile.username !== currentUserProfile?.auth?.username ? (
                 <Button

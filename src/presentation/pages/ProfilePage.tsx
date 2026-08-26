@@ -1,5 +1,6 @@
 import { Button } from "../components/Button";
 import { LoanBowReturnModal } from "../components/LoanBowReturnModal";
+import { MemberAutocomplete } from "../components/MemberAutocomplete";
 import { Modal } from "../components/Modal";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { ProfileDesktopView } from "./profile/ProfileDesktopView";
@@ -11,7 +12,7 @@ export function ProfilePage({
   onCurrentUserProfileUpdate,
   memberProfileCrud,
 }) {
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(1100);
   const profilePageState = useProfilePageState({
     currentUserProfile,
     memberProfileCrud,
@@ -41,22 +42,28 @@ export function ProfilePage({
               Golden Records could not match this member automatically. Choose the correct account
               from the most likely matches below.
             </p>
-            <label>
-              Golden Records account
-              <select
-                value={profilePageState.selectedGoldenRecordsCandidateId}
-                onChange={profilePageState.handleGoldenRecordsCandidateSelectionChange}
-                disabled={profilePageState.isSavingGoldenRecordsMatch}
-              >
-                {profilePageState.goldenRecordsCandidateMatches.map((candidate) => (
-                  <option key={candidate.memberId} value={candidate.memberId}>
-                    {candidate.name}
-                    {candidate.membershipId ? ` (${candidate.membershipId})` : ""}
-                    {candidate.memberArchived ? " - archived" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <MemberAutocomplete
+              label="Golden Records account"
+              options={profilePageState.goldenRecordsCandidateMatches.map((candidate) => ({
+                keywords: [
+                  candidate.membershipId ?? "",
+                  candidate.memberId,
+                  candidate.memberArchived ? "archived" : "",
+                ].filter(Boolean),
+                label: candidate.name,
+                secondaryText: candidate.membershipId
+                  ? `${candidate.membershipId}${candidate.memberArchived ? " - archived" : ""}`
+                  : candidate.memberArchived
+                    ? "Archived"
+                    : undefined,
+                value: candidate.memberId,
+              }))}
+              value={profilePageState.selectedGoldenRecordsCandidateId}
+              onValueChange={profilePageState.handleGoldenRecordsCandidateSelectionChange}
+              disabled={profilePageState.isSavingGoldenRecordsMatch}
+              noOptionsText="No Golden Records accounts match that search."
+              placeholder="Search by name or membership ID"
+            />
             {profilePageState.selectedGoldenRecordsCandidate ? (
               <p className="profile-card-issue-note">
                 Selected account:{" "}

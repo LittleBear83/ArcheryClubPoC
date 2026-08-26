@@ -483,8 +483,12 @@ export function useProfileOutdoorTableState({
     setGoldenRecordsMatchError("");
   };
 
-  const handleGoldenRecordsCandidateSelectionChange = (event) => {
-    setSelectedGoldenRecordsCandidateId(event.target.value);
+  const handleGoldenRecordsCandidateSelectionChange = (nextSelection) => {
+    setSelectedGoldenRecordsCandidateId(
+      typeof nextSelection === "string"
+        ? nextSelection
+        : nextSelection?.target?.value ?? "",
+    );
   };
 
   const handleContinueGoldenRecordsMatchAssignment = () => {

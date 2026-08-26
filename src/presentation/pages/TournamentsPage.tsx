@@ -8,8 +8,13 @@ import type {
   MatchComponentProps,
   MatchType,
 } from "@g-loot/react-tournament-brackets";
+import { buildActorHeaders, fetchApi } from "../../api/client";
 import { Button } from "../components/Button";
 import { DatePicker } from "../components/DatePicker";
+import {
+  MemberAutocomplete,
+} from "../components/MemberAutocomplete";
+import { Modal } from "../components/Modal";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { formatDate } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
@@ -36,6 +41,12 @@ const TOURNAMENT_BOW_OPTIONS = [
   { code: "LB", discipline: "Long Bow" },
   { code: "RC", discipline: "Recurve Bow" },
 ];
+type TournamentRegistrationCandidate = {
+  bowOptions: Array<{ code: string; discipline: string }>;
+  fullName: string;
+  suggestedBowCode?: string | null;
+  username: string;
+};
 
 function createEmptyTournamentForm(
   today,
@@ -696,6 +707,17 @@ export function TournamentsPage({
   const [matchScoreBValue, setMatchScoreBValue] = useState("");
   const [matchDisputeReason, setMatchDisputeReason] = useState("");
   const [selectedRegistrationBowCode, setSelectedRegistrationBowCode] = useState("");
+  const [registrationCandidates, setRegistrationCandidates] = useState<
+    TournamentRegistrationCandidate[]
+  >([]);
+  const [selectedCaptainRegistrationUsername, setSelectedCaptainRegistrationUsername] =
+    useState("");
+  const [selectedCaptainRegistrationBowCode, setSelectedCaptainRegistrationBowCode] =
+    useState("");
+  const [isCaptainRegistrationModalOpen, setIsCaptainRegistrationModalOpen] =
+    useState(false);
+  const [isCaptainRemovalModalOpen, setIsCaptainRemovalModalOpen] = useState(false);
+  const [selectedCaptainRemovalUsername, setSelectedCaptainRemovalUsername] = useState("");
   const [captainDecisionNotes, setCaptainDecisionNotes] = useState<Record<string, string>>({});
   const [captainDecisionErrors, setCaptainDecisionErrors] = useState<Record<string, string>>({});
   const [captainOverrideScores, setCaptainOverrideScores] = useState<
@@ -708,6 +730,8 @@ export function TournamentsPage({
   const [isSaving, setIsSaving] = useState(false);
   const [isSubmittingScore, setIsSubmittingScore] = useState(false);
   const [isApplyingCaptainDecision, setIsApplyingCaptainDecision] = useState(false);
+  const [isLoadingRegistrationCandidates, setIsLoadingRegistrationCandidates] =
+    useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isEditingTournament, setIsEditingTournament] = useState(false);
@@ -729,6 +753,31 @@ export function TournamentsPage({
       ),
     [currentUserProfile?.membership?.disciplines],
   );
+  const selectedCaptainRegistrationCandidate = useMemo(
+    () =>
+      registrationCandidates.find(
+        (candidate) => candidate.username === selectedCaptainRegistrationUsername,
+      ) ?? null,
+    [registrationCandidates, selectedCaptainRegistrationUsername],
+  );
+  const registrationCandidateOptions = useMemo(
+    () =>
+      registrationCandidates.map((candidate) => ({
+        keywords: [candidate.username],
+        label: candidate.fullName,
+        value: candidate.username,
+      })),
+    [registrationCandidates],
+  );
+  const captainRegistrationBowOptions = useMemo(() => {
+    if (!selectedCaptainRegistrationCandidate) {
+      return [];
+    }
+
+    return selectedCaptainRegistrationCandidate.bowOptions.length > 0
+      ? selectedCaptainRegistrationCandidate.bowOptions
+      : TOURNAMENT_BOW_OPTIONS;
+  }, [selectedCaptainRegistrationCandidate]);
 
   useEffect(() => {
     if (registrationBowOptions.length === 1) {
@@ -740,6 +789,38 @@ export function TournamentsPage({
       registrationBowOptions.some((option) => option.code === current) ? current : "",
     );
   }, [registrationBowOptions]);
+
+  useEffect(() => {
+    if (!selectedCaptainRegistrationCandidate) {
+      setSelectedCaptainRegistrationBowCode("");
+      return;
+    }
+
+    if (captainRegistrationBowOptions.length === 1) {
+      setSelectedCaptainRegistrationBowCode(
+        captainRegistrationBowOptions[0].code,
+      );
+      return;
+    }
+
+    setSelectedCaptainRegistrationBowCode((current) => {
+      if (captainRegistrationBowOptions.some((option) => option.code === current)) {
+        return current;
+      }
+
+      if (
+        selectedCaptainRegistrationCandidate.suggestedBowCode &&
+        captainRegistrationBowOptions.some(
+          (option) =>
+            option.code === selectedCaptainRegistrationCandidate.suggestedBowCode,
+        )
+      ) {
+        return selectedCaptainRegistrationCandidate.suggestedBowCode;
+      }
+
+      return "";
+    });
+  }, [captainRegistrationBowOptions, selectedCaptainRegistrationCandidate]);
 
   const loadTournaments = useCallback(async () => {
     if (!hasLoadedTournaments) {
@@ -853,6 +934,68 @@ export function TournamentsPage({
       null,
     [selectedTournamentId, tournaments],
   );
+  const removalCandidates = useMemo(
+    () => selectedTournament?.registrations ?? [],
+    [selectedTournament?.registrations],
+  );
+  useEffect(() => {
+    if (!canManageTournaments || !selectedTournament?.registrationWindow?.isOpen) {
+      setRegistrationCandidates([]);
+      setSelectedCaptainRegistrationUsername("");
+      setSelectedCaptainRegistrationBowCode("");
+      setIsLoadingRegistrationCandidates(false);
+      return;
+    }
+
+    let isActive = true;
+    setIsLoadingRegistrationCandidates(true);
+
+    void fetchApi<{ success: true; members?: TournamentRegistrationCandidate[] }>(
+      `/api/tournaments/${selectedTournament.id}/registration-candidates`,
+      {
+        headers: buildActorHeaders(actorUsername),
+        cache: "no-store",
+      },
+    )
+      .then((result) => {
+        if (!isActive) {
+          return;
+        }
+
+        const nextCandidates = result.members ?? [];
+        setRegistrationCandidates(nextCandidates);
+        setSelectedCaptainRegistrationUsername((current) =>
+          nextCandidates.some((candidate) => candidate.username === current)
+            ? current
+            : "",
+        );
+      })
+      .catch((loadError: Error) => {
+        if (!isActive) {
+          return;
+        }
+
+        setRegistrationCandidates([]);
+        setSelectedCaptainRegistrationUsername("");
+        setSelectedCaptainRegistrationBowCode("");
+        setError(loadError.message);
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoadingRegistrationCandidates(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    actorUsername,
+    canManageTournaments,
+    selectedTournament?.id,
+    selectedTournament?.registrationCount,
+    selectedTournament?.registrationWindow?.isOpen,
+  ]);
   const selectedEditTemplate = useMemo(
     () => getTemplateForKey(tournamentTemplates, form.templateKey),
     [form.templateKey, tournamentTemplates],
@@ -1140,6 +1283,80 @@ export function TournamentsPage({
     }
   };
 
+  const handleCaptainRegisterAction = async ({
+    closeAfterSuccess,
+  }: {
+    closeAfterSuccess: boolean;
+  }) => {
+    if (!selectedTournament || !selectedCaptainRegistrationCandidate) {
+      setError("Choose a member before adding them.");
+      return false;
+    }
+
+    if (
+      captainRegistrationBowOptions.length > 1 &&
+      !selectedCaptainRegistrationBowCode
+    ) {
+      setError("Choose which bow this member will be shooting with before you add them.");
+      return false;
+    }
+
+    setIsSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const result = await tournamentCrud.registerForTournamentUseCase.execute({
+        actorUsername,
+        bowCode:
+          captainRegistrationBowOptions.length === 1
+            ? captainRegistrationBowOptions[0].code
+            : selectedCaptainRegistrationBowCode ||
+              selectedCaptainRegistrationCandidate.suggestedBowCode ||
+              undefined,
+        memberUsername: selectedCaptainRegistrationCandidate.username,
+        tournamentId: selectedTournament.id,
+      });
+
+      updateTournamentInState(result.tournament);
+      setMessage(
+        `Added ${selectedCaptainRegistrationCandidate.fullName} to ${result.tournament.name}.`,
+      );
+      setSelectedCaptainRegistrationUsername("");
+      setSelectedCaptainRegistrationBowCode("");
+      if (closeAfterSuccess) {
+        setIsCaptainRegistrationModalOpen(false);
+        onTournamentActivity?.();
+      }
+      return true;
+    } catch (registerError) {
+      setError(registerError.message);
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCaptainRegister = async () =>
+    handleCaptainRegisterAction({ closeAfterSuccess: true });
+
+  const handleCaptainRegisterAndContinue = async () =>
+    handleCaptainRegisterAction({ closeAfterSuccess: false });
+
+  const openCaptainRegistrationModal = () => {
+    setError("");
+    setMessage("");
+    setSelectedCaptainRegistrationUsername("");
+    setSelectedCaptainRegistrationBowCode("");
+    setIsCaptainRegistrationModalOpen(true);
+  };
+
+  const closeCaptainRegistrationModal = () => {
+    setSelectedCaptainRegistrationUsername("");
+    setSelectedCaptainRegistrationBowCode("");
+    setIsCaptainRegistrationModalOpen(false);
+  };
+
   const handleWithdraw = async () => {
     if (!selectedTournament) {
       return;
@@ -1163,6 +1380,51 @@ export function TournamentsPage({
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCaptainRemoveMember = async () => {
+    if (!selectedTournament || !selectedCaptainRemovalUsername) {
+      setError("Choose a member before removing them.");
+      return;
+    }
+
+    setIsSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const memberLabel =
+        removalCandidates.find(
+          (candidate) => candidate.username === selectedCaptainRemovalUsername,
+        )?.fullName ?? selectedCaptainRemovalUsername;
+      const result = await tournamentCrud.withdrawFromTournamentUseCase.execute({
+        actorUsername,
+        memberUsername: selectedCaptainRemovalUsername,
+        tournamentId: selectedTournament.id,
+      });
+
+      updateTournamentInState(result.tournament);
+      setSelectedCaptainRemovalUsername("");
+      setIsCaptainRemovalModalOpen(false);
+      setMessage(`Removed ${memberLabel} from ${result.tournament.name}.`);
+      onTournamentActivity?.();
+    } catch (withdrawError) {
+      setError(withdrawError.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const openCaptainRemovalModal = () => {
+    setError("");
+    setMessage("");
+    setSelectedCaptainRemovalUsername("");
+    setIsCaptainRemovalModalOpen(true);
+  };
+
+  const closeCaptainRemovalModal = () => {
+    setSelectedCaptainRemovalUsername("");
+    setIsCaptainRemovalModalOpen(false);
   };
 
   const handleSubmitScore = async (event) => {
@@ -1829,6 +2091,35 @@ export function TournamentsPage({
               ? "Updating..."
               : "Withdraw"}
           </Button>
+
+          {canManageTournaments ? (
+            <Button
+              type="button"
+              className="tournament-secondary-button"
+              onClick={openCaptainRegistrationModal}
+              disabled={
+                isSaving ||
+                !selectedTournament.registrationWindow.isOpen ||
+                isLoadingRegistrationCandidates ||
+                registrationCandidates.length === 0
+              }
+              variant="secondary"
+            >
+              Add member
+            </Button>
+          ) : null}
+
+          {canManageTournaments ? (
+            <Button
+              type="button"
+              className="tournament-secondary-button"
+              onClick={openCaptainRemovalModal}
+              disabled={isSaving || removalCandidates.length === 0}
+              variant="secondary"
+            >
+              Remove member
+            </Button>
+          ) : null}
 
           {canManageTournaments ? (
             <Button
@@ -2655,6 +2946,8 @@ export function TournamentsPage({
               }
             }}
             onRegistrationBowCodeChange={setSelectedRegistrationBowCode}
+            onOpenCaptainRegistrationModal={openCaptainRegistrationModal}
+            onOpenCaptainRemovalModal={openCaptainRemovalModal}
             onRegister={handleRegister}
             onWithdraw={handleWithdraw}
             onSaveCompetitorList={handleSaveCompetitorList}
@@ -2685,6 +2978,148 @@ export function TournamentsPage({
           />
         )
       ) : null}
+      <Modal
+        open={isCaptainRegistrationModalOpen}
+        onClose={closeCaptainRegistrationModal}
+        title="Add Competing Member"
+      >
+        <div className="guest-member-modal">
+          <p className="guest-member-modal-copy">
+            Add competitors for this tournament without leaving the captain workflow.
+          </p>
+          {error ? <p className="profile-error">{error}</p> : null}
+          {message ? <p className="profile-success">{message}</p> : null}
+          {!selectedTournament?.registrationWindow.isOpen ? (
+            <p>Registration must be open before you can add competitors.</p>
+          ) : isLoadingRegistrationCandidates ? (
+            <p>Loading members...</p>
+          ) : registrationCandidates.length === 0 ? (
+            <p>All available members are already registered.</p>
+          ) : (
+            <div className="login-form">
+              <MemberAutocomplete
+                label="Member"
+                options={registrationCandidateOptions}
+                value={selectedCaptainRegistrationUsername}
+                onValueChange={setSelectedCaptainRegistrationUsername}
+                disabled={isSaving}
+              />
+              {selectedCaptainRegistrationCandidate ? (
+                <p className="profile-success">
+                  Selected member: {selectedCaptainRegistrationCandidate.fullName}
+                </p>
+              ) : null}
+
+              {selectedCaptainRegistrationCandidate ? (
+                <label>
+                  Shooting bow
+                  <select
+                    value={selectedCaptainRegistrationBowCode}
+                    onChange={(event) =>
+                      setSelectedCaptainRegistrationBowCode(event.target.value)
+                    }
+                    disabled={
+                      isSaving || captainRegistrationBowOptions.length === 1
+                    }
+                  >
+                    <option value="">
+                      {captainRegistrationBowOptions.length === 1
+                        ? "Bow selected automatically"
+                        : "Choose a bow"}
+                    </option>
+                    {captainRegistrationBowOptions.map((option) => (
+                      <option key={option.code} value={option.code}>
+                        {option.discipline} ({option.code})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              <div className="tournament-action-row">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void handleCaptainRegister();
+                  }}
+                  disabled={
+                    isSaving ||
+                    !selectedCaptainRegistrationUsername ||
+                    (captainRegistrationBowOptions.length > 1 &&
+                      !selectedCaptainRegistrationBowCode)
+                  }
+                >
+                  {isSaving ? "Saving..." : "Done"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    void handleCaptainRegisterAndContinue();
+                  }}
+                  disabled={
+                    isSaving ||
+                    !selectedCaptainRegistrationUsername ||
+                    (captainRegistrationBowOptions.length > 1 &&
+                      !selectedCaptainRegistrationBowCode)
+                  }
+                >
+                  {isSaving ? "Saving..." : "Add another member"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+      <Modal
+        open={isCaptainRemovalModalOpen}
+        onClose={closeCaptainRemovalModal}
+        title="Remove Competing Member"
+      >
+        <div className="guest-member-modal">
+          <p className="guest-member-modal-copy">
+            Remove a competing member from this tournament using the same captain controls.
+          </p>
+          {error ? <p className="profile-error">{error}</p> : null}
+          {message ? <p className="profile-success">{message}</p> : null}
+          {removalCandidates.length === 0 ? (
+            <p>No registered members are available to remove.</p>
+          ) : (
+            <div className="login-form">
+              <label>
+                Member
+                <select
+                  value={selectedCaptainRemovalUsername}
+                  onChange={(event) =>
+                    setSelectedCaptainRemovalUsername(event.target.value)
+                  }
+                  disabled={isSaving}
+                >
+                  <option value="">Choose a member</option>
+                  {removalCandidates.map((candidate) => (
+                    <option key={candidate.username} value={candidate.username}>
+                      {formatTournamentRegistrationName(candidate)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="tournament-action-row">
+                <Button
+                  type="button"
+                  variant="danger"
+                  onClick={() => {
+                    void handleCaptainRemoveMember();
+                  }}
+                  disabled={isSaving || !selectedCaptainRemovalUsername}
+                >
+                  {isSaving ? "Removing..." : "Remove member"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

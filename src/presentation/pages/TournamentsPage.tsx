@@ -344,6 +344,13 @@ function formatTournamentMatchStatus(status) {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+function getTournamentRetirementFlags(match) {
+  return {
+    competitorA: Boolean(match?.retirement?.competitorA),
+    competitorB: Boolean(match?.retirement?.competitorB),
+  };
+}
+
 function formatTournamentParticipantName(participant, bowCodeLookup = new Map()) {
   if (!participant) {
     return "TBD";
@@ -705,6 +712,8 @@ export function TournamentsPage({
   const [scoreValue, setScoreValue] = useState("");
   const [matchScoreAValue, setMatchScoreAValue] = useState("");
   const [matchScoreBValue, setMatchScoreBValue] = useState("");
+  const [matchCompetitorARetired, setMatchCompetitorARetired] = useState(false);
+  const [matchCompetitorBRetired, setMatchCompetitorBRetired] = useState(false);
   const [matchDisputeReason, setMatchDisputeReason] = useState("");
   const [selectedRegistrationBowCode, setSelectedRegistrationBowCode] = useState("");
   const [registrationCandidates, setRegistrationCandidates] = useState<
@@ -718,6 +727,9 @@ export function TournamentsPage({
     useState(false);
   const [isCaptainRemovalModalOpen, setIsCaptainRemovalModalOpen] = useState(false);
   const [selectedCaptainRemovalUsername, setSelectedCaptainRemovalUsername] = useState("");
+  const [pendingRetirementConfirmation, setPendingRetirementConfirmation] = useState<
+    "competitorA" | "competitorB" | null
+  >(null);
   const [captainDecisionNotes, setCaptainDecisionNotes] = useState<Record<string, string>>({});
   const [captainDecisionErrors, setCaptainDecisionErrors] = useState<Record<string, string>>({});
   const [captainOverrideScores, setCaptainOverrideScores] = useState<
@@ -1018,6 +1030,20 @@ export function TournamentsPage({
           ? "Registration has closed."
           : `Registration opens on ${formatDate(selectedTournament.registrationWindow.startDate)}.`
     : "";
+  const actorRegistrationEligibilityReason =
+    selectedTournament?.eligibility?.actor?.registration?.isEligible === false
+      ? selectedTournament.eligibility.actor.registration.reason ?? ""
+      : "";
+  const actorRoundEligibilityReason =
+    selectedTournament?.eligibility?.actor?.currentRound?.isEligible === false
+      ? selectedTournament.eligibility.actor.currentRound.reason ?? ""
+      : "";
+  const pendingRetirementCompetitorName =
+    pendingRetirementConfirmation === "competitorA"
+      ? selectedTournament?.currentMatch?.competitorA?.fullName ?? "this archer"
+      : pendingRetirementConfirmation === "competitorB"
+        ? selectedTournament?.currentMatch?.competitorB?.fullName ?? "this archer"
+        : "this archer";
 
   useEffect(() => {
     if (selectedTournament) {
@@ -1036,6 +1062,9 @@ export function TournamentsPage({
           ? String(selectedTournament.currentMatch.score.competitorB)
           : "",
       );
+      const retirementFlags = getTournamentRetirementFlags(selectedTournament.currentMatch);
+      setMatchCompetitorARetired(retirementFlags.competitorA);
+      setMatchCompetitorBRetired(retirementFlags.competitorB);
       setMatchDisputeReason("");
     }
   }, [selectedTournament]);
@@ -1382,6 +1411,33 @@ export function TournamentsPage({
     }
   };
 
+  const handleRedrawTournament = async () => {
+    if (!selectedTournament || !canManageTournaments) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const result = await tournamentCrud.redrawTournamentUseCase.execute({
+        actorUsername,
+        tournamentId: selectedTournament.id,
+      });
+      setTournaments((current) =>
+        current.map((tournament) =>
+          tournament.id === result.tournament?.id ? result.tournament : tournament,
+        ),
+      );
+      setMessage(`Redrew the round 1 pairings for ${result.tournament.name}.`);
+    } catch (redrawError) {
+      setError(redrawError.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleCaptainRemoveMember = async () => {
     if (!selectedTournament || !selectedCaptainRemovalUsername) {
       setError("Choose a member before removing them.");
@@ -1425,6 +1481,39 @@ export function TournamentsPage({
   const closeCaptainRemovalModal = () => {
     setSelectedCaptainRemovalUsername("");
     setIsCaptainRemovalModalOpen(false);
+  };
+
+  const handleMatchRetirementChange = (
+    competitor: "competitorA" | "competitorB",
+    nextChecked: boolean,
+  ) => {
+    if (!nextChecked) {
+      if (competitor === "competitorA") {
+        setMatchCompetitorARetired(false);
+      } else {
+        setMatchCompetitorBRetired(false);
+      }
+
+      return;
+    }
+
+    setPendingRetirementConfirmation(competitor);
+  };
+
+  const closeRetirementConfirmationModal = () => {
+    setPendingRetirementConfirmation(null);
+  };
+
+  const confirmRetirementChange = () => {
+    if (pendingRetirementConfirmation === "competitorA") {
+      setMatchCompetitorARetired(true);
+      setMatchScoreAValue("");
+    } else if (pendingRetirementConfirmation === "competitorB") {
+      setMatchCompetitorBRetired(true);
+      setMatchScoreBValue("");
+    }
+
+    setPendingRetirementConfirmation(null);
   };
 
   const handleSubmitScore = async (event) => {
@@ -1471,8 +1560,10 @@ export function TournamentsPage({
         actorUsername,
         matchId: String(selectedTournament.currentMatch.id),
         payload: {
-          leftScore: matchScoreAValue,
-          rightScore: matchScoreBValue,
+          leftRetired: matchCompetitorARetired,
+          rightRetired: matchCompetitorBRetired,
+          leftScore: matchCompetitorARetired ? "" : matchScoreAValue,
+          rightScore: matchCompetitorBRetired ? "" : matchScoreBValue,
         },
       });
 
@@ -2041,6 +2132,9 @@ export function TournamentsPage({
         >
           {registrationStatusText}
         </p>
+        {actorRegistrationEligibilityReason && !selectedTournament.isRegistered ? (
+          <p className="profile-error">{actorRegistrationEligibilityReason}</p>
+        ) : null}
         {registrationBowOptions.length > 1 && selectedTournament.canRegister ? (
           <label className="tournament-field-label">
             Shooting bow
@@ -2093,6 +2187,23 @@ export function TournamentsPage({
           </Button>
 
           {canManageTournaments ? (
+            selectedTournament.engine?.template?.capabilities?.supportsRandomizedDraw &&
+            selectedTournament.registrationWindow.isClosed ? (
+            <Button
+              type="button"
+              className="tournament-secondary-button"
+              onClick={() => {
+                void handleRedrawTournament();
+              }}
+              disabled={isSaving || !selectedTournament.draw?.canRedraw}
+              variant="secondary"
+            >
+              Redraw round 1
+            </Button>
+            ) : null
+          ) : null}
+
+          {canManageTournaments ? (
             <Button
               type="button"
               className="tournament-secondary-button"
@@ -2141,6 +2252,11 @@ export function TournamentsPage({
             {selectedTournament.registrations.map((registration) => (
               <li key={registration.username}>
                 {formatTournamentRegistrationName(registration)}
+                {canManageTournaments &&
+                registration.eligibility?.registration?.isEligible === false &&
+                registration.eligibility.registration.reason ? (
+                  <> - {registration.eligibility.registration.reason}</>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -2150,35 +2266,172 @@ export function TournamentsPage({
       </div>
 
       {selectedTournament.currentMatch ? (
-        <div className="tournament-score-card">
-          <h4>My Current Match</h4>
-          <p>
-            <strong>{selectedTournament.currentMatch.roundTitle}</strong>
-          </p>
-          <p>
-            {formatTournamentParticipantName(
-              selectedTournament.currentMatch.competitorA,
-              tournamentBowCodeLookup,
-            )}{" "}
-            vs{" "}
-            {formatTournamentParticipantName(
-              selectedTournament.currentMatch.competitorB,
-              tournamentBowCodeLookup,
-            )}
-          </p>
-          <p>
-            Status: {formatTournamentMatchStatus(selectedTournament.currentMatch.status)}
-          </p>
-          {selectedTournament.currentMatch.submissionDeadline ? (
-            <p>
-              Deadline: {formatDate(selectedTournament.currentMatch.submissionDeadline)}
-            </p>
-          ) : null}
-          {currentMatchHandicapSummary?.allowancePercent ? (
-            <p>
-              Handicap allowance: {currentMatchHandicapSummary.allowancePercent}%
-            </p>
-          ) : null}
+        <div className="tournament-score-card tournament-current-match-card">
+          <div className="tournament-current-match-layout">
+            <div className="tournament-current-match-meta">
+              <h4>My Current Match</h4>
+              <p>
+                <strong>{selectedTournament.currentMatch.roundTitle}</strong>
+              </p>
+              <p>
+                {formatTournamentParticipantName(
+                  selectedTournament.currentMatch.competitorA,
+                  tournamentBowCodeLookup,
+                )}{" "}
+                vs{" "}
+                {formatTournamentParticipantName(
+                  selectedTournament.currentMatch.competitorB,
+                  tournamentBowCodeLookup,
+                )}
+              </p>
+              <p>
+                Status: {formatTournamentMatchStatus(selectedTournament.currentMatch.status)}
+              </p>
+              {selectedTournament.currentMatch.submissionDeadline ? (
+                <p>
+                  Deadline: {formatDate(selectedTournament.currentMatch.submissionDeadline)}
+                </p>
+              ) : null}
+              {currentMatchHandicapSummary?.allowancePercent ? (
+                <p>
+                  Handicap allowance: {currentMatchHandicapSummary.allowancePercent}%
+                </p>
+              ) : null}
+              {selectedTournament.currentMatch.workflow?.submittedByUsername ? (
+                <p>
+                  Submitted by: {selectedTournament.currentMatch.workflow.submittedByUsername}
+                </p>
+              ) : null}
+              {selectedTournament.currentMatch.workflow?.disputeReason ? (
+                <p>
+                  Dispute note: {selectedTournament.currentMatch.workflow.disputeReason}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="tournament-current-match-actions">
+              {actorRoundEligibilityReason ? (
+                <p className="profile-error">{actorRoundEligibilityReason}</p>
+              ) : null}
+
+              {selectedTournament.currentMatch.workflow?.canSubmitResult ? (
+                <form
+                  onSubmit={handleSubmitMatchResult}
+                  className="left-align-form tournament-match-action-form"
+                >
+                  <div className="tournament-match-entry-grid">
+                    <div className="tournament-match-entry-row">
+                      <div className="tournament-match-entry-columns">
+                        <div className="tournament-match-entry-header">
+                          <span className="tournament-match-entry-label">
+                            {selectedTournament.currentMatch.competitorA?.fullName ?? "Competitor A"} score
+                          </span>
+                          <span className="tournament-match-entry-label">Retired</span>
+                        </div>
+                        <div className="tournament-match-entry-controls">
+                          <label className="tournament-match-entry-score">
+                            <input
+                              type="number"
+                              min="0"
+                              inputMode="numeric"
+                              value={matchScoreAValue}
+                              onChange={(event) => setMatchScoreAValue(event.target.value)}
+                              disabled={matchCompetitorARetired}
+                              required={!matchCompetitorARetired}
+                            />
+                          </label>
+                          <label className="tournament-match-entry-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={matchCompetitorARetired}
+                              onChange={(event) => {
+                                handleMatchRetirementChange(
+                                  "competitorA",
+                                  event.target.checked,
+                                );
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="tournament-match-entry-row">
+                      <div className="tournament-match-entry-columns">
+                        <div className="tournament-match-entry-header">
+                          <span className="tournament-match-entry-label">
+                            {selectedTournament.currentMatch.competitorB?.fullName ?? "Competitor B"} score
+                          </span>
+                          <span className="tournament-match-entry-label">Retired</span>
+                        </div>
+                        <div className="tournament-match-entry-controls">
+                          <label className="tournament-match-entry-score">
+                            <input
+                              type="number"
+                              min="0"
+                              inputMode="numeric"
+                              value={matchScoreBValue}
+                              onChange={(event) => setMatchScoreBValue(event.target.value)}
+                              disabled={matchCompetitorBRetired}
+                              required={!matchCompetitorBRetired}
+                            />
+                          </label>
+                          <label className="tournament-match-entry-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={matchCompetitorBRetired}
+                              onChange={(event) => {
+                                handleMatchRetirementChange(
+                                  "competitorB",
+                                  event.target.checked,
+                                );
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <Button type="submit" disabled={isSubmittingScore}>
+                    {isSubmittingScore ? "Submitting result..." : "Submit result"}
+                  </Button>
+                </form>
+              ) : null}
+
+              {selectedTournament.currentMatch.workflow?.canConfirmResult ? (
+                <div className="tournament-action-row">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      void handleConfirmMatchResult();
+                    }}
+                    disabled={isSubmittingScore}
+                  >
+                    {isSubmittingScore ? "Saving..." : "Confirm result"}
+                  </Button>
+                </div>
+              ) : null}
+
+              {selectedTournament.currentMatch.workflow?.canDisputeResult ? (
+                <form
+                  onSubmit={handleDisputeMatchResult}
+                  className="left-align-form tournament-match-action-form"
+                >
+                  <label>
+                    Reason for dispute
+                    <textarea
+                      value={matchDisputeReason}
+                      onChange={(event) => setMatchDisputeReason(event.target.value)}
+                      rows={3}
+                      required
+                    />
+                  </label>
+                  <Button type="submit" variant="secondary" disabled={isSubmittingScore}>
+                    {isSubmittingScore ? "Sending..." : "Raise dispute"}
+                  </Button>
+                </form>
+              ) : null}
+            </div>
+          </div>
           {selectedTournament.currentMatch.handicap ? (
             <div className="tournament-current-match-score-breakdown">
               {renderTournamentMatchScoreBreakdownRow(
@@ -2212,85 +2465,6 @@ export function TournamentsPage({
                     : selectedTournament.currentMatch.score?.competitorB,
               )}
             </div>
-          ) : null}
-          {selectedTournament.currentMatch.workflow?.submittedByUsername ? (
-            <p>
-              Submitted by: {selectedTournament.currentMatch.workflow.submittedByUsername}
-            </p>
-          ) : null}
-          {selectedTournament.currentMatch.workflow?.disputeReason ? (
-            <p>
-              Dispute note: {selectedTournament.currentMatch.workflow.disputeReason}
-            </p>
-          ) : null}
-
-          {selectedTournament.currentMatch.workflow?.canSubmitResult ? (
-            <form
-              onSubmit={handleSubmitMatchResult}
-              className="left-align-form tournament-match-action-form"
-            >
-              <div className="profile-form-grid">
-                <label>
-                  {selectedTournament.currentMatch.competitorA?.fullName ?? "Competitor A"} score
-                  <input
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    value={matchScoreAValue}
-                    onChange={(event) => setMatchScoreAValue(event.target.value)}
-                    required
-                  />
-                </label>
-                <label>
-                  {selectedTournament.currentMatch.competitorB?.fullName ?? "Competitor B"} score
-                  <input
-                    type="number"
-                    min="0"
-                    inputMode="numeric"
-                    value={matchScoreBValue}
-                    onChange={(event) => setMatchScoreBValue(event.target.value)}
-                    required
-                  />
-                </label>
-              </div>
-              <Button type="submit" disabled={isSubmittingScore}>
-                {isSubmittingScore ? "Submitting result..." : "Submit result"}
-              </Button>
-            </form>
-          ) : null}
-
-          {selectedTournament.currentMatch.workflow?.canConfirmResult ? (
-            <div className="tournament-action-row">
-              <Button
-                type="button"
-                onClick={() => {
-                  void handleConfirmMatchResult();
-                }}
-                disabled={isSubmittingScore}
-              >
-                {isSubmittingScore ? "Saving..." : "Confirm result"}
-              </Button>
-            </div>
-          ) : null}
-
-          {selectedTournament.currentMatch.workflow?.canDisputeResult ? (
-            <form
-              onSubmit={handleDisputeMatchResult}
-              className="left-align-form tournament-match-action-form"
-            >
-              <label>
-                Reason for dispute
-                <textarea
-                  value={matchDisputeReason}
-                  onChange={(event) => setMatchDisputeReason(event.target.value)}
-                  rows={3}
-                  required
-                />
-              </label>
-              <Button type="submit" variant="secondary" disabled={isSubmittingScore}>
-                {isSubmittingScore ? "Sending..." : "Raise dispute"}
-              </Button>
-            </form>
           ) : null}
         </div>
       ) : selectedTournament.canSubmitScore ? (
@@ -2927,6 +3101,8 @@ export function TournamentsPage({
             scoreValue={scoreValue}
             matchScoreAValue={matchScoreAValue}
             matchScoreBValue={matchScoreBValue}
+            matchCompetitorARetired={matchCompetitorARetired}
+            matchCompetitorBRetired={matchCompetitorBRetired}
             matchDisputeReason={matchDisputeReason}
             bracketGraphic={
               selectedTournament?.bracket.rounds.length ? (
@@ -2950,11 +3126,20 @@ export function TournamentsPage({
             onOpenCaptainRemovalModal={openCaptainRemovalModal}
             onRegister={handleRegister}
             onWithdraw={handleWithdraw}
+            onRedrawTournament={() => {
+              void handleRedrawTournament();
+            }}
             onSaveCompetitorList={handleSaveCompetitorList}
             onScoreValueChange={setScoreValue}
             onSubmitScore={handleSubmitScore}
             onMatchScoreAValueChange={setMatchScoreAValue}
             onMatchScoreBValueChange={setMatchScoreBValue}
+            onMatchCompetitorARetiredChange={(nextValue) => {
+              handleMatchRetirementChange("competitorA", nextValue);
+            }}
+            onMatchCompetitorBRetiredChange={(nextValue) => {
+              handleMatchRetirementChange("competitorB", nextValue);
+            }}
             onMatchDisputeReasonChange={setMatchDisputeReason}
             onSubmitMatchResult={handleSubmitMatchResult}
             onConfirmMatchResult={() => {
@@ -3118,6 +3303,30 @@ export function TournamentsPage({
               </div>
             </div>
           )}
+        </div>
+      </Modal>
+      <Modal
+        open={pendingRetirementConfirmation !== null}
+        onClose={closeRetirementConfirmationModal}
+        title="Confirm Retirement"
+      >
+        <div className="guest-member-modal">
+          <p className="guest-member-modal-copy">
+            Mark {pendingRetirementCompetitorName} as retired?
+          </p>
+          <p>This will record that archer&apos;s score as 0 for this match.</p>
+          <div className="tournament-action-row">
+            <Button type="button" onClick={confirmRetirementChange}>
+              Confirm retirement
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={closeRetirementConfirmationModal}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>

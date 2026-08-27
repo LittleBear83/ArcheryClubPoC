@@ -19,6 +19,11 @@ export abstract class TournamentRepository {
     payload?: { memberUsername?: string },
   ): Promise<unknown>;
 
+  abstract redrawTournament(
+    actorUsername: string,
+    tournamentId: string | number,
+  ): Promise<unknown>;
+
   abstract submitTournamentScore(
     actorUsername: string,
     tournamentId: string | number,

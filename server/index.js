@@ -79,6 +79,15 @@ import { createCommitteeMinutesGateway } from "./infrastructure/persistence/comm
 import { createTournamentGateway } from "./infrastructure/persistence/tournamentGateway.js";
 import { createMemberDistanceSignOffRepository } from "./infrastructure/persistence/memberDistanceSignOffRepository.js";
 import {
+  buildTournamentBracket,
+  isTournamentMatchResolvedStatus,
+} from "./domain/services/tournamentEngine.js";
+import {
+  evaluateTournamentRegistrationEligibility,
+  evaluateTournamentRoundEligibility,
+} from "./domain/services/tournamentEligibilityService.js";
+import { parseTournamentRoundPlan } from "./domain/services/tournamentRoundPlan.js";
+import {
   ARROW_COLOUR_VALUE_SET,
   ARROW_FLETCHING_COLOUR_VALUE_SET,
   ARROW_MATERIAL_OPTION_SET,
@@ -2695,81 +2704,6 @@ function buildAutomaticRoundTitles(defaultRoundNames = [], totalRounds) {
   return [...genericTitles, ...specialSuffix].slice(-totalRounds);
 }
 
-function parseTournamentRoundPlan(rawSchedule) {
-  if (!rawSchedule) {
-    return {
-      automaticConfig: null,
-      manualSchedule: [],
-    };
-  }
-
-  try {
-    const parsed = JSON.parse(rawSchedule);
-
-    if (Array.isArray(parsed)) {
-      return {
-        automaticConfig: null,
-        manualSchedule: parsed
-          .map((entry, index) => ({
-            roundNumber:
-              Number.isInteger(entry?.roundNumber) && entry.roundNumber > 0
-                ? entry.roundNumber
-                : index + 1,
-            title:
-              typeof entry?.title === "string" && entry.title.trim()
-                ? entry.title.trim()
-                : `Round ${index + 1}`,
-            publishDate:
-              typeof entry?.publishDate === "string" && entry.publishDate.trim()
-                ? entry.publishDate.trim()
-                : null,
-            submissionDeadline:
-              typeof entry?.submissionDeadline === "string" &&
-              entry.submissionDeadline.trim()
-                ? entry.submissionDeadline.trim()
-                : null,
-          }))
-          .sort((left, right) => left.roundNumber - right.roundNumber),
-      };
-    }
-
-    if (parsed && typeof parsed === "object" && parsed.mode === "automatic") {
-      const firstRoundStartDate =
-        typeof parsed.firstRoundStartDate === "string" && parsed.firstRoundStartDate.trim()
-          ? parsed.firstRoundStartDate.trim()
-          : "";
-      const roundWindowDays = Number(parsed.roundWindowDays ?? 0);
-      const roundRestDays = Number(parsed.roundRestDays ?? 0);
-
-      return {
-        automaticConfig:
-          firstRoundStartDate &&
-          Number.isInteger(roundWindowDays) &&
-          roundWindowDays > 0 &&
-          Number.isInteger(roundRestDays) &&
-          roundRestDays >= 0
-            ? {
-                firstRoundStartDate,
-                roundWindowDays,
-                roundRestDays,
-              }
-            : null,
-        manualSchedule: [],
-      };
-    }
-  } catch {
-    return {
-      automaticConfig: null,
-      manualSchedule: [],
-    };
-  }
-
-  return {
-    automaticConfig: null,
-    manualSchedule: [],
-  };
-}
-
 function normalizePersistedTournamentRounds(roundRows = []) {
   return roundRows
     .map((round, index) => ({
@@ -2961,11 +2895,17 @@ function mapBracketMatchToEngineMatch(match, round, tournament, scoreWindow, act
     match.status === "awaiting_opponent_confirmation" &&
     submittedByUsername &&
     submittedByUsername !== actorUsername;
+  const competitorAIsRoundEligible = match.leftEligibility?.round?.isEligible !== false;
+  const competitorBIsRoundEligible = match.rightEligibility?.round?.isEligible !== false;
+  const roundEligibilityReason =
+    match.leftEligibility?.round?.reason ?? match.rightEligibility?.round?.reason ?? null;
   const canSubmitResult = Boolean(
     actorUsername &&
       (actorIsCompetitorA || actorIsCompetitorB) &&
       match.leftParticipant &&
       match.rightParticipant &&
+      competitorAIsRoundEligible &&
+      competitorBIsRoundEligible &&
       ["scheduled", "pending", "awaiting_result"].includes(match.status),
   );
   const canConfirmResult = Boolean(
@@ -2974,6 +2914,32 @@ function mapBracketMatchToEngineMatch(match, round, tournament, scoreWindow, act
       (actorIsCompetitorA || actorIsCompetitorB),
   );
   const canDisputeResult = canConfirmResult;
+  const leftScore = match.leftScore ?? null;
+  const rightScore = match.rightScore ?? null;
+  const hasFinalWinner = Boolean(match.winner?.username);
+  const retirement =
+    match.status === "retired_both"
+      ? {
+          competitorA: true,
+          competitorB: true,
+        }
+      : hasFinalWinner &&
+          Number.isInteger(rightScore) &&
+          leftScore === null &&
+          match.winner?.username === match.rightParticipant?.username
+        ? {
+            competitorA: true,
+            competitorB: false,
+          }
+        : hasFinalWinner &&
+            Number.isInteger(leftScore) &&
+            rightScore === null &&
+            match.winner?.username === match.leftParticipant?.username
+          ? {
+              competitorA: false,
+              competitorB: true,
+            }
+          : null;
 
   return {
     id: match.id,
@@ -2983,10 +2949,11 @@ function mapBracketMatchToEngineMatch(match, round, tournament, scoreWindow, act
     competitorA: match.leftParticipant ?? null,
     competitorB: match.rightParticipant ?? null,
     score: {
-      competitorA: match.leftScore ?? null,
-      competitorB: match.rightScore ?? null,
+      competitorA: leftScore,
+      competitorB: rightScore,
     },
     winner: match.winner ?? null,
+    retirement,
     submissionDeadline: scoreWindow?.endDate ?? null,
     handicap:
       match.leftHandicapValue !== null ||
@@ -3035,6 +3002,7 @@ function mapBracketMatchToEngineMatch(match, round, tournament, scoreWindow, act
         : actorIsCompetitorB
           ? "competitorB"
           : null,
+      ineligibilityReason: roundEligibilityReason,
       canSubmitResult,
       canConfirmResult,
       canDisputeResult,
@@ -3107,200 +3075,6 @@ function buildTournamentEngine(rounds, tournamentRecord, actorUsername = null) {
   };
 }
 
-function isTournamentMatchResolvedStatus(status) {
-  return [
-    "completed",
-    "finalised",
-    "progressed",
-    "walkover",
-    "disqualified",
-    "bye",
-  ].includes(status);
-}
-
-function buildTournamentBracket(registrations, scoresByRound, persistedMatchesByKey = new Map()) {
-  const entrants = [...registrations]
-    .sort((left, right) => left.fullName.localeCompare(right.fullName))
-    .map((registration, index) => ({
-      bowCode: registration.bowCode ?? null,
-      username: registration.username,
-      fullName: registration.fullName,
-      seed: index + 1,
-    }));
-
-  if (entrants.length === 0) {
-    return {
-      rounds: [],
-      winner: null,
-      currentRoundNumber: null,
-    };
-  }
-
-  const bracketSize = nextPowerOfTwo(Math.max(entrants.length, 2));
-  const slots = [...entrants];
-
-  while (slots.length < bracketSize) {
-    slots.push(null);
-  }
-
-  const rounds = [];
-  let currentParticipants = slots;
-  let currentRoundNumber = null;
-
-  while (currentParticipants.length > 1) {
-    const roundIndex = rounds.length + 1;
-    const roundScores = scoresByRound.get(roundIndex) ?? new Map();
-    const matches = [];
-
-    for (let index = 0; index < currentParticipants.length; index += 2) {
-      const matchNumber = index / 2 + 1;
-      const leftParticipant = currentParticipants[index] ?? null;
-      const rightParticipant = currentParticipants[index + 1] ?? null;
-      const leftScore = leftParticipant
-        ? (roundScores.get(leftParticipant.username) ?? null)
-        : null;
-      const rightScore = rightParticipant
-        ? (roundScores.get(rightParticipant.username) ?? null)
-        : null;
-
-      let winner = null;
-      let status = "pending";
-      const persistedMatch =
-        persistedMatchesByKey.get(`${roundIndex}:${matchNumber}`) ?? null;
-      const persistedParticipantsMatch =
-        persistedMatch &&
-        (persistedMatch.leftMemberUsername ?? null) ===
-          (leftParticipant?.username ?? null) &&
-        (persistedMatch.rightMemberUsername ?? null) ===
-          (rightParticipant?.username ?? null);
-
-      if (leftParticipant && !rightParticipant) {
-        if (roundIndex === 1) {
-          winner = leftParticipant;
-          status = "bye";
-        } else {
-          status = "pending";
-        }
-      } else if (!leftParticipant && rightParticipant) {
-        if (roundIndex === 1) {
-          winner = rightParticipant;
-          status = "bye";
-        } else {
-          status = "pending";
-        }
-      } else if (!leftParticipant && !rightParticipant) {
-        status = "empty";
-      } else if (
-        typeof leftScore === "number" &&
-        typeof rightScore === "number"
-      ) {
-        if (leftScore > rightScore) {
-          winner = leftParticipant;
-          status = "completed";
-        } else if (rightScore > leftScore) {
-          winner = rightParticipant;
-          status = "completed";
-        } else {
-          status = "tie";
-        }
-      }
-
-      if (persistedParticipantsMatch) {
-        const persistedStatus = persistedMatch.status ?? status;
-
-        if (
-          persistedMatch.winnerUsername &&
-          isTournamentMatchResolvedStatus(persistedStatus)
-        ) {
-          winner =
-            [leftParticipant, rightParticipant].find(
-              (participant) =>
-                participant?.username === persistedMatch.winnerUsername,
-            ) ?? winner;
-        }
-
-        status = persistedStatus;
-      }
-
-      const persistedMatchFields = persistedParticipantsMatch
-        ? {
-            confirmedAt: persistedMatch.confirmedAt ?? null,
-            confirmedByUsername: persistedMatch.confirmedByUsername ?? null,
-            disputeReason: persistedMatch.disputeReason ?? null,
-            disputedAt: persistedMatch.disputedAt ?? null,
-            disputedByUsername: persistedMatch.disputedByUsername ?? null,
-            handicapAllowancePercent:
-              persistedMatch.handicapAllowancePercent ?? null,
-            leftAdjustedScore: persistedMatch.leftAdjustedScore ?? null,
-            leftAllowancePoints: persistedMatch.leftAllowancePoints ?? null,
-            leftHandicapBowClass: persistedMatch.leftHandicapBowClass ?? null,
-            leftHandicapDiscipline:
-              persistedMatch.leftHandicapDiscipline ?? null,
-            leftHandicapTableKey:
-              persistedMatch.leftHandicapTableKey ?? null,
-            leftHandicapTableTitle:
-              persistedMatch.leftHandicapTableTitle ?? null,
-            leftHandicapType: persistedMatch.leftHandicapType ?? null,
-            leftHandicapValue: persistedMatch.leftHandicapValue ?? null,
-            leftReferenceScore: persistedMatch.leftReferenceScore ?? null,
-            rightAdjustedScore: persistedMatch.rightAdjustedScore ?? null,
-            rightAllowancePoints: persistedMatch.rightAllowancePoints ?? null,
-            rightHandicapBowClass: persistedMatch.rightHandicapBowClass ?? null,
-            rightHandicapDiscipline:
-              persistedMatch.rightHandicapDiscipline ?? null,
-            rightHandicapTableKey:
-              persistedMatch.rightHandicapTableKey ?? null,
-            rightHandicapTableTitle:
-              persistedMatch.rightHandicapTableTitle ?? null,
-            rightHandicapType: persistedMatch.rightHandicapType ?? null,
-            rightHandicapValue: persistedMatch.rightHandicapValue ?? null,
-            rightReferenceScore: persistedMatch.rightReferenceScore ?? null,
-            submittedAt: persistedMatch.submittedAt ?? null,
-            submittedByUsername: persistedMatch.submittedByUsername ?? null,
-          }
-        : {};
-
-      matches.push({
-        id: `round-${roundIndex}-match-${matchNumber}`,
-        leftParticipant,
-        rightParticipant,
-        leftScore,
-        rightScore,
-        winner,
-        status,
-        ...persistedMatchFields,
-      });
-    }
-
-    if (
-      currentRoundNumber === null &&
-      matches.some(
-        (match) =>
-          !isTournamentMatchResolvedStatus(match.status) &&
-          !["empty"].includes(match.status) &&
-          match.leftParticipant &&
-          match.rightParticipant,
-      )
-    ) {
-      currentRoundNumber = roundIndex;
-    }
-
-    rounds.push({
-      roundNumber: roundIndex,
-      title: `Round ${roundIndex}`,
-      matches,
-    });
-
-    currentParticipants = matches.map((match) => match.winner);
-  }
-
-  return {
-    rounds,
-    winner: currentParticipants[0] ?? null,
-    currentRoundNumber,
-  };
-}
-
 function buildTournament(
   tournament,
   registrations = [],
@@ -3308,17 +3082,14 @@ function buildTournament(
   actorUsername = null,
   roundRows = [],
   matchRows = [],
+  options = {},
 ) {
+  const eligibilityByUsername = options.eligibilityByUsername ?? new Map();
+  const template = getTournamentTemplateDefinition(tournament);
+  const eligibilityRules = template?.eligibilityRules ?? null;
   const registrationLookup = new Set(
     registrations.map((entry) => entry.member_username),
   );
-  const normalizedRegistrations = registrations.map((registration) => ({
-    bowCode: registration.bow_code ?? registration.bowCode ?? null,
-    username: registration.member_username,
-    fullName: `${registration.first_name} ${registration.surname}`,
-    role: registration.user_type,
-    registeredAt: registration.registered_at,
-  }));
   const scoresByRound = new Map();
 
   for (const score of scores) {
@@ -3338,14 +3109,40 @@ function buildTournament(
       match,
     ]),
   );
+  const roundPlan = parseTournamentRoundPlan(tournament.round_schedule_json);
+  const normalizedRegistrations = registrations.map((registration) => {
+    const username = registration.member_username;
+    const eligibilitySnapshot = eligibilityByUsername.get(username) ?? null;
+    const registrationEligibility = evaluateTournamentRegistrationEligibility({
+      eligibilityRules,
+      snapshot: eligibilitySnapshot,
+      tournament,
+    });
+
+    return {
+      bowCode: registration.bow_code ?? registration.bowCode ?? null,
+      username,
+      fullName: `${registration.first_name} ${registration.surname}`,
+      role: registration.user_type,
+      registeredAt: registration.registered_at,
+      eligibility: {
+        hasCurrentHandicap: eligibilitySnapshot?.hasCurrentHandicap ?? null,
+        qualifyingRoundCount: eligibilitySnapshot?.qualifyingRoundCount ?? 0,
+        registration: registrationEligibility,
+      },
+    };
+  });
   const bracket = buildTournamentBracket(
     normalizedRegistrations,
     scoresByRound,
     persistedMatchesByKey,
+    {
+      frozenDrawOrderUsernames: roundPlan.draw?.orderUsernames ?? [],
+      supportsHighestLoserProgression:
+        template?.capabilities?.supportsHighestLoserProgression ?? false,
+    },
   );
   const persistedRounds = normalizePersistedTournamentRounds(roundRows);
-  const roundPlan = parseTournamentRoundPlan(tournament.round_schedule_json);
-  const template = getTournamentTemplateDefinition(tournament);
   const generatedRoundSchedule =
     roundPlan.automaticConfig
       ? buildAutomaticRoundSchedule({
@@ -3366,12 +3163,50 @@ function buildTournament(
     today >= tournament.registration_start_date &&
     today <= tournament.registration_end_date;
   const registrationClosed = today > tournament.registration_end_date;
+  const drawMetadata = roundPlan.draw;
+  const hasManualMatchActivity = persistedMatches.some((match) => {
+    const hasParticipants =
+      Boolean(match.leftMemberUsername ?? null) || Boolean(match.rightMemberUsername ?? null);
+
+    if (!hasParticipants) {
+      return false;
+    }
+
+    return (
+      Number.isInteger(match.leftScore) ||
+      Number.isInteger(match.rightScore) ||
+      Boolean(match.submittedByUsername) ||
+      Boolean(match.confirmedByUsername) ||
+      Boolean(match.disputedByUsername) ||
+      Boolean(match.disputeReason) ||
+      ["awaiting_opponent_confirmation", "finalised", "walkover", "disqualified", "retired_both"].includes(
+        String(match.status ?? "").trim(),
+      )
+    );
+  });
   const currentRoundNumber = bracket.currentRoundNumber;
   const currentRound = bracket.rounds.find(
     (round) => round.roundNumber === currentRoundNumber,
   );
   const currentRoundSchedule =
     roundSchedule.find((round) => round.roundNumber === currentRoundNumber) ?? null;
+  const actorEligibilitySnapshot = actorUsername
+    ? (eligibilityByUsername.get(actorUsername) ?? null)
+    : null;
+  const actorRegistrationEligibility = evaluateTournamentRegistrationEligibility({
+    eligibilityRules,
+    snapshot: actorEligibilitySnapshot,
+    tournament,
+  });
+  const actorCurrentRoundEligibility =
+    actorUsername && currentRoundNumber
+      ? evaluateTournamentRoundEligibility({
+          eligibilityRules,
+          roundNumber: currentRoundNumber,
+          snapshot: actorEligibilitySnapshot,
+          tournament,
+        })
+      : null;
   const scoreSubmissionOpen = Boolean(
     registrationClosed &&
       currentRoundSchedule?.publishDate &&
@@ -3392,6 +3227,26 @@ function buildTournament(
         (persistedMatch.rightMemberUsername ?? null) ===
           (match.rightParticipant?.username ?? null);
       const isCurrentRound = round.roundNumber === currentRoundNumber;
+      const leftEligibilitySnapshot =
+        eligibilityByUsername.get(match.leftParticipant?.username ?? null) ?? null;
+      const rightEligibilitySnapshot =
+        eligibilityByUsername.get(match.rightParticipant?.username ?? null) ?? null;
+      const leftRoundEligibility = match.leftParticipant
+        ? evaluateTournamentRoundEligibility({
+            eligibilityRules,
+            roundNumber: round.roundNumber,
+            snapshot: leftEligibilitySnapshot,
+            tournament,
+          })
+        : null;
+      const rightRoundEligibility = match.rightParticipant
+        ? evaluateTournamentRoundEligibility({
+            eligibilityRules,
+            roundNumber: round.roundNumber,
+            snapshot: rightEligibilitySnapshot,
+            tournament,
+          })
+        : null;
       const defaultStatus =
         match.status === "bye" || match.status === "empty"
           ? match.status
@@ -3442,6 +3297,28 @@ function buildTournament(
             : null,
         submittedAt:
           participantsMatchPersistedRecord ? persistedMatch?.submittedAt ?? null : null,
+        leftEligibility:
+          match.leftParticipant || leftEligibilitySnapshot
+            ? {
+                registration: evaluateTournamentRegistrationEligibility({
+                  eligibilityRules,
+                  snapshot: leftEligibilitySnapshot,
+                  tournament,
+                }),
+                round: leftRoundEligibility,
+              }
+            : null,
+        rightEligibility:
+          match.rightParticipant || rightEligibilitySnapshot
+            ? {
+                registration: evaluateTournamentRegistrationEligibility({
+                  eligibilityRules,
+                  snapshot: rightEligibilitySnapshot,
+                  tournament,
+                }),
+                round: rightRoundEligibility,
+              }
+            : null,
         confirmedByUsername:
           participantsMatchPersistedRecord
             ? persistedMatch?.confirmedByUsername ?? null
@@ -3493,6 +3370,26 @@ function buildTournament(
     roundWindowDays: roundPlan.automaticConfig?.roundWindowDays ?? null,
     roundRestDays: roundPlan.automaticConfig?.roundRestDays ?? null,
     roundSchedule,
+    draw: {
+      canRedraw: Boolean(
+        canManageTournamentDraw(template) &&
+          registrationClosed &&
+          normalizedRegistrations.length > 1 &&
+          !hasManualMatchActivity,
+      ),
+      generatedAt: drawMetadata?.generatedAt ?? null,
+      isRandomized: Boolean(drawMetadata?.orderUsernames?.length),
+    },
+    eligibility: actorUsername
+      ? {
+          actor: {
+            currentRound: actorCurrentRoundEligibility,
+            hasCurrentHandicap: actorEligibilitySnapshot?.hasCurrentHandicap ?? null,
+            qualifyingRoundCount: actorEligibilitySnapshot?.qualifyingRoundCount ?? 0,
+            registration: actorRegistrationEligibility,
+          },
+        }
+      : null,
     registrationWindow: {
       startDate: tournament.registration_start_date,
       endDate: tournament.registration_end_date,
@@ -3578,6 +3475,10 @@ function buildTournament(
       : null,
     engine: buildTournamentEngine(enrichedBracketRounds, baseTournamentRecord, actorUsername),
   };
+}
+
+function canManageTournamentDraw(template) {
+  return template?.capabilities?.supportsRandomizedDraw ?? false;
 }
 
 function buildRecurringClosureEvent(date) {

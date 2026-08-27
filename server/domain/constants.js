@@ -321,8 +321,10 @@ export const TOURNAMENT_TEMPLATE_OPTIONS = [
       supportsCaptainSetupWizard: true,
       supportsEligibilityRules: false,
       supportsHandicapAdjustments: false,
+      supportsHighestLoserProgression: false,
       supportsMatchConfirmation: false,
       supportsRoundDeadlines: false,
+      supportsRandomizedDraw: false,
     },
   },
   {
@@ -353,8 +355,10 @@ export const TOURNAMENT_TEMPLATE_OPTIONS = [
       supportsCaptainSetupWizard: true,
       supportsEligibilityRules: true,
       supportsHandicapAdjustments: true,
+      supportsHighestLoserProgression: true,
       supportsMatchConfirmation: true,
       supportsRoundDeadlines: true,
+      supportsRandomizedDraw: true,
     },
   },
 ];

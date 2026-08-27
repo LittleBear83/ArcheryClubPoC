@@ -105,6 +105,12 @@ await import(
 await import(
   pathToFileURL(path.join(root, "server/domain/services/memberPersistenceService.test.js"))
 );
+await import(
+  pathToFileURL(path.join(root, "server/domain/services/tournamentEngine.test.js"))
+);
+await import(
+  pathToFileURL(path.join(root, "server/domain/services/tournamentEligibilityService.test.js"))
+);
 await import(pathToFileURL(path.join(root, "server/index.test.js")));
 await import(
   pathToFileURL(path.join(root, "server/domain/services/goldenRecordsMemberSyncService.test.js"))

@@ -3061,6 +3061,31 @@ button:disabled {
   margin-top: 8px;
 }
 
+.tournament-current-match-card {
+  gap: 14px;
+}
+
+.tournament-current-match-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(320px, 1.1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.tournament-current-match-meta,
+.tournament-current-match-actions {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  justify-items: start;
+}
+
+.tournament-current-match-meta p,
+.tournament-current-match-actions p {
+  margin: 0;
+}
+
 .tournament-current-match-score-row {
   display: grid;
   grid-template-columns: minmax(140px, 1.4fr) repeat(3, minmax(0, 1fr));
@@ -3075,6 +3100,84 @@ button:disabled {
 
 .tournament-current-match-score-label {
   font-weight: 700;
+}
+
+.tournament-match-entry-grid {
+  display: grid;
+  gap: 12px;
+  width: max-content;
+  max-width: 100%;
+}
+
+.tournament-match-entry-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+}
+
+.tournament-match-entry-columns {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tournament-match-entry-header {
+  display: grid;
+  grid-template-columns: 180px 56px;
+  align-items: center;
+  gap: 14px;
+}
+
+.tournament-match-entry-label {
+  display: block;
+}
+
+.tournament-match-entry-controls {
+  display: grid;
+  grid-template-columns: 180px 56px;
+  align-items: center;
+  gap: 14px;
+}
+
+.tournament-match-entry-score {
+  display: grid;
+  min-width: 0;
+}
+
+.tournament-match-entry-score input {
+  width: 180px;
+}
+
+.tournament-match-entry-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.tournament-match-entry-header > :last-child {
+  justify-self: center;
+  text-align: center;
+}
+
+.tournament-match-entry-checkbox input {
+  margin: 0;
+}
+
+.tournament-match-entry-toggle span {
+  min-width: 0;
+}
+
+.tournament-match-action-form {
+  display: grid;
+  gap: 14px;
+  width: max-content;
+  max-width: 100%;
+}
+
+.tournament-match-action-form > .button,
+.tournament-match-action-form > button {
+  width: 220px;
 }
 
 .tournament-bracket-card p {
@@ -5749,6 +5852,35 @@ button:disabled {
   .loan-bow-return-actions {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .tournament-match-entry-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .tournament-current-match-layout {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .tournament-match-entry-header,
+  .tournament-match-entry-controls {
+    width: 100%;
+    grid-template-columns: 1fr auto;
+  }
+
+  .tournament-match-entry-header {
+    gap: 10px;
+  }
+
+  .tournament-match-entry-score input {
+    width: min(100%, 180px);
+  }
+
+  .tournament-match-action-form > .button,
+  .tournament-match-action-form > button {
+    width: 100%;
   }
 
   .tournament-primary-button,

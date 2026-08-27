@@ -133,6 +133,8 @@ type TournamentsMobileViewProps = {
   scoreValue: string;
   matchScoreAValue: string;
   matchScoreBValue: string;
+  matchCompetitorARetired: boolean;
+  matchCompetitorBRetired: boolean;
   matchDisputeReason: string;
   bracketGraphic: ReactNode;
   captainOperationsContent?: ReactNode;
@@ -144,11 +146,14 @@ type TournamentsMobileViewProps = {
   onOpenCaptainRemovalModal: () => void;
   onRegister: () => void;
   onWithdraw: () => void;
+  onRedrawTournament: () => void;
   onSaveCompetitorList: () => void;
   onScoreValueChange: (nextValue: string) => void;
   onSubmitScore: (event: FormEvent<HTMLFormElement>) => void;
   onMatchScoreAValueChange: (nextValue: string) => void;
   onMatchScoreBValueChange: (nextValue: string) => void;
+  onMatchCompetitorARetiredChange: (nextValue: boolean) => void;
+  onMatchCompetitorBRetiredChange: (nextValue: boolean) => void;
   onMatchDisputeReasonChange: (nextValue: string) => void;
   onSubmitMatchResult: (event: FormEvent<HTMLFormElement>) => void;
   onConfirmMatchResult: () => void;
@@ -167,6 +172,8 @@ export function TournamentsMobileView({
   scoreValue,
   matchScoreAValue,
   matchScoreBValue,
+  matchCompetitorARetired,
+  matchCompetitorBRetired,
   matchDisputeReason,
   bracketGraphic,
   captainOperationsContent,
@@ -178,11 +185,14 @@ export function TournamentsMobileView({
   onOpenCaptainRemovalModal,
   onRegister,
   onWithdraw,
+  onRedrawTournament,
   onSaveCompetitorList,
   onScoreValueChange,
   onSubmitScore,
   onMatchScoreAValueChange,
   onMatchScoreBValueChange,
+  onMatchCompetitorARetiredChange,
+  onMatchCompetitorBRetiredChange,
   onMatchDisputeReasonChange,
   onSubmitMatchResult,
   onConfirmMatchResult,
@@ -275,6 +285,12 @@ export function TournamentsMobileView({
             >
               {registrationStatusText}
             </p>
+            {selectedTournament.eligibility?.actor?.registration?.isEligible === false &&
+            !selectedTournament.isRegistered ? (
+              <p className="profile-error tournament-mobile-status-note">
+                {selectedTournament.eligibility.actor.registration.reason}
+              </p>
+            ) : null}
 
             <div className="tournament-action-row tournament-mobile-action-row">
               <Button
@@ -335,6 +351,20 @@ export function TournamentsMobileView({
                 </Button>
               ) : null}
 
+              {canManageTournaments &&
+              selectedTournament.engine?.template?.capabilities?.supportsRandomizedDraw &&
+              selectedTournament.registrationWindow.isClosed ? (
+                <Button
+                  type="button"
+                  className="tournament-secondary-button"
+                  onClick={onRedrawTournament}
+                  disabled={isSaving || !selectedTournament.draw?.canRedraw}
+                  variant="secondary"
+                >
+                  Redraw round 1
+                </Button>
+              ) : null}
+
               {canManageTournaments ? (
                 <Button
                   type="button"
@@ -375,6 +405,11 @@ export function TournamentsMobileView({
                   <div key={registration.username} className="tournament-mobile-registration-card">
                     {registration.fullName}
                     {registration.bowCode ? ` (${registration.bowCode})` : ""}
+                    {canManageTournaments &&
+                    registration.eligibility?.registration?.isEligible === false &&
+                    registration.eligibility.registration.reason
+                      ? ` - ${registration.eligibility.registration.reason}`
+                      : ""}
                   </div>
                 ))}
               </MobileCardList>
@@ -428,6 +463,33 @@ export function TournamentsMobileView({
                   className="left-align-form tournament-match-action-form"
                 >
                   <label>
+                    Retired{" "}
+                    <input
+                      type="checkbox"
+                      checked={matchCompetitorARetired}
+                      onChange={(event) => {
+                        const nextChecked = event.target.checked;
+
+                        if (
+                          nextChecked &&
+                          !window.confirm(
+                            `Mark ${
+                              selectedTournament.currentMatch.competitorA?.fullName ??
+                              "this archer"
+                            } as retired? Their score will be recorded as 0.`,
+                          )
+                        ) {
+                          return;
+                        }
+
+                        onMatchCompetitorARetiredChange(nextChecked);
+                        if (nextChecked) {
+                          onMatchScoreAValueChange("");
+                        }
+                      }}
+                    />
+                  </label>
+                  <label>
                     {selectedTournament.currentMatch.competitorA?.fullName ?? "Competitor A"} score
                     <input
                       type="number"
@@ -435,7 +497,35 @@ export function TournamentsMobileView({
                       inputMode="numeric"
                       value={matchScoreAValue}
                       onChange={(event) => onMatchScoreAValueChange(event.target.value)}
-                      required
+                      disabled={matchCompetitorARetired}
+                      required={!matchCompetitorARetired}
+                    />
+                  </label>
+                  <label>
+                    Retired{" "}
+                    <input
+                      type="checkbox"
+                      checked={matchCompetitorBRetired}
+                      onChange={(event) => {
+                        const nextChecked = event.target.checked;
+
+                        if (
+                          nextChecked &&
+                          !window.confirm(
+                            `Mark ${
+                              selectedTournament.currentMatch.competitorB?.fullName ??
+                              "this archer"
+                            } as retired? Their score will be recorded as 0.`,
+                          )
+                        ) {
+                          return;
+                        }
+
+                        onMatchCompetitorBRetiredChange(nextChecked);
+                        if (nextChecked) {
+                          onMatchScoreBValueChange("");
+                        }
+                      }}
                     />
                   </label>
                   <label>
@@ -446,13 +536,19 @@ export function TournamentsMobileView({
                       inputMode="numeric"
                       value={matchScoreBValue}
                       onChange={(event) => onMatchScoreBValueChange(event.target.value)}
-                      required
+                      disabled={matchCompetitorBRetired}
+                      required={!matchCompetitorBRetired}
                     />
                   </label>
                   <Button type="submit" disabled={isSubmittingScore}>
                     {isSubmittingScore ? "Submitting result..." : "Submit result"}
                   </Button>
                 </form>
+              ) : null}
+              {selectedTournament.eligibility?.actor?.currentRound?.isEligible === false ? (
+                <p className="profile-error">
+                  {selectedTournament.eligibility.actor.currentRound.reason}
+                </p>
               ) : null}
 
               {selectedTournament.currentMatch.workflow?.canConfirmResult ? (

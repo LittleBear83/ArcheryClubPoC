@@ -4,6 +4,15 @@ import {
   calculateAdjustedMatchScores,
   isCaptainsSwordTournament,
 } from "../../domain/services/tournamentHandicapService.js";
+import {
+  buildTournamentEligibilitySnapshot,
+  evaluateTournamentRegistrationEligibility,
+} from "../../domain/services/tournamentEligibilityService.js";
+import { randomInt } from "node:crypto";
+import {
+  buildTournamentRoundPlanJson,
+  parseTournamentRoundPlan,
+} from "../../domain/services/tournamentRoundPlan.js";
 
 export function registerTournamentRoutes({
   actorHasPermission,
@@ -91,8 +100,14 @@ export function registerTournamentRoutes({
       tournament,
       rawRegistrations,
     );
+    const eligibilityByUsername = await buildTournamentEligibilityByUsername(
+      tournament,
+      registrations,
+      actorUsername,
+    );
 
     return {
+      eligibilityByUsername,
       registrations,
       rounds,
       scores,
@@ -104,6 +119,7 @@ export function registerTournamentRoutes({
         actorUsername,
         rounds,
         matches,
+        { eligibilityByUsername },
       ),
     };
   };
@@ -282,6 +298,221 @@ export function registerTournamentRoutes({
         };
       }),
     );
+  const buildTournamentEligibilityByUsername = async (
+    tournament,
+    registrations = [],
+    actorUsername = null,
+  ) => {
+    const template = findTemplateByKey(
+      tournament?.template_key ?? tournament?.templateKey ?? null,
+    );
+    const eligibilityRules = template?.eligibilityRules ?? null;
+
+    if (!template?.capabilities?.supportsEligibilityRules || !eligibilityRules) {
+      return new Map();
+    }
+
+    const registrationEntries = registrations.map((registration) => ({
+      bowCode: registration.bow_code ?? registration.bowCode ?? null,
+      username: registration.member_username ?? registration.username ?? null,
+      user: null,
+    }));
+    const existingUsernames = new Set(
+      registrationEntries.map((entry) => entry.username).filter(Boolean),
+    );
+
+    if (actorUsername && !existingUsernames.has(actorUsername)) {
+      const actorRegistrationContext = await buildRegistrationContext(
+        tournament,
+        actorUsername,
+      );
+
+      if (actorRegistrationContext?.user) {
+        registrationEntries.push({
+          bowCode: actorRegistrationContext.suggestedBowCode || null,
+          username: actorUsername,
+          user: actorRegistrationContext.user,
+        });
+      }
+    }
+
+    const entries = await Promise.all(
+      registrationEntries.map(async (registration) => {
+        const username = registration.username ?? null;
+        const preferredUser = registration.user ?? null;
+
+        if (!username || !memberDirectoryGateway?.findUserByUsername) {
+          return [username, null];
+        }
+
+        const user =
+          preferredUser ?? (await memberDirectoryGateway.findUserByUsername(username));
+
+        if (!goldenRecordsCurrentHandicapService?.isEnabled || !user) {
+          return [
+            username,
+            buildTournamentEligibilitySnapshot({
+              bowCode: registration.bowCode ?? null,
+              goldenRecordsSnapshot: {
+                enabled: false,
+                achievements: [],
+                handicaps: [],
+              },
+              qualifyingDiscipline: eligibilityRules.qualifyingRoundDiscipline,
+              username,
+            }),
+          ];
+        }
+
+        const goldenRecordsSnapshot =
+          await goldenRecordsCurrentHandicapService.getSnapshotForMember({
+            archeryGbMembershipNumber: user.archery_gb_membership_number ?? "",
+            firstName: user.first_name ?? "",
+            goldenRecordsId: user.gr_id ?? "",
+            surname: user.surname ?? "",
+            username: user.username,
+          });
+
+        return [
+          username,
+          buildTournamentEligibilitySnapshot({
+            bowCode: registration.bowCode ?? null,
+            goldenRecordsSnapshot,
+            qualifyingDiscipline: eligibilityRules.qualifyingRoundDiscipline,
+            username,
+          }),
+        ];
+      }),
+    );
+
+    return new Map(entries.filter(([username]) => Boolean(username)));
+  };
+  const tournamentSupportsRandomizedDraw = (tournament) =>
+    Boolean(
+      findTemplateByKey(tournament?.template_key ?? tournament?.templateKey ?? null)
+        ?.capabilities?.supportsRandomizedDraw,
+    );
+  const hasTournamentDrawActivity = (matches = []) =>
+    matches.some((match) => {
+      const hasParticipants =
+        Boolean(match.left_member_username ?? match.leftMemberUsername) ||
+        Boolean(match.right_member_username ?? match.rightMemberUsername);
+
+      if (!hasParticipants) {
+        return false;
+      }
+
+      return (
+        Number.isInteger(match.left_score ?? match.leftScore) ||
+        Number.isInteger(match.right_score ?? match.rightScore) ||
+        Boolean(match.submitted_by_username ?? match.submittedByUsername) ||
+        Boolean(match.confirmed_by_username ?? match.confirmedByUsername) ||
+        Boolean(match.disputed_by_username ?? match.disputedByUsername) ||
+        Boolean(match.dispute_reason ?? match.disputeReason) ||
+        ["awaiting_opponent_confirmation", "finalised", "walkover", "disqualified", "retired_both"].includes(
+          String(match.status ?? "").trim(),
+        )
+      );
+    });
+  const generateRandomizedDrawOrder = (registrations = []) => {
+    const usernames = registrations
+      .map((registration) =>
+        String(
+          registration.member_username ?? registration.username ?? "",
+        ).trim(),
+      )
+      .filter(Boolean);
+    const shuffled = [...usernames];
+
+    for (let index = shuffled.length - 1; index > 0; index -= 1) {
+      const swapIndex = randomInt(index + 1);
+      const currentValue = shuffled[index];
+      shuffled[index] = shuffled[swapIndex];
+      shuffled[swapIndex] = currentValue;
+    }
+
+    return shuffled;
+  };
+  const isStoredDrawOrderCompatible = (drawOrderUsernames = [], registrations = []) => {
+    const registrationUsernames = registrations
+      .map((registration) =>
+        String(
+          registration.member_username ?? registration.username ?? "",
+        ).trim(),
+      )
+      .filter(Boolean);
+    const registrationSet = new Set(registrationUsernames);
+    const drawSet = new Set(drawOrderUsernames);
+
+    return (
+      drawOrderUsernames.length === registrationUsernames.length &&
+      drawSet.size === drawOrderUsernames.length &&
+      registrationSet.size === registrationUsernames.length &&
+      registrationUsernames.every((username) => drawSet.has(username))
+    );
+  };
+  const persistTournamentDrawOrder = async (
+    tournament,
+    drawOrderUsernames,
+    existingRoundPlan = parseTournamentRoundPlan(tournament.round_schedule_json),
+  ) =>
+    tournamentGateway.updateTournament({
+      drawDate:
+        existingRoundPlan.automaticConfig?.firstRoundStartDate ??
+        tournament.draw_date ??
+        null,
+      id: tournament.id,
+      name: tournament.name,
+      registrationEndDate: tournament.registration_end_date,
+      registrationStartDate: tournament.registration_start_date,
+      roundScheduleJson: buildTournamentRoundPlanJson({
+        automaticConfig: existingRoundPlan.automaticConfig,
+        draw: {
+          generatedAt: new Date().toISOString(),
+          orderUsernames: drawOrderUsernames,
+        },
+        manualSchedule: existingRoundPlan.manualSchedule,
+      }),
+      scoreSubmissionEndDate: tournament.score_submission_end_date,
+      scoreSubmissionStartDate: tournament.score_submission_start_date,
+      templateKey: tournament.template_key ?? null,
+      tournamentType: tournament.tournament_type,
+    });
+  const maybeFreezeRandomizedDraw = async (
+    tournament,
+    registrations,
+    matches,
+    actorUsername = null,
+  ) => {
+    if (
+      !tournamentSupportsRandomizedDraw(tournament) ||
+      registrations.length <= 1
+    ) {
+      return null;
+    }
+
+    const today = toUtcDateString(new Date());
+    const registrationClosed = today > tournament.registration_end_date;
+
+    if (!registrationClosed || hasTournamentDrawActivity(matches)) {
+      return null;
+    }
+
+    const roundPlan = parseTournamentRoundPlan(tournament.round_schedule_json);
+    const storedDrawOrder = roundPlan.draw?.orderUsernames ?? [];
+
+    if (isStoredDrawOrderCompatible(storedDrawOrder, registrations)) {
+      return null;
+    }
+
+    const updatedTournament = await persistTournamentDrawOrder(
+      tournament,
+      generateRandomizedDrawOrder(registrations),
+      roundPlan,
+    );
+
+    return syncTournamentMatches(updatedTournament, actorUsername);
+  };
   const tournamentNeedsCaptainsSwordMatchBackfill = (tournament, matches = []) =>
     isCaptainsSwordTournament(tournament) &&
     matches.some((match) => {
@@ -360,6 +591,18 @@ export function registerTournamentRoutes({
       winnerUsername,
     };
   };
+  const parseOptionalScoreValue = (value) => {
+    const normalizedValue = String(value ?? "").trim();
+
+    if (!normalizedValue) {
+      return null;
+    }
+
+    const parsed = Number.parseInt(normalizedValue, 10);
+    return Number.isInteger(parsed) ? parsed : Number.NaN;
+  };
+  const normalizeBooleanFlag = (value) =>
+    value === true || value === "true" || value === 1 || value === "1";
 
   const buildCaptainsSwordParticipantSnapshots = async (registrations) => {
     if (
@@ -522,6 +765,22 @@ export function registerTournamentRoutes({
           registrationsByTournamentId.get(tournament.id) ?? [],
         );
         const matches = matchesByTournamentId.get(tournament.id) ?? [];
+        const eligibilityByUsername = await buildTournamentEligibilityByUsername(
+          tournament,
+          registrations,
+          actor?.username ?? null,
+        );
+
+        const randomizedDrawSnapshot = await maybeFreezeRandomizedDraw(
+          tournament,
+          registrations,
+          matches,
+          actor?.username ?? null,
+        );
+
+        if (randomizedDrawSnapshot) {
+          return randomizedDrawSnapshot.builtTournament;
+        }
 
         if (tournamentNeedsCaptainsSwordMatchBackfill(tournament, matches)) {
           const { builtTournament } = await syncTournamentMatches(
@@ -539,6 +798,7 @@ export function registerTournamentRoutes({
           actor?.username ?? null,
           roundsByTournamentId.get(tournament.id) ?? [],
           matches,
+          { eligibilityByUsername },
         );
       }),
     );
@@ -702,7 +962,9 @@ export function registerTournamentRoutes({
       name: trimmedName,
       registrationEndDate,
       registrationStartDate,
-      roundScheduleJson: JSON.stringify(automaticRoundPlan ?? []),
+      roundScheduleJson: buildTournamentRoundPlanJson({
+        automaticConfig: automaticRoundPlan,
+      }),
       scoreSubmissionEndDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
       scoreSubmissionStartDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
       templateKey: selectedTemplate?.key ?? null,
@@ -836,7 +1098,9 @@ export function registerTournamentRoutes({
       name: trimmedName,
       registrationEndDate,
       registrationStartDate,
-      roundScheduleJson: JSON.stringify(automaticRoundPlan ?? []),
+      roundScheduleJson: buildTournamentRoundPlanJson({
+        automaticConfig: automaticRoundPlan,
+      }),
       scoreSubmissionEndDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
       scoreSubmissionStartDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
       templateKey: selectedTemplate?.key ?? null,
@@ -870,6 +1134,103 @@ export function registerTournamentRoutes({
     res.json({
       success: true,
       tournament: builtTournament,
+    });
+  });
+
+  app.post("/api/tournaments/:id/redraw", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to redraw tournament pairings.",
+      });
+      return;
+    }
+
+    const tournament = await tournamentGateway.findTournamentById(req.params.id);
+
+    if (!tournament) {
+      res.status(404).json({
+        success: false,
+        message: "Tournament not found.",
+      });
+      return;
+    }
+
+    if (!tournamentSupportsRandomizedDraw(tournament)) {
+      res.status(400).json({
+        success: false,
+        message: "This tournament template does not support a randomised draw.",
+      });
+      return;
+    }
+
+    const today = toUtcDateString(new Date());
+
+    if (today <= tournament.registration_end_date) {
+      res.status(400).json({
+        success: false,
+        message: "The draw can only be redone after registration has closed.",
+      });
+      return;
+    }
+
+    const registrations = await enrichTournamentRegistrations(
+      tournament,
+      await tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id),
+    );
+    const matches = await tournamentGateway.listTournamentMatchesByTournamentId(tournament.id);
+
+    if (registrations.length <= 1) {
+      res.status(400).json({
+        success: false,
+        message: "At least two competitors are required before the draw can be redone.",
+      });
+      return;
+    }
+
+    if (hasTournamentDrawActivity(matches)) {
+      res.status(400).json({
+        success: false,
+        message: "The draw can no longer be redone once match activity has started.",
+      });
+      return;
+    }
+
+    const updatedTournament = await persistTournamentDrawOrder(
+      tournament,
+      generateRandomizedDrawOrder(registrations),
+    );
+    const updatedTournamentSnapshot = await syncTournamentMatches(
+      updatedTournament,
+      actor.username,
+    );
+    const [changedAtDate, changedAtTime] = getUtcTimestampParts();
+
+    if (auditChangeLogger) {
+      void auditChangeLogger.recordEntityChange({
+        action: "draw_redrawn",
+        actorUsername: actor.username,
+        after: updatedTournamentSnapshot.builtTournament,
+        before: tournament,
+        changedAtDate: changedAtDate,
+        changedAtTime: changedAtTime,
+        entityId: String(tournament.id),
+        entityLabel: tournament.name,
+        entityType: "tournament",
+        req,
+        target: `/api/tournaments/${tournament.id}/redraw`,
+      }).catch((auditError) => {
+        console.error("Failed to record tournament redraw audit event", auditError);
+      });
+    }
+
+    broadcastTournamentsUpdated("tournaments.redraw");
+
+    res.json({
+      success: true,
+      tournament: updatedTournamentSnapshot.builtTournament,
     });
   });
 
@@ -1021,6 +1382,53 @@ export function registerTournamentRoutes({
         message: "That bow discipline is not available on your member profile.",
       });
       return;
+    }
+
+    const tournamentTemplate = findTemplateByKey(
+      tournament.template_key ?? tournament.templateKey ?? null,
+    );
+    const registrationEligibilityRules = tournamentTemplate?.eligibilityRules ?? null;
+
+    if (
+      tournamentTemplate?.capabilities?.supportsEligibilityRules &&
+      registrationEligibilityRules
+    ) {
+      const user = registrationContext.user;
+      const goldenRecordsSnapshot =
+        goldenRecordsCurrentHandicapService?.isEnabled && user
+          ? await goldenRecordsCurrentHandicapService.getSnapshotForMember({
+              archeryGbMembershipNumber: user.archery_gb_membership_number ?? "",
+              firstName: user.first_name ?? "",
+              goldenRecordsId: user.gr_id ?? "",
+              surname: user.surname ?? "",
+              username: user.username,
+            })
+          : {
+              enabled: false,
+              achievements: [],
+              handicaps: [],
+            };
+      const eligibilitySnapshot = buildTournamentEligibilitySnapshot({
+        bowCode: resolvedBowCode || null,
+        goldenRecordsSnapshot,
+        qualifyingDiscipline: registrationEligibilityRules.qualifyingRoundDiscipline,
+        username: registrationUsername,
+      });
+      const registrationEligibility = evaluateTournamentRegistrationEligibility({
+        eligibilityRules: registrationEligibilityRules,
+        snapshot: eligibilitySnapshot,
+        tournament,
+      });
+
+      if (!registrationEligibility.isEligible) {
+        res.status(400).json({
+          success: false,
+          message:
+            registrationEligibility.reason ??
+            "This member is not eligible for this tournament.",
+        });
+        return;
+      }
     }
 
     try {
@@ -1346,8 +1754,10 @@ export function registerTournamentRoutes({
   app.post("/api/tournament-matches/:id/result", async (req, res) => {
     const actor = getActorUser(req);
     const parsedMatchId = parseTournamentMatchId(req.params.id);
-    const leftScore = Number.parseInt(req.body?.leftScore, 10);
-    const rightScore = Number.parseInt(req.body?.rightScore, 10);
+    const leftScore = parseOptionalScoreValue(req.body?.leftScore);
+    const rightScore = parseOptionalScoreValue(req.body?.rightScore);
+    const leftRetired = normalizeBooleanFlag(req.body?.leftRetired);
+    const rightRetired = normalizeBooleanFlag(req.body?.rightRetired);
 
     if (!actor) {
       res.status(401).json({
@@ -1365,7 +1775,47 @@ export function registerTournamentRoutes({
       return;
     }
 
-    if (
+    if (leftRetired && rightRetired) {
+      if (leftScore !== null || rightScore !== null) {
+        res.status(400).json({
+          success: false,
+          message: "Leave both score fields blank when both archers retire.",
+        });
+        return;
+      }
+    } else if (leftRetired) {
+      if (leftScore !== null) {
+        res.status(400).json({
+          success: false,
+          message: "Leave the retired archer's score blank.",
+        });
+        return;
+      }
+
+      if (!Number.isInteger(rightScore) || rightScore < 0) {
+        res.status(400).json({
+          success: false,
+          message: "Enter a valid whole-number score for the remaining archer.",
+        });
+        return;
+      }
+    } else if (rightRetired) {
+      if (rightScore !== null) {
+        res.status(400).json({
+          success: false,
+          message: "Leave the retired archer's score blank.",
+        });
+        return;
+      }
+
+      if (!Number.isInteger(leftScore) || leftScore < 0) {
+        res.status(400).json({
+          success: false,
+          message: "Enter a valid whole-number score for the remaining archer.",
+        });
+        return;
+      }
+    } else if (
       !Number.isInteger(leftScore) ||
       !Number.isInteger(rightScore) ||
       leftScore < 0 ||
@@ -1407,17 +1857,36 @@ export function registerTournamentRoutes({
     if (!actorCanSubmit) {
       res.status(400).json({
         success: false,
-        message: "You cannot submit a result for this match right now.",
+        message:
+          match.workflow?.ineligibilityReason ??
+          "You cannot submit a result for this match right now.",
       });
       return;
     }
 
-    const resolvedResult = resolveMatchWinner({
-      leftScore,
-      match,
-      rightScore,
-      tournament,
-    });
+    const resolvedResult =
+      leftRetired || rightRetired
+        ? {
+            ...buildPersistedHandicapPayload(
+              match,
+              leftRetired ? null : leftScore,
+              rightRetired ? null : rightScore,
+            ),
+            comparisonMode: "retired",
+            isTie: false,
+            winnerUsername:
+              leftRetired && rightRetired
+                ? null
+                : leftRetired
+                  ? match.competitorB?.username ?? null
+                  : match.competitorA?.username ?? null,
+          }
+        : resolveMatchWinner({
+            leftScore,
+            match,
+            rightScore,
+            tournament,
+          });
 
     if (resolvedResult.isTie) {
       res.status(400).json({
@@ -1433,14 +1902,17 @@ export function registerTournamentRoutes({
     const [submittedAtDate, submittedAtTime] = getUtcTimestampParts();
     const requiresOpponentConfirmation =
       match.workflow?.requiresOpponentConfirmation ?? false;
-    const nextStatus = requiresOpponentConfirmation
-      ? "awaiting_opponent_confirmation"
-      : "finalised";
+    const nextStatus =
+      leftRetired && rightRetired
+        ? "retired_both"
+        : requiresOpponentConfirmation
+          ? "awaiting_opponent_confirmation"
+          : "finalised";
 
     await tournamentGateway.updateTournamentMatchWorkflow({
-      leftScore,
+      leftScore: leftRetired ? null : leftScore,
       matchNumber: parsedMatchId.matchNumber,
-      rightScore,
+      rightScore: rightRetired ? null : rightScore,
       roundNumber: parsedMatchId.roundNumber,
       status: nextStatus,
       submittedByUsername: actor.username,
@@ -1451,22 +1923,28 @@ export function registerTournamentRoutes({
     });
 
     if (!requiresOpponentConfirmation) {
-      await Promise.all([
-        tournamentGateway.submitTournamentScore({
-          roundNumber: parsedMatchId.roundNumber,
-          score: leftScore,
-          timestampParts: [submittedAtDate, submittedAtTime],
-          tournamentId: tournament.id,
-          username: match.competitorA?.username,
-        }),
-        tournamentGateway.submitTournamentScore({
-          roundNumber: parsedMatchId.roundNumber,
-          score: rightScore,
-          timestampParts: [submittedAtDate, submittedAtTime],
-          tournamentId: tournament.id,
-          username: match.competitorB?.username,
-        }),
-      ]);
+      await Promise.all(
+        [
+          Number.isInteger(leftRetired ? null : leftScore)
+            ? tournamentGateway.submitTournamentScore({
+                roundNumber: parsedMatchId.roundNumber,
+                score: leftScore,
+                timestampParts: [submittedAtDate, submittedAtTime],
+                tournamentId: tournament.id,
+                username: match.competitorA?.username,
+              })
+            : null,
+          Number.isInteger(rightRetired ? null : rightScore)
+            ? tournamentGateway.submitTournamentScore({
+                roundNumber: parsedMatchId.roundNumber,
+                score: rightScore,
+                timestampParts: [submittedAtDate, submittedAtTime],
+                tournamentId: tournament.id,
+                username: match.competitorB?.username,
+              })
+            : null,
+        ].filter(Boolean),
+      );
     }
 
     const updatedTournamentSnapshot = await syncTournamentMatches(
@@ -1559,22 +2037,28 @@ export function registerTournamentRoutes({
       ),
     });
 
-    await Promise.all([
-      tournamentGateway.submitTournamentScore({
-        roundNumber: parsedMatchId.roundNumber,
-        score: match.score?.competitorA ?? null,
-        timestampParts: [confirmedAtDate, confirmedAtTime],
-        tournamentId: tournament.id,
-        username: match.competitorA?.username,
-      }),
-      tournamentGateway.submitTournamentScore({
-        roundNumber: parsedMatchId.roundNumber,
-        score: match.score?.competitorB ?? null,
-        timestampParts: [confirmedAtDate, confirmedAtTime],
-        tournamentId: tournament.id,
-        username: match.competitorB?.username,
-      }),
-    ]);
+    await Promise.all(
+      [
+        Number.isInteger(match.score?.competitorA ?? null)
+          ? tournamentGateway.submitTournamentScore({
+              roundNumber: parsedMatchId.roundNumber,
+              score: match.score?.competitorA ?? null,
+              timestampParts: [confirmedAtDate, confirmedAtTime],
+              tournamentId: tournament.id,
+              username: match.competitorA?.username,
+            })
+          : null,
+        Number.isInteger(match.score?.competitorB ?? null)
+          ? tournamentGateway.submitTournamentScore({
+              roundNumber: parsedMatchId.roundNumber,
+              score: match.score?.competitorB ?? null,
+              timestampParts: [confirmedAtDate, confirmedAtTime],
+              tournamentId: tournament.id,
+              username: match.competitorB?.username,
+            })
+          : null,
+      ].filter(Boolean),
+    );
 
     const updatedTournamentSnapshot = await syncTournamentMatches(
       tournament,

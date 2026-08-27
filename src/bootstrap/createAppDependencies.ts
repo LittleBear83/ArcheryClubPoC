@@ -32,6 +32,7 @@ import {
   DisputeTournamentMatchResultUseCase,
   ListTournamentsUseCase,
   OverrideTournamentMatchResultUseCase,
+  RedrawTournamentUseCase,
   RegisterForTournamentUseCase,
   SubmitTournamentMatchResultUseCase,
   SubmitTournamentScoreUseCase,
@@ -132,6 +133,9 @@ export function createAppDependencies() {
       tournamentRepository,
     }),
     withdrawFromTournamentUseCase: new WithdrawFromTournamentUseCase({
+      tournamentRepository,
+    }),
+    redrawTournamentUseCase: new RedrawTournamentUseCase({
       tournamentRepository,
     }),
     submitTournamentMatchResultUseCase: new SubmitTournamentMatchResultUseCase({

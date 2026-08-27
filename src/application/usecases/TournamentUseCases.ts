@@ -123,6 +123,26 @@ export class WithdrawFromTournamentUseCase {
   }
 }
 
+export class RedrawTournamentUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
+  constructor({ tournamentRepository }) {
+    this.tournamentRepository = tournamentRepository;
+  }
+
+  async execute({ actorUsername, tournamentId }) {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!tournamentId) {
+      throw new Error("A tournament id is required.");
+    }
+
+    return this.tournamentRepository.redrawTournament(actorUsername, tournamentId);
+  }
+}
+
 export class SubmitTournamentScoreUseCase {
   private readonly tournamentRepository: TournamentRepository;
 

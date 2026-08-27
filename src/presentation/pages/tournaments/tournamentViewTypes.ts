@@ -13,6 +13,10 @@ export type TournamentMatch = {
   leftScore?: number | null;
   rightScore?: number | null;
   winner?: TournamentParticipant | null;
+  retirement?: {
+    competitorA?: boolean;
+    competitorB?: boolean;
+  } | null;
   handicap?: {
     allowancePercent?: number | null;
     competitorA?: {
@@ -49,6 +53,7 @@ export type TournamentMatch = {
     disputedAt?: string | null;
     disputeReason?: string | null;
     actorRole?: "competitorA" | "competitorB" | null;
+    ineligibilityReason?: string | null;
     canSubmitResult?: boolean;
     canConfirmResult?: boolean;
     canDisputeResult?: boolean;
@@ -80,6 +85,25 @@ export type TournamentRecord = {
   registrationCount: number;
   currentRoundNumber?: number;
   actorScore?: number | null;
+  draw?: {
+    canRedraw?: boolean;
+    generatedAt?: string | null;
+    isRandomized?: boolean;
+  } | null;
+  eligibility?: {
+    actor?: {
+      currentRound?: {
+        isEligible?: boolean;
+        reason?: string | null;
+      } | null;
+      registration?: {
+        isEligible?: boolean;
+        reason?: string | null;
+      } | null;
+      hasCurrentHandicap?: boolean | null;
+      qualifyingRoundCount?: number;
+    } | null;
+  } | null;
   currentMatch?: {
     id: string | number;
     roundNumber: number;
@@ -92,6 +116,7 @@ export type TournamentRecord = {
       competitorB?: number | null;
     };
     winner?: TournamentParticipant | null;
+    retirement?: TournamentMatch["retirement"];
     handicap?: TournamentMatch["handicap"];
     submissionDeadline?: string | null;
     workflow?: {
@@ -105,6 +130,7 @@ export type TournamentRecord = {
       disputedAt?: string | null;
       disputeReason?: string | null;
       actorRole?: "competitorA" | "competitorB" | null;
+      ineligibilityReason?: string | null;
       canSubmitResult?: boolean;
       canConfirmResult?: boolean;
       canDisputeResult?: boolean;
@@ -130,6 +156,14 @@ export type TournamentRecord = {
     bowCode?: string | null;
     username: string;
     fullName: string;
+    eligibility?: {
+      hasCurrentHandicap?: boolean | null;
+      qualifyingRoundCount?: number;
+      registration?: {
+        isEligible?: boolean;
+        reason?: string | null;
+      } | null;
+    } | null;
   }>;
   bracket: {
     rounds: TournamentRound[];
@@ -186,11 +220,13 @@ export type TournamentRecord = {
           competitorB?: number | null;
         };
         winner?: TournamentParticipant | null;
+        retirement?: TournamentMatch["retirement"];
         handicap?: TournamentMatch["handicap"];
         submissionDeadline?: string | null;
         workflow?: {
           resultSubmissionMode?: string;
           requiresOpponentConfirmation?: boolean;
+          ineligibilityReason?: string | null;
         };
       }>;
     }>;
@@ -206,11 +242,13 @@ export type TournamentRecord = {
         competitorB?: number | null;
       };
       winner?: TournamentParticipant | null;
+      retirement?: TournamentMatch["retirement"];
       handicap?: TournamentMatch["handicap"];
       submissionDeadline?: string | null;
       workflow?: {
         resultSubmissionMode?: string;
         requiresOpponentConfirmation?: boolean;
+        ineligibilityReason?: string | null;
       };
     }>;
   };

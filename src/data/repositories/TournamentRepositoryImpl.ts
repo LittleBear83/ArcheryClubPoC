@@ -19,6 +19,10 @@ type TournamentDataSource = {
     tournamentId: string | number,
     payload?: { memberUsername?: string },
   ): Promise<unknown>;
+  redrawTournament(
+    actorUsername: string,
+    tournamentId: string | number,
+  ): Promise<unknown>;
   submitTournamentScore(
     actorUsername: string,
     tournamentId: string | number,
@@ -77,6 +81,10 @@ export class TournamentRepositoryImpl extends TournamentRepository {
 
   async withdrawFromTournament(actorUsername, tournamentId, payload) {
     return this.dataSource.withdrawFromTournament(actorUsername, tournamentId, payload);
+  }
+
+  async redrawTournament(actorUsername, tournamentId) {
+    return this.dataSource.redrawTournament(actorUsername, tournamentId);
   }
 
   async submitTournamentScore(actorUsername, tournamentId, scoreSubmission) {

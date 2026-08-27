@@ -64,6 +64,14 @@ export class TournamentCrudApi {
     });
   }
 
+  async redrawTournament(actorUsername: string, tournamentId: string | number) {
+    return fetchApi(`/api/tournaments/${tournamentId}/redraw`, {
+      method: "POST",
+      headers: buildActorHeaders(actorUsername, true),
+      cache: "no-store",
+    });
+  }
+
   async submitTournamentScore(
     actorUsername: string,
     tournamentId: string | number,

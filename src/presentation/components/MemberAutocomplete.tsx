@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Autocomplete, {
   createFilterOptions,
 } from "@mui/material/Autocomplete";
@@ -14,7 +14,9 @@ export type MemberAutocompleteOption = {
 };
 
 type MemberAutocompleteProps = {
+  className?: string;
   clearDisplayOnFocus?: boolean;
+  clearSelectionOnFocus?: boolean;
   disabled?: boolean;
   fullWidth?: boolean;
   label: string;
@@ -40,7 +42,9 @@ const filterOptions = createFilterOptions<MemberAutocompleteOption>({
 });
 
 export function MemberAutocomplete({
+  className,
   clearDisplayOnFocus = false,
+  clearSelectionOnFocus = false,
   disabled = false,
   fullWidth = true,
   label,
@@ -57,13 +61,22 @@ export function MemberAutocomplete({
     [options, value],
   );
   const [inputValue, setInputValue] = useState(selectedOption?.label ?? "");
+  const [isFocusClearing, setIsFocusClearing] = useState(false);
+  const shouldSyncFromSelectionRef = useRef(true);
+  const inputElementRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
+    if (!shouldSyncFromSelectionRef.current) {
+      shouldSyncFromSelectionRef.current = true;
+      return;
+    }
+
     setInputValue(selectedOption?.label ?? "");
-  }, [selectedOption]);
+  }, [selectedOption, value]);
 
   return (
     <div
+      className={className}
       style={{
         maxWidth: maxWidth ?? (fullWidth ? "100%" : undefined),
         minWidth,
@@ -80,6 +93,8 @@ export function MemberAutocomplete({
         inputValue={inputValue}
         filterOptions={filterOptions}
         onChange={(_, option) => {
+          setIsFocusClearing(false);
+          shouldSyncFromSelectionRef.current = true;
           onValueChange(option?.value ?? "");
           setInputValue(option?.label ?? "");
         }}
@@ -87,6 +102,8 @@ export function MemberAutocomplete({
           setInputValue(nextInputValue);
 
           if (reason === "clear") {
+            setIsFocusClearing(false);
+            shouldSyncFromSelectionRef.current = true;
             onValueChange("");
             return;
           }
@@ -96,17 +113,8 @@ export function MemberAutocomplete({
             selectedOption &&
             nextInputValue !== selectedOption.label
           ) {
+            shouldSyncFromSelectionRef.current = false;
             onValueChange("");
-          }
-        }}
-        onFocus={() => {
-          if (clearDisplayOnFocus && selectedOption) {
-            setInputValue("");
-          }
-        }}
-        onBlur={() => {
-          if (clearDisplayOnFocus && selectedOption && inputValue.trim() === "") {
-            setInputValue(selectedOption.label);
           }
         }}
         getOptionLabel={(option) => option.label}
@@ -125,7 +133,34 @@ export function MemberAutocomplete({
           </li>
         )}
         renderInput={(params) => (
-          <TextField {...params} placeholder={placeholder} variant="outlined" />
+          <TextField
+            {...params}
+            inputRef={inputElementRef}
+            placeholder={placeholder}
+            variant="outlined"
+            onFocus={(event) => {
+              if (clearDisplayOnFocus && selectedOption && !isFocusClearing) {
+                setIsFocusClearing(true);
+                setInputValue("");
+                window.requestAnimationFrame(() => {
+                  inputElementRef.current?.select();
+                });
+
+                if (clearSelectionOnFocus) {
+                  shouldSyncFromSelectionRef.current = false;
+                  onValueChange("");
+                }
+              }
+            }}
+            onBlur={(event) => {
+              if (clearDisplayOnFocus && !inputValue && selectedOption) {
+                shouldSyncFromSelectionRef.current = true;
+                setInputValue(selectedOption.label);
+              }
+
+              setIsFocusClearing(false);
+            }}
+          />
         )}
         sx={{
           mt: 1,

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "../../components/Button";
 import { LabeledSelect } from "../../components/LabeledSelect";
+import { MemberAutocomplete } from "../../components/MemberAutocomplete";
 import { Modal } from "../../components/Modal";
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
@@ -8,7 +9,6 @@ import { MobileCardList } from "../../components/mobile/MobileCardList";
 import { MobileEmptyState } from "../../components/mobile/MobileEmptyState";
 import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { formatShortDateTime } from "../../../utils/dateTime";
-import { formatMemberDisplayName } from "../../../utils/userProfile";
 import {
   CASE_ASSIGNMENT_FIELDS,
   describeCaseContentLocation,
@@ -267,43 +267,33 @@ export function EquipmentMobileView({
               </p>
               <div className="equipment-assign-layout">
                 <div className="equipment-assign-target-card">
-                  <span className="equipment-assign-target-label">Assign to</span>
-                  <div className="equipment-assign-target-toggle" role="group" aria-label="Assign target type">
-                    <Button
-                      type="button"
-                      variant={assignTargetType === "member" ? "primary" : "secondary"}
-                      className="equipment-assign-target-button"
-                      onClick={() => setAssignTargetType("member")}
-                      fullWidth
-                    >
-                      Member
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={assignTargetType === "case" ? "primary" : "secondary"}
-                      className="equipment-assign-target-button"
-                      onClick={() => setAssignTargetType("case")}
-                      fullWidth
-                    >
-                      Case
-                    </Button>
-                  </div>
+                  <LabeledSelect
+                    className="equipment-inline-control"
+                    label="Assign to"
+                    value={assignTargetType}
+                    onChange={(event) => setAssignTargetType(event.target.value)}
+                  >
+                    <option value="member">Member</option>
+                    <option value="case">Case</option>
+                  </LabeledSelect>
                 </div>
 
                 <div className="equipment-inline-control-grid equipment-assign-fields">
                   {assignTargetType === "member" ? (
-                    <LabeledSelect
+                    <MemberAutocomplete
                       className="equipment-inline-control"
+                      clearDisplayOnFocus
+                      fullWidth
+                      maxWidth="28rem"
                       label="Borrowing member"
+                      options={members.map((member) => ({
+                        keywords: [member.username],
+                        label: member.fullName || member.username,
+                        value: member.username,
+                      }))}
                       value={targetMemberUsername}
-                      onChange={(event) => setTargetMemberUsername(event.target.value)}
-                    >
-                      {members.map((member) => (
-                        <option key={member.username} value={member.username}>
-                          {formatMemberDisplayName(member)}
-                        </option>
-                      ))}
-                    </LabeledSelect>
+                      onValueChange={setTargetMemberUsername}
+                    />
                   ) : (
                     <LabeledSelect
                       className="equipment-inline-control"

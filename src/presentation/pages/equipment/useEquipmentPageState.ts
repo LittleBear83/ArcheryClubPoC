@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { hasPermission } from "../../../utils/userProfile";
 import {
@@ -34,6 +34,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     column: "type",
     direction: "asc",
   });
+  const hasInitializedTargetMemberRef = useRef(false);
   const [activeCaseModalId, setActiveCaseModalId] = useState("");
   const [caseAssignmentSelections, setCaseAssignmentSelections] = useState({});
   const [isSavingCaseAssignments, setIsSavingCaseAssignments] = useState(false);
@@ -85,6 +86,14 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
         : ["Main Cupboard"],
     [equipmentQuery.data?.cupboardOptions],
   );
+  const activeItems = useMemo(
+    () => items.filter((item) => item.status === "active"),
+    [items],
+  );
+  const cases = useMemo(
+    () => (equipmentQuery.data?.cases ?? []).filter((caseItem) => caseItem.status === "active"),
+    [equipmentQuery.data?.cases],
+  );
 
   useEffect(() => {
     if (!selectedItemId && items.length > 0) {
@@ -93,7 +102,12 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   }, [items, selectedItemId]);
 
   useEffect(() => {
-    if (!targetMemberUsername && members.length > 0) {
+    if (
+      !hasInitializedTargetMemberRef.current &&
+      !targetMemberUsername &&
+      members.length > 0
+    ) {
+      hasInitializedTargetMemberRef.current = true;
       setTargetMemberUsername(members[0].username);
     }
   }, [members, targetMemberUsername]);
@@ -109,15 +123,6 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
       setCupboardLabel(cupboardOptions[0]);
     }
   }, [cupboardLabel, cupboardOptions]);
-
-  const activeItems = useMemo(
-    () => items.filter((item) => item.status === "active"),
-    [items],
-  );
-  const cases = useMemo(
-    () => (equipmentQuery.data?.cases ?? []).filter((caseItem) => caseItem.status === "active"),
-    [equipmentQuery.data?.cases],
-  );
   const loanedItems = useMemo(
     () => activeItems.filter((item) => item.currentLoan),
     [activeItems],

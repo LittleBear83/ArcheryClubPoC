@@ -3884,10 +3884,6 @@ button:disabled {
 .equipment-assign-target-card {
   display: grid;
   gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--panel-border);
-  border-radius: 14px;
-  background: var(--surface-raised);
 }
 
 .equipment-assign-target-label {
@@ -6235,11 +6231,6 @@ button:disabled {
   .equipment-case-card,
   .equipment-action-card {
     padding: 12px;
-    border-radius: 12px;
-  }
-
-  .equipment-assign-target-card {
-    padding: 10px;
     border-radius: 12px;
   }
 

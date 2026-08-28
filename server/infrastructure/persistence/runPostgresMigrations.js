@@ -422,6 +422,7 @@ function buildInitialSchemaSql() {
       name TEXT NOT NULL,
       tournament_type TEXT NOT NULL,
       template_key TEXT,
+      template_definition_json TEXT,
       draw_date TEXT,
       round_schedule_json TEXT NOT NULL DEFAULT '[]',
       registration_start_date TEXT NOT NULL,
@@ -438,10 +439,29 @@ function buildInitialSchemaSql() {
     ADD COLUMN IF NOT EXISTS template_key TEXT;
 
     ALTER TABLE tournaments
+    ADD COLUMN IF NOT EXISTS template_definition_json TEXT;
+
+    ALTER TABLE tournaments
     ADD COLUMN IF NOT EXISTS draw_date TEXT;
 
     ALTER TABLE tournaments
     ADD COLUMN IF NOT EXISTS round_schedule_json TEXT NOT NULL DEFAULT '[]';
+
+    CREATE TABLE IF NOT EXISTS tournament_templates (
+      template_key TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      tournament_type TEXT NOT NULL,
+      format TEXT NOT NULL,
+      round_type TEXT NOT NULL,
+      defaults_json TEXT NOT NULL DEFAULT '{}',
+      capabilities_json TEXT NOT NULL DEFAULT '{}',
+      eligibility_rules_json TEXT,
+      created_by TEXT NOT NULL REFERENCES users(username),
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      created_by_user_id BIGINT REFERENCES users(id)
+    );
 
     CREATE TABLE IF NOT EXISTS tournament_registrations (
       tournament_id BIGINT NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,

@@ -122,7 +122,9 @@ function createSqliteTournamentGateway({
   deleteTournamentScoresByTournamentId,
   findTournamentMatchByKey,
   findTournamentById,
+  findTournamentTemplateByKey,
   insertTournament,
+  insertTournamentTemplate,
   insertTournamentMatch,
   insertTournamentRegistration,
   insertTournamentRound,
@@ -134,6 +136,7 @@ function createSqliteTournamentGateway({
   listTournamentRegistrationsByTournamentId,
   listTournamentRoundsByTournamentId,
   listTournamentScoresByTournamentId,
+  listTournamentTemplates,
   listTournaments,
   updateTournamentMatchWorkflow,
   updateTournamentById,
@@ -145,6 +148,7 @@ function createSqliteTournamentGateway({
         args.name,
         args.tournamentType,
         args.templateKey ?? null,
+        args.templateDefinitionJson ?? null,
         args.drawDate ?? null,
         args.roundScheduleJson ?? "[]",
         args.registrationStartDate,
@@ -171,6 +175,9 @@ function createSqliteTournamentGateway({
     },
     async findTournamentById(id) {
       return findTournamentById.get(id);
+    },
+    async findTournamentTemplateByKey(templateKey) {
+      return findTournamentTemplateByKey.get(templateKey);
     },
     async findTournamentMatchByKey({ matchNumber, roundNumber, tournamentId }) {
       return findTournamentMatchByKey.get(tournamentId, roundNumber, matchNumber);
@@ -199,8 +206,28 @@ function createSqliteTournamentGateway({
     async listTournamentScoresByTournamentId(tournamentId) {
       return listTournamentScoresByTournamentId.all(tournamentId);
     },
+    async listTournamentTemplates() {
+      return listTournamentTemplates.all();
+    },
     async listTournaments() {
       return listTournaments.all();
+    },
+    async createTournamentTemplate(args) {
+      insertTournamentTemplate.run(
+        args.templateKey,
+        args.label,
+        args.description ?? "",
+        args.tournamentType,
+        args.format,
+        args.roundType,
+        args.defaultsJson ?? "{}",
+        args.capabilitiesJson ?? "{}",
+        args.eligibilityRulesJson ?? null,
+        args.createdByUsername,
+        ...args.timestampParts,
+      );
+
+      return findTournamentTemplateByKey.get(args.templateKey);
     },
     async registerForTournament({ bowCode = null, tournamentId, username, timestampParts }) {
       insertTournamentRegistration.run(tournamentId, username, bowCode, ...timestampParts);
@@ -370,6 +397,7 @@ function createSqliteTournamentGateway({
         args.name,
         args.tournamentType,
         args.templateKey ?? null,
+        args.templateDefinitionJson ?? null,
         args.drawDate ?? null,
         args.roundScheduleJson ?? "[]",
         args.registrationStartDate,
@@ -393,6 +421,7 @@ function createPostgresTournamentGateway({ pool }) {
             name,
             tournament_type,
             template_key,
+            template_definition_json,
             draw_date,
             round_schedule_json,
             registration_start_date,
@@ -403,13 +432,14 @@ function createPostgresTournamentGateway({ pool }) {
             created_at_date,
             created_at_time
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
           RETURNING id
         `,
         [
           args.name,
           args.tournamentType,
           args.templateKey ?? null,
+          args.templateDefinitionJson ?? null,
           args.drawDate ?? null,
           args.roundScheduleJson ?? "[]",
           args.registrationStartDate,
@@ -472,6 +502,7 @@ function createPostgresTournamentGateway({ pool }) {
             tournaments.name,
             tournaments.tournament_type,
             tournaments.template_key,
+            tournaments.template_definition_json,
             tournaments.draw_date,
             tournaments.round_schedule_json,
             tournaments.registration_start_date,
@@ -761,6 +792,7 @@ function createPostgresTournamentGateway({ pool }) {
             tournaments.name,
             tournaments.tournament_type,
             tournaments.template_key,
+            tournaments.template_definition_json,
             tournaments.draw_date,
             tournaments.round_schedule_json,
             tournaments.registration_start_date,
@@ -778,6 +810,88 @@ function createPostgresTournamentGateway({ pool }) {
       );
 
       return result.rows;
+    },
+    async listTournamentTemplates() {
+      const result = await pool.query(
+        `
+          SELECT
+            template_key,
+            label,
+            description,
+            tournament_type,
+            format,
+            round_type,
+            defaults_json,
+            capabilities_json,
+            eligibility_rules_json,
+            created_by,
+            created_at_date || 'T' || created_at_time AS created_at
+          FROM tournament_templates
+          ORDER BY label ASC
+        `,
+      );
+
+      return result.rows;
+    },
+    async findTournamentTemplateByKey(templateKey) {
+      const result = await pool.query(
+        `
+          SELECT
+            template_key,
+            label,
+            description,
+            tournament_type,
+            format,
+            round_type,
+            defaults_json,
+            capabilities_json,
+            eligibility_rules_json,
+            created_by,
+            created_at_date || 'T' || created_at_time AS created_at
+          FROM tournament_templates
+          WHERE template_key = $1
+          LIMIT 1
+        `,
+        [templateKey],
+      );
+
+      return result.rows[0] ?? null;
+    },
+    async createTournamentTemplate(args) {
+      await pool.query(
+        `
+          INSERT INTO tournament_templates (
+            template_key,
+            label,
+            description,
+            tournament_type,
+            format,
+            round_type,
+            defaults_json,
+            capabilities_json,
+            eligibility_rules_json,
+            created_by,
+            created_at_date,
+            created_at_time
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        `,
+        [
+          args.templateKey,
+          args.label,
+          args.description ?? "",
+          args.tournamentType,
+          args.format,
+          args.roundType,
+          args.defaultsJson ?? "{}",
+          args.capabilitiesJson ?? "{}",
+          args.eligibilityRulesJson ?? null,
+          args.createdByUsername,
+          ...args.timestampParts,
+        ],
+      );
+
+      return this.findTournamentTemplateByKey(args.templateKey);
     },
     async registerForTournament({ bowCode = null, tournamentId, username, timestampParts }) {
       await pool.query(
@@ -1146,18 +1260,20 @@ function createPostgresTournamentGateway({ pool }) {
             name = $1,
             tournament_type = $2,
             template_key = $3,
-            draw_date = $4,
-            round_schedule_json = $5,
-            registration_start_date = $6,
-            registration_end_date = $7,
-            score_submission_start_date = $8,
-            score_submission_end_date = $9
-          WHERE id = $10
+            template_definition_json = $4,
+            draw_date = $5,
+            round_schedule_json = $6,
+            registration_start_date = $7,
+            registration_end_date = $8,
+            score_submission_start_date = $9,
+            score_submission_end_date = $10
+          WHERE id = $11
         `,
         [
           args.name,
           args.tournamentType,
           args.templateKey ?? null,
+          args.templateDefinitionJson ?? null,
           args.drawDate ?? null,
           args.roundScheduleJson ?? "[]",
           args.registrationStartDate,

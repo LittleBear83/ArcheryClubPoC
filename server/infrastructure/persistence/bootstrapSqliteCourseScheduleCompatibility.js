@@ -669,6 +669,17 @@ export function bootstrapSqliteCourseScheduleCompatibility({
     `);
   }
 
+  if (
+    !tournamentsColumns.some(
+      (column) => column.name === "template_definition_json",
+    )
+  ) {
+    db.exec(`
+      ALTER TABLE tournaments
+      ADD COLUMN template_definition_json TEXT;
+    `);
+  }
+
   if (!tournamentsColumns.some((column) => column.name === "draw_date")) {
     db.exec(`
       ALTER TABLE tournaments
@@ -682,6 +693,24 @@ export function bootstrapSqliteCourseScheduleCompatibility({
       ADD COLUMN round_schedule_json TEXT NOT NULL DEFAULT '[]';
     `);
   }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tournament_templates (
+      template_key TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      tournament_type TEXT NOT NULL,
+      format TEXT NOT NULL,
+      round_type TEXT NOT NULL,
+      defaults_json TEXT NOT NULL DEFAULT '{}',
+      capabilities_json TEXT NOT NULL DEFAULT '{}',
+      eligibility_rules_json TEXT,
+      created_by TEXT NOT NULL,
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      FOREIGN KEY (created_by) REFERENCES users(username)
+    );
+  `);
 
   const tournamentMatchColumnsToAdd = [
     ["submitted_by_username", "TEXT REFERENCES users(username)"],

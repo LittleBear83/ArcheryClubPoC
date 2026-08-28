@@ -8,7 +8,6 @@ import { formatDate } from "../../../utils/dateTime";
 import type {
   TournamentMatch,
   TournamentRecord,
-  TournamentRound,
 } from "./tournamentViewTypes";
 
 function getParticipantLabel(participant?: TournamentMatch["leftParticipant"]) {
@@ -78,43 +77,6 @@ function getHandicapSummary(match: TournamentMatch) {
   };
 }
 
-function TournamentRoundSummary({ round }: { round: TournamentRound }) {
-  return (
-    <article className="tournament-mobile-round-card">
-      <h5>{round.title}</h5>
-      <div className="tournament-mobile-round-matches">
-        {round.matches.map((match) => {
-          const summary = getMatchSummary(match);
-          const handicapSummary = getHandicapSummary(match);
-
-          return (
-            <div
-              key={match.id}
-              className={`tournament-mobile-match tournament-mobile-match--${match.status}`}
-            >
-              <strong>{summary.competitors}</strong>
-              <span>Score: {summary.scoreText}</span>
-              {handicapSummary?.handicapScoreText ? (
-                <span>
-                  Handicap score
-                  {typeof handicapSummary.allowancePercent === "number"
-                    ? ` (${handicapSummary.allowancePercent}%)`
-                    : ""}
-                  : {handicapSummary.handicapScoreText}
-                </span>
-              ) : null}
-              {handicapSummary?.totalScoreText ? (
-                <span>Total score: {handicapSummary.totalScoreText}</span>
-              ) : null}
-              <span>{summary.winnerText}</span>
-            </div>
-          );
-        })}
-      </div>
-    </article>
-  );
-}
-
 function formatMatchStatus(status: string) {
   return String(status ?? "")
     .replace(/[_-]+/g, " ")
@@ -122,7 +84,8 @@ function formatMatchStatus(status: string) {
 }
 
 type TournamentsMobileViewProps = {
-  tournaments: TournamentRecord[];
+  activeTournaments: TournamentRecord[];
+  archivedTournaments: TournamentRecord[];
   selectedTournament: TournamentRecord | null;
   showSetupForm: boolean;
   canManageTournaments: boolean;
@@ -136,14 +99,16 @@ type TournamentsMobileViewProps = {
   matchCompetitorARetired: boolean;
   matchCompetitorBRetired: boolean;
   matchDisputeReason: string;
-  bracketGraphic: ReactNode;
   captainOperationsContent?: ReactNode;
+  isArchiveExpanded: boolean;
   registrationBowOptions: Array<{ code: string; discipline: string }>;
   selectedRegistrationBowCode: string;
   onSelectTournament: (tournamentId: TournamentRecord["id"]) => void;
+  onToggleArchive: () => void;
   onRegistrationBowCodeChange: (nextValue: string) => void;
   onOpenCaptainRegistrationModal: () => void;
   onOpenCaptainRemovalModal: () => void;
+  onOpenTournamentLineUp: () => void;
   onRegister: () => void;
   onWithdraw: () => void;
   onRedrawTournament: () => void;
@@ -161,7 +126,8 @@ type TournamentsMobileViewProps = {
 };
 
 export function TournamentsMobileView({
-  tournaments,
+  activeTournaments,
+  archivedTournaments,
   selectedTournament,
   showSetupForm,
   canManageTournaments,
@@ -175,14 +141,16 @@ export function TournamentsMobileView({
   matchCompetitorARetired,
   matchCompetitorBRetired,
   matchDisputeReason,
-  bracketGraphic,
   captainOperationsContent,
+  isArchiveExpanded,
   registrationBowOptions,
   selectedRegistrationBowCode,
   onSelectTournament,
+  onToggleArchive,
   onRegistrationBowCodeChange,
   onOpenCaptainRegistrationModal,
   onOpenCaptainRemovalModal,
+  onOpenTournamentLineUp,
   onRegister,
   onWithdraw,
   onRedrawTournament,
@@ -204,39 +172,87 @@ export function TournamentsMobileView({
         <MobileSectionHeader
           title="Tournaments"
           description={
-            tournaments.length > 0
+            activeTournaments.length > 0 || archivedTournaments.length > 0
               ? "Choose a tournament to view registration, scoring, and bracket progress."
               : undefined
           }
         />
-        {tournaments.length === 0 ? (
+        {activeTournaments.length === 0 && archivedTournaments.length === 0 ? (
           <MobileEmptyState message="No tournaments have been set up yet." />
         ) : (
-          <MobileCardList className="tournament-mobile-selector-list">
-            {tournaments.map((tournament) => (
-              <Button
-                key={tournament.id}
-                type="button"
-                className={`tournament-list-item tournament-mobile-selector ${
-                  tournament.id === selectedTournament?.id ? "active" : ""
-                }`}
-                onClick={() => onSelectTournament(tournament.id)}
-                variant="unstyled"
-              >
-                <strong>{tournament.name}</strong>
-                <span>{tournament.typeLabel}</span>
-                <span>
-                  Registration: {formatDate(tournament.registrationWindow.startDate)} to{" "}
-                  {formatDate(tournament.registrationWindow.endDate)}
-                </span>
-                {showSetupForm && canManageTournaments ? (
-                  <span className="tournament-admin-hint">
-                    Tap to amend or delete
+          <>
+            {activeTournaments.length > 0 ? (
+              <MobileCardList className="tournament-mobile-selector-list">
+                {activeTournaments.map((tournament) => (
+                  <Button
+                    key={tournament.id}
+                    type="button"
+                    className={`tournament-list-item tournament-mobile-selector ${
+                      tournament.id === selectedTournament?.id ? "active" : ""
+                    }`}
+                    onClick={() => onSelectTournament(tournament.id)}
+                    variant="unstyled"
+                  >
+                    <strong>{tournament.name}</strong>
+                    <span>{tournament.typeLabel}</span>
+                    <span>
+                      Registration: {formatDate(tournament.registrationWindow.startDate)} to{" "}
+                      {formatDate(tournament.registrationWindow.endDate)}
+                    </span>
+                    {showSetupForm && canManageTournaments ? (
+                      <span className="tournament-admin-hint">
+                        Tap to amend or delete
+                      </span>
+                    ) : null}
+                  </Button>
+                ))}
+              </MobileCardList>
+            ) : (
+              <p className="tournament-archive-empty">
+                All current tournaments are in the archive.
+              </p>
+            )}
+
+            {archivedTournaments.length > 0 ? (
+              <section className="tournament-archive-panel">
+                <Button
+                  type="button"
+                  className="tournament-archive-toggle"
+                  onClick={onToggleArchive}
+                  variant="unstyled"
+                >
+                  <strong>Archive</strong>
+                  <span>
+                    {archivedTournaments.length} tournament
+                    {archivedTournaments.length === 1 ? "" : "s"}
                   </span>
+                  <span>{isArchiveExpanded ? "Hide" : "Show"}</span>
+                </Button>
+                {isArchiveExpanded ? (
+                  <MobileCardList className="tournament-mobile-selector-list tournament-list--archived">
+                    {archivedTournaments.map((tournament) => (
+                      <Button
+                        key={tournament.id}
+                        type="button"
+                        className={`tournament-list-item tournament-mobile-selector tournament-list-item--archived ${
+                          tournament.id === selectedTournament?.id ? "active" : ""
+                        }`}
+                        onClick={() => onSelectTournament(tournament.id)}
+                        variant="unstyled"
+                      >
+                        <strong>{tournament.name}</strong>
+                        <span>{tournament.typeLabel}</span>
+                        <span>
+                          Registration: {formatDate(tournament.registrationWindow.startDate)} to{" "}
+                          {formatDate(tournament.registrationWindow.endDate)}
+                        </span>
+                      </Button>
+                    ))}
+                  </MobileCardList>
                 ) : null}
-              </Button>
-            ))}
-          </MobileCardList>
+              </section>
+            ) : null}
+          </>
         )}
       </section>
 
@@ -375,6 +391,16 @@ export function TournamentsMobileView({
                   Save competitor list
                 </Button>
               ) : null}
+
+              <Button
+                type="button"
+                className="tournament-secondary-button"
+                onClick={onOpenTournamentLineUp}
+                variant="secondary"
+              >
+                Tournament Line Up
+              </Button>
+
             </div>
             {registrationBowOptions.length > 1 && selectedTournament.canRegister ? (
               <label>
@@ -392,30 +418,6 @@ export function TournamentsMobileView({
                 </select>
               </label>
             ) : null}
-          </section>
-
-          <section className="tournament-registrations-card">
-            <MobileSectionHeader
-              title="Competing Members"
-              description={`${selectedTournament.registrations.length} registered`}
-            />
-            {selectedTournament.registrations.length > 0 ? (
-              <MobileCardList className="tournament-mobile-registration-list">
-                {selectedTournament.registrations.map((registration) => (
-                  <div key={registration.username} className="tournament-mobile-registration-card">
-                    {registration.fullName}
-                    {registration.bowCode ? ` (${registration.bowCode})` : ""}
-                    {canManageTournaments &&
-                    registration.eligibility?.registration?.isEligible === false &&
-                    registration.eligibility.registration.reason
-                      ? ` - ${registration.eligibility.registration.reason}`
-                      : ""}
-                  </div>
-                ))}
-              </MobileCardList>
-            ) : (
-              <MobileEmptyState message="No members have registered yet." />
-            )}
           </section>
 
           {selectedTournament.currentMatch ? (
@@ -604,33 +606,6 @@ export function TournamentsMobileView({
               </Button>
             </form>
           ) : null}
-
-          <section className="tournament-bracket-card tournament-mobile-bracket-card">
-            <MobileSectionHeader
-              title="Tournament Progress"
-              description="Phone view defaults to a simpler round-by-round summary."
-            />
-            {!selectedTournament.bracketReady ? (
-              <p>
-                The tournament bracket graphic will be generated once registration
-                closes on {formatDate(selectedTournament.registrationWindow.endDate)}.
-              </p>
-            ) : selectedTournament.bracket.rounds.length === 0 ? (
-              <p>The bracket will appear once enough competitors are registered.</p>
-            ) : (
-              <>
-                <MobileCardList className="tournament-mobile-round-list">
-                  {selectedTournament.bracket.rounds.map((round) => (
-                    <TournamentRoundSummary key={round.roundNumber} round={round} />
-                  ))}
-                </MobileCardList>
-                <details className="tournament-mobile-bracket-details">
-                  <summary>Show full bracket graphic</summary>
-                  <div className="tournament-mobile-bracket-graphic">{bracketGraphic}</div>
-                </details>
-              </>
-            )}
-          </section>
 
           {captainOperationsContent}
         </div>

@@ -17,6 +17,15 @@ export class TournamentCrudApi {
     });
   }
 
+  async createTournamentTemplate(actorUsername: string, form: unknown) {
+    return fetchApi("/api/tournament-templates", {
+      method: "POST",
+      headers: buildActorHeaders(actorUsername, true),
+      cache: "no-store",
+      body: JSON.stringify(form),
+    });
+  }
+
   async updateTournament(
     actorUsername: string,
     tournamentId: string | number,

@@ -38,6 +38,30 @@ export class CreateTournamentUseCase {
   }
 }
 
+export class CreateTournamentTemplateUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
+  constructor({ tournamentRepository }) {
+    this.tournamentRepository = tournamentRepository;
+  }
+
+  async execute({ actorUsername, form }) {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+
+    if (!form?.label?.trim()) {
+      throw new Error("Template name is required.");
+    }
+
+    if (!form?.baseTemplateKey?.trim()) {
+      throw new Error("A base template is required.");
+    }
+
+    return this.tournamentRepository.createTournamentTemplate(actorUsername, form);
+  }
+}
+
 export class UpdateTournamentUseCase {
   private readonly tournamentRepository: TournamentRepository;
 

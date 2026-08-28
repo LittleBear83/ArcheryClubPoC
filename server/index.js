@@ -87,6 +87,7 @@ import {
   evaluateTournamentRoundEligibility,
 } from "./domain/services/tournamentEligibilityService.js";
 import { parseTournamentRoundPlan } from "./domain/services/tournamentRoundPlan.js";
+import { findTournamentTemplateDefinition } from "./domain/services/tournamentTemplateService.js";
 import {
   ARROW_COLOUR_VALUE_SET,
   ARROW_FLETCHING_COLOUR_VALUE_SET,
@@ -694,11 +695,13 @@ const {
   findMemberEventBookingsByUserId,
   findTournamentMatchByKey,
   findTournamentById,
+  findTournamentTemplateByKey,
   insertClubEvent,
   insertCoachingSession,
   insertCoachingSessionBooking,
   insertEventBooking,
   insertTournament,
+  insertTournamentTemplate,
   insertTournamentMatch,
   insertTournamentRegistration,
   insertTournamentRound,
@@ -716,6 +719,7 @@ const {
   listTournamentRegistrationsByTournamentId,
   listTournamentRoundsByTournamentId,
   listTournamentScoresByTournamentId,
+  listTournamentTemplates,
   listTournaments,
   rejectClubEventById,
   rejectCoachingSessionById,
@@ -794,7 +798,9 @@ const tournamentGateway = createTournamentGateway({
   deleteTournamentScoresByTournamentId,
   findTournamentMatchByKey,
   findTournamentById,
+  findTournamentTemplateByKey,
   insertTournament,
+  insertTournamentTemplate,
   insertTournamentMatch,
   insertTournamentRegistration,
   insertTournamentRound,
@@ -806,6 +812,7 @@ const tournamentGateway = createTournamentGateway({
   listTournamentRegistrationsByTournamentId,
   listTournamentRoundsByTournamentId,
   listTournamentScoresByTournamentId,
+  listTournamentTemplates,
   listTournaments,
   pool: db.pool,
   updateTournamentMatchWorkflow,
@@ -2765,27 +2772,13 @@ function buildAutomaticRoundSchedule({
 }
 
 function getTournamentTemplateDefinition(tournament) {
-  const templateKey = tournament?.template_key ?? tournament?.templateKey ?? null;
-
-  if (templateKey) {
-    const matchingTemplate = TOURNAMENT_TEMPLATE_OPTIONS.find(
-      (template) => template.key === templateKey,
-    );
-
-    if (matchingTemplate) {
-      return matchingTemplate;
-    }
-  }
-
-  if (tournament?.tournament_type === "head-to-head") {
-    return (
-      TOURNAMENT_TEMPLATE_OPTIONS.find(
-        (template) => template.key === "standard-knockout",
-      ) ?? null
-    );
-  }
-
-  return null;
+  return findTournamentTemplateDefinition({
+    builtInTemplates: TOURNAMENT_TEMPLATE_OPTIONS,
+    templateDefinitionJson:
+      tournament?.template_definition_json ?? tournament?.templateDefinitionJson ?? null,
+    templateKey: tournament?.template_key ?? tournament?.templateKey ?? null,
+    tournamentType: tournament?.tournament_type ?? tournament?.tournamentType ?? null,
+  });
 }
 
 function buildTournamentMatchId(tournamentId, roundNumber, matchNumber) {

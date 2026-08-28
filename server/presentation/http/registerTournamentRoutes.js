@@ -13,6 +13,13 @@ import {
   buildTournamentRoundPlanJson,
   parseTournamentRoundPlan,
 } from "../../domain/services/tournamentRoundPlan.js";
+import {
+  findTournamentTemplateDefinition,
+  mergeTournamentTemplateOptions,
+  normalizeTournamentTemplateDefinition,
+  normalizeStoredTournamentTemplateRow,
+  serializeTournamentTemplateDefinition,
+} from "../../domain/services/tournamentTemplateService.js";
 
 export function registerTournamentRoutes({
   actorHasPermission,
@@ -43,9 +50,44 @@ export function registerTournamentRoutes({
     });
   };
 
-  const findTemplateByKey = (templateKey) =>
-    TOURNAMENT_TEMPLATE_OPTIONS.find((template) => template.key === templateKey) ??
-    null;
+  const buildTemplateKey = (label) =>
+    String(label ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+  const loadStoredTournamentTemplates = async () =>
+    (await tournamentGateway.listTournamentTemplates?.()) ?? [];
+
+  const loadTournamentTemplates = async () =>
+    mergeTournamentTemplateOptions(
+      TOURNAMENT_TEMPLATE_OPTIONS,
+      await loadStoredTournamentTemplates(),
+    );
+
+  const findTemplateByKey = async (templateKey) => {
+    const normalizedTemplateKey = String(templateKey ?? "").trim();
+
+    if (!normalizedTemplateKey) {
+      return null;
+    }
+
+    return findTournamentTemplateDefinition({
+      builtInTemplates: TOURNAMENT_TEMPLATE_OPTIONS,
+      storedTemplateRows: await loadStoredTournamentTemplates(),
+      templateKey: normalizedTemplateKey,
+    });
+  };
+
+  const getTournamentTemplateDefinition = (tournament) =>
+    findTournamentTemplateDefinition({
+      builtInTemplates: TOURNAMENT_TEMPLATE_OPTIONS,
+      templateDefinitionJson:
+        tournament?.template_definition_json ?? tournament?.templateDefinitionJson ?? null,
+      templateKey: tournament?.template_key ?? tournament?.templateKey ?? null,
+      tournamentType: tournament?.tournament_type ?? tournament?.tournamentType ?? null,
+    });
 
   const normalizeAutomaticRoundPlan = ({
     roundOneStartDate,
@@ -303,9 +345,7 @@ export function registerTournamentRoutes({
     registrations = [],
     actorUsername = null,
   ) => {
-    const template = findTemplateByKey(
-      tournament?.template_key ?? tournament?.templateKey ?? null,
-    );
+    const template = getTournamentTemplateDefinition(tournament);
     const eligibilityRules = template?.eligibilityRules ?? null;
 
     if (!template?.capabilities?.supportsEligibilityRules || !eligibilityRules) {
@@ -389,8 +429,7 @@ export function registerTournamentRoutes({
   };
   const tournamentSupportsRandomizedDraw = (tournament) =>
     Boolean(
-      findTemplateByKey(tournament?.template_key ?? tournament?.templateKey ?? null)
-        ?.capabilities?.supportsRandomizedDraw,
+      getTournamentTemplateDefinition(tournament)?.capabilities?.supportsRandomizedDraw,
     );
   const hasTournamentDrawActivity = (matches = []) =>
     matches.some((match) => {
@@ -745,7 +784,118 @@ export function registerTournamentRoutes({
   app.get("/api/tournament-templates", async (_req, res) => {
     res.json({
       success: true,
-      tournamentTemplates: TOURNAMENT_TEMPLATE_OPTIONS,
+      tournamentTemplates: await loadTournamentTemplates(),
+    });
+  });
+
+  app.post("/api/tournament-templates", async (req, res) => {
+    const actor = getActorUser(req);
+
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
+      res.status(403).json({
+        success: false,
+        message: "You do not have permission to create tournament templates.",
+      });
+      return;
+    }
+
+    const {
+      label,
+      description,
+      baseTemplateKey,
+      defaults,
+      capabilities,
+      eligibilityRules,
+    } = req.body ?? {};
+
+    const templateLabel = String(label ?? "").trim();
+    const baseTemplate = await findTemplateByKey(baseTemplateKey);
+
+    if (!templateLabel || !baseTemplate) {
+      res.status(400).json({
+        success: false,
+        message: "A template name and valid base template are required.",
+      });
+      return;
+    }
+
+    const templateKey = buildTemplateKey(templateLabel);
+
+    if (!templateKey) {
+      res.status(400).json({
+        success: false,
+        message: "A valid template name is required.",
+      });
+      return;
+    }
+
+    const existingTemplate = await findTemplateByKey(templateKey);
+
+    if (existingTemplate) {
+      res.status(409).json({
+        success: false,
+        message: "A tournament template with that name already exists.",
+      });
+      return;
+    }
+
+    const mergedTemplate = normalizeTournamentTemplateDefinition(
+      {
+        ...baseTemplate,
+        key: templateKey,
+        label: templateLabel,
+        description:
+          typeof description === "string" && description.trim()
+            ? description.trim()
+            : baseTemplate.description ?? "",
+        defaults:
+          defaults && typeof defaults === "object"
+            ? { ...baseTemplate.defaults, ...defaults }
+            : { ...baseTemplate.defaults },
+        capabilities:
+          capabilities && typeof capabilities === "object"
+            ? { ...baseTemplate.capabilities, ...capabilities }
+            : { ...baseTemplate.capabilities },
+        eligibilityRules:
+          eligibilityRules && typeof eligibilityRules === "object"
+            ? { ...(baseTemplate.eligibilityRules ?? {}), ...eligibilityRules }
+            : baseTemplate.eligibilityRules ?? null,
+      },
+      { isCustom: true },
+    );
+
+    if (!mergedTemplate) {
+      res.status(400).json({
+        success: false,
+        message: "The tournament template could not be created.",
+      });
+      return;
+    }
+
+    const createdTemplateRow = await tournamentGateway.createTournamentTemplate({
+      templateKey: mergedTemplate.key,
+      label: mergedTemplate.label,
+      description: mergedTemplate.description ?? "",
+      tournamentType: mergedTemplate.tournamentType,
+      format: mergedTemplate.format,
+      roundType: mergedTemplate.roundType,
+      defaultsJson: JSON.stringify(mergedTemplate.defaults ?? {}),
+      capabilitiesJson: JSON.stringify(mergedTemplate.capabilities ?? {}),
+      eligibilityRulesJson: mergedTemplate.eligibilityRules
+        ? JSON.stringify(mergedTemplate.eligibilityRules)
+        : null,
+      createdByUsername: actor.username,
+      timestampParts: getUtcTimestampParts(),
+    });
+    const createdTemplate =
+      normalizeStoredTournamentTemplateRow(createdTemplateRow) ?? mergedTemplate;
+
+    broadcastTournamentsUpdated("tournament-templates.create");
+
+    res.status(201).json({
+      success: true,
+      tournamentTemplate: createdTemplate,
+      tournamentTemplates: await loadTournamentTemplates(),
     });
   });
 
@@ -806,7 +956,7 @@ export function registerTournamentRoutes({
     res.json({
       success: true,
       tournaments,
-      tournamentTemplates: TOURNAMENT_TEMPLATE_OPTIONS,
+      tournamentTemplates: await loadTournamentTemplates(),
       tournamentTypes: TOURNAMENT_TYPE_OPTIONS,
     });
   });
@@ -902,7 +1052,7 @@ export function registerTournamentRoutes({
     } = req.body ?? {};
     const selectedTemplate =
       typeof templateKey === "string" && templateKey.trim()
-        ? findTemplateByKey(templateKey.trim())
+        ? await findTemplateByKey(templateKey.trim())
         : null;
     const normalizedTournamentType =
       selectedTemplate?.tournamentType ?? tournamentType;
@@ -967,6 +1117,7 @@ export function registerTournamentRoutes({
       }),
       scoreSubmissionEndDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
       scoreSubmissionStartDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
+      templateDefinitionJson: serializeTournamentTemplateDefinition(selectedTemplate),
       templateKey: selectedTemplate?.key ?? null,
       timestampParts: getUtcTimestampParts(),
       tournamentType: normalizedTournamentType,
@@ -1038,7 +1189,7 @@ export function registerTournamentRoutes({
     } = req.body ?? {};
     const selectedTemplate =
       typeof templateKey === "string" && templateKey.trim()
-        ? findTemplateByKey(templateKey.trim())
+        ? await findTemplateByKey(templateKey.trim())
         : null;
     const normalizedTournamentType =
       selectedTemplate?.tournamentType ?? tournamentType;
@@ -1103,6 +1254,7 @@ export function registerTournamentRoutes({
       }),
       scoreSubmissionEndDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
       scoreSubmissionStartDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
+      templateDefinitionJson: serializeTournamentTemplateDefinition(selectedTemplate),
       templateKey: selectedTemplate?.key ?? null,
       tournamentType: normalizedTournamentType,
     });
@@ -1384,9 +1536,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const tournamentTemplate = findTemplateByKey(
-      tournament.template_key ?? tournament.templateKey ?? null,
-    );
+    const tournamentTemplate = getTournamentTemplateDefinition(tournament);
     const registrationEligibilityRules = tournamentTemplate?.eligibilityRules ?? null;
 
     if (

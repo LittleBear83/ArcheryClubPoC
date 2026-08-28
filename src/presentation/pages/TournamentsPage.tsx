@@ -28,6 +28,7 @@ const TOURNAMENT_BRACKET_MATCH_WIDTH = 320;
 const TOURNAMENT_BRACKET_MATCH_HEIGHT = 108;
 const TOURNAMENT_BRACKET_ROW_HEIGHT = 126;
 const TOURNAMENT_BRACKET_COLUMN_GAP = 44;
+const TOURNAMENT_ARCHIVE_WINDOW_DAYS = 30;
 const TOURNAMENT_SETUP_STEPS = [
   { key: "basics", label: "Basics" },
   { key: "windows", label: "Windows" },
@@ -47,6 +48,68 @@ type TournamentRegistrationCandidate = {
   suggestedBowCode?: string | null;
   username: string;
 };
+type TournamentTemplateOption = {
+  key: string;
+  label: string;
+  description?: string;
+  tournamentType: string;
+  format?: string;
+  roundType?: string;
+  isCustom?: boolean;
+  defaults?: {
+    registrationMode?: string;
+    resultWorkflow?: string;
+    handicapAllowancePercent?: number | null;
+    defaultRoundNames?: string[];
+  };
+  capabilities?: Record<string, boolean>;
+  eligibilityRules?: {
+    handicapQualificationRoundsRequired?: number;
+    qualifyingRoundsRequiredPerKnockoutRound?: number;
+    qualifyingRoundDiscipline?: string;
+  } | null;
+};
+
+function createEmptyTemplateForm(templateOptions: TournamentTemplateOption[] = []) {
+  const defaultBaseTemplate =
+    getTemplateForKey(templateOptions, "standard-knockout") ??
+    getTemplateForKey(templateOptions, "captains-sword") ??
+    templateOptions[0] ??
+    null;
+
+  return {
+    label: "",
+    description: defaultBaseTemplate?.description ?? "",
+    baseTemplateKey: defaultBaseTemplate?.key ?? "",
+    resultWorkflow: defaultBaseTemplate?.defaults?.resultWorkflow ?? "single-submit",
+    handicapAllowancePercent:
+      defaultBaseTemplate?.defaults?.handicapAllowancePercent === null ||
+      typeof defaultBaseTemplate?.defaults?.handicapAllowancePercent === "number"
+        ? String(defaultBaseTemplate?.defaults?.handicapAllowancePercent ?? "")
+        : "",
+    defaultRoundNames: (defaultBaseTemplate?.defaults?.defaultRoundNames ?? []).join(", "),
+    supportsRandomizedDraw:
+      defaultBaseTemplate?.capabilities?.supportsRandomizedDraw ?? false,
+    supportsHighestLoserProgression:
+      defaultBaseTemplate?.capabilities?.supportsHighestLoserProgression ?? false,
+    supportsRoundDeadlines:
+      defaultBaseTemplate?.capabilities?.supportsRoundDeadlines ?? false,
+    supportsMatchConfirmation:
+      defaultBaseTemplate?.capabilities?.supportsMatchConfirmation ?? false,
+    supportsEligibilityRules:
+      defaultBaseTemplate?.capabilities?.supportsEligibilityRules ?? false,
+    supportsHandicapAdjustments:
+      defaultBaseTemplate?.capabilities?.supportsHandicapAdjustments ?? false,
+    handicapQualificationRoundsRequired: String(
+      defaultBaseTemplate?.eligibilityRules?.handicapQualificationRoundsRequired ?? 3,
+    ),
+    qualifyingRoundsRequiredPerKnockoutRound: String(
+      defaultBaseTemplate?.eligibilityRules?.qualifyingRoundsRequiredPerKnockoutRound ?? 1,
+    ),
+    qualifyingRoundDiscipline:
+      defaultBaseTemplate?.eligibilityRules?.qualifyingRoundDiscipline ?? "indoor",
+  };
+}
 
 function createEmptyTournamentForm(
   today,
@@ -114,6 +177,74 @@ function addDays(dateString, daysToAdd) {
 
   parsed.setUTCDate(parsed.getUTCDate() + Number(daysToAdd || 0));
   return parsed.toISOString().slice(0, 10);
+}
+
+function parseDateStringToUtcStart(dateString?: string | null) {
+  if (!dateString) {
+    return null;
+  }
+
+  const parsed = new Date(`${dateString}T00:00:00Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getTournamentArchiveReferenceDate(tournament: TournamentRecord) {
+  const candidateDates = [
+    tournament.scoreWindow?.endDate ?? null,
+    tournament.roundOneStartDate ?? null,
+    tournament.registrationWindow?.endDate ?? null,
+    ...(tournament.roundSchedule ?? []).flatMap((round) => [
+      round.submissionDeadline ?? null,
+      round.publishDate ?? null,
+    ]),
+  ]
+    .map((value) => parseDateStringToUtcStart(value))
+    .filter((value): value is Date => Boolean(value))
+    .sort((left, right) => right.getTime() - left.getTime());
+
+  return candidateDates[0] ?? null;
+}
+
+function isTournamentCompleted(tournament: TournamentRecord) {
+  if (tournament.bracket?.winner) {
+    return true;
+  }
+
+  const engineRounds = tournament.engine?.rounds ?? [];
+
+  return (
+    engineRounds.length > 0 &&
+    engineRounds.every(
+      (round) =>
+        round.status === "completed" ||
+        round.matches.every(
+          (match) =>
+            Boolean(match.winner) ||
+            ["finalised", "completed", "walkover", "disqualified", "retired_both"].includes(
+              String(match.status ?? ""),
+            ),
+        ),
+    )
+  );
+}
+
+function isTournamentArchived(tournament: TournamentRecord, today: string) {
+  if (!isTournamentCompleted(tournament)) {
+    return false;
+  }
+
+  const archiveReferenceDate = getTournamentArchiveReferenceDate(tournament);
+  const todayDate = parseDateStringToUtcStart(today);
+
+  if (!archiveReferenceDate || !todayDate) {
+    return false;
+  }
+
+  const ageInDays = Math.floor(
+    (todayDate.getTime() - archiveReferenceDate.getTime()) / (24 * 60 * 60 * 1000),
+  );
+
+  return ageInDays > TOURNAMENT_ARCHIVE_WINDOW_DAYS;
 }
 
 function getTournamentMatchHandicapSummary(match) {
@@ -697,6 +828,130 @@ function TournamentSetupReview({ form, selectedTemplate, registrationCount = nul
   );
 }
 
+function TournamentLineUpPage({
+  tournament,
+  bracketGraphic = null,
+  canManageTournaments = false,
+  onBack,
+}) {
+  const currentRoundNumber = tournament?.currentRoundNumber ?? null;
+  const roundEntries =
+    tournament?.engine?.rounds?.length > 0
+      ? tournament.engine.rounds
+      : tournament?.bracket?.rounds ?? [];
+
+  return (
+    <section className="tournament-lineup-page">
+      <div className="tournament-lineup-page-header">
+        <Button type="button" variant="secondary" onClick={onBack}>
+          Back
+        </Button>
+        <div className="tournament-lineup-page-copy">
+          <h3 className="profile-section-title">Tournament Line Up</h3>
+          <p className="tournament-setup-copy">{tournament?.name ?? "Tournament"}</p>
+        </div>
+      </div>
+
+      <div className="tournament-lineup-page-grid">
+        <section className="tournament-registrations-card tournament-lineup-panel">
+          <div className="tournament-lineup-panel-header">
+            <h4>Competing Members</h4>
+            <span>{tournament?.registrations?.length ?? 0} registered</span>
+          </div>
+          {tournament?.registrations?.length ? (
+            <ul className="tournament-lineup-members-list">
+              {tournament.registrations.map((registration) => (
+                <li key={registration.username} className="tournament-lineup-member-card">
+                  <strong>{formatTournamentRegistrationName(registration)}</strong>
+                  {canManageTournaments &&
+                  registration.eligibility?.registration?.isEligible === false &&
+                  registration.eligibility.registration.reason ? (
+                    <span>{registration.eligibility.registration.reason}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>No members have registered yet.</p>
+          )}
+        </section>
+
+        <section className="tournament-summary-card tournament-lineup-panel">
+          <div className="tournament-lineup-panel-header">
+            <h4>Round Progress</h4>
+            <span>
+              {currentRoundNumber ? `Current round: ${currentRoundNumber}` : "No active round"}
+            </span>
+          </div>
+          {roundEntries.length > 0 ? (
+            <div className="tournament-lineup-round-list">
+              {roundEntries.map((round) => {
+                const isCurrentRound =
+                  currentRoundNumber !== null && round.roundNumber === currentRoundNumber;
+                const matchCount = round.matches?.length ?? 0;
+                const resolvedMatches =
+                  round.matches?.filter(
+                    (match) =>
+                      Boolean(match.winner) ||
+                      ["finalised", "completed", "walkover", "disqualified", "retired_both"].includes(
+                        String(match.status ?? ""),
+                      ),
+                  ).length ?? 0;
+
+                return (
+                  <article
+                    key={round.roundNumber}
+                    className={`tournament-lineup-round-card ${
+                      isCurrentRound ? "tournament-lineup-round-card--current" : ""
+                    }`}
+                  >
+                    <div className="tournament-lineup-round-header">
+                      <strong>{round.title}</strong>
+                      {isCurrentRound ? (
+                        <span className="tournament-lineup-round-badge">Current round</span>
+                      ) : null}
+                    </div>
+                    <div className="tournament-lineup-round-meta">
+                      <span>Round {round.roundNumber}</span>
+                      <span>
+                        {matchCount} match{matchCount === 1 ? "" : "es"}
+                      </span>
+                      <span>{resolvedMatches} resolved</span>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <p>The line up will appear once enough competitors are registered.</p>
+          )}
+        </section>
+      </div>
+
+      <section className="tournament-bracket-card tournament-lineup-panel">
+        <div className="tournament-lineup-panel-header">
+          <h4>Tournament Progress</h4>
+          <span>
+            {tournament?.bracket?.winner
+              ? `Winner: ${tournament.bracket.winner.fullName}`
+              : "Winner pending"}
+          </span>
+        </div>
+        {!tournament?.bracketReady ? (
+          <p>
+            The tournament bracket graphic will be generated once registration closes on{" "}
+            {formatDate(tournament?.registrationWindow?.endDate)}.
+          </p>
+        ) : tournament?.bracket?.rounds?.length ? (
+          bracketGraphic
+        ) : (
+          <p>The bracket will appear once enough competitors are registered.</p>
+        )}
+      </section>
+    </section>
+  );
+}
+
 export function TournamentsPage({
   currentUserProfile,
   onTournamentActivity,
@@ -707,7 +962,9 @@ export function TournamentsPage({
   const today = new Date().toISOString().slice(0, 10);
   const [tournaments, setTournaments] = useState([]);
   const [tournamentTypes, setTournamentTypes] = useState([]);
-  const [tournamentTemplates, setTournamentTemplates] = useState([]);
+  const [tournamentTemplates, setTournamentTemplates] = useState<
+    TournamentTemplateOption[]
+  >([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState(null);
   const [scoreValue, setScoreValue] = useState("");
   const [matchScoreAValue, setMatchScoreAValue] = useState("");
@@ -748,6 +1005,13 @@ export function TournamentsPage({
   const [error, setError] = useState("");
   const [isEditingTournament, setIsEditingTournament] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
+  const [isTournamentLineUpOpen, setIsTournamentLineUpOpen] = useState(false);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [templateForm, setTemplateForm] = useState(() =>
+    createEmptyTemplateForm(),
+  );
   const [editSetupStepIndex, setEditSetupStepIndex] = useState(0);
   const [createSetupStepIndex, setCreateSetupStepIndex] = useState(0);
   const createModalFormRef = useRef<HTMLFormElement | null>(null);
@@ -939,12 +1203,29 @@ export function TournamentsPage({
     source: "tournaments-page",
   });
 
+  const activeTournaments = useMemo(
+    () =>
+      (tournaments as TournamentRecord[]).filter(
+        (tournament) => !isTournamentArchived(tournament, today),
+      ),
+    [today, tournaments],
+  );
+  const archivedTournaments = useMemo(
+    () =>
+      (tournaments as TournamentRecord[]).filter((tournament) =>
+        isTournamentArchived(tournament, today),
+      ),
+    [today, tournaments],
+  );
   const selectedTournament = useMemo(
     () =>
-      tournaments.find((tournament) => tournament.id === selectedTournamentId) ??
-      tournaments[0] ??
+      (tournaments as TournamentRecord[]).find(
+        (tournament) => tournament.id === selectedTournamentId,
+      ) ??
+      activeTournaments[0] ??
+      archivedTournaments[0] ??
       null,
-    [selectedTournamentId, tournaments],
+    [activeTournaments, archivedTournaments, selectedTournamentId, tournaments],
   );
   const removalCandidates = useMemo(
     () => selectedTournament?.registrations ?? [],
@@ -1015,6 +1296,10 @@ export function TournamentsPage({
   const selectedCreateTemplate = useMemo(
     () => getTemplateForKey(tournamentTemplates, createForm.templateKey),
     [createForm.templateKey, tournamentTemplates],
+  );
+  const selectedBaseTemplate = useMemo(
+    () => getTemplateForKey(tournamentTemplates, templateForm.baseTemplateKey),
+    [templateForm.baseTemplateKey, tournamentTemplates],
   );
   const currentEditStep =
     TOURNAMENT_SETUP_STEPS[editSetupStepIndex] ?? TOURNAMENT_SETUP_STEPS[0];
@@ -1151,6 +1436,23 @@ export function TournamentsPage({
     setSelectedTournamentId(updatedTournament.id);
   };
 
+  useEffect(() => {
+    if (
+      selectedTournament &&
+      archivedTournaments.some((tournament) => tournament.id === selectedTournament.id)
+    ) {
+      setIsArchiveExpanded(true);
+    }
+  }, [archivedTournaments, selectedTournament]);
+
+  useEffect(() => {
+    setIsTournamentLineUpOpen(false);
+  }, [selectedTournament?.id]);
+
+  useEffect(() => {
+    setIsTournamentLineUpOpen(false);
+  }, [selectedTournament?.id]);
+
   const resetTournamentForm = () => {
     setIsEditingTournament(false);
     setForm(
@@ -1174,10 +1476,91 @@ export function TournamentsPage({
     setCreateSetupStepIndex(0);
   };
 
+  const resetTemplateForm = (baseTemplateKey?: string) => {
+    const nextForm = createEmptyTemplateForm(tournamentTemplates);
+
+    if (!baseTemplateKey) {
+      setTemplateForm(nextForm);
+      return;
+    }
+
+    const baseTemplate = getTemplateForKey(tournamentTemplates, baseTemplateKey);
+
+    if (!baseTemplate) {
+      setTemplateForm(nextForm);
+      return;
+    }
+
+    setTemplateForm({
+      ...nextForm,
+      baseTemplateKey: baseTemplate.key,
+      description: baseTemplate.description ?? "",
+      resultWorkflow: baseTemplate.defaults?.resultWorkflow ?? "single-submit",
+      handicapAllowancePercent:
+        typeof baseTemplate.defaults?.handicapAllowancePercent === "number"
+          ? String(baseTemplate.defaults.handicapAllowancePercent)
+          : "",
+      defaultRoundNames: (baseTemplate.defaults?.defaultRoundNames ?? []).join(", "),
+      supportsRandomizedDraw:
+        baseTemplate.capabilities?.supportsRandomizedDraw ?? false,
+      supportsHighestLoserProgression:
+        baseTemplate.capabilities?.supportsHighestLoserProgression ?? false,
+      supportsRoundDeadlines:
+        baseTemplate.capabilities?.supportsRoundDeadlines ?? false,
+      supportsMatchConfirmation:
+        baseTemplate.capabilities?.supportsMatchConfirmation ?? false,
+      supportsEligibilityRules:
+        baseTemplate.capabilities?.supportsEligibilityRules ?? false,
+      supportsHandicapAdjustments:
+        baseTemplate.capabilities?.supportsHandicapAdjustments ?? false,
+      handicapQualificationRoundsRequired: String(
+        baseTemplate.eligibilityRules?.handicapQualificationRoundsRequired ?? 3,
+      ),
+      qualifyingRoundsRequiredPerKnockoutRound: String(
+        baseTemplate.eligibilityRules?.qualifyingRoundsRequiredPerKnockoutRound ?? 1,
+      ),
+      qualifyingRoundDiscipline:
+        baseTemplate.eligibilityRules?.qualifyingRoundDiscipline ?? "indoor",
+    });
+  };
+
   const openCreateModal = () => {
     resetCreateForm();
     setIsCreateModalOpen(true);
   };
+
+  const openTemplateModal = (baseTemplateKey?: string) => {
+    setError("");
+    setMessage("");
+    resetTemplateForm(baseTemplateKey);
+    setIsTemplateModalOpen(true);
+  };
+
+  const closeTemplateModal = () => {
+    if (isSavingTemplate) {
+      return;
+    }
+
+    setIsTemplateModalOpen(false);
+    resetTemplateForm();
+  };
+
+  useEffect(() => {
+    if (!isTemplateModalOpen) {
+      return;
+    }
+
+    if (
+      templateForm.baseTemplateKey &&
+      tournamentTemplates.some(
+        (template) => template.key === templateForm.baseTemplateKey,
+      )
+    ) {
+      return;
+    }
+
+    resetTemplateForm();
+  }, [isTemplateModalOpen, templateForm.baseTemplateKey, tournamentTemplates]);
 
   const closeCreateModal = () => {
     if (isSaving) {
@@ -1207,6 +1590,79 @@ export function TournamentsPage({
       setError(saveError.message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleCreateTemplate = async () => {
+    if (!selectedBaseTemplate) {
+      setError("Choose a base template first.");
+      return;
+    }
+
+    setIsSavingTemplate(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const handicapAllowanceValue = templateForm.handicapAllowancePercent.trim();
+      const defaultRoundNames = templateForm.defaultRoundNames
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+      const result = await tournamentCrud.createTournamentTemplateUseCase.execute({
+        actorUsername,
+        form: {
+          label: templateForm.label,
+          description: templateForm.description,
+          baseTemplateKey: templateForm.baseTemplateKey,
+          defaults: {
+            ...selectedBaseTemplate.defaults,
+            resultWorkflow: templateForm.resultWorkflow,
+            handicapAllowancePercent: handicapAllowanceValue
+              ? Number.parseInt(handicapAllowanceValue, 10)
+              : null,
+            defaultRoundNames,
+          },
+          capabilities: {
+            ...selectedBaseTemplate.capabilities,
+            supportsRandomizedDraw: templateForm.supportsRandomizedDraw,
+            supportsHighestLoserProgression:
+              templateForm.supportsHighestLoserProgression,
+            supportsRoundDeadlines: templateForm.supportsRoundDeadlines,
+            supportsMatchConfirmation: templateForm.supportsMatchConfirmation,
+            supportsEligibilityRules: templateForm.supportsEligibilityRules,
+            supportsHandicapAdjustments: templateForm.supportsHandicapAdjustments,
+          },
+          eligibilityRules: templateForm.supportsEligibilityRules
+            ? {
+                handicapQualificationRoundsRequired: Number.parseInt(
+                  templateForm.handicapQualificationRoundsRequired,
+                  10,
+                ),
+                qualifyingRoundsRequiredPerKnockoutRound: Number.parseInt(
+                  templateForm.qualifyingRoundsRequiredPerKnockoutRound,
+                  10,
+                ),
+                qualifyingRoundDiscipline: templateForm.qualifyingRoundDiscipline,
+              }
+            : null,
+        },
+      });
+
+      const nextTemplates = result.tournamentTemplates ?? tournamentTemplates;
+      const createdTemplateKey = result.tournamentTemplate?.key ?? "";
+      setTournamentTemplates(nextTemplates);
+      if (createdTemplateKey) {
+        setForm((current) => ({ ...current, templateKey: createdTemplateKey }));
+        setCreateForm((current) => ({ ...current, templateKey: createdTemplateKey }));
+      }
+      setMessage(`Template ${result.tournamentTemplate?.label ?? "created"} saved.`);
+      setIsTemplateModalOpen(false);
+      resetTemplateForm();
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setIsSavingTemplate(false);
     }
   };
 
@@ -1809,260 +2265,265 @@ export function TournamentsPage({
   const captainOperationsContent =
     canManageTournaments && captainOperationMatches.length > 0 ? (
       <div className="tournament-registrations-card">
-        <h4>Captain Operations</h4>
-        <p>
-          Resolve active or disputed matches with a recorded reason. Decisions are
-          written into the bracket and logged for audit review.
-        </p>
-        <div className="tournament-captain-operations-list">
-          {captainOperationMatches.map((match) => (
-            <div key={`captain-op-${match.id}`} className="tournament-score-card">
-              {(() => {
-                const handicapSummary = getTournamentMatchHandicapSummary(match);
+        <details className="tournament-captain-operations-details">
+          <summary className="tournament-captain-operations-summary">
+            <span>Captain Operations</span>
+            <span>{captainOperationMatches.length} match{captainOperationMatches.length === 1 ? "" : "es"}</span>
+          </summary>
+          <p>
+            Resolve active or disputed matches with a recorded reason. Decisions are
+            written into the bracket and logged for audit review.
+          </p>
+          <div className="tournament-captain-operations-list">
+            {captainOperationMatches.map((match) => (
+              <div key={`captain-op-${match.id}`} className="tournament-score-card">
+                {(() => {
+                  const handicapSummary = getTournamentMatchHandicapSummary(match);
 
-                return (
-                  <div className="tournament-captain-card-layout">
-                    <div className="tournament-captain-editor">
-                      <p>
-                        <strong>{match.roundTitle}</strong>
-                      </p>
-                      <p>
-                        {formatTournamentParticipantName(match.competitorA)} vs{" "}
-                        {formatTournamentParticipantName(match.competitorB)}
-                      </p>
-                      <p>Status: {formatTournamentMatchStatus(match.status)}</p>
-                      {match.submissionDeadline ? (
-                        <p>Deadline: {formatDate(match.submissionDeadline)}</p>
-                      ) : null}
-                      {handicapSummary?.rawScoreText ? (
-                        <p>Score: {handicapSummary.rawScoreText}</p>
-                      ) : null}
-                      {handicapSummary?.handicapScoreText ? (
+                  return (
+                    <div className="tournament-captain-card-layout">
+                      <div className="tournament-captain-editor">
                         <p>
-                          Handicap score
-                          {typeof handicapSummary.allowancePercent === "number"
-                            ? ` (${handicapSummary.allowancePercent}%)`
-                            : ""}
-                          : {handicapSummary.handicapScoreText}
+                          <strong>{match.roundTitle}</strong>
                         </p>
-                      ) : null}
-                      {handicapSummary?.totalScoreText ? (
-                        <p>Total score: {handicapSummary.totalScoreText}</p>
-                      ) : null}
-                      {match.workflow?.disputeReason ? (
-                        <p>Member dispute: {match.workflow.disputeReason}</p>
-                      ) : null}
-                      <div className="tournament-field-group">
-                        <label
-                          className="tournament-field-label"
-                          htmlFor={`captain-decision-note-${match.id}`}
-                        >
-                          Captain decision note
-                        </label>
-                        <textarea
-                          id={`captain-decision-note-${match.id}`}
-                          value={captainDecisionNotes[String(match.id)] ?? ""}
-                          onChange={(event) =>
-                            {
-                              const nextValue = event.target.value;
+                        <p>
+                          {formatTournamentParticipantName(match.competitorA)} vs{" "}
+                          {formatTournamentParticipantName(match.competitorB)}
+                        </p>
+                        <p>Status: {formatTournamentMatchStatus(match.status)}</p>
+                        {match.submissionDeadline ? (
+                          <p>Deadline: {formatDate(match.submissionDeadline)}</p>
+                        ) : null}
+                        {handicapSummary?.rawScoreText ? (
+                          <p>Score: {handicapSummary.rawScoreText}</p>
+                        ) : null}
+                        {handicapSummary?.handicapScoreText ? (
+                          <p>
+                            Handicap score
+                            {typeof handicapSummary.allowancePercent === "number"
+                              ? ` (${handicapSummary.allowancePercent}%)`
+                              : ""}
+                            : {handicapSummary.handicapScoreText}
+                          </p>
+                        ) : null}
+                        {handicapSummary?.totalScoreText ? (
+                          <p>Total score: {handicapSummary.totalScoreText}</p>
+                        ) : null}
+                        {match.workflow?.disputeReason ? (
+                          <p>Member dispute: {match.workflow.disputeReason}</p>
+                        ) : null}
+                        <div className="tournament-field-group">
+                          <label
+                            className="tournament-field-label"
+                            htmlFor={`captain-decision-note-${match.id}`}
+                          >
+                            Captain decision note
+                          </label>
+                          <textarea
+                            id={`captain-decision-note-${match.id}`}
+                            value={captainDecisionNotes[String(match.id)] ?? ""}
+                            onChange={(event) =>
+                              {
+                                const nextValue = event.target.value;
 
-                              setCaptainDecisionNotes((current) => ({
-                                ...current,
-                                [String(match.id)]: nextValue,
-                              }));
-                              setCaptainDecisionErrors((current) => ({
-                                ...current,
-                                [String(match.id)]: nextValue.trim()
-                                  ? ""
-                                  : current[String(match.id)] ?? "",
-                              }));
+                                setCaptainDecisionNotes((current) => ({
+                                  ...current,
+                                  [String(match.id)]: nextValue,
+                                }));
+                                setCaptainDecisionErrors((current) => ({
+                                  ...current,
+                                  [String(match.id)]: nextValue.trim()
+                                    ? ""
+                                    : current[String(match.id)] ?? "",
+                                }));
+                              }
                             }
-                          }
-                          rows={3}
-                          placeholder="Record why this decision was made."
-                        />
+                            rows={3}
+                            placeholder="Record why this decision was made."
+                          />
+                        </div>
+                        {captainDecisionErrors[String(match.id)] ? (
+                          <p className="profile-error">
+                            {captainDecisionErrors[String(match.id)]}
+                          </p>
+                        ) : null}
+                        <div className="tournament-captain-score-grid">
+                          <label>
+                            Override {match.competitorA?.fullName ?? "A"} score
+                            <input
+                              type="number"
+                              min="0"
+                              inputMode="numeric"
+                              value={captainOverrideScores[String(match.id)]?.leftScore ?? ""}
+                              onChange={(event) =>
+                                setCaptainOverrideScores((current) => ({
+                                  ...current,
+                                  [String(match.id)]: {
+                                    leftScore: event.target.value,
+                                    rightScore:
+                                      current[String(match.id)]?.rightScore ??
+                                      (typeof match.score?.competitorB === "number"
+                                        ? String(match.score.competitorB)
+                                        : ""),
+                                  },
+                                }))
+                              }
+                              placeholder="Optional for override"
+                            />
+                          </label>
+                          <label>
+                            Override {match.competitorB?.fullName ?? "B"} score
+                            <input
+                              type="number"
+                              min="0"
+                              inputMode="numeric"
+                              value={captainOverrideScores[String(match.id)]?.rightScore ?? ""}
+                              onChange={(event) =>
+                                setCaptainOverrideScores((current) => ({
+                                  ...current,
+                                  [String(match.id)]: {
+                                    leftScore:
+                                      current[String(match.id)]?.leftScore ??
+                                      (typeof match.score?.competitorA === "number"
+                                        ? String(match.score.competitorA)
+                                        : ""),
+                                    rightScore: event.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder="Optional for override"
+                            />
+                          </label>
+                        </div>
                       </div>
-                      {captainDecisionErrors[String(match.id)] ? (
-                        <p className="profile-error">
-                          {captainDecisionErrors[String(match.id)]}
-                        </p>
-                      ) : null}
-                      <div className="tournament-captain-score-grid">
-                        <label>
-                          Override {match.competitorA?.fullName ?? "A"} score
-                          <input
-                            type="number"
-                            min="0"
-                            inputMode="numeric"
-                            value={captainOverrideScores[String(match.id)]?.leftScore ?? ""}
-                            onChange={(event) =>
-                              setCaptainOverrideScores((current) => ({
-                                ...current,
-                                [String(match.id)]: {
-                                  leftScore: event.target.value,
-                                  rightScore:
-                                    current[String(match.id)]?.rightScore ??
-                                    (typeof match.score?.competitorB === "number"
-                                      ? String(match.score.competitorB)
-                                      : ""),
-                                },
-                              }))
+                      <div className="tournament-captain-actions-grid">
+                        <div className="tournament-captain-action-group">
+                          <p className="tournament-captain-action-group-title">Override winner</p>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={
+                              isApplyingCaptainDecision ||
+                              !String(captainDecisionNotes[String(match.id)] ?? "").trim()
                             }
-                            placeholder="Optional for override"
-                          />
-                        </label>
-                        <label>
-                          Override {match.competitorB?.fullName ?? "B"} score
-                          <input
-                            type="number"
-                            min="0"
-                            inputMode="numeric"
-                            value={captainOverrideScores[String(match.id)]?.rightScore ?? ""}
-                            onChange={(event) =>
-                              setCaptainOverrideScores((current) => ({
-                                ...current,
-                                [String(match.id)]: {
-                                  leftScore:
-                                    current[String(match.id)]?.leftScore ??
-                                    (typeof match.score?.competitorA === "number"
-                                      ? String(match.score.competitorA)
-                                      : ""),
-                                  rightScore: event.target.value,
-                                },
-                              }))
+                            onClick={() => {
+                              void handleCaptainMatchDecision({
+                                action: "override",
+                                leftScoreOverride:
+                                  captainOverrideScores[String(match.id)]?.leftScore ?? "",
+                                match,
+                                rightScoreOverride:
+                                  captainOverrideScores[String(match.id)]?.rightScore ?? "",
+                                winnerUsername: match.competitorA?.username ?? "",
+                              });
+                            }}
+                          >
+                            {match.competitorA?.fullName ?? "A"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={
+                              isApplyingCaptainDecision ||
+                              !String(captainDecisionNotes[String(match.id)] ?? "").trim()
                             }
-                            placeholder="Optional for override"
-                          />
-                        </label>
+                            onClick={() => {
+                              void handleCaptainMatchDecision({
+                                action: "override",
+                                leftScoreOverride:
+                                  captainOverrideScores[String(match.id)]?.leftScore ?? "",
+                                match,
+                                rightScoreOverride:
+                                  captainOverrideScores[String(match.id)]?.rightScore ?? "",
+                                winnerUsername: match.competitorB?.username ?? "",
+                              });
+                            }}
+                          >
+                            {match.competitorB?.fullName ?? "B"}
+                          </Button>
+                        </div>
+                        <div className="tournament-captain-action-group">
+                          <p className="tournament-captain-action-group-title">Push forward</p>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={
+                              isApplyingCaptainDecision ||
+                              !String(captainDecisionNotes[String(match.id)] ?? "").trim()
+                            }
+                            onClick={() => {
+                              void handleCaptainMatchDecision({
+                                action: "walkover",
+                                match,
+                                winnerUsername: match.competitorA?.username ?? "",
+                              });
+                            }}
+                          >
+                            {match.competitorA?.fullName ?? "A"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            disabled={
+                              isApplyingCaptainDecision ||
+                              !String(captainDecisionNotes[String(match.id)] ?? "").trim()
+                            }
+                            onClick={() => {
+                              void handleCaptainMatchDecision({
+                                action: "walkover",
+                                match,
+                                winnerUsername: match.competitorB?.username ?? "",
+                              });
+                            }}
+                          >
+                            {match.competitorB?.fullName ?? "B"}
+                          </Button>
+                        </div>
+                        <div className="tournament-captain-action-group">
+                          <p className="tournament-captain-action-group-title">Disqualify</p>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            disabled={
+                              isApplyingCaptainDecision ||
+                              !String(captainDecisionNotes[String(match.id)] ?? "").trim()
+                            }
+                            onClick={() => {
+                              void handleCaptainMatchDecision({
+                                action: "disqualify",
+                                match,
+                                winnerUsername: match.competitorA?.username ?? "",
+                              });
+                            }}
+                          >
+                            {match.competitorB?.fullName ?? "B"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            disabled={
+                              isApplyingCaptainDecision ||
+                              !String(captainDecisionNotes[String(match.id)] ?? "").trim()
+                            }
+                            onClick={() => {
+                              void handleCaptainMatchDecision({
+                                action: "disqualify",
+                                match,
+                                winnerUsername: match.competitorB?.username ?? "",
+                              });
+                            }}
+                          >
+                            {match.competitorA?.fullName ?? "A"}
+                          </Button>
+                        </div>
                       </div>
                     </div>
-                    <div className="tournament-captain-actions-grid">
-                      <div className="tournament-captain-action-group">
-                        <p className="tournament-captain-action-group-title">Override winner</p>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={
-                            isApplyingCaptainDecision ||
-                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
-                          }
-                          onClick={() => {
-                            void handleCaptainMatchDecision({
-                              action: "override",
-                              leftScoreOverride:
-                                captainOverrideScores[String(match.id)]?.leftScore ?? "",
-                              match,
-                              rightScoreOverride:
-                                captainOverrideScores[String(match.id)]?.rightScore ?? "",
-                              winnerUsername: match.competitorA?.username ?? "",
-                            });
-                          }}
-                        >
-                          {match.competitorA?.fullName ?? "A"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={
-                            isApplyingCaptainDecision ||
-                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
-                          }
-                          onClick={() => {
-                            void handleCaptainMatchDecision({
-                              action: "override",
-                              leftScoreOverride:
-                                captainOverrideScores[String(match.id)]?.leftScore ?? "",
-                              match,
-                              rightScoreOverride:
-                                captainOverrideScores[String(match.id)]?.rightScore ?? "",
-                              winnerUsername: match.competitorB?.username ?? "",
-                            });
-                          }}
-                        >
-                          {match.competitorB?.fullName ?? "B"}
-                        </Button>
-                      </div>
-                      <div className="tournament-captain-action-group">
-                        <p className="tournament-captain-action-group-title">Push forward</p>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={
-                            isApplyingCaptainDecision ||
-                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
-                          }
-                          onClick={() => {
-                            void handleCaptainMatchDecision({
-                              action: "walkover",
-                              match,
-                              winnerUsername: match.competitorA?.username ?? "",
-                            });
-                          }}
-                        >
-                          {match.competitorA?.fullName ?? "A"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          disabled={
-                            isApplyingCaptainDecision ||
-                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
-                          }
-                          onClick={() => {
-                            void handleCaptainMatchDecision({
-                              action: "walkover",
-                              match,
-                              winnerUsername: match.competitorB?.username ?? "",
-                            });
-                          }}
-                        >
-                          {match.competitorB?.fullName ?? "B"}
-                        </Button>
-                      </div>
-                      <div className="tournament-captain-action-group">
-                        <p className="tournament-captain-action-group-title">Disqualify</p>
-                        <Button
-                          type="button"
-                          variant="danger"
-                          disabled={
-                            isApplyingCaptainDecision ||
-                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
-                          }
-                          onClick={() => {
-                            void handleCaptainMatchDecision({
-                              action: "disqualify",
-                              match,
-                              winnerUsername: match.competitorA?.username ?? "",
-                            });
-                          }}
-                        >
-                          {match.competitorB?.fullName ?? "B"}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="danger"
-                          disabled={
-                            isApplyingCaptainDecision ||
-                            !String(captainDecisionNotes[String(match.id)] ?? "").trim()
-                          }
-                          onClick={() => {
-                            void handleCaptainMatchDecision({
-                              action: "disqualify",
-                              match,
-                              winnerUsername: match.competitorB?.username ?? "",
-                            });
-                          }}
-                        >
-                          {match.competitorA?.fullName ?? "A"}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          ))}
-        </div>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+        </details>
       </div>
     ) : null;
   const currentMatchHandicapSummary =
@@ -2077,192 +2538,189 @@ export function TournamentsPage({
   const selectedTournamentDetail = selectedTournament ? (
     <>
       <div className="tournament-summary-card">
-        <h3 className="tournament-summary-title" title={selectedTournament.name}>
-          {selectedTournament.name}
-        </h3>
-        <p>{selectedTournament.typeLabel}</p>
-        <p>
-          Registration window:{" "}
-          {formatDate(selectedTournament.registrationWindow.startDate)} to{" "}
-          {formatDate(selectedTournament.registrationWindow.endDate)}
-        </p>
-        <p>
-          Tournament window: {formatDate(selectedTournament.scoreWindow.startDate)} to{" "}
-          {formatDate(selectedTournament.scoreWindow.endDate)}
-        </p>
-        {selectedTournament.roundOneStartDate ? (
-          <p>Round 1 starts: {formatDate(selectedTournament.roundOneStartDate)}</p>
-        ) : null}
-        {typeof selectedTournament.roundWindowDays === "number" ? (
-          <p>Each round stays open for {selectedTournament.roundWindowDays} day{selectedTournament.roundWindowDays === 1 ? "" : "s"}.</p>
-        ) : null}
-        {typeof selectedTournament.roundRestDays === "number" ? (
-          <p>Rest window between rounds: {selectedTournament.roundRestDays} day{selectedTournament.roundRestDays === 1 ? "" : "s"}.</p>
-        ) : null}
-        {selectedTournament.roundSchedule?.length ? (
-          <div>
-            <p>Automatic round windows:</p>
-            <ul>
-              {selectedTournament.roundSchedule.map((round) => (
-                <li key={`summary-round-${round.roundNumber}`}>
-                  {round.title}: {round.publishDate ? formatDate(round.publishDate) : "Not set"} to{" "}
-                  {round.submissionDeadline ? formatDate(round.submissionDeadline) : "Not set"}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        <p>Registered competitors: {selectedTournament.registrationCount}</p>
-        {selectedTournament.bracket.winner ? (
-          <p>
-            Winner: <strong>{selectedTournament.bracket.winner.fullName}</strong>
-          </p>
-        ) : null}
-        {selectedTournament.needsScoreReminder ? (
-          <p className="profile-success">
-            Round {selectedTournament.currentRoundNumber} is waiting for your action.
-          </p>
-        ) : null}
-        <p
-          className={
-            selectedTournament.isRegistered
-              ? "profile-success"
-              : "tournament-registration-note"
-          }
-        >
-          {registrationStatusText}
-        </p>
-        {actorRegistrationEligibilityReason && !selectedTournament.isRegistered ? (
-          <p className="profile-error">{actorRegistrationEligibilityReason}</p>
-        ) : null}
-        {registrationBowOptions.length > 1 && selectedTournament.canRegister ? (
-          <label className="tournament-field-label">
-            Shooting bow
-            <select
-              value={selectedRegistrationBowCode}
-              onChange={(event) => setSelectedRegistrationBowCode(event.target.value)}
-            >
-              <option value="">Choose your bow</option>
-              {registrationBowOptions.map((option) => (
-                <option key={option.code} value={option.code}>
-                  {option.discipline} ({option.code})
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-
-        <div className="tournament-action-row">
-          <Button
-            type="button"
-            className="tournament-primary-button"
-            onClick={handleRegister}
-            disabled={
-              !selectedTournament.canRegister ||
-              isSaving ||
-              (registrationBowOptions.length > 1 && !selectedRegistrationBowCode)
-            }
-          >
-            {isSaving && selectedTournament.canRegister
-              ? "Registering..."
-              : selectedTournament.canRegister
-                ? "Register"
-                : selectedTournament.isRegistered
-                  ? "Already registered"
-                  : selectedTournament.registrationWindow.isOpen
-                    ? "Registration unavailable"
-                    : "Registration not open yet"}
-          </Button>
-
-          <Button
-            type="button"
-            className="tournament-secondary-button"
-            onClick={handleWithdraw}
-            disabled={!selectedTournament.canWithdraw || isSaving}
-            variant="secondary"
-          >
-            {isSaving && selectedTournament.canWithdraw
-              ? "Updating..."
-              : "Withdraw"}
-          </Button>
-
-          {canManageTournaments ? (
-            selectedTournament.engine?.template?.capabilities?.supportsRandomizedDraw &&
-            selectedTournament.registrationWindow.isClosed ? (
-            <Button
-              type="button"
-              className="tournament-secondary-button"
-              onClick={() => {
-                void handleRedrawTournament();
-              }}
-              disabled={isSaving || !selectedTournament.draw?.canRedraw}
-              variant="secondary"
-            >
-              Redraw round 1
-            </Button>
-            ) : null
-          ) : null}
-
-          {canManageTournaments ? (
-            <Button
-              type="button"
-              className="tournament-secondary-button"
-              onClick={openCaptainRegistrationModal}
-              disabled={
-                isSaving ||
-                !selectedTournament.registrationWindow.isOpen ||
-                isLoadingRegistrationCandidates ||
-                registrationCandidates.length === 0
+        <div className="tournament-summary-layout">
+          <div className="tournament-summary-copy">
+            <h3 className="tournament-summary-title" title={selectedTournament.name}>
+              {selectedTournament.name}
+            </h3>
+            <p>{selectedTournament.typeLabel}</p>
+            <p>
+              Registration window:{" "}
+              {formatDate(selectedTournament.registrationWindow.startDate)} to{" "}
+              {formatDate(selectedTournament.registrationWindow.endDate)}
+            </p>
+            <p>
+              Tournament window: {formatDate(selectedTournament.scoreWindow.startDate)} to{" "}
+              {formatDate(selectedTournament.scoreWindow.endDate)}
+            </p>
+            {selectedTournament.roundOneStartDate ? (
+              <p>Round 1 starts: {formatDate(selectedTournament.roundOneStartDate)}</p>
+            ) : null}
+            {typeof selectedTournament.roundWindowDays === "number" ? (
+              <p>Each round stays open for {selectedTournament.roundWindowDays} day{selectedTournament.roundWindowDays === 1 ? "" : "s"}.</p>
+            ) : null}
+            {typeof selectedTournament.roundRestDays === "number" ? (
+              <p>Rest window between rounds: {selectedTournament.roundRestDays} day{selectedTournament.roundRestDays === 1 ? "" : "s"}.</p>
+            ) : null}
+            {selectedTournament.roundSchedule?.length ? (
+              <div>
+                <p>Automatic round windows:</p>
+                <ul>
+                  {selectedTournament.roundSchedule.map((round) => (
+                    <li key={`summary-round-${round.roundNumber}`}>
+                      {round.title}: {round.publishDate ? formatDate(round.publishDate) : "Not set"} to{" "}
+                      {round.submissionDeadline ? formatDate(round.submissionDeadline) : "Not set"}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <p>Registered competitors: {selectedTournament.registrationCount}</p>
+            {selectedTournament.bracket.winner ? (
+              <p>
+                Winner: <strong>{selectedTournament.bracket.winner.fullName}</strong>
+              </p>
+            ) : null}
+            {selectedTournament.needsScoreReminder ? (
+              <p className="profile-success">
+                Round {selectedTournament.currentRoundNumber} is waiting for your action.
+              </p>
+            ) : null}
+            <p
+              className={
+                selectedTournament.isRegistered
+                  ? "profile-success"
+                  : "tournament-registration-note"
               }
-              variant="secondary"
             >
-              Add member
-            </Button>
-          ) : null}
+              {registrationStatusText}
+            </p>
+            {actorRegistrationEligibilityReason && !selectedTournament.isRegistered ? (
+              <p className="profile-error">{actorRegistrationEligibilityReason}</p>
+            ) : null}
+            {registrationBowOptions.length > 1 && selectedTournament.canRegister ? (
+              <label className="tournament-field-label">
+                Shooting bow
+                <select
+                  value={selectedRegistrationBowCode}
+                  onChange={(event) => setSelectedRegistrationBowCode(event.target.value)}
+                >
+                  <option value="">Choose your bow</option>
+                  {registrationBowOptions.map((option) => (
+                    <option key={option.code} value={option.code}>
+                      {option.discipline} ({option.code})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
 
-          {canManageTournaments ? (
-            <Button
-              type="button"
-              className="tournament-secondary-button"
-              onClick={openCaptainRemovalModal}
-              disabled={isSaving || removalCandidates.length === 0}
-              variant="secondary"
-            >
-              Remove member
-            </Button>
-          ) : null}
+          <div className="tournament-summary-actions">
+            <div className="tournament-action-grid">
+              <Button
+                type="button"
+                className="tournament-primary-button tournament-action-button"
+                onClick={handleRegister}
+                disabled={
+                  !selectedTournament.canRegister ||
+                  isSaving ||
+                  (registrationBowOptions.length > 1 && !selectedRegistrationBowCode)
+                }
+              >
+                {isSaving && selectedTournament.canRegister
+                  ? "Registering..."
+                  : selectedTournament.canRegister
+                    ? "Register"
+                    : selectedTournament.isRegistered
+                      ? "Already registered"
+                      : selectedTournament.registrationWindow.isOpen
+                        ? "Registration unavailable"
+                        : "Registration not open yet"}
+              </Button>
 
-          {canManageTournaments ? (
-            <Button
-              type="button"
-              className="tournament-secondary-button"
-              onClick={handleSaveCompetitorList}
-              variant="secondary"
-            >
-              Save competitor list
-            </Button>
-          ) : null}
+              <Button
+                type="button"
+                className="tournament-secondary-button tournament-action-button"
+                onClick={handleWithdraw}
+                disabled={!selectedTournament.canWithdraw || isSaving}
+                variant="secondary"
+              >
+                {isSaving && selectedTournament.canWithdraw
+                  ? "Updating..."
+                  : "Withdraw"}
+              </Button>
+
+              {canManageTournaments ? (
+                selectedTournament.engine?.template?.capabilities?.supportsRandomizedDraw &&
+                selectedTournament.registrationWindow.isClosed ? (
+                  <Button
+                    type="button"
+                    className="tournament-secondary-button tournament-action-button"
+                    onClick={() => {
+                      void handleRedrawTournament();
+                    }}
+                    disabled={isSaving || !selectedTournament.draw?.canRedraw}
+                    variant="secondary"
+                  >
+                    Redraw round 1
+                  </Button>
+                ) : null
+              ) : null}
+
+              {canManageTournaments ? (
+                <Button
+                  type="button"
+                  className="tournament-secondary-button tournament-action-button"
+                  onClick={openCaptainRegistrationModal}
+                  disabled={
+                    isSaving ||
+                    !selectedTournament.registrationWindow.isOpen ||
+                    isLoadingRegistrationCandidates ||
+                    registrationCandidates.length === 0
+                  }
+                  variant="secondary"
+                >
+                  Add member
+                </Button>
+              ) : null}
+
+              {canManageTournaments ? (
+                <Button
+                  type="button"
+                  className="tournament-secondary-button tournament-action-button"
+                  onClick={openCaptainRemovalModal}
+                  disabled={isSaving || removalCandidates.length === 0}
+                  variant="secondary"
+                >
+                  Remove member
+                </Button>
+              ) : null}
+
+              {canManageTournaments ? (
+                <Button
+                  type="button"
+                  className="tournament-secondary-button tournament-action-button"
+                  onClick={handleSaveCompetitorList}
+                  variant="secondary"
+                >
+                  Save competitor list
+                </Button>
+              ) : null}
+
+              <Button
+                type="button"
+                className="tournament-secondary-button tournament-action-button"
+                onClick={() => {
+                  setIsTournamentLineUpOpen(true);
+                }}
+                variant="secondary"
+              >
+                Tournament Line Up
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
-
-      <div className="tournament-registrations-card">
-        <h4>Competing Members</h4>
-        {selectedTournament.registrations.length > 0 ? (
-          <ul className="event-summary-list">
-            {selectedTournament.registrations.map((registration) => (
-              <li key={registration.username}>
-                {formatTournamentRegistrationName(registration)}
-                {canManageTournaments &&
-                registration.eligibility?.registration?.isEligible === false &&
-                registration.eligibility.registration.reason ? (
-                  <> - {registration.eligibility.registration.reason}</>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>No members have registered yet.</p>
-        )}
       </div>
 
       {selectedTournament.currentMatch ? (
@@ -2489,21 +2947,6 @@ export function TournamentsPage({
           </Button>
         </form>
       ) : null}
-
-      <div className="tournament-bracket-card">
-        <h4>Tournament Line Up</h4>
-        {!selectedTournament.bracketReady ? (
-          <p>
-            The tournament bracket graphic will be generated once
-            registration closes on{" "}
-            {formatDate(selectedTournament.registrationWindow.endDate)}.
-          </p>
-        ) : selectedTournament.bracket.rounds.length === 0 ? (
-          <p>The bracket will appear once enough competitors are registered.</p>
-        ) : (
-          <TournamentBracketGraphic tournament={selectedTournament} />
-        )}
-      </div>
 
       {captainOperationsContent}
     </>
@@ -2782,6 +3225,15 @@ export function TournamentsPage({
                 </Button>
                 <Button
                   type="button"
+                  className="tournament-setup-button tournament-template-trigger"
+                  onClick={() => openTemplateModal(form.templateKey)}
+                  disabled={isSaving}
+                  variant="secondary"
+                >
+                  Create template
+                </Button>
+                <Button
+                  type="button"
                   className="tournament-setup-button event-cancel-button"
                   onClick={handleDeleteTournament}
                   disabled={isSaving}
@@ -2800,6 +3252,15 @@ export function TournamentsPage({
                 disabled={isSaving}
               >
                 Create tournament
+              </Button>
+              <Button
+                type="button"
+                className="tournament-setup-button tournament-template-trigger"
+                onClick={() => openTemplateModal(form.templateKey)}
+                disabled={isSaving}
+                variant="secondary"
+              >
+                Create template
               </Button>
             </div>
           )}
@@ -3089,9 +3550,23 @@ export function TournamentsPage({
       {!isCreateModalOpen && message ? <p className="profile-success">{message}</p> : null}
 
       {hasLoadedTournaments ? (
-        isMobile ? (
+        isTournamentLineUpOpen && selectedTournament ? (
+          <TournamentLineUpPage
+            tournament={selectedTournament as TournamentRecord}
+            canManageTournaments={canManageTournaments}
+            bracketGraphic={
+              selectedTournament?.bracket.rounds.length ? (
+                <TournamentBracketGraphic tournament={selectedTournament} />
+              ) : null
+            }
+            onBack={() => {
+              setIsTournamentLineUpOpen(false);
+            }}
+          />
+        ) : isMobile ? (
           <TournamentsMobileView
-            tournaments={tournaments as TournamentRecord[]}
+            activeTournaments={activeTournaments}
+            archivedTournaments={archivedTournaments}
             selectedTournament={selectedTournament as TournamentRecord | null}
             showSetupForm={showSetupForm}
             canManageTournaments={canManageTournaments}
@@ -3104,12 +3579,8 @@ export function TournamentsPage({
             matchCompetitorARetired={matchCompetitorARetired}
             matchCompetitorBRetired={matchCompetitorBRetired}
             matchDisputeReason={matchDisputeReason}
-            bracketGraphic={
-              selectedTournament?.bracket.rounds.length ? (
-                <TournamentBracketGraphic tournament={selectedTournament} />
-              ) : null
-            }
             captainOperationsContent={captainOperationsContent}
+            isArchiveExpanded={isArchiveExpanded}
             registrationBowOptions={registrationBowOptions}
             requireRegistrationBowSelection={
               registrationBowOptions.length > 1 && !selectedRegistrationBowCode
@@ -3121,9 +3592,15 @@ export function TournamentsPage({
                 setIsEditingTournament(true);
               }
             }}
+            onToggleArchive={() => {
+              setIsArchiveExpanded((current) => !current);
+            }}
             onRegistrationBowCodeChange={setSelectedRegistrationBowCode}
             onOpenCaptainRegistrationModal={openCaptainRegistrationModal}
             onOpenCaptainRemovalModal={openCaptainRemovalModal}
+            onOpenTournamentLineUp={() => {
+              setIsTournamentLineUpOpen(true);
+            }}
             onRegister={handleRegister}
             onWithdraw={handleWithdraw}
             onRedrawTournament={() => {
@@ -3149,20 +3626,288 @@ export function TournamentsPage({
           />
         ) : (
           <TournamentsDesktopView
-            tournaments={tournaments as TournamentRecord[]}
+            activeTournaments={activeTournaments}
+            archivedTournaments={archivedTournaments}
             selectedTournament={selectedTournament as TournamentRecord | null}
             showSetupForm={showSetupForm}
             canManageTournaments={canManageTournaments}
             detailContent={selectedTournamentDetail}
+            isArchiveExpanded={isArchiveExpanded}
             onSelectTournament={(tournamentId) => {
               setSelectedTournamentId(tournamentId);
               if (showSetupForm && canManageTournaments) {
                 setIsEditingTournament(true);
               }
             }}
+            onToggleArchive={() => {
+              setIsArchiveExpanded((current) => !current);
+            }}
           />
         )
       ) : null}
+      <Modal
+        open={isTemplateModalOpen}
+        onClose={closeTemplateModal}
+        title="Create Tournament Template"
+        contentClassName="modal-content--wide tournament-template-modal"
+      >
+        <div className="guest-member-modal">
+          <p className="guest-member-modal-copy">
+            Save a reusable tournament template from the current setup flow.
+          </p>
+          {error ? <p className="profile-error">{error}</p> : null}
+          {message ? <p className="profile-success">{message}</p> : null}
+          <div className="tournament-template-form">
+            <label>
+              Template name
+              <input
+                value={templateForm.label}
+                onChange={(event) =>
+                  setTemplateForm((current) => ({
+                    ...current,
+                    label: event.target.value,
+                  }))
+                }
+                disabled={isSavingTemplate}
+                required
+              />
+            </label>
+            <label>
+              Based on
+              <select
+                value={templateForm.baseTemplateKey}
+                onChange={(event) => resetTemplateForm(event.target.value)}
+                disabled={isSavingTemplate}
+              >
+                {tournamentTemplates.map((template: TournamentTemplateOption) => (
+                  <option key={template.key} value={template.key}>
+                    {template.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="tournament-template-field--full">
+              Description
+              <textarea
+                value={templateForm.description}
+                onChange={(event) =>
+                  setTemplateForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                rows={3}
+                disabled={isSavingTemplate}
+              />
+            </label>
+            <label>
+              Result workflow
+              <select
+                value={templateForm.resultWorkflow}
+                onChange={(event) =>
+                  setTemplateForm((current) => ({
+                    ...current,
+                    resultWorkflow: event.target.value,
+                  }))
+                }
+                disabled={isSavingTemplate}
+              >
+                <option value="single-submit">Single submit</option>
+                <option value="submit-and-confirm">Submit and confirm</option>
+              </select>
+            </label>
+            <label>
+              Handicap allowance %
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={templateForm.handicapAllowancePercent}
+                onChange={(event) =>
+                  setTemplateForm((current) => ({
+                    ...current,
+                    handicapAllowancePercent: event.target.value,
+                  }))
+                }
+                disabled={isSavingTemplate}
+              />
+            </label>
+            <label className="tournament-template-field--full">
+              Default round names
+              <input
+                value={templateForm.defaultRoundNames}
+                onChange={(event) =>
+                  setTemplateForm((current) => ({
+                    ...current,
+                    defaultRoundNames: event.target.value,
+                  }))
+                }
+                disabled={isSavingTemplate}
+                placeholder="Round 1, Quarter-final, Semi-final, Final"
+              />
+            </label>
+            <div className="tournament-template-field--full tournament-template-option-group">
+              <strong>Capabilities</strong>
+              <label className="tournament-template-checkbox">
+                <input
+                  type="checkbox"
+                  checked={templateForm.supportsRandomizedDraw}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({
+                      ...current,
+                      supportsRandomizedDraw: event.target.checked,
+                    }))
+                  }
+                />
+                <span>Randomized draw</span>
+              </label>
+              <label className="tournament-template-checkbox">
+                <input
+                  type="checkbox"
+                  checked={templateForm.supportsHighestLoserProgression}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({
+                      ...current,
+                      supportsHighestLoserProgression: event.target.checked,
+                    }))
+                  }
+                />
+                <span>Highest loser progression</span>
+              </label>
+              <label className="tournament-template-checkbox">
+                <input
+                  type="checkbox"
+                  checked={templateForm.supportsRoundDeadlines}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({
+                      ...current,
+                      supportsRoundDeadlines: event.target.checked,
+                    }))
+                  }
+                />
+                <span>Round deadlines</span>
+              </label>
+              <label className="tournament-template-checkbox">
+                <input
+                  type="checkbox"
+                  checked={templateForm.supportsMatchConfirmation}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({
+                      ...current,
+                      supportsMatchConfirmation: event.target.checked,
+                    }))
+                  }
+                />
+                <span>Match confirmation</span>
+              </label>
+              <label className="tournament-template-checkbox">
+                <input
+                  type="checkbox"
+                  checked={templateForm.supportsHandicapAdjustments}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({
+                      ...current,
+                      supportsHandicapAdjustments: event.target.checked,
+                    }))
+                  }
+                />
+                <span>Handicap adjustments</span>
+              </label>
+              <label className="tournament-template-checkbox">
+                <input
+                  type="checkbox"
+                  checked={templateForm.supportsEligibilityRules}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({
+                      ...current,
+                      supportsEligibilityRules: event.target.checked,
+                    }))
+                  }
+                />
+                <span>Eligibility rules</span>
+              </label>
+            </div>
+            {templateForm.supportsEligibilityRules ? (
+              <div className="tournament-template-field--full tournament-template-eligibility">
+                <label>
+                  Handicap rounds required
+                  <input
+                    type="number"
+                    min="0"
+                    value={templateForm.handicapQualificationRoundsRequired}
+                    onChange={(event) =>
+                      setTemplateForm((current) => ({
+                        ...current,
+                        handicapQualificationRoundsRequired: event.target.value,
+                      }))
+                    }
+                    disabled={isSavingTemplate}
+                  />
+                </label>
+                <label>
+                  Qualifying rounds per knockout round
+                  <input
+                    type="number"
+                    min="0"
+                    value={templateForm.qualifyingRoundsRequiredPerKnockoutRound}
+                    onChange={(event) =>
+                      setTemplateForm((current) => ({
+                        ...current,
+                        qualifyingRoundsRequiredPerKnockoutRound: event.target.value,
+                      }))
+                    }
+                    disabled={isSavingTemplate}
+                  />
+                </label>
+                <label>
+                  Qualifying discipline
+                  <select
+                    value={templateForm.qualifyingRoundDiscipline}
+                    onChange={(event) =>
+                      setTemplateForm((current) => ({
+                        ...current,
+                        qualifyingRoundDiscipline: event.target.value,
+                      }))
+                    }
+                    disabled={isSavingTemplate}
+                  >
+                    <option value="indoor">Indoor</option>
+                    <option value="outdoor">Outdoor</option>
+                  </select>
+                </label>
+              </div>
+            ) : null}
+            {selectedBaseTemplate ? (
+              <p className="form-helper-text">
+                Tournament type: {selectedBaseTemplate.tournamentType}
+              </p>
+            ) : null}
+            <div className="tournament-template-field--full tournament-action-row">
+              <Button
+                type="button"
+                onClick={() => {
+                  void handleCreateTemplate();
+                }}
+                disabled={
+                  isSavingTemplate ||
+                  !templateForm.label.trim() ||
+                  !templateForm.baseTemplateKey
+                }
+              >
+                {isSavingTemplate ? "Saving..." : "Save template"}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={closeTemplateModal}
+                disabled={isSavingTemplate}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
       <Modal
         open={isCaptainRegistrationModalOpen}
         onClose={closeCaptainRegistrationModal}

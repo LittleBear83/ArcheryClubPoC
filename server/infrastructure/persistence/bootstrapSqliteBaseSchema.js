@@ -169,12 +169,31 @@ export const TOURNAMENTS_TABLE_SQL = `
     name TEXT NOT NULL,
     tournament_type TEXT NOT NULL,
     template_key TEXT,
+    template_definition_json TEXT,
     draw_date TEXT,
     round_schedule_json TEXT NOT NULL DEFAULT '[]',
     registration_start_date TEXT NOT NULL,
     registration_end_date TEXT NOT NULL,
     score_submission_start_date TEXT NOT NULL,
     score_submission_end_date TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at_date TEXT NOT NULL,
+    created_at_time TEXT NOT NULL,
+    FOREIGN KEY (created_by) REFERENCES users(username)
+  )
+`;
+
+export const TOURNAMENT_TEMPLATES_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS tournament_templates (
+    template_key TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    tournament_type TEXT NOT NULL,
+    format TEXT NOT NULL,
+    round_type TEXT NOT NULL,
+    defaults_json TEXT NOT NULL DEFAULT '{}',
+    capabilities_json TEXT NOT NULL DEFAULT '{}',
+    eligibility_rules_json TEXT,
     created_by TEXT NOT NULL,
     created_at_date TEXT NOT NULL,
     created_at_time TEXT NOT NULL,

@@ -208,6 +208,7 @@ export function createSqliteScheduleTournamentStatements(db) {
       tournaments.name,
       tournaments.tournament_type,
       tournaments.template_key,
+      tournaments.template_definition_json,
       tournaments.draw_date,
       tournaments.round_schedule_json,
       tournaments.registration_start_date,
@@ -229,6 +230,7 @@ export function createSqliteScheduleTournamentStatements(db) {
       tournaments.name,
       tournaments.tournament_type,
       tournaments.template_key,
+      tournaments.template_definition_json,
       tournaments.draw_date,
       tournaments.round_schedule_json,
       tournaments.registration_start_date,
@@ -249,6 +251,7 @@ export function createSqliteScheduleTournamentStatements(db) {
       name,
       tournament_type,
       template_key,
+      template_definition_json,
       draw_date,
       round_schedule_json,
       registration_start_date,
@@ -259,7 +262,7 @@ export function createSqliteScheduleTournamentStatements(db) {
       created_at_date,
       created_at_time
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const updateTournamentById = db.prepare(`
@@ -268,6 +271,7 @@ export function createSqliteScheduleTournamentStatements(db) {
       name = ?,
       tournament_type = ?,
       template_key = ?,
+      template_definition_json = ?,
       draw_date = ?,
       round_schedule_json = ?,
       registration_start_date = ?,
@@ -275,6 +279,58 @@ export function createSqliteScheduleTournamentStatements(db) {
       score_submission_start_date = ?,
       score_submission_end_date = ?
     WHERE id = ?
+  `);
+
+  const listTournamentTemplates = db.prepare(`
+    SELECT
+      template_key,
+      label,
+      description,
+      tournament_type,
+      format,
+      round_type,
+      defaults_json,
+      capabilities_json,
+      eligibility_rules_json,
+      created_by,
+      created_at_date || 'T' || created_at_time AS created_at
+    FROM tournament_templates
+    ORDER BY label ASC
+  `);
+
+  const findTournamentTemplateByKey = db.prepare(`
+    SELECT
+      template_key,
+      label,
+      description,
+      tournament_type,
+      format,
+      round_type,
+      defaults_json,
+      capabilities_json,
+      eligibility_rules_json,
+      created_by,
+      created_at_date || 'T' || created_at_time AS created_at
+    FROM tournament_templates
+    WHERE template_key = ?
+  `);
+
+  const insertTournamentTemplate = db.prepare(`
+    INSERT INTO tournament_templates (
+      template_key,
+      label,
+      description,
+      tournament_type,
+      format,
+      round_type,
+      defaults_json,
+      capabilities_json,
+      eligibility_rules_json,
+      created_by,
+      created_at_date,
+      created_at_time
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const deleteTournamentScoresByTournamentId = db.prepare(`
@@ -771,11 +827,13 @@ export function createSqliteScheduleTournamentStatements(db) {
     findMemberEventBookingsByUserId,
     findTournamentMatchByKey,
     findTournamentById,
+    findTournamentTemplateByKey,
     insertClubEvent,
     insertCoachingSession,
     insertCoachingSessionBooking,
     insertEventBooking,
     insertTournament,
+    insertTournamentTemplate,
     insertTournamentRegistration,
     insertTournamentMatch,
     insertTournamentRound,
@@ -793,6 +851,7 @@ export function createSqliteScheduleTournamentStatements(db) {
     listTournamentMatchesByTournamentId,
     listTournamentRoundsByTournamentId,
     listTournamentScoresByTournamentId,
+    listTournamentTemplates,
     listTournaments,
     rejectClubEventById,
     rejectCoachingSessionById,

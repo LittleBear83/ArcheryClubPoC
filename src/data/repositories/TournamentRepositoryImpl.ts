@@ -3,6 +3,7 @@ import { TournamentRepository } from "../../domain/repositories/TournamentReposi
 type TournamentDataSource = {
   listTournaments(actorUsername: string): Promise<unknown>;
   createTournament(actorUsername: string, form: unknown): Promise<unknown>;
+  createTournamentTemplate(actorUsername: string, form: unknown): Promise<unknown>;
   updateTournament(
     actorUsername: string,
     tournamentId: string | number,
@@ -65,6 +66,10 @@ export class TournamentRepositoryImpl extends TournamentRepository {
 
   async createTournament(actorUsername, form) {
     return this.dataSource.createTournament(actorUsername, form);
+  }
+
+  async createTournamentTemplate(actorUsername, form) {
+    return this.dataSource.createTournamentTemplate(actorUsername, form);
   }
 
   async updateTournament(actorUsername, tournamentId, form) {

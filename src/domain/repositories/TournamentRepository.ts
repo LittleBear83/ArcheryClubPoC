@@ -3,6 +3,8 @@ export abstract class TournamentRepository {
 
   abstract createTournament(actorUsername: string, form: unknown): Promise<unknown>;
 
+  abstract createTournamentTemplate(actorUsername: string, form: unknown): Promise<unknown>;
+
   abstract updateTournament(actorUsername: string, tournamentId: string | number, form: unknown): Promise<unknown>;
 
   abstract deleteTournament(actorUsername: string, tournamentId: string | number): Promise<unknown>;

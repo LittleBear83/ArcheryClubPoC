@@ -49,6 +49,7 @@ function getPermissionGroup(permissionKey: string): PermissionGroupKey {
     case "approve_coaching_sessions":
     case "manage_beginners_courses":
     case "approve_beginners_courses":
+    case "reallocate_beginner_course_booking":
     case "manage_have_a_go_sessions":
     case "approve_have_a_go_sessions":
     case "manage_tournaments":

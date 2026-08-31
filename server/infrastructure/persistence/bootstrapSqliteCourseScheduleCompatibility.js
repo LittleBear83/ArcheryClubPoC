@@ -96,6 +96,10 @@ function rebuildBeginnersCourseParticipantsTable(db) {
       initial_email_sent INTEGER NOT NULL DEFAULT 0,
       thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
       course_fee_paid INTEGER NOT NULL DEFAULT 0,
+      no_show_recorded INTEGER NOT NULL DEFAULT 0,
+      no_show_recorded_at_date TEXT,
+      no_show_recorded_at_time TEXT,
+      no_show_recorded_by_username TEXT,
       converted_to_member INTEGER NOT NULL DEFAULT 0,
       assigned_case_id INTEGER,
       assigned_case_by_username TEXT,
@@ -127,6 +131,10 @@ function rebuildBeginnersCourseParticipantsTable(db) {
       initial_email_sent,
       thirty_day_reminder_sent,
       course_fee_paid,
+      no_show_recorded,
+      no_show_recorded_at_date,
+      no_show_recorded_at_time,
+      no_show_recorded_by_username,
       converted_to_member,
       assigned_case_id,
       assigned_case_by_username,
@@ -153,6 +161,10 @@ function rebuildBeginnersCourseParticipantsTable(db) {
       initial_email_sent,
       thirty_day_reminder_sent,
       course_fee_paid,
+      COALESCE(no_show_recorded, 0),
+      no_show_recorded_at_date,
+      no_show_recorded_at_time,
+      no_show_recorded_by_username,
       COALESCE(converted_to_member, 0),
       assigned_case_id,
       assigned_case_by_username,
@@ -249,6 +261,30 @@ export function bootstrapSqliteCourseScheduleCompatibility({
 
   if (!beginnersCourseParticipantColumns.some((column) => column.name === "draw_length")) {
     db.exec(`ALTER TABLE beginners_course_participants ADD COLUMN draw_length TEXT`);
+  }
+
+  if (!beginnersCourseParticipantColumns.some((column) => column.name === "no_show_recorded")) {
+    db.exec(
+      `ALTER TABLE beginners_course_participants ADD COLUMN no_show_recorded INTEGER NOT NULL DEFAULT 0`,
+    );
+  }
+
+  if (!beginnersCourseParticipantColumns.some((column) => column.name === "no_show_recorded_at_date")) {
+    db.exec(
+      `ALTER TABLE beginners_course_participants ADD COLUMN no_show_recorded_at_date TEXT`,
+    );
+  }
+
+  if (!beginnersCourseParticipantColumns.some((column) => column.name === "no_show_recorded_at_time")) {
+    db.exec(
+      `ALTER TABLE beginners_course_participants ADD COLUMN no_show_recorded_at_time TEXT`,
+    );
+  }
+
+  if (!beginnersCourseParticipantColumns.some((column) => column.name === "no_show_recorded_by_username")) {
+    db.exec(
+      `ALTER TABLE beginners_course_participants ADD COLUMN no_show_recorded_by_username TEXT REFERENCES users(username)`,
+    );
   }
 
   const coachingSessionApprovalColumns = [

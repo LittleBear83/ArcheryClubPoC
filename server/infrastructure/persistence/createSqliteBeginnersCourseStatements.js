@@ -226,6 +226,10 @@ export function createSqliteBeginnersCourseStatements(db) {
       thirty_day_reminder_sent,
       course_fee_paid,
       origin_course_type,
+      no_show_recorded,
+      no_show_recorded_at_date,
+      no_show_recorded_at_time,
+      no_show_recorded_by_username,
       assigned_case_id,
       assigned_case_by_username,
       assigned_case_at_date,
@@ -234,7 +238,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       created_at_date,
       created_at_time
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const updateBeginnersCourseParticipant = db.prepare(`
@@ -249,7 +253,11 @@ export function createSqliteBeginnersCourseStatements(db) {
       eye_dominance = @eyeDominance,
       initial_email_sent = @initialEmailSent,
       thirty_day_reminder_sent = @thirtyDayReminderSent,
-      course_fee_paid = @courseFeePaid
+      course_fee_paid = @courseFeePaid,
+      no_show_recorded = @noShowRecorded,
+      no_show_recorded_at_date = @noShowRecordedAtDate,
+      no_show_recorded_at_time = @noShowRecordedAtTime,
+      no_show_recorded_by_username = @noShowRecordedByUsername
     WHERE id = @id
   `);
 
@@ -261,6 +269,10 @@ export function createSqliteBeginnersCourseStatements(db) {
       assigned_case_by_username = NULL,
       assigned_case_at_date = NULL,
       assigned_case_at_time = NULL,
+      no_show_recorded = 0,
+      no_show_recorded_at_date = NULL,
+      no_show_recorded_at_time = NULL,
+      no_show_recorded_by_username = NULL,
       converted_to_member = 0,
       converted_at_date = NULL,
       converted_at_time = NULL,
@@ -285,6 +297,16 @@ export function createSqliteBeginnersCourseStatements(db) {
       converted_at_date = ?,
       converted_at_time = ?,
       converted_by_username = ?
+    WHERE id = ?
+  `);
+
+  const updateBeginnersCourseParticipantNoShow = db.prepare(`
+    UPDATE beginners_course_participants
+    SET
+      no_show_recorded = ?,
+      no_show_recorded_at_date = ?,
+      no_show_recorded_at_time = ?,
+      no_show_recorded_by_username = ?
     WHERE id = ?
   `);
 
@@ -384,6 +406,7 @@ export function createSqliteBeginnersCourseStatements(db) {
     listBeginnersLessonCoachesByLessonId,
     listCoachBeginnersLessonsByUserId,
     markBeginnersCourseParticipantConverted,
+    updateBeginnersCourseParticipantNoShow,
     transferBeginnersCourseParticipant,
     updateBeginnersCourseApproval,
     updateBeginnersCourseLessonSchedule,

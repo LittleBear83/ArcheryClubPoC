@@ -61,6 +61,208 @@ export function registerEquipmentRoutes({
     return true;
   };
 
+  const sanitizeReturnDate = (value) => {
+    const normalized = String(value ?? "").trim();
+
+    if (!normalized) {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+      return null;
+    }
+
+    const parsed = new Date(`${normalized}T00:00:00Z`);
+
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== normalized) {
+      return null;
+    }
+
+    return normalized;
+  };
+
+  const buildLoanTimestamp = (date, time) =>
+    date ? `${date}T${time || "00:00:00"}` : "";
+
+  const getDaysSinceTimestamp = (timestamp) => {
+    if (!timestamp) {
+      return null;
+    }
+
+    const parsed = new Date(timestamp);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return Math.max(
+      0,
+      Math.floor((Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24)),
+    );
+  };
+
+  const getEquipmentReferenceLabel = (item) => {
+    if (item.type === EQUIPMENT_TYPES.ARROWS) {
+      return `${item.arrowQuantity} x ${item.arrowLength}"`;
+    }
+
+    if (item.number && item.detailSummary) {
+      return `${item.number} | ${item.detailSummary}`;
+    }
+
+    return item.number || item.detailSummary || "-";
+  };
+
+  const buildEquipmentAnalytics = (items, loans) => {
+    const inactiveThresholdDays = 60;
+    const activeItems = items.filter((item) => item.status === "active");
+    const itemStatsById = new Map(
+      activeItems.map((item) => [
+        item.id,
+        {
+          item,
+          loanCount: 0,
+          returnCount: 0,
+          isOnLoan: false,
+          lastLoanedAt: "",
+          lastReturnedAt: "",
+        },
+      ]),
+    );
+
+    for (const loan of loans) {
+      const stats = itemStatsById.get(loan.equipment_item_id);
+
+      if (!stats) {
+        continue;
+      }
+
+      const loanedAt = buildLoanTimestamp(loan.loaned_at_date, loan.loaned_at_time);
+      const returnedAt = buildLoanTimestamp(
+        loan.returned_at_date,
+        loan.returned_at_time,
+      );
+
+      stats.loanCount += 1;
+
+      if (loanedAt && (!stats.lastLoanedAt || loanedAt > stats.lastLoanedAt)) {
+        stats.lastLoanedAt = loanedAt;
+      }
+
+      if (loan.returned_at_date) {
+        stats.returnCount += 1;
+
+        if (!stats.lastReturnedAt || returnedAt > stats.lastReturnedAt) {
+          stats.lastReturnedAt = returnedAt;
+        }
+      } else {
+        stats.isOnLoan = true;
+      }
+    }
+
+    const statRows = [...itemStatsById.values()].map((stats) => {
+      const daysSinceLastLoan = getDaysSinceTimestamp(stats.lastLoanedAt);
+
+      return {
+        id: stats.item.id,
+        item: stats.item,
+        label: stats.item.label,
+        type: stats.item.type,
+        typeLabel: stats.item.typeLabel,
+        sizeCategory: stats.item.sizeCategory,
+        referenceLabel: getEquipmentReferenceLabel(stats.item),
+        locationLabel: stats.item.currentLocation?.label || "Main Cupboard",
+        loanCount: stats.loanCount,
+        returnCount: stats.returnCount,
+        isOnLoan: stats.isOnLoan,
+        lastLoanedAt: stats.lastLoanedAt,
+        lastReturnedAt: stats.lastReturnedAt,
+        addedAt: stats.item.addedAt,
+        daysSinceLastLoan,
+      };
+    });
+
+    const usageByTypeMap = new Map();
+
+    for (const row of statRows) {
+      const current = usageByTypeMap.get(row.type) ?? {
+        type: row.type,
+        typeLabel: row.typeLabel,
+        totalItems: 0,
+        onLoanCount: 0,
+        totalLoans: 0,
+        neverLoanedCount: 0,
+      };
+
+      current.totalItems += 1;
+      current.onLoanCount += row.isOnLoan ? 1 : 0;
+      current.totalLoans += row.loanCount;
+      current.neverLoanedCount += row.loanCount === 0 ? 1 : 0;
+      usageByTypeMap.set(row.type, current);
+    }
+
+    const usageByType = [...usageByTypeMap.values()].sort((left, right) => {
+      if (right.totalLoans !== left.totalLoans) {
+        return right.totalLoans - left.totalLoans;
+      }
+
+      return left.typeLabel.localeCompare(right.typeLabel, undefined, {
+        sensitivity: "base",
+      });
+    });
+
+    const mostUsedItems = statRows
+      .filter((row) => row.loanCount > 0)
+      .sort((left, right) => {
+        if (right.loanCount !== left.loanCount) {
+          return right.loanCount - left.loanCount;
+        }
+
+        return right.lastLoanedAt.localeCompare(left.lastLoanedAt);
+      })
+      .slice(0, 10);
+
+    const neverLoanedItems = statRows
+      .filter((row) => row.loanCount === 0)
+      .sort((left, right) => left.addedAt.localeCompare(right.addedAt))
+      .slice(0, 10);
+
+    const allInactiveItems = statRows
+      .filter(
+        (row) =>
+          !row.isOnLoan &&
+          row.loanCount > 0 &&
+          row.daysSinceLastLoan != null &&
+          row.daysSinceLastLoan >= inactiveThresholdDays,
+      )
+      .sort((left, right) => {
+        if ((right.daysSinceLastLoan ?? 0) !== (left.daysSinceLastLoan ?? 0)) {
+          return (right.daysSinceLastLoan ?? 0) - (left.daysSinceLastLoan ?? 0);
+        }
+
+        return left.label.localeCompare(right.label, undefined, {
+          sensitivity: "base",
+        });
+      });
+    const inactiveItems = allInactiveItems.slice(0, 10);
+
+    return {
+      inactiveThresholdDays,
+      summary: {
+        activeItemsCount: activeItems.length,
+        currentlyOnLoanCount: statRows.filter((row) => row.isOnLoan).length,
+        totalLoanRecords: loans.length,
+        totalReturnRecords: loans.filter((loan) => Boolean(loan.returned_at_date)).length,
+        neverLoanedCount: statRows.filter((row) => row.loanCount === 0).length,
+        inactiveItemsCount: allInactiveItems.length,
+      },
+      usageByType,
+      mostUsedItems,
+      neverLoanedItems,
+      inactiveItems,
+    };
+  };
+
   app.get("/api/equipment/dashboard", async (req, res) => {
     const actor = getActorUser(req);
 
@@ -102,6 +304,7 @@ export function registerEquipmentRoutes({
       .filter((item) => item.equipment_type === EQUIPMENT_TYPES.CASE)
       .map((item) => buildEquipmentCaseResponse(item, maps));
     const items = maps.items.map((item) => buildEquipmentItemResponse(item, maps));
+    const analytics = buildEquipmentAnalytics(items, maps.loans);
 
     res.json({
       success: true,
@@ -122,6 +325,7 @@ export function registerEquipmentRoutes({
       cupboardOptions: await getStorageLocationOptions(),
       items,
       cases,
+      analytics,
     });
   });
 
@@ -670,6 +874,16 @@ export function registerEquipmentRoutes({
       return;
     }
 
+    const returnDate = sanitizeReturnDate(req.body?.returnDate);
+
+    if (!returnDate) {
+      res.status(400).json({
+        success: false,
+        message: "Choose a valid return date.",
+      });
+      return;
+    }
+
     const [date, time] = getUtcTimestampParts();
     const previousItem = await equipmentGateway.findEquipmentItemByIdWithRelations(item.id);
 
@@ -692,7 +906,7 @@ export function registerEquipmentRoutes({
         returnCaseId: null,
         returnLocationLabel: returnToCupboard,
         returnLocationType: EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-        returnedAtDate: date,
+        returnedAtDate: returnDate,
         returnedAtTime: time,
         returnedByUsername: actor.username,
       });
@@ -703,7 +917,7 @@ export function registerEquipmentRoutes({
         locationCaseId: null,
         locationMemberUsername: null,
         storageByUsername: actor.username,
-        storageAtDate: date,
+        storageAtDate: returnDate,
         storageAtTime: time,
       });
 
@@ -713,7 +927,7 @@ export function registerEquipmentRoutes({
           returnCaseId: item.id,
           returnLocationLabel: null,
           returnLocationType: EQUIPMENT_LOCATION_TYPES.CASE,
-          returnedAtDate: date,
+          returnedAtDate: returnDate,
           returnedAtTime: time,
           returnedByUsername: actor.username,
         });
@@ -726,7 +940,7 @@ export function registerEquipmentRoutes({
         returnLocationType: returnCase
           ? EQUIPMENT_LOCATION_TYPES.CASE
           : EQUIPMENT_LOCATION_TYPES.CUPBOARD,
-        returnedAtDate: date,
+        returnedAtDate: returnDate,
         returnedAtTime: time,
         returnedByUsername: actor.username,
       });
@@ -739,7 +953,7 @@ export function registerEquipmentRoutes({
         locationCaseId: returnCase?.id ?? null,
         locationMemberUsername: null,
         storageByUsername: actor.username,
-        storageAtDate: date,
+        storageAtDate: returnDate,
         storageAtTime: time,
       });
     }

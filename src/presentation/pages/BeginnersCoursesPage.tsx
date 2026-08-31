@@ -20,6 +20,8 @@ import {
   getBeginnersCoursesDashboard,
   getHaveAGoSessionsDashboard,
   getTasterSessionsDashboard,
+  markBeginnersParticipantNoShow,
+  reallocateBeginnersCourseParticipant,
   removeBeginnerParticipant,
   rescheduleBeginnersCourse,
   resetBeginnerPassword,
@@ -87,6 +89,9 @@ type CourseBeginner = {
   thirtyDayReminderSent: boolean;
   courseFeePaid: boolean;
   attendanceDates: string[];
+  noShowRecorded: boolean;
+  noShowRecordedAt: string;
+  noShowRecordedByUsername: string;
   convertedToMember: boolean;
   assignedCaseId: number | null;
   assignedCaseNumber: string;
@@ -127,6 +132,7 @@ type DashboardPayload = {
   permissions: {
     canManageBeginnersCourses: boolean;
     canApproveBeginnersCourses: boolean;
+    canReallocateBeginnerCourseBooking: boolean;
   };
   courses: CourseRecord[];
   coordinators: PersonOption[];
@@ -136,6 +142,11 @@ type DashboardPayload = {
 
 type TransferSelection = {
   participant: CourseBeginner;
+};
+
+type ReallocationSelection = {
+  participant: CourseBeginner;
+  sourceCourseId: number;
 };
 
 type BulkCoachAssignmentCourse = {
@@ -521,6 +532,9 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const [editingBeginner, setEditingBeginner] = useState<CourseBeginner | null>(null);
   const [editBeginnerForm, setEditBeginnerForm] = useState(EMPTY_BEGINNER_FORM);
   const [transferSelection, setTransferSelection] = useState<TransferSelection | null>(null);
+  const [reallocationSelection, setReallocationSelection] = useState<ReallocationSelection | null>(
+    null,
+  );
   const [temporaryPasswords, setTemporaryPasswords] = useState<Record<string, string>>({});
   const [collapsedCourseIds, setCollapsedCourseIds] = useState<Record<number, boolean>>({});
   const [showCancelledCourses, setShowCancelledCourses] = useState(false);
@@ -586,6 +600,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const permissions = dashboard?.permissions ?? {
     canManageBeginnersCourses: false,
     canApproveBeginnersCourses: false,
+    canReallocateBeginnerCourseBooking: false,
   };
   const coordinators = useMemo(() => dashboard?.coordinators ?? [], [dashboard?.coordinators]);
   const coaches = useMemo(() => dashboard?.coaches ?? [], [dashboard?.coaches]);
@@ -605,7 +620,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const canAccessBeginnersCourses = useMemo(
     () =>
       hasPermission(currentUserProfile, "manage_beginners_courses") ||
-      hasPermission(currentUserProfile, "approve_beginners_courses"),
+      hasPermission(currentUserProfile, "approve_beginners_courses") ||
+      hasPermission(currentUserProfile, "reallocate_beginner_course_booking"),
     [currentUserProfile],
   );
 
@@ -642,6 +658,21 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
           course.placesRemaining > 0,
       ),
     [beginnersCoursesQuery.data?.courses],
+  );
+  const availableReallocationCourses = useMemo(
+    () =>
+      reallocationSelection
+        ? activeCourses.filter(
+            (course) =>
+              course.id !== reallocationSelection.sourceCourseId &&
+              course.approvalStatus === "approved" &&
+              !course.isCancelled &&
+              !hasCourseStarted(course) &&
+              !hasCourseFinished(course) &&
+              course.placesRemaining > 0,
+          )
+        : [],
+    [activeCourses, reallocationSelection],
   );
 
   const mutation = useMutation({
@@ -913,6 +944,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     setTransferSelection({ participant });
   };
 
+  const openReallocationModal = (participant: CourseBeginner, sourceCourseId: number) => {
+    setReallocationSelection({ participant, sourceCourseId });
+  };
+
   const submitTransferToBeginnersCourse = async (targetCourseId: number) => {
     if (!transferSelection) {
       return;
@@ -932,6 +967,37 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     await refreshDashboard();
   };
 
+  const updateParticipantNoShow = async (participant: CourseBeginner, marked: boolean) => {
+    await mutation.mutateAsync(() =>
+      markBeginnersParticipantNoShow(currentUserProfile, participant.id, marked),
+    );
+    setMessage(
+      marked
+        ? `${formatMemberDisplayName(participant)} marked as a no-show.`
+        : `${formatMemberDisplayName(participant)} no-show status cleared.`,
+    );
+    await refreshDashboard();
+  };
+
+  const submitReallocation = async (targetCourseId: number) => {
+    if (!reallocationSelection) {
+      return;
+    }
+
+    await mutation.mutateAsync(() =>
+      reallocateBeginnersCourseParticipant(
+        currentUserProfile,
+        reallocationSelection.participant.id,
+        targetCourseId,
+      ),
+    );
+    setMessage(
+      `${formatMemberDisplayName(reallocationSelection.participant)} moved to a later ${copy.itemLowerLabel}.`,
+    );
+    setReallocationSelection(null);
+    await refreshDashboard();
+  };
+
   if (dashboardQuery.isLoading || dashboardQuery.isError) {
     return (
       <div className="beginners-course-page">
@@ -945,7 +1011,11 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     );
   }
 
-  if (!permissions.canManageBeginnersCourses && !permissions.canApproveBeginnersCourses) {
+  if (
+    !permissions.canManageBeginnersCourses &&
+    !permissions.canApproveBeginnersCourses &&
+    !permissions.canReallocateBeginnerCourseBooking
+  ) {
     return <p>{copy.noPermission}</p>;
   }
 
@@ -1177,6 +1247,17 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                             const canTransferToBeginners =
                               copy.courseType === "taster-session" &&
                               permissions.canManageBeginnersCourses;
+                            const canToggleNoShow =
+                              permissions.canManageBeginnersCourses &&
+                              copy.courseType !== "have-a-go" &&
+                              !beginner.convertedToMember &&
+                              (beginner.attendanceDates?.length ?? 0) === 0 &&
+                              hasCourseStarted(course);
+                            const canReallocateParticipant =
+                              permissions.canReallocateBeginnerCourseBooking &&
+                              copy.courseType !== "have-a-go" &&
+                              beginner.noShowRecorded &&
+                              !beginner.convertedToMember;
                             const canRemoveParticipant =
                               permissions.canManageBeginnersCourses &&
                               copy.courseType !== "have-a-go" &&
@@ -1195,7 +1276,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                 key={beginner.id}
                                 className="beginners-course-mobile-card"
                               >
-                                <h5>{formatMemberDisplayName(beginner)}</h5>
+                                <h5>
+                                  {formatMemberDisplayName(beginner)}
+                                  {beginner.noShowRecorded ? " (No show)" : ""}
+                                </h5>
                                 <MobileKeyValueList
                                   items={[
                                     {
@@ -1228,6 +1312,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                     {
                                       label: "Fee Paid",
                                       value: beginner.courseFeePaid ? "Yes" : "No",
+                                    },
+                                    {
+                                      label: "Attendance status",
+                                      value: beginner.noShowRecorded ? "No show" : "Active",
                                     },
                                     ...(usesEquipmentAssignment
                                       ? [
@@ -1320,6 +1408,31 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                       Reset password
                                     </Button>
                                   ) : null}
+                                  {canToggleNoShow ? (
+                                    <Button
+                                      className="beginners-course-row-action-button"
+                                      size="sm"
+                                      variant={beginner.noShowRecorded ? "secondary" : "info"}
+                                      onClick={() =>
+                                        void updateParticipantNoShow(
+                                          beginner,
+                                          !beginner.noShowRecorded,
+                                        )
+                                      }
+                                    >
+                                      {beginner.noShowRecorded ? "Clear no-show" : "Mark no-show"}
+                                    </Button>
+                                  ) : null}
+                                  {canReallocateParticipant ? (
+                                    <Button
+                                      className="beginners-course-row-action-button"
+                                      size="sm"
+                                      variant="info"
+                                      onClick={() => openReallocationModal(beginner, course.id)}
+                                    >
+                                      Reallocate
+                                    </Button>
+                                  ) : null}
                                   {canRemoveParticipant ? (
                                     <Button
                                       className="beginners-course-row-action-button"
@@ -1361,9 +1474,25 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                           </thead>
                           <tbody>
                             {course.beginners.length > 0 ? (
-                              course.beginners.map((beginner) => (
+                              course.beginners.map((beginner) => {
+                                const canToggleNoShow =
+                                  permissions.canManageBeginnersCourses &&
+                                  copy.courseType !== "have-a-go" &&
+                                  !beginner.convertedToMember &&
+                                  (beginner.attendanceDates?.length ?? 0) === 0 &&
+                                  hasCourseStarted(course);
+                                const canReallocateParticipant =
+                                  permissions.canReallocateBeginnerCourseBooking &&
+                                  copy.courseType !== "have-a-go" &&
+                                  beginner.noShowRecorded &&
+                                  !beginner.convertedToMember;
+
+                                return (
                                 <tr key={beginner.id}>
-                                  <td>{formatMemberDisplayName(beginner)}</td>
+                                  <td>
+                                    {formatMemberDisplayName(beginner)}
+                                    {beginner.noShowRecorded ? " (No show)" : ""}
+                                  </td>
                                   <td>{formatMemberDisplayUsername(beginner)}</td>
                                   <td>
                                     {temporaryPasswords[beginner.username] ??
@@ -1480,10 +1609,36 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                           Reset password
                                         </Button>
                                       ) : null}
+                                      {canToggleNoShow ? (
+                                        <Button
+                                          className="beginners-course-row-action-button"
+                                          size="sm"
+                                          variant={beginner.noShowRecorded ? "secondary" : "info"}
+                                          onClick={() =>
+                                            void updateParticipantNoShow(
+                                              beginner,
+                                              !beginner.noShowRecorded,
+                                            )
+                                          }
+                                        >
+                                          {beginner.noShowRecorded ? "Clear no-show" : "Mark no-show"}
+                                        </Button>
+                                      ) : null}
+                                      {canReallocateParticipant ? (
+                                        <Button
+                                          className="beginners-course-row-action-button"
+                                          size="sm"
+                                          variant="info"
+                                          onClick={() => openReallocationModal(beginner, course.id)}
+                                        >
+                                          Reallocate
+                                        </Button>
+                                      ) : null}
                                     </div>
                                   </td>
                                 </tr>
-                              ))
+                                );
+                              })
                             ) : (
                               <tr>
                                 <td colSpan={usesEquipmentAssignment ? 10 : 9}>
@@ -1507,7 +1662,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                               key={beginner.id}
                               className="beginners-course-mobile-card"
                             >
-                              <h5>{formatMemberDisplayName(beginner)}</h5>
+                              <h5>
+                                {formatMemberDisplayName(beginner)}
+                                {beginner.noShowRecorded ? " (No show)" : ""}
+                              </h5>
                               <p className="equipment-meta-copy">
                                 Attended {beginner.attendanceDates?.length ?? 0} of{" "}
                                 {course.lessons.length} {copy.countMetaLabel.toLowerCase()}
@@ -1531,7 +1689,11 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                             : "beginners-course-mobile-attendance-miss"
                                         }
                                       >
-                                        {attended ? "Attended" : "Not recorded"}
+                                        {attended
+                                          ? "Attended"
+                                          : beginner.noShowRecorded
+                                            ? "No show"
+                                            : "Not recorded"}
                                       </span>
                                     </div>
                                   );
@@ -1562,7 +1724,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                             {course.beginners.length > 0 ? (
                               course.beginners.map((beginner) => (
                                 <tr key={beginner.id}>
-                                  <td>{formatMemberDisplayName(beginner)}</td>
+                                  <td>
+                                    {formatMemberDisplayName(beginner)}
+                                    {beginner.noShowRecorded ? " (No show)" : ""}
+                                  </td>
                                   {course.lessons.map((lesson) => {
                                     const attended = beginner.attendanceDates?.includes(
                                       lesson.date,
@@ -1579,6 +1744,13 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                             aria-label="Attended"
                                           >
                                             {"\u2713"}
+                                          </span>
+                                        ) : beginner.noShowRecorded ? (
+                                          <span
+                                            className="beginners-course-mobile-attendance-miss"
+                                            aria-label="No show"
+                                          >
+                                            NS
                                           </span>
                                         ) : (
                                           ""
@@ -1951,6 +2123,36 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
           ) : (
             <p className="equipment-meta-copy">
               {copy.transferEmptyText}
+            </p>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(reallocationSelection)}
+        onClose={() => setReallocationSelection(null)}
+        title={`Reallocate ${copy.participantSingular}`}
+      >
+        <div className="beginners-course-coach-modal">
+          {availableReallocationCourses.length > 0 ? (
+            availableReallocationCourses.map((course) => (
+              <div key={course.id} className="beginners-course-cancelled-item">
+                <strong>{formatDate(course.firstLessonDate)}</strong>
+                <span>Time: {formatCourseTimeRange(course.startTime, course.endTime)}</span>
+                <span>Coordinator: {course.coordinatorName}</span>
+                <span>
+                  Places remaining: {course.placesRemaining} of {course.beginnerCapacity}
+                </span>
+                <div className="beginners-course-actions">
+                  <Button onClick={() => void submitReallocation(course.id)}>
+                    Reallocate here
+                  </Button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="equipment-meta-copy">
+              No later approved {copy.itemLowerLabel}s with space are currently available.
             </p>
           )}
         </div>

@@ -42,7 +42,7 @@ function normalizeRoundGroupingTitle(tableTitle: string) {
     .split("/")
     .map((segment) => segment.trim())
     .filter(Boolean);
-  const preferredSegment = segments.at(-1) ?? tableTitle.trim();
+  const preferredSegment = segments[segments.length - 1] ?? tableTitle.trim();
 
   return preferredSegment
     .replace(/\s+\(([^)]+)\)/g, " ($1)")

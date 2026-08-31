@@ -1270,6 +1270,10 @@ export function bootstrapSqliteBaseSchema({
       thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
       course_fee_paid INTEGER NOT NULL DEFAULT 0,
       origin_course_type TEXT NOT NULL DEFAULT 'beginners',
+      no_show_recorded INTEGER NOT NULL DEFAULT 0,
+      no_show_recorded_at_date TEXT,
+      no_show_recorded_at_time TEXT,
+      no_show_recorded_by_username TEXT,
       converted_to_member INTEGER NOT NULL DEFAULT 0,
       converted_at_date TEXT,
       converted_at_time TEXT,
@@ -1283,6 +1287,7 @@ export function bootstrapSqliteBaseSchema({
       created_at_time TEXT NOT NULL,
       FOREIGN KEY (course_id) REFERENCES beginners_courses(id),
       FOREIGN KEY (username) REFERENCES users(username),
+      FOREIGN KEY (no_show_recorded_by_username) REFERENCES users(username),
       FOREIGN KEY (converted_by_username) REFERENCES users(username),
       FOREIGN KEY (assigned_case_id) REFERENCES equipment_items(id),
       FOREIGN KEY (assigned_case_by_username) REFERENCES users(username),
@@ -1297,6 +1302,30 @@ export function bootstrapSqliteBaseSchema({
   if (!beginnersParticipantColumns.some((column) => column.name === "origin_course_type")) {
     db.exec(
       `ALTER TABLE beginners_course_participants ADD COLUMN origin_course_type TEXT NOT NULL DEFAULT 'beginners'`,
+    );
+  }
+
+  if (!beginnersParticipantColumns.some((column) => column.name === "no_show_recorded")) {
+    db.exec(
+      `ALTER TABLE beginners_course_participants ADD COLUMN no_show_recorded INTEGER NOT NULL DEFAULT 0`,
+    );
+  }
+
+  if (!beginnersParticipantColumns.some((column) => column.name === "no_show_recorded_at_date")) {
+    db.exec(
+      `ALTER TABLE beginners_course_participants ADD COLUMN no_show_recorded_at_date TEXT`,
+    );
+  }
+
+  if (!beginnersParticipantColumns.some((column) => column.name === "no_show_recorded_at_time")) {
+    db.exec(
+      `ALTER TABLE beginners_course_participants ADD COLUMN no_show_recorded_at_time TEXT`,
+    );
+  }
+
+  if (!beginnersParticipantColumns.some((column) => column.name === "no_show_recorded_by_username")) {
+    db.exec(
+      `ALTER TABLE beginners_course_participants ADD COLUMN no_show_recorded_by_username TEXT REFERENCES users(username)`,
     );
   }
 

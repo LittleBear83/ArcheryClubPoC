@@ -226,6 +226,7 @@ export type TournamentRecord = {
         workflow?: {
           resultSubmissionMode?: string;
           requiresOpponentConfirmation?: boolean;
+          disputeReason?: string | null;
           ineligibilityReason?: string | null;
         };
       }>;
@@ -248,6 +249,7 @@ export type TournamentRecord = {
       workflow?: {
         resultSubmissionMode?: string;
         requiresOpponentConfirmation?: boolean;
+        disputeReason?: string | null;
         ineligibilityReason?: string | null;
       };
     }>;

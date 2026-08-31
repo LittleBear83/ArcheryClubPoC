@@ -6,6 +6,7 @@ import { Modal } from "../../components/Modal";
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
 import { formatShortDateTime } from "../../../utils/dateTime";
+import { EquipmentMetricsSection } from "./EquipmentMetricsSection";
 import {
   CASE_ASSIGNMENT_FIELDS,
   describeCaseContentLocation,
@@ -21,6 +22,7 @@ import type { useEquipmentPageState } from "./useEquipmentPageState";
 type EquipmentPageState = ReturnType<typeof useEquipmentPageState>;
 
 export function EquipmentDesktopView({
+  analytics,
   addEquipmentMutation,
   addForm,
   addStorageLocationMutation,
@@ -60,6 +62,7 @@ export function EquipmentDesktopView({
   removeStorageLocationMutation,
   removeStorageLocation,
   returnCaseId,
+  returnDate,
   returnMutation,
   selectedItem,
   selectedItemId,
@@ -71,6 +74,7 @@ export function EquipmentDesktopView({
   setNewStorageLocation,
   setRemoveStorageLocation,
   setReturnCaseId,
+  setReturnDate,
   setSelectedItemId,
   setTargetCaseId,
   setTargetMemberUsername,
@@ -378,8 +382,17 @@ export function EquipmentDesktopView({
                       <option key={item.id} value={item.id}>
                         {item.label} | {item.currentLoan?.memberName}
                       </option>
-                    ))}
-                  </LabeledSelect>
+                      ))}
+                    </LabeledSelect>
+
+                  <label className="equipment-inline-control">
+                    Return date
+                    <input
+                      type="date"
+                      value={returnDate}
+                      onChange={(event) => setReturnDate(event.target.value)}
+                    />
+                  </label>
 
                   {selectedReturnItem && selectedReturnItem.type !== "case" ? (
                     <LabeledSelect
@@ -725,6 +738,8 @@ export function EquipmentDesktopView({
           </form>
         ) : null}
       </Modal>
+
+      <EquipmentMetricsSection analytics={analytics} />
     </div>
   );
 }

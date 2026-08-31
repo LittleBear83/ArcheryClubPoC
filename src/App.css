@@ -4388,7 +4388,8 @@ button:disabled {
   }
 }
 
-.equipment-inline-control select {
+.equipment-inline-control select,
+.equipment-inline-control input {
   width: 100%;
   min-height: var(--control-height);
   padding: 12px 14px;
@@ -4401,6 +4402,108 @@ button:disabled {
 .equipment-meta-copy {
   color: var(--text-soft);
   font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.equipment-metrics-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.equipment-metrics-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+}
+
+.equipment-metrics-summary-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.equipment-metrics-summary-label,
+.equipment-metrics-summary-helper {
+  margin: 0;
+}
+
+.equipment-metrics-summary-label {
+  color: var(--text-soft);
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.equipment-metrics-summary-value {
+  color: var(--text-h);
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.equipment-metrics-summary-helper {
+  color: var(--text-soft);
+  font-size: 0.92rem;
+}
+
+.equipment-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.equipment-metrics-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.equipment-metrics-card h4 {
+  margin: 0;
+  color: var(--text-h);
+}
+
+.equipment-metrics-table-wrap {
+  overflow-x: auto;
+}
+
+.equipment-metrics-table {
+  width: 100%;
+  min-width: 24rem;
+  border-collapse: collapse;
+}
+
+.equipment-metrics-table th,
+.equipment-metrics-table td {
+  padding: 10px 12px;
+  border: 1px solid var(--panel-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.equipment-metrics-table th {
+  background: var(--surface-raised);
+  color: var(--accent);
+}
+
+.equipment-metrics-table tbody tr:nth-child(even) {
+  background: var(--surface);
+}
+
+.equipment-metrics-row-copy {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-soft);
+  font-size: 0.9rem;
   font-weight: 600;
 }
 
@@ -4658,6 +4761,10 @@ button:disabled {
   .tournament-bracket-column,
   .tournament-bracket-match {
     min-width: 260px;
+  }
+
+  .equipment-metrics-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

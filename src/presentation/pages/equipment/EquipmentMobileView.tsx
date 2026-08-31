@@ -9,6 +9,7 @@ import { MobileCardList } from "../../components/mobile/MobileCardList";
 import { MobileEmptyState } from "../../components/mobile/MobileEmptyState";
 import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { formatShortDateTime } from "../../../utils/dateTime";
+import { EquipmentMetricsSection } from "./EquipmentMetricsSection";
 import {
   CASE_ASSIGNMENT_FIELDS,
   describeCaseContentLocation,
@@ -26,6 +27,7 @@ import type { useEquipmentPageState } from "./useEquipmentPageState";
 type EquipmentPageState = ReturnType<typeof useEquipmentPageState>;
 
 export function EquipmentMobileView({
+  analytics,
   addEquipmentMutation,
   addForm,
   addStorageLocationMutation,
@@ -66,6 +68,7 @@ export function EquipmentMobileView({
   removeStorageLocationMutation,
   removeStorageLocation,
   returnCaseId,
+  returnDate,
   returnMutation,
   selectedItem,
   selectedItemId,
@@ -78,6 +81,7 @@ export function EquipmentMobileView({
   setNewStorageLocation,
   setRemoveStorageLocation,
   setReturnCaseId,
+  setReturnDate,
   setSelectedItemId,
   setTargetCaseId,
   setTargetMemberUsername,
@@ -346,8 +350,17 @@ export function EquipmentMobileView({
                     <option key={item.id} value={item.id}>
                       {item.label} | {item.currentLoan?.memberName}
                     </option>
-                  ))}
-                </LabeledSelect>
+                    ))}
+                  </LabeledSelect>
+
+                <label className="equipment-inline-control">
+                  Return date
+                  <input
+                    type="date"
+                    value={returnDate}
+                    onChange={(event) => setReturnDate(event.target.value)}
+                  />
+                </label>
 
                 {selectedReturnItem && selectedReturnItem.type !== "case" ? (
                   <LabeledSelect
@@ -712,6 +725,8 @@ export function EquipmentMobileView({
           </form>
         ) : null}
       </Modal>
+
+      <EquipmentMetricsSection analytics={analytics} />
     </div>
   );
 }

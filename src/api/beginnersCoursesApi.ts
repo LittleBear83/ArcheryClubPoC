@@ -138,6 +138,38 @@ export async function transferParticipantToBeginnersCourse(
   );
 }
 
+export async function markBeginnersParticipantNoShow(
+  actor: ActorIdentity | string,
+  participantId: string | number,
+  marked: boolean,
+) {
+  return fetchApi<{ success: true }>(
+    `/api/beginners-course-participants/${participantId}/no-show`,
+    {
+      method: "POST",
+      headers: buildActorHeaders(actor, true),
+      body: JSON.stringify({ marked }),
+      cache: "no-store",
+    },
+  );
+}
+
+export async function reallocateBeginnersCourseParticipant(
+  actor: ActorIdentity | string,
+  participantId: string | number,
+  targetCourseId: string | number,
+) {
+  return fetchApi<{ success: true }>(
+    `/api/beginners-course-participants/${participantId}/reallocate`,
+    {
+      method: "POST",
+      headers: buildActorHeaders(actor, true),
+      body: JSON.stringify({ targetCourseId }),
+      cache: "no-store",
+    },
+  );
+}
+
 export async function approveBeginnersCourse(
   actor: ActorIdentity | string,
   courseId: string | number,

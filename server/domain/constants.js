@@ -21,6 +21,7 @@ export const PERMISSIONS = {
   MANAGE_EQUIPMENT_STORAGE_LOCATIONS: "manage_equipment_storage_locations",
   MANAGE_BEGINNERS_COURSES: "manage_beginners_courses",
   APPROVE_BEGINNERS_COURSES: "approve_beginners_courses",
+  REALLOCATE_BEGINNER_COURSE_BOOKING: "reallocate_beginner_course_booking",
   MANAGE_HAVE_A_GO_SESSIONS: "manage_have_a_go_sessions",
   APPROVE_HAVE_A_GO_SESSIONS: "approve_have_a_go_sessions",
   MANAGE_TOURNAMENTS: "manage_tournaments",
@@ -130,6 +131,11 @@ export const PERMISSION_DEFINITIONS = [
     key: PERMISSIONS.APPROVE_BEGINNERS_COURSES,
     label: "Approve Beginners Courses",
     description: "Approve or reject submitted beginners courses.",
+  },
+  {
+    key: PERMISSIONS.REALLOCATE_BEGINNER_COURSE_BOOKING,
+    label: "Reallocate Beginner Course Booking",
+    description: "Move a no-show beginner or taster attendee onto a later course.",
   },
   {
     key: PERMISSIONS.MANAGE_HAVE_A_GO_SESSIONS,

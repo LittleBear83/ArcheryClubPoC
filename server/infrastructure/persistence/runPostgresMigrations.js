@@ -1429,6 +1429,22 @@ export async function runPostgresMigrations({
     `);
     await client.query(`
       ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS no_show_recorded INTEGER NOT NULL DEFAULT 0
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS no_show_recorded_at_date TEXT
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS no_show_recorded_at_time TEXT
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS no_show_recorded_by_username TEXT REFERENCES users(username)
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
       ADD COLUMN IF NOT EXISTS draw_length TEXT
     `);
     await client.query(`

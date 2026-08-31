@@ -12,6 +12,10 @@ import {
   getEquipmentTypeDisplayLabel,
 } from "./equipmentUtils";
 
+function getTodayDateValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const queryClient = useQueryClient();
@@ -23,6 +27,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   const [targetMemberUsername, setTargetMemberUsername] = useState("");
   const [targetCaseId, setTargetCaseId] = useState("");
   const [returnCaseId, setReturnCaseId] = useState("");
+  const [returnDate, setReturnDate] = useState(getTodayDateValue);
   const [cupboardLabel, setCupboardLabel] = useState("Main Cupboard");
   const [newStorageLocation, setNewStorageLocation] = useState("");
   const [removeStorageLocation, setRemoveStorageLocation] = useState("");
@@ -85,6 +90,25 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
         ? equipmentQuery.data.cupboardOptions
         : ["Main Cupboard"],
     [equipmentQuery.data?.cupboardOptions],
+  );
+  const analytics = useMemo(
+    () =>
+      equipmentQuery.data?.analytics ?? {
+        inactiveThresholdDays: 60,
+        summary: {
+          activeItemsCount: 0,
+          currentlyOnLoanCount: 0,
+          totalLoanRecords: 0,
+          totalReturnRecords: 0,
+          neverLoanedCount: 0,
+          inactiveItemsCount: 0,
+        },
+        usageByType: [],
+        mostUsedItems: [],
+        neverLoanedItems: [],
+        inactiveItems: [],
+      },
+    [equipmentQuery.data?.analytics],
   );
   const activeItems = useMemo(
     () => items.filter((item) => item.status === "active"),
@@ -366,6 +390,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
             selectedReturnItem && selectedReturnItem.type !== "case"
               ? returnCaseId || null
               : null,
+          returnDate,
           cupboardLabel,
         },
       }),
@@ -376,6 +401,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     onSuccess: async () => {
       setMessage("Equipment return recorded successfully.");
       setReturnCaseId("");
+      setReturnDate(getTodayDateValue());
       await refreshDashboard();
     },
     onError: (mutationError) => {
@@ -671,6 +697,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   return {
     activeCaseModal,
     addEquipmentMutation,
+    analytics,
     addForm,
     addStorageLocationMutation,
     assignMutation,
@@ -716,6 +743,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     removeStorageLocationMutation,
     removeStorageLocation,
     returnCaseId,
+    returnDate,
     returnMutation,
     selectedItem,
     selectedItemId,
@@ -728,6 +756,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     setNewStorageLocation,
     setRemoveStorageLocation,
     setReturnCaseId,
+    setReturnDate,
     setSelectedItemId,
     setTargetCaseId,
     setTargetMemberUsername,

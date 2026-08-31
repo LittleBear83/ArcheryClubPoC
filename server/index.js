@@ -1618,6 +1618,22 @@ function sanitizeBeginnersParticipantPayload(payload) {
       initialEmailSent: Boolean(payload?.initialEmailSent),
       thirtyDayReminderSent: Boolean(payload?.thirtyDayReminderSent),
       courseFeePaid: Boolean(payload?.courseFeePaid),
+      noShowRecorded: Boolean(payload?.noShowRecorded),
+      noShowRecordedAtDate:
+        typeof payload?.noShowRecordedAtDate === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(payload.noShowRecordedAtDate.trim())
+          ? payload.noShowRecordedAtDate.trim()
+          : null,
+      noShowRecordedAtTime:
+        typeof payload?.noShowRecordedAtTime === "string" &&
+        payload.noShowRecordedAtTime.trim()
+          ? payload.noShowRecordedAtTime.trim()
+          : null,
+      noShowRecordedByUsername:
+        typeof payload?.noShowRecordedByUsername === "string" &&
+        payload.noShowRecordedByUsername.trim()
+          ? payload.noShowRecordedByUsername.trim()
+          : null,
     },
   };
 }
@@ -1720,6 +1736,28 @@ function getCourseTypePermissions(courseType) {
       };
 }
 
+function canReallocateBeginnersCourseBooking(actor, courseType) {
+  return (
+    normalizeCourseType(courseType) !== "have-a-go" &&
+    actorHasPermission(actor, PERMISSIONS.REALLOCATE_BEGINNER_COURSE_BOOKING)
+  );
+}
+
+async function hasParticipantRecordedAttendance(participant) {
+  if (!participant) {
+    return false;
+  }
+
+  const loginDates = await beginnersCourseReadGateway.listParticipantLoginDates();
+
+  return loginDates.some(
+    (row) =>
+      Number(row.course_id) === Number(participant.course_id) &&
+      String(row.username ?? "").trim().toLowerCase() ===
+        String(participant.username ?? "").trim().toLowerCase(),
+  );
+}
+
 function getCourseParticipantUserType(courseType) {
   return COURSE_PARTICIPANT_USER_TYPES[normalizeCourseType(courseType)] ?? "non-member";
 }
@@ -1784,6 +1822,11 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
       initialEmailSent: Boolean(participant.initial_email_sent),
       thirtyDayReminderSent: Boolean(participant.thirty_day_reminder_sent),
       courseFeePaid: Boolean(participant.course_fee_paid),
+      noShowRecorded: Boolean(participant.no_show_recorded),
+      noShowRecordedAt: participant.no_show_recorded_at_date
+        ? `${participant.no_show_recorded_at_date} ${participant.no_show_recorded_at_time ?? ""}`.trim()
+        : "",
+      noShowRecordedByUsername: participant.no_show_recorded_by_username ?? "",
       attendanceDates: [
         ...new Set(
           loginDatesByCourseParticipant.get(
@@ -5017,7 +5060,8 @@ app.get("/api/beginners-courses/dashboard", async (req, res) => {
   if (
     !actor ||
     (!actorHasPermission(actor, coursePermissions.manage) &&
-      !actorHasPermission(actor, coursePermissions.approve))
+      !actorHasPermission(actor, coursePermissions.approve) &&
+      !canReallocateBeginnersCourseBooking(actor, courseType))
   ) {
     res.status(403).json({
       success: false,
@@ -5058,6 +5102,10 @@ app.get("/api/beginners-courses/dashboard", async (req, res) => {
       canApproveBeginnersCourses: actorHasPermission(
         actor,
         coursePermissions.approve,
+      ),
+      canReallocateBeginnerCourseBooking: canReallocateBeginnersCourseBooking(
+        actor,
+        courseType,
       ),
     },
     courses: await buildBeginnersCourseDashboard(courseType),
@@ -5996,6 +6044,254 @@ app.delete("/api/beginners-course-participants/:id", async (req, res) => {
     course:
       (await buildBeginnersCourseDashboard(courseType)).find(
         (entry) => entry.id === participant.course_id,
+      ) ?? null,
+  });
+});
+
+app.post("/api/beginners-course-participants/:id/no-show", async (req, res) => {
+  const actor = getActorUser(req);
+  const participant = await beginnersCourseReadGateway.findParticipantById(req.params.id);
+
+  if (!participant) {
+    res.status(404).json({
+      success: false,
+      message: "Participant record not found.",
+    });
+    return;
+  }
+
+  const course = await beginnersCourseReadGateway.findCourseById(participant.course_id);
+  const courseType = normalizeCourseType(course?.course_type);
+  const coursePermissions = getCourseTypePermissions(courseType);
+
+  if (!actor || !actorHasPermission(actor, coursePermissions.manage)) {
+    res.status(403).json({
+      success: false,
+      message:
+        courseType === "taster-session"
+          ? "You do not have permission to update Taster Session attendees."
+          : "You do not have permission to update beginners.",
+    });
+    return;
+  }
+
+  if (courseType === "have-a-go") {
+    res.status(400).json({
+      success: false,
+      message: "Have a Go attendees cannot be marked as no-shows from this screen.",
+    });
+    return;
+  }
+
+  const marked = Boolean(req.body?.marked);
+
+  if (marked) {
+    if (!hasCourseStarted(await buildBeginnersCourseDashboard(courseType).then((courses) =>
+      courses.find((entry) => entry.id === participant.course_id),
+    ))) {
+      res.status(400).json({
+        success: false,
+        message: "No-show status can only be recorded once the session has started.",
+      });
+      return;
+    }
+
+    if (participant.converted_to_member) {
+      res.status(400).json({
+        success: false,
+        message: "Converted members cannot be marked as no-shows.",
+      });
+      return;
+    }
+
+    if (await hasParticipantRecordedAttendance(participant)) {
+      res.status(400).json({
+        success: false,
+        message: "Participants with recorded attendance cannot be marked as no-shows.",
+      });
+      return;
+    }
+  }
+
+  const previousParticipant = await findBeginnersParticipantAuditSnapshot(participant.id, courseType);
+  const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+
+  await beginnersCourseWriteGateway.updateParticipantNoShow({
+    noShowRecorded: marked,
+    noShowRecordedAtDate: marked ? updatedAtDate : null,
+    noShowRecordedAtTime: marked ? updatedAtTime : null,
+    noShowRecordedByUsername: marked ? actor.username : null,
+    participantId: participant.id,
+  });
+
+  const updatedParticipant = await findBeginnersParticipantAuditSnapshot(participant.id, courseType);
+
+  if (auditChangeLogger && updatedParticipant) {
+    void auditChangeLogger.recordEntityChange({
+      action: "updated",
+      actorUsername: actor.username,
+      after: updatedParticipant,
+      before: previousParticipant,
+      changedAtDate: updatedAtDate,
+      changedAtTime: updatedAtTime,
+      entityId: String(participant.id),
+      entityLabel: buildBeginnersParticipantAuditLabel(updatedParticipant),
+      entityType: "beginners_participant",
+      req,
+      target: `/api/beginners-course-participants/${participant.id}/no-show`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners participant no-show audit event", auditError);
+    });
+  }
+
+  broadcastBeginnersUpdated(courseType, "beginners.participant-no-show");
+  broadcastMembersUpdated("beginners.participant-no-show", participant.username);
+
+  res.json({
+    success: true,
+    course:
+      (await buildBeginnersCourseDashboard(courseType)).find(
+        (entry) => entry.id === participant.course_id,
+      ) ?? null,
+  });
+});
+
+app.post("/api/beginners-course-participants/:id/reallocate", async (req, res) => {
+  const actor = getActorUser(req);
+  const participant = await beginnersCourseReadGateway.findParticipantById(req.params.id);
+
+  if (!participant) {
+    res.status(404).json({
+      success: false,
+      message: "Participant record not found.",
+    });
+    return;
+  }
+
+  const sourceCourse = await beginnersCourseReadGateway.findCourseById(participant.course_id);
+  const sourceCourseType = normalizeCourseType(sourceCourse?.course_type);
+
+  if (!actor || !canReallocateBeginnersCourseBooking(actor, sourceCourseType)) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to reallocate beginner course bookings.",
+    });
+    return;
+  }
+
+  if (sourceCourseType === "have-a-go") {
+    res.status(400).json({
+      success: false,
+      message: "Have a Go attendees cannot be reallocated from this screen.",
+    });
+    return;
+  }
+
+  if (!participant.no_show_recorded) {
+    res.status(400).json({
+      success: false,
+      message: "Only participants marked as no-shows can be reallocated.",
+    });
+    return;
+  }
+
+  const targetCourseId = Number.parseInt(String(req.body?.targetCourseId ?? ""), 10);
+  if (!Number.isInteger(targetCourseId)) {
+    res.status(400).json({
+      success: false,
+      message: "Choose a later course to reallocate this booking onto.",
+    });
+    return;
+  }
+
+  if (Number(targetCourseId) === Number(participant.course_id)) {
+    res.status(400).json({
+      success: false,
+      message: "Choose a different course for reallocation.",
+    });
+    return;
+  }
+
+  const targetCourse = await beginnersCourseReadGateway.findCourseById(targetCourseId);
+  const targetCourseType = normalizeCourseType(targetCourse?.course_type);
+
+  if (!targetCourse || targetCourseType !== sourceCourseType) {
+    res.status(404).json({
+      success: false,
+      message: "Target course not found.",
+    });
+    return;
+  }
+
+  if (targetCourse.is_cancelled || targetCourse.approval_status !== "approved") {
+    res.status(400).json({
+      success: false,
+      message: "Only approved future courses can accept reallocations.",
+    });
+    return;
+  }
+
+  if (hasScheduleEntryStarted(targetCourse.first_lesson_date, targetCourse.start_time)) {
+    res.status(400).json({
+      success: false,
+      message: "Only future courses can accept reallocations.",
+    });
+    return;
+  }
+
+  if (
+    (await beginnersCourseReadGateway.listParticipantsByCourseId(targetCourse.id)).length >=
+    targetCourse.beginner_capacity
+  ) {
+    res.status(400).json({
+      success: false,
+      message: "This course is already full.",
+    });
+    return;
+  }
+
+  const previousParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    sourceCourseType,
+  );
+  const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
+
+  await beginnersCourseWriteGateway.transferParticipantToCourse({
+    courseId: targetCourse.id,
+    participantId: participant.id,
+  });
+
+  const reallocatedParticipant = await findBeginnersParticipantAuditSnapshot(
+    participant.id,
+    sourceCourseType,
+  );
+
+  if (auditChangeLogger && reallocatedParticipant) {
+    void auditChangeLogger.recordEntityChange({
+      action: "updated",
+      actorUsername: actor.username,
+      after: reallocatedParticipant,
+      before: previousParticipant,
+      changedAtDate: updatedAtDate,
+      changedAtTime: updatedAtTime,
+      entityId: String(participant.id),
+      entityLabel: buildBeginnersParticipantAuditLabel(reallocatedParticipant),
+      entityType: "beginners_participant",
+      req,
+      target: `/api/beginners-course-participants/${participant.id}/reallocate`,
+    }).catch((auditError) => {
+      console.error("Failed to record beginners participant reallocation audit event", auditError);
+    });
+  }
+
+  broadcastBeginnersUpdated(sourceCourseType, "beginners.participant-reallocated");
+  broadcastMembersUpdated("beginners.participant-reallocated", participant.username);
+
+  res.json({
+    success: true,
+    course:
+      (await buildBeginnersCourseDashboard(sourceCourseType)).find(
+        (entry) => entry.id === targetCourse.id,
       ) ?? null,
   });
 });

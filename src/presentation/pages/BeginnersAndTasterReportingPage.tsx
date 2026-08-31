@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import type { SVGAttributes } from "react";
 import { Sankey } from "@nivo/sankey";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "../components/Button";
@@ -51,6 +52,10 @@ function formatCourseTypeLabel(value: string) {
     .split("-")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function getSankeyNodeLabel(nodeId: string, nodeCopy: Record<string, string>) {
+  return nodeCopy[nodeId] ?? nodeId;
 }
 
 function BeginnersJourneySankey({
@@ -177,7 +182,8 @@ function BeginnersJourneySankey({
       {nodes.map((node) => {
         let x = node.x + 14;
         let y = node.y + node.height / 2 + 4;
-        let textAnchor = "start";
+        let textAnchor: SVGAttributes<SVGTextElement>["textAnchor"] = "start";
+        const nodeLabel = getSankeyNodeLabel(String(node.id), nodeCopy);
 
         if (node.id === "taster_session") {
           x = node.x + 14;
@@ -214,7 +220,7 @@ function BeginnersJourneySankey({
             textAnchor={textAnchor}
             className="beginners-journey-sankey-fixed-label"
           >
-            {node.label}
+            {nodeLabel}
           </text>
         );
       })}
@@ -253,7 +259,7 @@ function BeginnersJourneySankey({
             : sankeyColours.border
         }
         nodeBorderRadius={6}
-        label={(node) => node.label ?? String(node.id)}
+        label={(node) => getSankeyNodeLabel(String(node.id), nodeCopy)}
         enableLabels={false}
         linkOpacity={sankeyColours.linkOpacity}
         linkHoverOthersOpacity={0.12}
@@ -280,7 +286,7 @@ function BeginnersJourneySankey({
         }}
         nodeTooltip={({ node }) => (
           <div className="beginners-journey-sankey-tooltip">
-            <strong>{node.label}</strong>
+            <strong>{getSankeyNodeLabel(String(node.id), nodeCopy)}</strong>
             <div>{node.formattedValue} people reached this stage.</div>
           </div>
         )}

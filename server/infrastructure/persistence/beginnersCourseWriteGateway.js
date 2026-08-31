@@ -12,6 +12,7 @@ function createSqliteBeginnersCourseWriteGateway({
   updateBeginnersCourseApproval,
   updateBeginnersCourseLessonSchedule,
   updateBeginnersCourseParticipant,
+  updateBeginnersCourseParticipantNoShow,
   updateBeginnersCourseParticipantCase,
   updateBeginnersCourseSchedule,
   updateUserPassword,
@@ -106,6 +107,10 @@ function createSqliteBeginnersCourseWriteGateway({
         participant.thirtyDayReminderSent ? 1 : 0,
         participant.courseFeePaid ? 1 : 0,
         originCourseType,
+        0,
+        null,
+        null,
+        null,
         null,
         null,
         null,
@@ -229,6 +234,10 @@ function createSqliteBeginnersCourseWriteGateway({
         initialEmailSent: participant.initialEmailSent ? 1 : 0,
         thirtyDayReminderSent: participant.thirtyDayReminderSent ? 1 : 0,
         courseFeePaid: participant.courseFeePaid ? 1 : 0,
+        noShowRecorded: participant.noShowRecorded ? 1 : 0,
+        noShowRecordedAtDate: participant.noShowRecordedAtDate,
+        noShowRecordedAtTime: participant.noShowRecordedAtTime,
+        noShowRecordedByUsername: participant.noShowRecordedByUsername,
       });
 
       if (existingUser) {
@@ -257,6 +266,21 @@ function createSqliteBeginnersCourseWriteGateway({
         assignedCaseId ? actorUsername : null,
         assignedCaseId ? assignedAtDate : null,
         assignedCaseId ? assignedAtTime : null,
+        participantId,
+      );
+    },
+    async updateParticipantNoShow({
+      noShowRecorded,
+      noShowRecordedAtDate,
+      noShowRecordedAtTime,
+      noShowRecordedByUsername,
+      participantId,
+    }) {
+      updateBeginnersCourseParticipantNoShow.run(
+        noShowRecorded ? 1 : 0,
+        noShowRecordedAtDate,
+        noShowRecordedAtTime,
+        noShowRecordedByUsername,
         participantId,
       );
     },
@@ -398,6 +422,10 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
             thirty_day_reminder_sent,
             course_fee_paid,
             origin_course_type,
+            no_show_recorded,
+            no_show_recorded_at_date,
+            no_show_recorded_at_time,
+            no_show_recorded_by_username,
             assigned_case_id,
             assigned_case_by_username,
             assigned_case_at_date,
@@ -407,7 +435,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
             created_at_time
           )
           VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, NULL, NULL, NULL, $14, $15, $16
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, $14, $15, $16
           )
         `,
         [
@@ -459,6 +487,10 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
             assigned_case_by_username = NULL,
             assigned_case_at_date = NULL,
             assigned_case_at_time = NULL,
+            no_show_recorded = 0,
+            no_show_recorded_at_date = NULL,
+            no_show_recorded_at_time = NULL,
+            no_show_recorded_by_username = NULL,
             converted_to_member = 0,
             converted_at_date = NULL,
             converted_at_time = NULL,
@@ -635,8 +667,12 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
               eye_dominance = $7,
               initial_email_sent = $8,
               thirty_day_reminder_sent = $9,
-              course_fee_paid = $10
-            WHERE id = $11
+              course_fee_paid = $10,
+              no_show_recorded = $11,
+              no_show_recorded_at_date = $12,
+              no_show_recorded_at_time = $13,
+              no_show_recorded_by_username = $14
+            WHERE id = $15
           `,
           [
             participant.firstName,
@@ -649,6 +685,10 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
             participant.initialEmailSent ? 1 : 0,
             participant.thirtyDayReminderSent ? 1 : 0,
             participant.courseFeePaid ? 1 : 0,
+            participant.noShowRecorded ? 1 : 0,
+            participant.noShowRecordedAtDate,
+            participant.noShowRecordedAtTime,
+            participant.noShowRecordedByUsername,
             participantId,
           ],
         );
@@ -710,6 +750,32 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
           assignedCaseId ? actorUsername : null,
           assignedCaseId ? assignedAtDate : null,
           assignedCaseId ? assignedAtTime : null,
+          participantId,
+        ],
+      );
+    },
+    async updateParticipantNoShow({
+      noShowRecorded,
+      noShowRecordedAtDate,
+      noShowRecordedAtTime,
+      noShowRecordedByUsername,
+      participantId,
+    }) {
+      await pool.query(
+        `
+          UPDATE beginners_course_participants
+          SET
+            no_show_recorded = $1,
+            no_show_recorded_at_date = $2,
+            no_show_recorded_at_time = $3,
+            no_show_recorded_by_username = $4
+          WHERE id = $5
+        `,
+        [
+          noShowRecorded ? 1 : 0,
+          noShowRecordedAtDate,
+          noShowRecordedAtTime,
+          noShowRecordedByUsername,
           participantId,
         ],
       );

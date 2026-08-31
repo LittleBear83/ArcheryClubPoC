@@ -154,6 +154,7 @@ const pages = [
     permissionAny: [
       "manage_beginners_courses",
       "approve_beginners_courses",
+      "reallocate_beginner_course_booking",
       "manage_have_a_go_sessions",
       "approve_have_a_go_sessions",
     ],

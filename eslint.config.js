@@ -7,7 +7,9 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', '.test-dist']),
+  // Browser-debug profiles are runtime artifacts and can contain thousands of
+  // third-party files; linting them makes `eslint .` appear to hang.
+  globalIgnores(['dist', '.test-dist', '.codex-temp/**']),
   {
     files: ['**/*.{js,jsx,ts,tsx}'],
     extends: [

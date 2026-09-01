@@ -1,0 +1,20 @@
+[Unit]
+Description=Selby Archery Club local database sync
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=archeryapp
+Group=archeryapp
+WorkingDirectory=/opt/selby-portal
+EnvironmentFile=/etc/selby-portal/sync.env
+ExecStart=/usr/bin/npm run sync:local
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/selby-portal
+
+[Install]
+WantedBy=multi-user.target

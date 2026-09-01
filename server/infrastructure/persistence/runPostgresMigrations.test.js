@@ -47,6 +47,10 @@ test("runPostgresMigrations installs user reference sync triggers and backfills"
   });
 
   assert.equal(queries[0].sql, "BEGIN");
+  assert.deepEqual(queries[1], {
+    sql: "SELECT pg_advisory_xact_lock($1)",
+    values: [81420732],
+  });
   assert.ok(
     queries.some((entry) =>
       entry.sql.includes("CREATE OR REPLACE FUNCTION sync_login_events_user_refs()"),

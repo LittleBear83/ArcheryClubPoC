@@ -17,7 +17,7 @@ function createSqliteDatabase({
   return new Database(databasePath);
 }
 
-function createPostgresPool(runtime) {
+export function createPostgresPool(runtime) {
   const { databaseUrl, postgres } = runtime;
 
   if (databaseUrl) {

@@ -112,6 +112,34 @@ const goldenRecordsUsername = process.env.GOLDEN_RECORDS_USERNAME ?? "";
 const goldenRecordsPassword = process.env.GOLDEN_RECORDS_PASSWORD ?? "";
 const goldenRecordsUserAgent =
   process.env.GOLDEN_RECORDS_USER_AGENT?.trim() || "ArcheryClubPoC/1.0";
+const syncApiBaseUrl = process.env.SYNC_API_BASE_URL?.trim() || "";
+const syncMachineId = process.env.SYNC_MACHINE_ID?.trim() || "";
+const syncMachineSecret = process.env.SYNC_MACHINE_SECRET ?? "";
+const syncNodeMode = process.env.SYNC_NODE_MODE?.trim().toLowerCase() || "standalone";
+const syncMachineCredentialsJson = process.env.SYNC_MACHINE_CREDENTIALS_JSON?.trim() || "[]";
+const syncRequestTimeoutMs = Number(process.env.SYNC_REQUEST_TIMEOUT_MS ?? 15000);
+const syncPushBatchSize = Number(process.env.SYNC_PUSH_BATCH_SIZE ?? 100);
+const syncPullBatchSize = Number(process.env.SYNC_PULL_BATCH_SIZE ?? 200);
+const syncLocalDatabaseUrl = process.env.SYNC_LOCAL_DATABASE_URL?.trim() || "";
+const syncLocalDatabaseHost = process.env.SYNC_LOCAL_DB_HOST?.trim() || "";
+const syncLocalDatabaseName = process.env.SYNC_LOCAL_DB_NAME?.trim() || "";
+const syncLocalDatabaseUser = process.env.SYNC_LOCAL_DB_USER?.trim() || "";
+const syncLocalDatabasePassword = process.env.SYNC_LOCAL_DB_PASSWORD ?? "";
+const syncLocalDatabasePort = Number(process.env.SYNC_LOCAL_DB_PORT ?? 5432);
+
+function parseJsonEnvArray(value) {
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseBooleanEnv(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
 
 if (isLive && databaseEngine !== "postgres") {
   throw new Error(
@@ -171,6 +199,33 @@ export const serverRuntime = {
     password: goldenRecordsPassword,
     userAgent: goldenRecordsUserAgent,
     username: goldenRecordsUsername,
+  },
+  sync: {
+    apiBaseUrl: syncApiBaseUrl,
+    localPostgres: {
+      databaseName: syncLocalDatabaseName,
+      host: syncLocalDatabaseHost,
+      password: syncLocalDatabasePassword,
+      port: syncLocalDatabasePort,
+      url: syncLocalDatabaseUrl,
+      user: syncLocalDatabaseUser,
+    },
+    machineCredentials: parseJsonEnvArray(syncMachineCredentialsJson)
+      .map((entry) => ({
+        disabled: Boolean(entry?.disabled),
+        machineId: String(entry?.machineId ?? "").trim(),
+        secretHash: String(entry?.secretHash ?? ""),
+      }))
+      .filter((entry) => entry.machineId && entry.secretHash),
+    machineId: syncMachineId,
+    machineSecret: syncMachineSecret,
+    nodeMode: syncNodeMode,
+    isCloudSyncServer: syncNodeMode === "cloud-server",
+    isLocalPiNode: syncNodeMode === "local-pi",
+    serverEnabled: parseBooleanEnv(process.env.SYNC_SERVER_ENABLED),
+    pullBatchSize: syncPullBatchSize,
+    pushBatchSize: syncPushBatchSize,
+    requestTimeoutMs: syncRequestTimeoutMs,
   },
   postgres: {
     databaseName,

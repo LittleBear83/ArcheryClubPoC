@@ -68,6 +68,7 @@ import { createRangeRulesGateway } from "./infrastructure/persistence/rangeRules
 import { createGeneralInfoGateway } from "./infrastructure/persistence/generalInfoGateway.js";
 import { createHandicapTableGateway } from "./infrastructure/persistence/handicapTableGateway.js";
 import { createGoldenRecordsSyncGateway } from "./infrastructure/persistence/goldenRecordsSyncGateway.js";
+import { createSyncGateway } from "./infrastructure/persistence/syncGateway.js";
 import { createGoldenRecordsIntegrationGateway } from "./infrastructure/persistence/goldenRecordsIntegrationGateway.js";
 import { createGoldenRecordsCurrentHandicapService } from "./infrastructure/golden-records/goldenRecordsCurrentHandicapService.js";
 import { createGoldenRecordsIntegrationService } from "./infrastructure/golden-records/goldenRecordsIntegrationService.js";
@@ -94,6 +95,7 @@ import {
   ARROW_MATERIAL_OPTION_SET,
   ARROW_NOCK_COLOUR_VALUE_SET,
 } from "../shared/arrowSchema.js";
+import { formatClockTime, formatDate } from "../src/utils/dateTime.js";
 import {
   createSecurityEventLogger,
   logServerError,
@@ -116,6 +118,8 @@ import { registerSseRoutes } from "./presentation/http/registerSseRoutes.js";
 import { registerSuggestionRoutes } from "./presentation/http/registerSuggestionRoutes.js";
 import { registerMemberQuestionRoutes } from "./presentation/http/registerMemberQuestionRoutes.js";
 import { registerCommitteeMinutesRoutes } from "./presentation/http/registerCommitteeMinutesRoutes.js";
+import { registerSyncRoutes } from "./presentation/http/registerSyncRoutes.js";
+import { createMachineSyncAuth } from "./security/machineAuth.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
@@ -151,6 +155,8 @@ const CSRF_EXCLUDED_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/rfid",
   "/api/auth/guest-login",
+  "/api/sync/v1/pull",
+  "/api/sync/v1/push",
 ]);
 const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/login",
@@ -608,6 +614,14 @@ const goldenRecordsIntegrationService = createGoldenRecordsIntegrationService(
 );
 const serverEventBus = createServerEventBus();
 const publicServerEventBus = createServerEventBus();
+const syncGateway =
+  serverRuntime.databaseEngine === "postgres"
+    ? createSyncGateway({ pool: db.pool })
+    : null;
+const machineSyncAuth = createMachineSyncAuth({
+  credentials: serverRuntime.sync.machineCredentials,
+  verifySecret: verifyPassword,
+});
 
 let cachedAssignableRoleKeys = [];
 let cachedKnownRoleKeys = new Set();
@@ -981,6 +995,11 @@ const memberAuthGateway = createMemberAuthGateway({
   insertLoginEvent,
   listAllUsers,
   pool: db.pool,
+  syncGateway,
+  syncMachineId: serverRuntime.sync.isLocalPiNode
+    ? serverRuntime.sync.machineId || null
+    : null,
+  syncNodeMode: serverRuntime.sync.nodeMode,
   upsertRangePresenceExtension:
     serverRuntime.databaseEngine === "sqlite"
       ? db.prepare(`
@@ -1126,6 +1145,7 @@ app.use(
 );
 app.use(globalApiRateLimiter.middleware);
 app.use("/api/committee-roles", express.json({ limit: COMMITTEE_PHOTO_JSON_BODY_LIMIT }));
+app.use("/api/sync", express.json({ limit: GENERAL_JSON_BODY_LIMIT }));
 app.use(express.json({ limit: GENERAL_JSON_BODY_LIMIT }));
 app.use(csrfProtection.middleware);
 app.use(authRateLimiter.middleware);
@@ -2714,16 +2734,6 @@ function buildCommitteeRole(role) {
   };
 }
 
-function nextPowerOfTwo(value) {
-  let result = 1;
-
-  while (result < value) {
-    result *= 2;
-  }
-
-  return result;
-}
-
 function getTournamentTypeLabel(type) {
   return (
     TOURNAMENT_TYPE_OPTIONS.find((option) => option.value === type)?.label ??
@@ -3221,9 +3231,6 @@ function buildTournament(
     );
   });
   const currentRoundNumber = bracket.currentRoundNumber;
-  const currentRound = bracket.rounds.find(
-    (round) => round.roundNumber === currentRoundNumber,
-  );
   const currentRoundSchedule =
     roundSchedule.find((round) => round.roundNumber === currentRoundNumber) ?? null;
   const actorEligibilitySnapshot = actorUsername
@@ -4802,6 +4809,25 @@ async function buildPersonalUsageWindow(username, label, startDate, endDateExclu
 
 // Route modules receive prepared statements and shared helpers from this file so
 // each module can stay focused on HTTP behavior for its own feature area.
+if (
+  syncGateway &&
+  serverRuntime.sync.isCloudSyncServer &&
+  serverRuntime.sync.serverEnabled &&
+  serverRuntime.sync.machineCredentials.length > 0
+) {
+  registerSyncRoutes({
+    app,
+    authenticateMachineRequest: machineSyncAuth.authenticateMachineRequest,
+    logSyncEvent: (eventName, details) => {
+      console.info(`machine-sync:${eventName}`, {
+        ...details,
+        occurredAt: new Date().toISOString(),
+      });
+    },
+    syncGateway,
+  });
+}
+
 registerAuthRoutes({
   announcementGateway,
   app,
@@ -6086,9 +6112,7 @@ app.post("/api/beginners-course-participants/:id/no-show", async (req, res) => {
   const marked = Boolean(req.body?.marked);
 
   if (marked) {
-    if (!hasCourseStarted(await buildBeginnersCourseDashboard(courseType).then((courses) =>
-      courses.find((entry) => entry.id === participant.course_id),
-    ))) {
+    if (!hasScheduleEntryStarted(course.first_lesson_date, course.start_time)) {
       res.status(400).json({
         success: false,
         message: "No-show status can only be recorded once the session has started.",

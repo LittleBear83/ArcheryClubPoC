@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Selby Archery Club local database sync after boot and nightly
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*-*-* 00:01:00
+Persistent=true
+Unit=selby-db-sync.service
+
+[Install]
+WantedBy=timers.target

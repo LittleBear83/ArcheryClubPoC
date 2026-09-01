@@ -1,5 +1,6 @@
 import { getDefaultGeneralInfoContent } from "../../../shared/generalInfoDefaults.js";
 import { getDefaultRangeRulesContent } from "../../../shared/rangeRulesDefaults.js";
+import { postgresMigrations } from "./postgresMigrations/index.js";
 
 function buildInitialSchemaSql() {
   return `
@@ -1298,6 +1299,9 @@ export async function runPostgresMigrations({
 
   try {
     await client.query("BEGIN");
+    // Cloud Run instances share this database-level transaction lock, so only
+    // one instance can bootstrap or apply a numbered migration at a time.
+    await client.query("SELECT pg_advisory_xact_lock($1)", [81420732]);
     await client.query(buildInitialSchemaSql());
 
     const appliedResult = await client.query(
@@ -1646,6 +1650,34 @@ export async function runPostgresMigrations({
         "00:00:00.000Z",
       ],
     );
+
+    for (const migration of postgresMigrations) {
+      const versionResult = await client.query(
+        `
+          SELECT 1
+          FROM schema_migrations
+          WHERE version = $1
+          LIMIT 1
+        `,
+        [migration.version],
+      );
+
+      if (versionResult.rowCount > 0) {
+        continue;
+      }
+
+      for (const statement of migration.statements) {
+        await client.query(statement);
+      }
+
+      await client.query(
+        `
+          INSERT INTO schema_migrations (version)
+          VALUES ($1)
+        `,
+        [migration.version],
+      );
+    }
 
     await client.query("COMMIT");
   } catch (error) {

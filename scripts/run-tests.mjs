@@ -100,10 +100,16 @@ await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/handicapTableGateway.test.js"))
 );
 await import(
+  pathToFileURL(path.join(root, "server/infrastructure/persistence/syncGateway.test.js"))
+);
+await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/sqliteToPostgresMigration.test.js"))
 );
 await import(
   pathToFileURL(path.join(root, "server/domain/services/memberPersistenceService.test.js"))
+);
+await import(
+  pathToFileURL(path.join(root, "server/domain/services/localDatabaseSyncService.test.js"))
 );
 await import(
   pathToFileURL(path.join(root, "server/domain/services/tournamentEngine.test.js"))
@@ -122,4 +128,7 @@ await import(
 );
 await import(
   pathToFileURL(path.join(root, "server/presentation/http/securedRoutes.test.js"))
+);
+await import(
+  pathToFileURL(path.join(root, "server/presentation/http/registerSyncRoutes.test.js"))
 );

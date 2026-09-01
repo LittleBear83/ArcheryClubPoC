@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 function normalizeUserRow(row) {
   if (!row) {
     return null;
@@ -134,7 +136,12 @@ function createSqliteMemberAuthGateway({
   };
 }
 
-function createPostgresMemberAuthGateway({ pool }) {
+function createPostgresMemberAuthGateway({
+  pool,
+  syncGateway,
+  syncMachineId,
+  syncNodeMode,
+}) {
   return {
     async findDisciplinesByUsername(username) {
       const result = await pool.query(
@@ -335,6 +342,20 @@ function createPostgresMemberAuthGateway({ pool }) {
       );
     },
     async recordLoginEvent({ method, timestampParts, username }) {
+      if (syncGateway && syncNodeMode === "local-pi" && syncMachineId) {
+        await syncGateway.enqueueLoginEvent({
+          client: pool,
+          eventId: randomUUID(),
+          loggedInDate: timestampParts[0],
+          loggedInTime: timestampParts[1],
+          loginMethod: method,
+          machineId: syncMachineId,
+          sourceNodeMode: syncNodeMode,
+          username,
+        });
+        return;
+      }
+
       await pool.query(
         `
           INSERT INTO login_events (

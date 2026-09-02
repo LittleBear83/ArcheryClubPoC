@@ -1,3 +1,8 @@
+import {
+  validateCoachingBookingEligibility,
+  validateEventBookingEligibility,
+} from "../../domain/services/scheduleBookingValidation.js";
+
 export function registerScheduleRoutes({
   actorHasPermission,
   app,
@@ -11,6 +16,7 @@ export function registerScheduleRoutes({
   getActorUser,
   getUtcTimestampParts,
   hasScheduleEntryEnded,
+  isLocalPiNode = false,
   normalizeBookingRow,
   normalizeVenue,
   PERMISSIONS,
@@ -394,58 +400,32 @@ export function registerScheduleRoutes({
     }
 
     const event = await scheduleGateway.findClubEventById(req.params.id);
+    const eligibilityError = validateEventBookingEligibility({
+      event,
+      hasScheduleEntryEnded,
+      member: actor,
+    });
 
-    if (!event) {
-      res.status(404).json({
+    if (eligibilityError) {
+      res.status(eligibilityError.statusCode).json({
         success: false,
-        message: "Event not found.",
-      });
-      return;
-    }
-
-    const eventTypes =
-      typeof event.types === "string"
-        ? (() => {
-            try {
-              const parsed = JSON.parse(event.types);
-              return Array.isArray(parsed) ? parsed : [event.type];
-            } catch {
-              return [event.type];
-            }
-          })()
-        : [event.type];
-
-    if (eventTypes.includes("range-closed")) {
-      res.status(400).json({
-        success: false,
-        message: "Range closed entries cannot be booked.",
-      });
-      return;
-    }
-
-    if ((event.approval_status ?? "approved") !== "approved") {
-      res.status(400).json({
-        success: false,
-        message: "This event is still awaiting approval.",
-      });
-      return;
-    }
-
-    if (hasScheduleEntryEnded(event.event_date, event.end_time)) {
-      res.status(400).json({
-        success: false,
-        message: "You cannot book onto an event that has already finished.",
+        message: eligibilityError.message,
       });
       return;
     }
 
     try {
       const [bookedAtDate, bookedAtTime] = getUtcTimestampParts();
-      await scheduleGateway.createEventBooking({
-        eventId: event.id,
-        timestampParts: [bookedAtDate, bookedAtTime],
-        username: actor.username,
-      });
+      if (isLocalPiNode) {
+        await scheduleGateway.createEventBookingWithOutbox({
+          eventId: event.id,
+          eventSyncId: event.sync_id,
+          timestampParts: [bookedAtDate, bookedAtTime],
+          username: actor.username,
+        });
+      } else {
+        await scheduleGateway.createEventBooking({ eventId: event.id, timestampParts: [bookedAtDate, bookedAtTime], username: actor.username });
+      }
 
       if (auditChangeLogger) {
         void auditChangeLogger.recordEntityChange({
@@ -465,6 +445,14 @@ export function registerScheduleRoutes({
         });
       }
     } catch (error) {
+      if (error?.statusCode) {
+        res.status(error.statusCode).json({
+          success: false,
+          message: error.message,
+        });
+        return;
+      }
+
       if (
         error?.message?.includes(
           "UNIQUE constraint failed: event_bookings.club_event_id, event_bookings.member_username",
@@ -477,9 +465,13 @@ export function registerScheduleRoutes({
         return;
       }
 
-      res.status(500).json({
+      const statusCode = error?.code === "23505" ? 409 : 500;
+      res.status(statusCode).json({
         success: false,
-        message: "Unable to book onto this event.",
+        message:
+          statusCode === 409
+            ? "You are already booked onto this event."
+            : "Unable to book onto this event.",
       });
       return;
     }
@@ -521,7 +513,9 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const deleteResult = await scheduleGateway.deleteEventBooking(event.id, actor.id);
+    const deleteResult = isLocalPiNode
+      ? await scheduleGateway.deleteEventBookingWithOutbox({ eventId: event.id, eventSyncId: event.sync_id, username: actor.username })
+      : await scheduleGateway.deleteEventBooking(event.id, actor.id);
 
     if (deleteResult.changes === 0) {
       res.status(404).json({
@@ -935,48 +929,32 @@ export function registerScheduleRoutes({
     }
 
     const session = await scheduleGateway.findCoachingSessionById(req.params.id);
+    const eligibilityError = validateCoachingBookingEligibility({
+      hasScheduleEntryEnded,
+      member: actor,
+      session,
+    });
 
-    if (!session) {
-      res.status(404).json({
+    if (eligibilityError) {
+      res.status(eligibilityError.statusCode).json({
         success: false,
-        message: "Coaching session not found.",
-      });
-      return;
-    }
-
-    if (hasScheduleEntryEnded(session.session_date, session.end_time)) {
-      res.status(400).json({
-        success: false,
-        message: "You cannot book onto a coaching session that has already finished.",
-      });
-      return;
-    }
-
-    if ((session.approval_status ?? "approved") !== "approved") {
-      res.status(400).json({
-        success: false,
-        message: "This coaching session is still awaiting approval.",
+        message: eligibilityError.message,
       });
       return;
     }
 
     try {
-      const existingBookings = await scheduleGateway.listBookingsByCoachingSessionId(session.id);
-
-      if (existingBookings.length >= session.available_slots) {
-        res.status(409).json({
-          success: false,
-          message: "This coaching session is fully booked.",
-        });
-        return;
-      }
-
       const [bookedAtDate, bookedAtTime] = getUtcTimestampParts();
-      await scheduleGateway.createCoachingSessionBooking({
-        sessionId: session.id,
-        timestampParts: [bookedAtDate, bookedAtTime],
-        username: actor.username,
-      });
+      if (isLocalPiNode) {
+        await scheduleGateway.createCoachingSessionBookingWithOutbox({
+          sessionId: session.id,
+          sessionSyncId: session.sync_id,
+          timestampParts: [bookedAtDate, bookedAtTime],
+          username: actor.username,
+        });
+      } else {
+        await scheduleGateway.createCoachingSessionBooking({ sessionId: session.id, timestampParts: [bookedAtDate, bookedAtTime], username: actor.username });
+      }
 
       if (auditChangeLogger) {
         void auditChangeLogger.recordEntityChange({
@@ -1008,9 +986,21 @@ export function registerScheduleRoutes({
         return;
       }
 
-      res.status(500).json({
+      if (error?.code === "COACHING_SESSION_FULL") {
+        res.status(409).json({
+          success: false,
+          message: "This coaching session is fully booked.",
+        });
+        return;
+      }
+
+      const statusCode = error?.code === "23505" ? 409 : 500;
+      res.status(statusCode).json({
         success: false,
-        message: "Unable to book onto this coaching session.",
+        message:
+          statusCode === 409
+            ? "You are already booked onto this coaching session."
+            : "Unable to book onto this coaching session.",
       });
       return;
     }
@@ -1053,7 +1043,9 @@ export function registerScheduleRoutes({
       return;
     }
 
-    const deleteResult = await scheduleGateway.deleteCoachingSessionBooking(session.id, actor.id);
+    const deleteResult = isLocalPiNode
+      ? await scheduleGateway.deleteCoachingSessionBookingWithOutbox({ sessionId: session.id, sessionSyncId: session.sync_id, username: actor.username })
+      : await scheduleGateway.deleteCoachingSessionBooking(session.id, actor.id);
 
     if (deleteResult.changes === 0) {
       res.status(404).json({

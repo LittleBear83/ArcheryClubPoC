@@ -13,20 +13,28 @@ This slice supports:
 - offline member lookup, role/permission lookup, and RFID lookup
 - local sync status inspection
 - systemd-based scheduled sync on the Pi
+- cloud-to-Pi announcements, club events, coaching sessions, and equipment catalogue data
+- local-first Pi event/coaching booking commands with durable acknowledgements or terminal conflicts
 
 This slice does **not** yet make the following domains offline-safe:
 
-- bookings
-- equipment workflows
+- equipment loans, returns, assignments, and storage mutations
 - tournaments
 - member profile editing
 - beginners-course workflows
-- announcements
 - audit log parity
 - guest login sync
 - broader operational/admin domains
 
 Those tables may still exist locally for other reasons, but they are not yet synchronized with domain-specific conflict rules.
+
+Synced operational masters use opaque `sync_id` values. Existing numeric IDs remain
+local database implementation details and are never used as cross-database identities.
+Booking commands use the master `sync_id`, member username, and a stable outbox event
+ID. Cloud acknowledgements retain the outbox record with `acknowledged_at`; deterministic
+rejections are retained with rejection metadata for audit/recovery. Pull writes run with
+`archery.sync.apply_mode=pull`, so imported cloud data cannot create change-log or outbox
+entries.
 
 ## Architecture
 

@@ -132,3 +132,6 @@ await import(
 await import(
   pathToFileURL(path.join(root, "server/presentation/http/registerSyncRoutes.test.js"))
 );
+await import(
+  pathToFileURL(path.join(root, "server/presentation/http/registerScheduleRoutes.test.js"))
+);

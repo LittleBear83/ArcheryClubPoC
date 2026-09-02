@@ -1,7 +1,7 @@
 import process from "node:process";
 import pg from "pg";
 import { serverRuntime } from "../server/config/runtime.js";
-import { applyAuthChanges, applyAuthSnapshot, readSyncStatus, writeSyncAttemptState } from "../server/domain/services/localDatabaseSyncService.js";
+import { applyPulledSyncResponse, readSyncStatus, writeSyncAttemptState } from "../server/domain/services/localDatabaseSyncService.js";
 import { createSyncGateway } from "../server/infrastructure/persistence/syncGateway.js";
 
 const { Pool } = pg;
@@ -124,6 +124,9 @@ async function main() {
             payload: entry.payload,
           })),
         });
+        await syncGateway.rejectOutboxEvents({
+          rejections: pushResponse.rejectedEvents ?? [],
+        });
         await syncGateway.acknowledgeOutboxEvents({
           eventIds: pushResponse.acceptedEventIds ?? [],
         });
@@ -145,40 +148,13 @@ async function main() {
     const applyClient = await pool.connect();
 
     try {
-      await applyClient.query("BEGIN");
-      await applyClient.query(
-        `SELECT set_config('archery.sync.apply_mode', 'pull', true)`,
-      );
-
-      if (pullResponse.mode === "snapshot") {
-        await applyAuthSnapshot({
-          client: applyClient,
-          deactivatedRfidSuffix: process.env.DEACTIVATED_RFID_SUFFIX ?? "-deactivated",
-          snapshot: pullResponse.snapshot,
-        });
-      } else {
-        await applyAuthChanges({
-          changes: pullResponse.changes ?? [],
-          client: applyClient,
-          deactivatedRfidSuffix: process.env.DEACTIVATED_RFID_SUFFIX ?? "-deactivated",
-        });
-      }
-
-      await writeSyncAttemptState({
+      await applyPulledSyncResponse({
         client: applyClient,
+        currentCheckpoint: status.currentCheckpoint,
+        deactivatedRfidSuffix: process.env.DEACTIVATED_RFID_SUFFIX ?? "-deactivated",
+        pullResponse,
         syncGateway,
-        values: {
-          currentCheckpoint: Number(pullResponse.checkpoint ?? status.currentCheckpoint ?? 0),
-          lastError: null,
-          lastSuccessfulAt: new Date().toISOString(),
-          syncServerVersion: pullResponse.serverVersion ?? "sync-v1",
-        },
       });
-
-      await applyClient.query("COMMIT");
-    } catch (error) {
-      await applyClient.query("ROLLBACK");
-      throw error;
     } finally {
       applyClient.release();
     }

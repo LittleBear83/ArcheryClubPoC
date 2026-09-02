@@ -859,6 +859,8 @@ const scheduleGateway = createScheduleGateway({
   pool: db.pool,
   rejectClubEventById,
   rejectCoachingSessionById,
+  syncGateway,
+  syncMachineId: serverRuntime.sync.machineId,
 });
 
 const sqliteAuthAuditStatements =
@@ -4886,6 +4888,16 @@ registerAdminMemberRoutes({
   verifyPassword,
 });
 
+if (serverRuntime.sync.isLocalPiNode) {
+  app.use("/api/equipment", (req, res, next) => {
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+      res.status(503).json({ success: false, message: "Equipment changes are unavailable on the Pi. The equipment catalogue is read-only until equipment operations are synchronised." });
+      return;
+    }
+    next();
+  });
+}
+
 registerEquipmentRoutes({
   actorHasPermission,
   app,
@@ -7113,6 +7125,18 @@ registerTournamentRoutes({
   TOURNAMENT_TYPE_OPTIONS,
   writeFileSync,
 });
+if (serverRuntime.sync.isLocalPiNode) {
+  app.use(["/api/events", "/api/coaching-sessions"], (req, res, next) => {
+    const isBookingCommand = /^\/\d+\/(book|booking)$/.test(req.path)
+      && ["POST", "DELETE"].includes(req.method);
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && !isBookingCommand) {
+      res.status(503).json({ success: false, message: "Schedule administration is cloud-authoritative and unavailable on the Pi." });
+      return;
+    }
+    next();
+  });
+}
+
 registerScheduleRoutes({
   actorHasPermission,
   app,
@@ -7126,6 +7150,7 @@ registerScheduleRoutes({
   getActorUser,
   getUtcTimestampParts,
   hasScheduleEntryEnded,
+  isLocalPiNode: serverRuntime.sync.isLocalPiNode,
   normalizeBookingRow,
   normalizeVenue,
   PERMISSIONS,

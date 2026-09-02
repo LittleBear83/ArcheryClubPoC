@@ -15,3 +15,24 @@ test("beginners course write gateway receives participant deletion support", asy
     /createBeginnersCourseWriteGateway\(\{\s*[\s\S]*?deleteBeginnersCourseParticipant,/,
   );
 });
+
+test("schedule route wiring passes the local Pi flag only to schedule routes", async () => {
+  const source = await readFile(path.join(__dirname, "index.js"), "utf8");
+  const memberQuestionCall = source.slice(
+    source.indexOf("registerMemberQuestionRoutes({"),
+    source.indexOf("registerCommitteeMinutesRoutes({"),
+  );
+  const scheduleCall = source.slice(
+    source.indexOf("registerScheduleRoutes({"),
+    source.indexOf("registerMemberActivityRoutes({"),
+  );
+
+  assert.match(
+    scheduleCall,
+    /isLocalPiNode: serverRuntime\.sync\.isLocalPiNode,/,
+  );
+  assert.doesNotMatch(
+    memberQuestionCall,
+    /isLocalPiNode: serverRuntime\.sync\.isLocalPiNode,/,
+  );
+});

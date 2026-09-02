@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import http from "node:http";
 import { test } from "node:test";
 import express from "express";
@@ -56,7 +57,13 @@ function requestJson(baseUrl, path, { body = null, headers = {}, method = "GET" 
   });
 }
 
-function createSyncTestApp() {
+function createSyncTestApp({
+  bookingOutcome = {
+    accepted: false,
+    code: "event_not_bookable",
+    reason: "The event is not approved for booking.",
+  },
+} = {}) {
   const app = express();
   app.use(express.json());
   const machineAuth = createMachineSyncAuth({
@@ -109,6 +116,9 @@ function createSyncTestApp() {
       },
       async upsertLoginEventFromSync() {
         return undefined;
+      },
+      async processBookingCommand() {
+        return bookingOutcome;
       },
     },
   });
@@ -166,7 +176,7 @@ test("sync routes reject requests with invalid machine credentials", async () =>
   }
 });
 
-test("sync push rejects malformed payloads safely", async () => {
+test("malformed login_event still returns 400", async () => {
   const app = createSyncTestApp();
   const { baseUrl, server } = await startTestServer(app);
 
@@ -195,6 +205,87 @@ test("sync push rejects malformed payloads safely", async () => {
       success: false,
       message: "Malformed sync event payload.",
     });
+  } finally {
+    server.close();
+  }
+});
+
+test("sync push returns terminal booking validation rejections without a 500 retry loop", async () => {
+  const app = createSyncTestApp();
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/sync/v1/push", {
+      body: {
+        events: [
+          {
+            eventId: "event-2",
+            eventType: "event_booking_created",
+            payload: {
+              bookedAtDate: "2026-09-02",
+              bookedAtTime: "10:00:00.000Z",
+              syncId: "event-sync-1",
+              username: "robin",
+            },
+          },
+        ],
+      },
+      headers: {
+        "x-sync-machine-id": "pi-1",
+        "x-sync-machine-secret": "sync-secret",
+      },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, {
+      acceptedEventIds: [],
+      rejectedEvents: [
+        {
+          code: "event_not_bookable",
+          eventId: "event-2",
+          reason: "The event is not approved for booking.",
+        },
+      ],
+      success: true,
+    });
+  } finally {
+    server.close();
+  }
+});
+
+test("booking command with an event ID but missing username receives a terminal rejection", async () => {
+  const app = createSyncTestApp({
+    bookingOutcome: {
+      accepted: false,
+      code: "malformed_booking_command",
+      reason: "A master sync ID and member username are required.",
+    },
+  });
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/sync/v1/push", {
+      body: {
+        events: [{
+          eventId: "booking-missing-username",
+          eventType: "event_booking_created",
+          payload: { syncId: "event-sync-1" },
+        }],
+      },
+      headers: {
+        "x-sync-machine-id": "pi-1",
+        "x-sync-machine-secret": "sync-secret",
+      },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.rejectedEvents, [{
+      code: "malformed_booking_command",
+      eventId: "booking-missing-username",
+      reason: "A master sync ID and member username are required.",
+    }]);
   } finally {
     server.close();
   }

@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { validateCoachingBookingEligibility } from "../../domain/services/scheduleBookingValidation.js";
+
 function normalizeCountLikeResult(result) {
   return {
     changes: Number(result?.changes ?? result?.rowCount ?? 0),
@@ -6,6 +9,28 @@ function normalizeCountLikeResult(result) {
 
 function normalizeInsertId(result) {
   return Number(result?.lastInsertRowid ?? result?.rows?.[0]?.id ?? 0);
+}
+
+function hasScheduleEntryEnded(date, endTime) {
+  if (!date || !endTime) {
+    return false;
+  }
+
+  const endsAt = new Date(`${date}T${endTime}`);
+  return !Number.isNaN(endsAt.getTime()) && endsAt.getTime() < Date.now();
+}
+
+function createBookingEligibilityError(eligibilityError) {
+  const error = new Error(eligibilityError.message);
+  error.code = eligibilityError.code;
+  error.statusCode = eligibilityError.statusCode;
+  return error;
+}
+
+async function querySingleValue(client, sql, values = []) {
+  const result = await client.query(sql, values);
+
+  return result.rows[0] ?? null;
 }
 
 function createSqliteScheduleGateway({
@@ -149,7 +174,145 @@ function createSqliteScheduleGateway({
   };
 }
 
-function createPostgresScheduleGateway({ pool }) {
+function createPostgresScheduleGateway({ pool, syncGateway, syncMachineId }) {
+  async function createBookingCommand({
+    client,
+    eventType,
+    parentSyncId,
+    timestampParts,
+    username,
+  }) {
+    if (!syncGateway || !syncMachineId) {
+      throw new Error("Local booking sync is not configured.");
+    }
+
+    const eventId = randomUUID();
+
+    await client.query(
+      `
+        INSERT INTO sync_local_outbox (
+          event_id,
+          event_type,
+          aggregate_key,
+          payload_json
+        )
+        VALUES ($1, $2, $3, $4::jsonb)
+      `,
+      [
+        eventId,
+        eventType,
+        `${parentSyncId}:${String(username).trim().toLowerCase()}`,
+        JSON.stringify({
+          syncId: parentSyncId,
+          username,
+          bookedAtDate: timestampParts[0],
+          bookedAtTime: timestampParts[1],
+        }),
+      ],
+    );
+  }
+
+  async function insertCoachingBooking({
+    client,
+    sessionId,
+    timestampParts,
+    username,
+  }) {
+    const session = await querySingleValue(
+      client,
+      `
+        SELECT *
+        FROM coaching_sessions
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [sessionId],
+    );
+
+    if (!session) {
+      const error = new Error("Coaching session not found.");
+      error.code = "coaching_session_not_found";
+      error.statusCode = 404;
+      throw error;
+    }
+
+    const member = await querySingleValue(
+      client,
+      `
+        SELECT id, active_member
+        FROM users
+        WHERE LOWER(username) = LOWER($1)
+        LIMIT 1
+      `,
+      [username],
+    );
+    const eligibilityError = validateCoachingBookingEligibility({
+      hasScheduleEntryEnded,
+      member,
+      session,
+    });
+
+    if (eligibilityError) {
+      throw createBookingEligibilityError(eligibilityError);
+    }
+
+    const existing = await querySingleValue(
+      client,
+      `
+        SELECT 1
+        FROM coaching_session_bookings
+        WHERE coaching_session_id = $1
+          AND member_username = $2
+        LIMIT 1
+      `,
+      [sessionId, username],
+    );
+
+    if (existing) {
+      const duplicateError = new Error(
+        "duplicate key value violates unique constraint coaching_session_bookings",
+      );
+      duplicateError.code = "23505";
+      throw duplicateError;
+    }
+
+    const countRow = await querySingleValue(
+      client,
+      `
+        SELECT COUNT(*)::int AS count
+        FROM coaching_session_bookings
+        WHERE coaching_session_id = $1
+      `,
+      [sessionId],
+    );
+
+    if (Number(countRow?.count ?? 0) >= Number(session.available_slots ?? 0)) {
+      const capacityError = new Error("This coaching session is fully booked.");
+      capacityError.code = "COACHING_SESSION_FULL";
+      throw capacityError;
+    }
+
+    await client.query(
+      `
+        INSERT INTO coaching_session_bookings (
+          coaching_session_id,
+          member_username,
+          booked_at_date,
+          booked_at_time,
+          member_user_id
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5
+        )
+      `,
+      [sessionId, username, ...timestampParts, member.id],
+    );
+  }
+
   return {
     async approveClubEvent({ actorUsername, eventId, timestampParts }) {
       await pool.query(
@@ -281,19 +444,89 @@ function createPostgresScheduleGateway({ pool }) {
         [eventId, username, ...timestampParts],
       );
     },
+    async createEventBookingWithOutbox({ eventId, eventSyncId, timestampParts, username }) {
+      const client = await pool.connect();
+
+      try {
+        await client.query("BEGIN");
+        await client.query(
+          `
+            INSERT INTO event_bookings (
+              club_event_id,
+              member_username,
+              booked_at_date,
+              booked_at_time,
+              member_user_id
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4,
+              (SELECT id FROM users WHERE LOWER(username) = LOWER($2) LIMIT 1)
+            )
+          `,
+          [eventId, username, ...timestampParts],
+        );
+        await createBookingCommand({
+          client,
+          eventType: "event_booking_created",
+          parentSyncId: eventSyncId,
+          timestampParts,
+          username,
+        });
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async createCoachingSessionBooking({ sessionId, timestampParts, username }) {
-      await pool.query(
-        `
-          INSERT INTO coaching_session_bookings (
-            coaching_session_id,
-            member_username,
-            booked_at_date,
-            booked_at_time
-          )
-          VALUES ($1, $2, $3, $4)
-        `,
-        [sessionId, username, ...timestampParts],
-      );
+      const client = await pool.connect();
+
+      try {
+        await client.query("BEGIN");
+        await insertCoachingBooking({
+          client,
+          sessionId,
+          timestampParts,
+          username,
+        });
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async createCoachingSessionBookingWithOutbox({ sessionId, sessionSyncId, timestampParts, username }) {
+      const client = await pool.connect();
+
+      try {
+        await client.query("BEGIN");
+        await insertCoachingBooking({
+          client,
+          sessionId,
+          timestampParts,
+          username,
+        });
+        await createBookingCommand({
+          client,
+          eventType: "coaching_booking_created",
+          parentSyncId: sessionSyncId,
+          timestampParts,
+          username,
+        });
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     },
     async deleteClubEventCascade(eventId) {
       const client = await pool.connect();
@@ -324,6 +557,39 @@ function createPostgresScheduleGateway({ pool }) {
 
       return normalizeCountLikeResult(result);
     },
+    async deleteCoachingSessionBookingWithOutbox({ sessionId, sessionSyncId, username }) {
+      const client = await pool.connect();
+
+      try {
+        await client.query("BEGIN");
+        const result = await client.query(
+          `
+            DELETE FROM coaching_session_bookings
+            WHERE coaching_session_id = $1
+              AND member_username = $2
+          `,
+          [sessionId, username],
+        );
+
+        if (result.rowCount) {
+          await createBookingCommand({
+            client,
+            eventType: "coaching_booking_withdrawn",
+            parentSyncId: sessionSyncId,
+            timestampParts: ["", ""],
+            username,
+          });
+        }
+
+        await client.query("COMMIT");
+        return normalizeCountLikeResult(result);
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async deleteCoachingSessionCascade(sessionId) {
       const client = await pool.connect();
 
@@ -353,11 +619,45 @@ function createPostgresScheduleGateway({ pool }) {
 
       return normalizeCountLikeResult(result);
     },
+    async deleteEventBookingWithOutbox({ eventId, eventSyncId, username }) {
+      const client = await pool.connect();
+
+      try {
+        await client.query("BEGIN");
+        const result = await client.query(
+          `
+            DELETE FROM event_bookings
+            WHERE club_event_id = $1
+              AND member_username = $2
+          `,
+          [eventId, username],
+        );
+
+        if (result.rowCount) {
+          await createBookingCommand({
+            client,
+            eventType: "event_booking_withdrawn",
+            parentSyncId: eventSyncId,
+            timestampParts: ["", ""],
+            username,
+          });
+        }
+
+        await client.query("COMMIT");
+        return normalizeCountLikeResult(result);
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async findClubEventById(id) {
       const result = await pool.query(
         `
           SELECT
             id,
+            sync_id,
             event_date,
             start_time,
             end_time,
@@ -390,6 +690,7 @@ function createPostgresScheduleGateway({ pool }) {
         `
           SELECT
             coaching_sessions.id,
+            coaching_sessions.sync_id,
             coaching_sessions.coach_username,
             coaching_sessions.session_date,
             coaching_sessions.start_time,
@@ -477,6 +778,7 @@ function createPostgresScheduleGateway({ pool }) {
         `
           SELECT
             id,
+            sync_id,
             event_date,
             start_time,
             end_time,

@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runPostgresMigrations } from "./runPostgresMigrations.js";
 import { migration as fixSyncChangeTriggerMigration } from "./postgresMigrations/004_fix_sync_change_trigger.js";
+import { migration as operationalSyncMigration } from "./postgresMigrations/005_operational_sync.js";
 
 const NUMBERED_MIGRATION_VERSIONS = [
   "002_sync_foundation",
   "003_sync_login_event_external_ids",
   "004_fix_sync_change_trigger",
+  "005_operational_sync",
 ];
 
 function createPoolDouble({
@@ -207,6 +209,26 @@ test("004 sync trigger derives keys from JSON payloads for every synchronized ta
     ),
     "admin:manage_users",
   );
+});
+
+test("005 custom operational sync triggers suppress pull and maintenance changes", () => {
+  const customFunctions = [
+    "append_sync_event_booking_change_log",
+    "append_sync_coaching_booking_change_log",
+    "append_sync_equipment_item_change_log",
+  ];
+  const expectedGuard = "current_setting('archery.sync.apply_mode', true) IN ('pull', 'maintenance')";
+
+  for (const functionName of customFunctions) {
+    const functionSql = operationalSyncMigration.statements.find((statement) =>
+      statement.includes(`FUNCTION ${functionName}()`),
+    );
+
+    assert.ok(functionSql, `${functionName} migration statement is present`);
+    assert.ok(functionSql.includes(expectedGuard), `${functionName} suppresses pull and maintenance`);
+    assert.match(functionSql, /IF TG_OP = 'DELETE' THEN\s+RETURN OLD;/);
+    assert.match(functionSql, /RETURN NEW;/);
+  }
 });
 
 test("004 repairs an upgraded database before bootstrap updates can invoke the old trigger", async () => {

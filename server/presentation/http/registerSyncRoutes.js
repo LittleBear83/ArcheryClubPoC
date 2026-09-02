@@ -111,6 +111,7 @@ export function registerSyncRoutes({
     }
 
     const acceptedEventIds = [];
+    const rejectedEvents = [];
     const client = await syncGateway.pool.connect();
 
     try {
@@ -118,12 +119,8 @@ export function registerSyncRoutes({
 
       for (const event of events) {
         if (
-          event?.eventType !== "login_event" ||
-          typeof event?.eventId !== "string" ||
-          typeof event?.payload?.username !== "string" ||
-          typeof event?.payload?.loginMethod !== "string" ||
-          typeof event?.payload?.loggedInDate !== "string" ||
-          typeof event?.payload?.loggedInTime !== "string"
+          !["login_event", "event_booking_created", "event_booking_withdrawn", "coaching_booking_created", "coaching_booking_withdrawn"].includes(event?.eventType) ||
+          typeof event?.eventId !== "string"
         ) {
           res.status(400).json({
             success: false,
@@ -133,16 +130,28 @@ export function registerSyncRoutes({
           return;
         }
 
-        await syncGateway.upsertLoginEventFromSync({
-          client,
-          eventId: event.eventId,
-          loggedInDate: event.payload.loggedInDate,
-          loggedInTime: event.payload.loggedInTime,
-          loginMethod: event.payload.loginMethod,
-          machineId: req.syncMachine.machineId,
-          username: event.payload.username,
-        });
-        acceptedEventIds.push(event.eventId);
+        if (event.eventType === "login_event") {
+          if (
+            typeof event.payload?.username !== "string"
+            ||
+            typeof event.payload.loginMethod !== "string"
+            || typeof event.payload.loggedInDate !== "string"
+            || typeof event.payload.loggedInTime !== "string"
+          ) {
+            res.status(400).json({
+              success: false,
+              message: "Malformed sync event payload.",
+            });
+            await client.query("ROLLBACK");
+            return;
+          }
+          await syncGateway.upsertLoginEventFromSync({ client, eventId: event.eventId, loggedInDate: event.payload.loggedInDate, loggedInTime: event.payload.loggedInTime, loginMethod: event.payload.loginMethod, machineId: req.syncMachine.machineId, username: event.payload.username });
+          acceptedEventIds.push(event.eventId);
+        } else {
+          const outcome = await syncGateway.processBookingCommand({ client, event, machineId: req.syncMachine.machineId });
+          if (outcome.accepted) acceptedEventIds.push(event.eventId);
+          else rejectedEvents.push({ eventId: event.eventId, code: outcome.code, reason: outcome.reason });
+        }
       }
 
       await client.query("COMMIT");
@@ -153,6 +162,7 @@ export function registerSyncRoutes({
       res.json({
         success: true,
         acceptedEventIds,
+        rejectedEvents,
       });
     } catch (error) {
       await client.query("ROLLBACK");

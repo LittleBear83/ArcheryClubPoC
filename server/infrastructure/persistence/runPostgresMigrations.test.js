@@ -1,9 +1,23 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runPostgresMigrations } from "./runPostgresMigrations.js";
+import { migration as fixSyncChangeTriggerMigration } from "./postgresMigrations/004_fix_sync_change_trigger.js";
 
-function createPoolDouble({ schemaApplied = true } = {}) {
+const NUMBERED_MIGRATION_VERSIONS = [
+  "002_sync_foundation",
+  "003_sync_login_event_external_ids",
+  "004_fix_sync_change_trigger",
+];
+
+function createPoolDouble({
+  appliedVersions = NUMBERED_MIGRATION_VERSIONS,
+  schemaApplied = true,
+} = {}) {
   const queries = [];
+  const appliedVersionSet = new Set([
+    ...(schemaApplied ? ["001_initial_schema"] : []),
+    ...appliedVersions,
+  ]);
   const client = {
     async query(sql, values) {
       const normalizedSql = String(sql).trim().replace(/\s+/g, " ");
@@ -11,7 +25,7 @@ function createPoolDouble({ schemaApplied = true } = {}) {
 
       if (normalizedSql.includes("FROM schema_migrations")) {
         return {
-          rowCount: schemaApplied ? 1 : 0,
+          rowCount: appliedVersionSet.has(values?.[0]) ? 1 : 0,
           rows: [],
         };
       }
@@ -139,4 +153,130 @@ test("runPostgresMigrations still seeds initial schema when missing", async () =
         entry.values[0] === "001_initial_schema",
     ),
   );
+});
+
+function deriveRecordKey(payload, keyStrategy) {
+  if (keyStrategy === "__composite__") {
+    return [payload.username, payload.discipline].filter(Boolean).join(":");
+  }
+
+  if (keyStrategy === "__role_permission__") {
+    return [payload.role_key, payload.permission_key].filter(Boolean).join(":");
+  }
+
+  return payload[keyStrategy] ?? "";
+}
+
+function buildExpectedChange({ key, operation, payload }) {
+  return {
+    operation: operation === "DELETE" ? "delete" : "upsert",
+    payload,
+    recordKey: deriveRecordKey(payload, key),
+  };
+}
+
+test("004 sync trigger derives keys from JSON payloads for every synchronized table shape", () => {
+  const triggerSql = fixSyncChangeTriggerMigration.statements[0];
+
+  assert.match(triggerSql, /next_payload := to_jsonb\(OLD\)/);
+  assert.match(triggerSql, /next_payload := to_jsonb\(NEW\)/);
+  assert.doesNotMatch(triggerSql, /\b(?:OLD|NEW)\.(?:username|discipline|role_key|permission_key)\b/);
+  assert.match(triggerSql, /'maintenance'/);
+
+  const cases = [
+    { expectedOperation: "upsert", key: "username", operation: "INSERT", payload: { username: "robin" }, table: "users" },
+    { expectedOperation: "upsert", key: "username", operation: "UPDATE", payload: { user_type: "admin", username: "robin" }, table: "user_types" },
+    { expectedOperation: "upsert", key: "__composite__", operation: "INSERT", payload: { discipline: "Recurve", username: "robin" }, table: "user_disciplines" },
+    { expectedOperation: "upsert", key: "role_key", operation: "UPDATE", payload: { role_key: "admin" }, table: "roles" },
+    { expectedOperation: "upsert", key: "permission_key", operation: "INSERT", payload: { permission_key: "manage_users" }, table: "permissions" },
+    { expectedOperation: "delete", key: "__role_permission__", operation: "DELETE", payload: { permission_key: "manage_users", role_key: "admin" }, table: "role_permissions" },
+  ];
+
+  for (const entry of cases) {
+    const change = buildExpectedChange(entry);
+    assert.notEqual(change.recordKey, "", entry.table);
+    assert.equal(change.operation, entry.expectedOperation, entry.table);
+    assert.deepEqual(change.payload, entry.payload, entry.table);
+  }
+
+  // A role-permission delete uses OLD, but its JSON shape is still complete.
+  assert.equal(
+    deriveRecordKey(
+      { permission_key: "manage_users", role_key: "admin" },
+      "__role_permission__",
+    ),
+    "admin:manage_users",
+  );
+});
+
+test("004 repairs an upgraded database before bootstrap updates can invoke the old trigger", async () => {
+  const { pool, queries } = createPoolDouble({
+    appliedVersions: ["002_sync_foundation", "003_sync_login_event_external_ids"],
+  });
+
+  await runPostgresMigrations({
+    committeeRoleSeed: [],
+    defaultEquipmentCupboardLabel: "Main Cupboard",
+    permissionDefinitions: [],
+    pool,
+    seedUsers: [],
+    systemRoleDefinitions: [],
+  });
+
+  const repairIndex = queries.findIndex((entry) =>
+    entry.sql.includes("CREATE OR REPLACE FUNCTION append_sync_change_log()"),
+  );
+  const maintenanceModeIndex = queries.findIndex((entry) =>
+    entry.sql.includes("set_config('archery.sync.apply_mode', 'maintenance', true)"),
+  );
+  const usersUpdateIndex = queries.findIndex((entry) =>
+    entry.sql.startsWith("UPDATE users SET membership_status"),
+  );
+
+  assert.ok(repairIndex > -1);
+  assert.ok(maintenanceModeIndex > repairIndex);
+  assert.ok(usersUpdateIndex > maintenanceModeIndex);
+});
+
+test("fresh databases repair the trigger before seed writes and suppress startup change noise", async () => {
+  const { pool, queries } = createPoolDouble({
+    appliedVersions: [],
+    schemaApplied: false,
+  });
+
+  await runPostgresMigrations({
+    committeeRoleSeed: [],
+    defaultEquipmentCupboardLabel: "Main Cupboard",
+    permissionDefinitions: [],
+    pool,
+    seedUsers: [
+      {
+        activeMember: true,
+        coachingVolunteer: false,
+        disciplines: [],
+        firstName: "Alice",
+        membershipFeesDue: "2026-12-31",
+        password: "hashed",
+        rfidTag: "TAG-1",
+        surname: "Example",
+        userType: "admin",
+        username: "alice",
+      },
+    ],
+    systemRoleDefinitions: [],
+  });
+
+  const repairIndex = queries.findIndex((entry) =>
+    entry.sql.includes("CREATE OR REPLACE FUNCTION append_sync_change_log()"),
+  );
+  const maintenanceModeIndex = queries.findIndex((entry) =>
+    entry.sql.includes("set_config('archery.sync.apply_mode', 'maintenance', true)"),
+  );
+  const firstUserSeedIndex = queries.findIndex((entry) =>
+    entry.sql.includes("INSERT INTO users"),
+  );
+
+  assert.ok(repairIndex > -1);
+  assert.ok(maintenanceModeIndex > repairIndex);
+  assert.ok(firstUserSeedIndex > maintenanceModeIndex);
 });

@@ -117,6 +117,16 @@ function createSyncTestApp({
       async upsertLoginEventFromSync() {
         return undefined;
       },
+      async upsertGuestLoginEventFromSync() {
+        return undefined;
+      },
+      async processRangePresenceCommand() {
+        return {
+          accepted: false,
+          code: "range_presence_conflict",
+          reason: "The range presence extension is stale and must be refreshed from cloud state.",
+        };
+      },
       async processBookingCommand() {
         return bookingOutcome;
       },
@@ -286,6 +296,83 @@ test("booking command with an event ID but missing username receives a terminal 
       eventId: "booking-missing-username",
       reason: "A master sync ID and member username are required.",
     }]);
+  } finally {
+    server.close();
+  }
+});
+
+test("malformed guest_login_event still returns 400", async () => {
+  const app = createSyncTestApp();
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/sync/v1/push", {
+      body: {
+        events: [
+          {
+            eventId: "guest-1",
+            eventType: "guest_login_event",
+            payload: {
+              firstName: "Robin",
+            },
+          },
+        ],
+      },
+      headers: {
+        "x-sync-machine-id": "pi-1",
+        "x-sync-machine-secret": "sync-secret",
+      },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(response.body, {
+      success: false,
+      message: "Malformed sync event payload.",
+    });
+  } finally {
+    server.close();
+  }
+});
+
+test("presence command returns terminal conflict details without retrying forever", async () => {
+  const app = createSyncTestApp();
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/sync/v1/push", {
+      body: {
+        events: [
+          {
+            eventId: "presence-1",
+            eventType: "range_presence_extension_upsert",
+            payload: {
+              activeUntilDate: "2026-09-03",
+              activeUntilTime: "20:00:00",
+              expectedVersion: 0,
+              updatedAtDate: "2026-09-03",
+              updatedAtTime: "18:00:00",
+              updatedByUsername: "robin",
+              username: "robin",
+            },
+          },
+        ],
+      },
+      headers: {
+        "x-sync-machine-id": "pi-1",
+        "x-sync-machine-secret": "sync-secret",
+      },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.rejectedEvents, [
+      {
+        code: "range_presence_conflict",
+        eventId: "presence-1",
+        reason: "The range presence extension is stale and must be refreshed from cloud state.",
+      },
+    ]);
   } finally {
     server.close();
   }

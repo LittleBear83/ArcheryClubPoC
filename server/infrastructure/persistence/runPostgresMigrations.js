@@ -2,7 +2,7 @@ import { getDefaultGeneralInfoContent } from "../../../shared/generalInfoDefault
 import { getDefaultRangeRulesContent } from "../../../shared/rangeRulesDefaults.js";
 import { postgresMigrations } from "./postgresMigrations/index.js";
 
-function buildInitialSchemaSql() {
+export function buildInitialSchemaSql() {
   return `
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version TEXT PRIMARY KEY,

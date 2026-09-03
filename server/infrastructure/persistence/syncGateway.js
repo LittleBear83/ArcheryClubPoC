@@ -18,6 +18,13 @@ const SYNCED_DOMAINS = new Set([
   "announcements",
   "equipment_storage_locations",
   "equipment_items",
+  "login_events",
+  "guest_login_events",
+  "range_presence_extensions",
+  "beginners_courses",
+  "beginners_course_participants",
+  "beginners_course_lessons",
+  "beginners_course_lesson_coaches",
 ]);
 
 function hasScheduleEntryEnded(date, endTime) {
@@ -99,6 +106,19 @@ function isBookingEventType(eventType) {
     "coaching_booking_created",
     "coaching_booking_withdrawn",
   ].includes(eventType);
+}
+
+function isPresenceEventType(eventType) {
+  return eventType === "range_presence_extension_upsert";
+}
+
+function normalizeNullableText(value) {
+  if (value == null) {
+    return null;
+  }
+
+  const normalized = String(value).trim();
+  return normalized === "" ? null : normalized;
 }
 
 async function insertCoachingBookingAtomically({
@@ -310,6 +330,252 @@ export function createSyncGateway({ pool }) {
 
       return eventId;
     },
+    async enqueueGuestLoginEvent({
+      client = pool,
+      eventId = randomUUID(),
+      firstName,
+      surname,
+      archeryGbMembershipNumber,
+      invitedByUsername,
+      invitedByName,
+      paymentMethod,
+      loggedInDate,
+      loggedInTime,
+      machineId,
+      sourceNodeMode,
+    }) {
+      const ownsClient = typeof client.connect === "function";
+      const queryClient = ownsClient ? await client.connect() : client;
+
+      try {
+        if (ownsClient) {
+          await queryClient.query("BEGIN");
+        }
+
+        await queryClient.query(
+          `
+            INSERT INTO guest_login_events (
+              first_name,
+              surname,
+              archery_gb_membership_number,
+              invited_by_username,
+              invited_by_name,
+              payment_method,
+              invited_by_user_id,
+              logged_in_date,
+              logged_in_time,
+              sync_event_id,
+              sync_source_machine_id
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6,
+              (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1),
+              $7,
+              $8,
+              $9,
+              $10
+            )
+            ON CONFLICT (sync_event_id) DO NOTHING
+          `,
+          [
+            firstName,
+            surname,
+            archeryGbMembershipNumber,
+            invitedByUsername ?? null,
+            invitedByName ?? null,
+            paymentMethod,
+            loggedInDate,
+            loggedInTime,
+            eventId,
+            machineId || null,
+          ],
+        );
+
+        if (sourceNodeMode === "local-pi" && machineId) {
+          await queryClient.query(
+            `
+              INSERT INTO sync_local_outbox (
+                event_id,
+                event_type,
+                aggregate_key,
+                payload_json
+              )
+              VALUES ($1, $2, $3, $4::jsonb)
+              ON CONFLICT (event_id) DO NOTHING
+            `,
+            [
+              eventId,
+              "guest_login_event",
+              `${String(surname).trim().toLowerCase()}:${loggedInDate}:${loggedInTime}`,
+              JSON.stringify({
+                archeryGbMembershipNumber,
+                eventId,
+                firstName,
+                invitedByName: invitedByName ?? "",
+                invitedByUsername: invitedByUsername ?? "",
+                loggedInDate,
+                loggedInTime,
+                paymentMethod,
+                surname,
+              }),
+            ],
+          );
+        }
+
+        if (ownsClient) {
+          await queryClient.query("COMMIT");
+        }
+      } catch (error) {
+        if (ownsClient) {
+          await queryClient.query("ROLLBACK");
+        }
+        throw error;
+      } finally {
+        if (ownsClient) {
+          queryClient.release();
+        }
+      }
+
+      return eventId;
+    },
+    async enqueueRangePresenceExtensionCommand({
+      activeUntilDate,
+      activeUntilTime,
+      client = pool,
+      eventId = randomUUID(),
+      expectedVersion,
+      updatedAtDate,
+      updatedAtTime,
+      updatedByUsername,
+      username,
+    }) {
+      const queryClient = await client.connect();
+
+      try {
+        await queryClient.query("BEGIN");
+
+        const pending = await querySingleValue(
+          queryClient,
+          `
+            SELECT event_id
+            FROM sync_local_outbox
+            WHERE aggregate_key = $1
+              AND event_type = 'range_presence_extension_upsert'
+              AND acknowledged_at IS NULL
+              AND rejected_at IS NULL
+            LIMIT 1
+          `,
+          [String(username).trim().toLowerCase()],
+        );
+
+        if (pending) {
+          await queryClient.query("ROLLBACK");
+          return {
+            accepted: false,
+            code: "presence_update_pending",
+            reason: "A previous range presence update is still waiting to sync.",
+          };
+        }
+
+        const previousState = await querySingleValue(
+          queryClient,
+          `
+            SELECT
+              active_until_date,
+              active_until_time,
+              sync_version,
+              updated_at_date,
+              updated_at_time,
+              updated_by_username
+            FROM range_presence_extensions
+            WHERE LOWER(username) = LOWER($1)
+            LIMIT 1
+          `,
+          [username],
+        );
+
+        await queryClient.query(
+          `
+            INSERT INTO range_presence_extensions (
+              username,
+              active_until_date,
+              active_until_time,
+              updated_by_username,
+              updated_at_date,
+              updated_at_time,
+              sync_version
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (username) DO UPDATE SET
+              active_until_date = EXCLUDED.active_until_date,
+              active_until_time = EXCLUDED.active_until_time,
+              updated_by_username = EXCLUDED.updated_by_username,
+              updated_at_date = EXCLUDED.updated_at_date,
+              updated_at_time = EXCLUDED.updated_at_time
+          `,
+          [
+            username,
+            activeUntilDate,
+            activeUntilTime,
+            updatedByUsername,
+            updatedAtDate,
+            updatedAtTime,
+            Number(previousState?.sync_version ?? expectedVersion ?? 0),
+          ],
+        );
+
+        await queryClient.query(
+          `
+            INSERT INTO sync_local_outbox (
+              event_id,
+              event_type,
+              aggregate_key,
+              payload_json
+            )
+            VALUES ($1, $2, $3, $4::jsonb)
+            ON CONFLICT (event_id) DO NOTHING
+          `,
+          [
+            eventId,
+            "range_presence_extension_upsert",
+            String(username).trim().toLowerCase(),
+            JSON.stringify({
+              activeUntilDate,
+              activeUntilTime,
+              eventId,
+              expectedVersion,
+              previousState: previousState
+                ? {
+                    activeUntilDate: previousState.active_until_date,
+                    activeUntilTime: previousState.active_until_time,
+                    syncVersion: Number(previousState.sync_version ?? 0),
+                    updatedAtDate: previousState.updated_at_date,
+                    updatedAtTime: previousState.updated_at_time,
+                    updatedByUsername: previousState.updated_by_username,
+                  }
+                : null,
+              updatedAtDate,
+              updatedAtTime,
+              updatedByUsername,
+              username,
+            }),
+          ],
+        );
+
+        await queryClient.query("COMMIT");
+        return { accepted: true, eventId };
+      } catch (error) {
+        await queryClient.query("ROLLBACK");
+        throw error;
+      } finally {
+        queryClient.release();
+      }
+    },
     async getAuthSnapshot(client = pool) {
       const snapshotClient = client;
       const users = await snapshotClient.query(
@@ -416,6 +682,79 @@ export function createSyncGateway({ pool }) {
           ORDER BY equipment_items.sync_id ASC
         `,
       );
+      const loginEvents = await snapshotClient.query(
+        `
+          SELECT *
+          FROM login_events
+          ORDER BY logged_in_date ASC, logged_in_time ASC, id ASC
+        `,
+      );
+      const guestLoginEvents = await snapshotClient.query(
+        `
+          SELECT *
+          FROM guest_login_events
+          ORDER BY logged_in_date ASC, logged_in_time ASC, id ASC
+        `,
+      );
+      const rangePresenceExtensions = await snapshotClient.query(
+        `
+          SELECT *
+          FROM range_presence_extensions
+          ORDER BY username ASC
+        `,
+      );
+      const beginnersCourses = await snapshotClient.query(
+        `
+          SELECT
+            sync_id, course_type, coordinator_username, submitted_by_username,
+            first_lesson_date, start_time, end_time, lesson_count, beginner_capacity,
+            approval_status, is_cancelled, cancellation_reason, cancelled_by_username,
+            cancelled_at_date, cancelled_at_time, rejection_reason, approved_by_username,
+            approved_at_date, approved_at_time, created_at_date, created_at_time
+          FROM beginners_courses
+          ORDER BY first_lesson_date ASC, start_time ASC, id ASC
+        `,
+      );
+      const beginnersCourseParticipants = await snapshotClient.query(
+        `
+          SELECT
+            participants.sync_id,
+            participants.username, participants.first_name, participants.surname,
+            participants.beginner_size_category, participants.height_text,
+            participants.draw_length, participants.handedness, participants.eye_dominance,
+            participants.initial_email_sent, participants.thirty_day_reminder_sent,
+            participants.course_fee_paid, participants.origin_course_type,
+            participants.converted_to_member, participants.converted_at_date,
+            participants.converted_at_time, participants.converted_by_username,
+            participants.assigned_case_by_username, participants.assigned_case_at_date,
+            participants.assigned_case_at_time, participants.created_at_date,
+            participants.created_at_time, participants.created_by_username,
+            courses.sync_id AS course_sync_id
+          FROM beginners_course_participants AS participants
+          INNER JOIN beginners_courses AS courses
+            ON courses.id = participants.course_id
+          ORDER BY participants.course_id ASC, participants.surname ASC, participants.first_name ASC, participants.id ASC
+        `,
+      );
+      const beginnersCourseLessons = await snapshotClient.query(
+        `
+          SELECT lessons.sync_id, lessons.lesson_number, lessons.lesson_date,
+            lessons.start_time, lessons.end_time, courses.sync_id AS course_sync_id
+          FROM beginners_course_lessons AS lessons
+          INNER JOIN beginners_courses AS courses ON courses.id = lessons.course_id
+          ORDER BY courses.sync_id ASC, lessons.lesson_number ASC
+        `,
+      );
+      const beginnersCourseLessonCoaches = await snapshotClient.query(
+        `
+          SELECT coaches.coach_username, coaches.assigned_by_username,
+            coaches.assigned_at_date, coaches.assigned_at_time,
+            lessons.sync_id AS lesson_sync_id
+          FROM beginners_course_lesson_coaches AS coaches
+          INNER JOIN beginners_course_lessons AS lessons ON lessons.id = coaches.lesson_id
+          ORDER BY lessons.sync_id ASC, coaches.coach_username ASC
+        `,
+      );
       const checkpointRow = await querySingleValue(
         snapshotClient,
         `SELECT COALESCE(MAX(change_id), 0) AS checkpoint FROM sync_change_log`,
@@ -431,6 +770,13 @@ export function createSyncGateway({ pool }) {
           equipmentItems: equipmentItems.rows,
           equipmentStorageLocations: equipmentStorageLocations.rows,
           eventBookings: eventBookings.rows,
+          guestLoginEvents: guestLoginEvents.rows,
+          loginEvents: loginEvents.rows,
+          rangePresenceExtensions: rangePresenceExtensions.rows,
+          beginnersCourses: beginnersCourses.rows,
+          beginnersCourseParticipants: beginnersCourseParticipants.rows,
+          beginnersCourseLessons: beginnersCourseLessons.rows,
+          beginnersCourseLessonCoaches: beginnersCourseLessonCoaches.rows,
           permissions: permissions.rows,
           rolePermissions: rolePermissions.rows,
           roles: roles.rows,
@@ -578,7 +924,67 @@ export function createSyncGateway({ pool }) {
           ],
         );
 
-        if (!updatedRow || !isBookingEventType(updatedRow.event_type)) {
+        if (!updatedRow) {
+          continue;
+        }
+
+        if (isPresenceEventType(updatedRow.event_type)) {
+          // A conflict means Cloud has a newer authoritative value. Leave the
+          // optimistic row alone until the following pull replaces it.
+          if (rejection.code === "range_presence_conflict") {
+            continue;
+          }
+          const username = updatedRow.payload_json?.username;
+          const previousState = updatedRow.payload_json?.previousState ?? null;
+
+          if (!username) {
+            continue;
+          }
+
+          if (previousState) {
+            await client.query(
+              `
+                INSERT INTO range_presence_extensions (
+                  username,
+                  active_until_date,
+                  active_until_time,
+                  updated_by_username,
+                  updated_at_date,
+                  updated_at_time,
+                  sync_version
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                ON CONFLICT (username) DO UPDATE SET
+                  active_until_date = EXCLUDED.active_until_date,
+                  active_until_time = EXCLUDED.active_until_time,
+                  updated_by_username = EXCLUDED.updated_by_username,
+                  updated_at_date = EXCLUDED.updated_at_date,
+                  updated_at_time = EXCLUDED.updated_at_time,
+                  sync_version = EXCLUDED.sync_version
+              `,
+              [
+                username,
+                previousState.activeUntilDate,
+                previousState.activeUntilTime,
+                previousState.updatedByUsername,
+                previousState.updatedAtDate,
+                previousState.updatedAtTime,
+                Number(previousState.syncVersion ?? 0),
+              ],
+            );
+          } else {
+            await client.query(
+              `
+                DELETE FROM range_presence_extensions
+                WHERE LOWER(username) = LOWER($1)
+              `,
+              [username],
+            );
+          }
+          continue;
+        }
+
+        if (!isBookingEventType(updatedRow.event_type)) {
           continue;
         }
 
@@ -744,6 +1150,21 @@ export function createSyncGateway({ pool }) {
       machineId,
       username,
     }) {
+      const existing = await querySingleValue(
+        client,
+        `
+          SELECT id
+          FROM login_events
+          WHERE sync_event_id = $1
+          LIMIT 1
+        `,
+        [eventId],
+      );
+
+      if (existing) {
+        return;
+      }
+
       await client.query(
         `
           INSERT INTO login_events (
@@ -775,6 +1196,187 @@ export function createSyncGateway({ pool }) {
           machineId,
         ],
       );
+    },
+    async upsertGuestLoginEventFromSync({
+      client = pool,
+      eventId,
+      firstName,
+      surname,
+      archeryGbMembershipNumber,
+      invitedByUsername,
+      invitedByName,
+      paymentMethod,
+      loggedInDate,
+      loggedInTime,
+      machineId,
+    }) {
+      const existing = await querySingleValue(
+        client,
+        `
+          SELECT id
+          FROM guest_login_events
+          WHERE sync_event_id = $1
+          LIMIT 1
+        `,
+        [eventId],
+      );
+
+      if (existing) {
+        return;
+      }
+
+      await client.query(
+        `
+          INSERT INTO guest_login_events (
+            first_name,
+            surname,
+            archery_gb_membership_number,
+            invited_by_username,
+            invited_by_name,
+            payment_method,
+            invited_by_user_id,
+            logged_in_date,
+            logged_in_time,
+            sync_event_id,
+            sync_source_machine_id
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1),
+            $7,
+            $8,
+            $9,
+            $10
+          )
+          ON CONFLICT (sync_event_id) DO NOTHING
+        `,
+        [
+          firstName,
+          surname,
+          archeryGbMembershipNumber,
+          invitedByUsername ?? null,
+          invitedByName ?? null,
+          paymentMethod,
+          loggedInDate,
+          loggedInTime,
+          eventId,
+          machineId ?? null,
+        ],
+      );
+    },
+    async processRangePresenceCommand({ client = pool, event, machineId }) {
+      const prior = await querySingleValue(
+        client,
+        `SELECT outcome_json FROM sync_received_commands WHERE event_id = $1`,
+        [event.eventId],
+      );
+
+      if (prior) {
+        return prior.outcome_json;
+      }
+
+      const payload = event.payload ?? {};
+      const username = normalizeNullableText(payload.username);
+      const updatedByUsername = normalizeNullableText(payload.updatedByUsername);
+      const activeUntilDate = normalizeNullableText(payload.activeUntilDate);
+      const activeUntilTime = normalizeNullableText(payload.activeUntilTime);
+      const expectedVersion = Number(payload.expectedVersion);
+      let outcome;
+
+      if (
+        !username
+        || !updatedByUsername
+        || !activeUntilDate
+        || !activeUntilTime
+        || !Number.isInteger(expectedVersion)
+        || expectedVersion < 0
+      ) {
+        outcome = {
+          accepted: false,
+          code: "malformed_presence_command",
+          reason: "Range presence updates require username, timestamps, and an expected version.",
+        };
+      } else {
+        const current = await querySingleValue(
+          client,
+          `
+            SELECT *
+            FROM range_presence_extensions
+            WHERE LOWER(username) = LOWER($1)
+            LIMIT 1
+            FOR UPDATE
+          `,
+          [username],
+        );
+        const currentVersion = Number(current?.sync_version ?? 0);
+
+        if (currentVersion !== expectedVersion) {
+          outcome = {
+            accepted: false,
+            code: "range_presence_conflict",
+            reason: "The range presence extension is stale and must be refreshed from cloud state.",
+          };
+        } else {
+          await client.query(
+            `
+              INSERT INTO range_presence_extensions (
+                username,
+                active_until_date,
+                active_until_time,
+                updated_by_username,
+                updated_at_date,
+                updated_at_time,
+                sync_version
+              )
+              VALUES ($1, $2, $3, $4, $5, $6, $7)
+              ON CONFLICT (username) DO UPDATE SET
+                active_until_date = EXCLUDED.active_until_date,
+                active_until_time = EXCLUDED.active_until_time,
+                updated_by_username = EXCLUDED.updated_by_username,
+                updated_at_date = EXCLUDED.updated_at_date,
+                updated_at_time = EXCLUDED.updated_at_time,
+                sync_version = EXCLUDED.sync_version
+            `,
+            [
+              username,
+              activeUntilDate,
+              activeUntilTime,
+              updatedByUsername,
+              normalizeNullableText(payload.updatedAtDate) ?? activeUntilDate,
+              normalizeNullableText(payload.updatedAtTime) ?? activeUntilTime,
+              currentVersion + 1,
+            ],
+          );
+          outcome = { accepted: true };
+        }
+      }
+
+      await client.query(
+        `
+          INSERT INTO sync_received_commands (
+            event_id,
+            event_type,
+            machine_id,
+            outcome_json
+          )
+          VALUES ($1, $2, $3, $4::jsonb)
+          ON CONFLICT (event_id) DO NOTHING
+        `,
+        [event.eventId, event.eventType, machineId, JSON.stringify(outcome)],
+      );
+
+      const stored = await querySingleValue(
+        client,
+        `SELECT outcome_json FROM sync_received_commands WHERE event_id = $1`,
+        [event.eventId],
+      );
+
+      return stored?.outcome_json ?? outcome;
     },
     async processBookingCommand({ client = pool, event, machineId }) {
       const prior = await querySingleValue(

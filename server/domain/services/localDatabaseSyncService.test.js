@@ -482,3 +482,145 @@ test("failed pull rolls back and does not advance the checkpoint", async () => {
   assert.equal(queries.some((entry) => entry.sql === "COMMIT"), false);
   assert.equal(writeCalls, 0);
 });
+
+test("login history snapshot imports an unmatched cloud event without mutating an existing stable ID", async () => {
+  const queries = [];
+  const client = {
+    async query(sql, values = []) {
+      const normalizedSql = String(sql).replace(/\s+/g, " ").trim();
+      queries.push({ sql: normalizedSql, values });
+
+      if (normalizedSql.startsWith("SELECT id FROM login_events WHERE sync_event_id")) {
+        return { rowCount: 0, rows: [] };
+      }
+
+      if (normalizedSql.startsWith("SELECT id FROM login_events WHERE LOWER(username) = LOWER($1)")) {
+        return { rowCount: 1, rows: [{ id: 41 }] };
+      }
+
+      return { rowCount: 0, rows: [] };
+    },
+  };
+
+  await applyAuthSnapshot({
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+    snapshot: {
+      loginEvents: [{
+        logged_in_date: "2026-08-20",
+        logged_in_time: "18:00:00",
+        login_method: "rfid",
+        sync_event_id: "cloud-login-1",
+        sync_source_machine_id: null,
+        username: "robin",
+      }],
+      users: [],
+    },
+    syncGateway: { async listPendingBookingOverlayCommands() { return []; } },
+  });
+
+  assert.equal(queries.some((entry) => entry.sql.startsWith("UPDATE login_events SET")), false);
+  assert.equal(queries.some((entry) => entry.sql.startsWith("INSERT INTO login_events")), true);
+});
+
+test("guest login history snapshot does not delete local rows when the domain is explicitly empty", async () => {
+  const { client, queries, syncGateway } = createOperationalClient();
+
+  await applyAuthSnapshot({
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+    snapshot: { guestLoginEvents: [], users: [] },
+    syncGateway,
+  });
+
+  assert.equal(
+    queries.some((entry) => entry.sql === "DELETE FROM guest_login_events"),
+    false,
+  );
+});
+
+test("range presence snapshot distinguishes absent from empty state", async () => {
+  const { client, queries, syncGateway } = createOperationalClient();
+
+  await applyAuthSnapshot({
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+    snapshot: { rangePresenceExtensions: [], users: [] },
+    syncGateway,
+  });
+
+  assert.equal(
+    queries.some((entry) => entry.sql === "DELETE FROM range_presence_extensions"),
+    true,
+  );
+});
+
+test("beginners course reporting snapshot upserts courses before participants", async () => {
+  const { client, queries, syncGateway } = createOperationalClient();
+
+  await applyAuthSnapshot({
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+    snapshot: {
+      beginnersCourses: [{
+        approved_at_date: null,
+        approved_at_time: null,
+        approved_by_username: null,
+        beginner_capacity: 12,
+        cancellation_reason: null,
+        cancelled_at_date: null,
+        cancelled_at_time: null,
+        cancelled_by_username: null,
+        coordinator_username: "coach",
+        course_type: "beginners",
+        created_at_date: "2026-08-01",
+        created_at_time: "09:00:00",
+        first_lesson_date: "2026-09-10",
+        is_cancelled: 0,
+        lesson_count: 4,
+        rejection_reason: null,
+        start_time: "18:00:00",
+        end_time: "20:00:00",
+        submitted_by_username: "coach",
+        sync_id: "course-sync-1",
+        approval_status: "approved",
+      }],
+      beginnersCourseParticipants: [{
+        assigned_case_at_date: null,
+        assigned_case_at_time: null,
+        assigned_case_by_username: null,
+        beginner_size_category: "adult",
+        converted_at_date: null,
+        converted_at_time: null,
+        converted_by_username: null,
+        converted_to_member: 0,
+        course_fee_paid: 1,
+        course_sync_id: "course-sync-1",
+        created_at_date: "2026-08-02",
+        created_at_time: "09:00:00",
+        created_by_username: "coach",
+        draw_length: "28",
+        eye_dominance: "right",
+        first_name: "Robin",
+        handedness: "right",
+        height_text: "5ft 10",
+        initial_email_sent: 1,
+        origin_course_type: "beginners",
+        surname: "Archer",
+        sync_id: "participant-sync-1",
+        thirty_day_reminder_sent: 0,
+        username: "robin",
+      }],
+      beginnersCourseLessons: [],
+      beginnersCourseLessonCoaches: [],
+      users: [],
+    },
+    syncGateway,
+  });
+
+  const courseInsertIndex = queries.findIndex((entry) => entry.sql.startsWith("INSERT INTO beginners_courses"));
+  const participantInsertIndex = queries.findIndex((entry) => entry.sql.startsWith("INSERT INTO beginners_course_participants"));
+  assert.ok(courseInsertIndex > -1);
+  assert.ok(participantInsertIndex > -1);
+  assert.ok(courseInsertIndex < participantInsertIndex);
+});

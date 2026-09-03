@@ -47,6 +47,43 @@ test("only a local Pi node can add a login event to the sync outbox", async () =
   assert.equal(local.queries.some((entry) => entry.sql.includes("INSERT INTO sync_local_outbox")), true);
 });
 
+test("only a local Pi node can add a guest login event to the sync outbox", async () => {
+  const cloud = createClientDouble();
+  const local = createClientDouble();
+  const cloudGateway = createSyncGateway({ pool: cloud.client });
+  const localGateway = createSyncGateway({ pool: local.client });
+
+  await cloudGateway.enqueueGuestLoginEvent({
+    archeryGbMembershipNumber: "AGB-1",
+    client: cloud.client,
+    firstName: "Robin",
+    invitedByName: "Casey Coach",
+    invitedByUsername: "casey",
+    loggedInDate: "2026-09-01",
+    loggedInTime: "10:00:00.000Z",
+    machineId: "pi-1",
+    paymentMethod: "cash",
+    sourceNodeMode: "cloud-server",
+    surname: "Visitor",
+  });
+  await localGateway.enqueueGuestLoginEvent({
+    archeryGbMembershipNumber: "AGB-2",
+    client: local.client,
+    firstName: "Jamie",
+    invitedByName: "Casey Coach",
+    invitedByUsername: "casey",
+    loggedInDate: "2026-09-01",
+    loggedInTime: "11:00:00.000Z",
+    machineId: "pi-1",
+    paymentMethod: "paypal",
+    sourceNodeMode: "local-pi",
+    surname: "Visitor",
+  });
+
+  assert.equal(cloud.queries.some((entry) => entry.sql.includes("INSERT INTO sync_local_outbox")), false);
+  assert.equal(local.queries.some((entry) => entry.sql.includes("INSERT INTO sync_local_outbox")), true);
+});
+
 test("pending outbox queries use deterministic outbox ordering", async () => {
   const { client, queries } = createClientDouble();
   const gateway = createSyncGateway({ pool: client });
@@ -319,4 +356,161 @@ test("malformed booking sync command is stored as a terminal rejection", async (
 
   assert.equal(outcome.code, "malformed_booking_command");
   assert.equal(queries.some((entry) => entry.sql.startsWith("INSERT INTO sync_received_commands")), true);
+});
+
+test("cloud push inserts an unknown event ID instead of guessing among legacy rows", async () => {
+  const queries = [];
+  const client = {
+    async query(sql, values = []) {
+      const normalizedSql = String(sql).replace(/\s+/g, " ").trim();
+      queries.push({ sql: normalizedSql, values });
+
+      if (normalizedSql.startsWith("SELECT id FROM login_events WHERE sync_event_id")) {
+        return { rowCount: 0, rows: [] };
+      }
+
+      if (normalizedSql.startsWith("SELECT id, sync_event_id FROM login_events")) {
+        return { rowCount: 1, rows: [{ id: 77, sync_event_id: null }] };
+      }
+
+      return { rowCount: 0, rows: [] };
+    },
+  };
+  const gateway = createSyncGateway({ pool: client });
+
+  await gateway.upsertLoginEventFromSync({
+    client,
+    eventId: "cloud-login-1",
+    loggedInDate: "2026-08-20",
+    loggedInTime: "18:00:00",
+    loginMethod: "rfid",
+    machineId: null,
+    username: "robin",
+  });
+
+  assert.equal(queries.some((entry) => entry.sql.startsWith("UPDATE login_events SET")), false);
+  assert.equal(queries.some((entry) => entry.sql.startsWith("INSERT INTO login_events")), true);
+});
+
+test("ambiguous legacy cloud login history is non-destructive and inserts a second row", async () => {
+  const queries = [];
+  const client = {
+    async query(sql, values = []) {
+      const normalizedSql = String(sql).replace(/\s+/g, " ").trim();
+      queries.push({ sql: normalizedSql, values });
+
+      if (normalizedSql.startsWith("SELECT id FROM login_events WHERE sync_event_id")) {
+        return { rowCount: 0, rows: [] };
+      }
+
+      if (normalizedSql.startsWith("SELECT id, sync_event_id FROM login_events")) {
+        return { rowCount: 2, rows: [{ id: 77 }, { id: 78 }] };
+      }
+
+      return { rowCount: 0, rows: [] };
+    },
+  };
+  const gateway = createSyncGateway({ pool: client });
+
+  await gateway.upsertLoginEventFromSync({
+    client,
+    eventId: "cloud-login-2",
+    loggedInDate: "2026-08-20",
+    loggedInTime: "18:00:00",
+    loginMethod: "rfid",
+    machineId: null,
+    username: "robin",
+  });
+
+  assert.equal(queries.some((entry) => entry.sql.startsWith("INSERT INTO login_events")), true);
+});
+
+test("stale range presence command is rejected terminally", async () => {
+  const queries = [];
+  const client = {
+    async query(sql, values = []) {
+      const normalizedSql = String(sql).replace(/\s+/g, " ").trim();
+      queries.push({ sql: normalizedSql, values });
+
+      if (normalizedSql.startsWith("SELECT outcome_json FROM sync_received_commands")) {
+        return { rowCount: 0, rows: [] };
+      }
+
+      if (normalizedSql.startsWith("SELECT * FROM range_presence_extensions")) {
+        return {
+          rowCount: 1,
+          rows: [{ sync_version: 3, username: "robin" }],
+        };
+      }
+
+      return { rowCount: 0, rows: [] };
+    },
+  };
+  const gateway = createSyncGateway({ pool: client });
+
+  const outcome = await gateway.processRangePresenceCommand({
+    client,
+    event: {
+      eventId: "presence-1",
+      eventType: "range_presence_extension_upsert",
+      payload: {
+        activeUntilDate: "2026-09-03",
+        activeUntilTime: "20:00:00",
+        expectedVersion: 2,
+        updatedAtDate: "2026-09-03",
+        updatedAtTime: "18:30:00",
+        updatedByUsername: "robin",
+        username: "robin",
+      },
+    },
+    machineId: "pi-1",
+  });
+
+  assert.equal(outcome.code, "range_presence_conflict");
+  assert.equal(queries.some((entry) => entry.sql.startsWith("INSERT INTO range_presence_extensions")), false);
+});
+
+test("presence conflict leaves the optimistic row for the authoritative pull to replace", async () => {
+  const queries = [];
+  const client = {
+    async query(sql, values = []) {
+      const normalizedSql = String(sql).replace(/\s+/g, " ").trim();
+      queries.push({ sql: normalizedSql, values });
+
+      if (normalizedSql.startsWith("UPDATE sync_local_outbox")) {
+        return {
+          rowCount: 1,
+          rows: [{
+            aggregate_key: "robin",
+            event_type: "range_presence_extension_upsert",
+            outbox_order: 9,
+            payload_json: {
+              previousState: {
+                activeUntilDate: "2026-09-03",
+                activeUntilTime: "19:00:00",
+                syncVersion: 2,
+                updatedAtDate: "2026-09-03",
+                updatedAtTime: "17:00:00",
+                updatedByUsername: "robin",
+              },
+              username: "robin",
+            },
+          }],
+        };
+      }
+
+      return { rowCount: 0, rows: [] };
+    },
+  };
+  const gateway = createSyncGateway({ pool: client });
+
+  await gateway.rejectOutboxEvents({
+    client,
+    rejections: [{ eventId: "presence-evt", code: "range_presence_conflict" }],
+  });
+
+  assert.equal(
+    queries.some((entry) => entry.sql.startsWith("INSERT INTO range_presence_extensions")),
+    false,
+  );
 });

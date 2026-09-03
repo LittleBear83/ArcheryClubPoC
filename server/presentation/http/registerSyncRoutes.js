@@ -119,7 +119,15 @@ export function registerSyncRoutes({
 
       for (const event of events) {
         if (
-          !["login_event", "event_booking_created", "event_booking_withdrawn", "coaching_booking_created", "coaching_booking_withdrawn"].includes(event?.eventType) ||
+          ![
+            "login_event",
+            "guest_login_event",
+            "range_presence_extension_upsert",
+            "event_booking_created",
+            "event_booking_withdrawn",
+            "coaching_booking_created",
+            "coaching_booking_withdrawn",
+          ].includes(event?.eventType) ||
           typeof event?.eventId !== "string"
         ) {
           res.status(400).json({
@@ -147,6 +155,44 @@ export function registerSyncRoutes({
           }
           await syncGateway.upsertLoginEventFromSync({ client, eventId: event.eventId, loggedInDate: event.payload.loggedInDate, loggedInTime: event.payload.loggedInTime, loginMethod: event.payload.loginMethod, machineId: req.syncMachine.machineId, username: event.payload.username });
           acceptedEventIds.push(event.eventId);
+        } else if (event.eventType === "guest_login_event") {
+          if (
+            typeof event.payload?.firstName !== "string"
+            || typeof event.payload?.surname !== "string"
+            || typeof event.payload?.archeryGbMembershipNumber !== "string"
+            || typeof event.payload?.paymentMethod !== "string"
+            || typeof event.payload?.loggedInDate !== "string"
+            || typeof event.payload?.loggedInTime !== "string"
+          ) {
+            res.status(400).json({
+              success: false,
+              message: "Malformed sync event payload.",
+            });
+            await client.query("ROLLBACK");
+            return;
+          }
+          await syncGateway.upsertGuestLoginEventFromSync({
+            archeryGbMembershipNumber: event.payload.archeryGbMembershipNumber,
+            client,
+            eventId: event.eventId,
+            firstName: event.payload.firstName,
+            invitedByName: event.payload.invitedByName ?? null,
+            invitedByUsername: event.payload.invitedByUsername ?? null,
+            loggedInDate: event.payload.loggedInDate,
+            loggedInTime: event.payload.loggedInTime,
+            machineId: req.syncMachine.machineId,
+            paymentMethod: event.payload.paymentMethod,
+            surname: event.payload.surname,
+          });
+          acceptedEventIds.push(event.eventId);
+        } else if (event.eventType === "range_presence_extension_upsert") {
+          const outcome = await syncGateway.processRangePresenceCommand({
+            client,
+            event,
+            machineId: req.syncMachine.machineId,
+          });
+          if (outcome.accepted) acceptedEventIds.push(event.eventId);
+          else rejectedEvents.push({ eventId: event.eventId, code: outcome.code, reason: outcome.reason });
         } else {
           const outcome = await syncGateway.processBookingCommand({ client, event, machineId: req.syncMachine.machineId });
           if (outcome.accepted) acceptedEventIds.push(event.eventId);

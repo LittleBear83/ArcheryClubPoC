@@ -82,6 +82,7 @@ function createSqliteMemberAuthGateway({
       return {
         username: row.username,
         active_until_at: `${row.active_until_date}T${row.active_until_time}`,
+        sync_version: Number(row.sync_version ?? 0),
         updated_by_username: row.updated_by_username,
         updated_at: `${row.updated_at_date}T${row.updated_at_time}`,
       };
@@ -256,6 +257,7 @@ function createPostgresMemberAuthGateway({
             username,
             active_until_date,
             active_until_time,
+            sync_version,
             updated_by_username,
             updated_at_date,
             updated_at_time
@@ -274,6 +276,7 @@ function createPostgresMemberAuthGateway({
       return {
         username: row.username,
         active_until_at: `${row.active_until_date}T${row.active_until_time}`,
+        sync_version: Number(row.sync_version ?? 0),
         updated_by_username: row.updated_by_username,
         updated_at: `${row.updated_at_date}T${row.updated_at_time}`,
       };
@@ -315,6 +318,23 @@ function createPostgresMemberAuthGateway({
       surname,
       timestampParts,
     }) {
+      if (syncGateway && syncNodeMode === "local-pi" && syncMachineId) {
+        await syncGateway.enqueueGuestLoginEvent({
+          archeryGbMembershipNumber,
+          client: pool,
+          firstName,
+          invitedByName,
+          invitedByUsername,
+          loggedInDate: timestampParts[0],
+          loggedInTime: timestampParts[1],
+          machineId: syncMachineId,
+          paymentMethod,
+          sourceNodeMode: syncNodeMode,
+          surname,
+        });
+        return;
+      }
+
       await pool.query(
         `
           INSERT INTO guest_login_events (
@@ -342,14 +362,14 @@ function createPostgresMemberAuthGateway({
       );
     },
     async recordLoginEvent({ method, timestampParts, username }) {
-      if (syncGateway && syncNodeMode === "local-pi" && syncMachineId) {
+      if (syncGateway) {
         await syncGateway.enqueueLoginEvent({
           client: pool,
           eventId: randomUUID(),
           loggedInDate: timestampParts[0],
           loggedInTime: timestampParts[1],
           loginMethod: method,
-          machineId: syncMachineId,
+          machineId: syncNodeMode === "local-pi" ? syncMachineId : null,
           sourceNodeMode: syncNodeMode,
           username,
         });
@@ -363,11 +383,12 @@ function createPostgresMemberAuthGateway({
             user_id,
             login_method,
             logged_in_date,
-            logged_in_time
+            logged_in_time,
+            sync_event_id
           )
-          VALUES ($1, (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1), $2, $3, $4)
+          VALUES ($1, (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1), $2, $3, $4, $5)
         `,
-        [username, method, ...timestampParts],
+        [username, method, ...timestampParts, randomUUID()],
       );
     },
     async upsertRangePresenceExtension({
@@ -376,6 +397,20 @@ function createPostgresMemberAuthGateway({
       updatedByUsername,
       username,
     }) {
+      if (syncGateway && syncNodeMode === "local-pi" && syncMachineId) {
+        const current = await this.findRangePresenceExtensionByUsername(username);
+        return syncGateway.enqueueRangePresenceExtensionCommand({
+          activeUntilDate: activeUntilParts[0],
+          activeUntilTime: activeUntilParts[1],
+          client: pool,
+          expectedVersion: Number(current?.sync_version ?? 0),
+          updatedAtDate: timestampParts[0],
+          updatedAtTime: timestampParts[1],
+          updatedByUsername,
+          username,
+        });
+      }
+
       await pool.query(
         `
           INSERT INTO range_presence_extensions (
@@ -384,15 +419,25 @@ function createPostgresMemberAuthGateway({
             active_until_time,
             updated_by_username,
             updated_at_date,
-            updated_at_time
+            updated_at_time,
+            sync_version
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            1
+          )
           ON CONFLICT (username) DO UPDATE SET
             active_until_date = EXCLUDED.active_until_date,
             active_until_time = EXCLUDED.active_until_time,
             updated_by_username = EXCLUDED.updated_by_username,
             updated_at_date = EXCLUDED.updated_at_date,
-            updated_at_time = EXCLUDED.updated_at_time
+            updated_at_time = EXCLUDED.updated_at_time,
+            sync_version = range_presence_extensions.sync_version + 1
         `,
         [username, ...activeUntilParts, updatedByUsername, ...timestampParts],
       );

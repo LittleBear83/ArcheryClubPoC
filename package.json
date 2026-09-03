@@ -17,6 +17,7 @@
     "seed:live-showcase": "node scripts/seedLiveShowcase.mjs",
     "seed:runtime-showcase": "node scripts/seedRuntimeShowcase.mjs",
     "test": "node scripts/run-tests.mjs",
+    "test:postgres-integration": "node --test server/infrastructure/persistence/phase2a1PostgresIntegration.test.js",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 0.0.0.0 --port 8080",
     "start": "node server/index.js"

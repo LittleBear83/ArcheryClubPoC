@@ -3,12 +3,14 @@ import { test } from "node:test";
 import { runPostgresMigrations } from "./runPostgresMigrations.js";
 import { migration as fixSyncChangeTriggerMigration } from "./postgresMigrations/004_fix_sync_change_trigger.js";
 import { migration as operationalSyncMigration } from "./postgresMigrations/005_operational_sync.js";
+import { migration as phase2a1ReportingSyncMigration } from "./postgresMigrations/006_phase_2a1_reporting_sync.js";
 
 const NUMBERED_MIGRATION_VERSIONS = [
   "002_sync_foundation",
   "003_sync_login_event_external_ids",
   "004_fix_sync_change_trigger",
   "005_operational_sync",
+  "006_phase_2a1_reporting_sync",
 ];
 
 function createPoolDouble({
@@ -229,6 +231,18 @@ test("005 custom operational sync triggers suppress pull and maintenance changes
     assert.match(functionSql, /IF TG_OP = 'DELETE' THEN\s+RETURN OLD;/);
     assert.match(functionSql, /RETURN NEW;/);
   }
+});
+
+test("006 reporting sync migration adds stable identities and reporting change tracking", () => {
+  const statements = phase2a1ReportingSyncMigration.statements.join("\n");
+
+  assert.match(statements, /ALTER TABLE guest_login_events\s+ADD COLUMN IF NOT EXISTS sync_event_id/i);
+  assert.match(statements, /ALTER TABLE beginners_courses\s+ADD COLUMN IF NOT EXISTS sync_id/i);
+  assert.match(statements, /ALTER TABLE beginners_course_participants\s+ADD COLUMN IF NOT EXISTS sync_id/i);
+  assert.match(statements, /ALTER TABLE range_presence_extensions\s+ADD COLUMN IF NOT EXISTS sync_version/i);
+  assert.match(statements, /CREATE TRIGGER sync_login_events_change_log_trigger/i);
+  assert.match(statements, /CREATE TRIGGER sync_guest_login_events_change_log_trigger/i);
+  assert.match(statements, /CREATE TRIGGER sync_range_presence_extensions_change_log_trigger/i);
 });
 
 test("004 repairs an upgraded database before bootstrap updates can invoke the old trigger", async () => {

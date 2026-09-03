@@ -483,12 +483,20 @@ export function registerMemberActivityRoutes({
     const [activeUntilDate, activeUntilTime] = getUtcTimestampParts(activeUntil);
     const [updatedAtDate, updatedAtTime] = getUtcTimestampParts();
 
-    await memberAuthGateway.upsertRangePresenceExtension({
+    const extensionResult = await memberAuthGateway.upsertRangePresenceExtension({
       activeUntilParts: [activeUntilDate, activeUntilTime],
       timestampParts: [updatedAtDate, updatedAtTime],
       updatedByUsername: actor.username,
       username: actor.username,
     });
+
+    if (extensionResult?.accepted === false) {
+      res.status(409).json({
+        success: false,
+        message: extensionResult.reason ?? "Your previous range presence update is still syncing.",
+      });
+      return;
+    }
 
     if (auditChangeLogger) {
       void auditChangeLogger.recordEntityChange({

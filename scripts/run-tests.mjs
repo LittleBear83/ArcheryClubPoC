@@ -89,6 +89,9 @@ await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/runPostgresMigrations.test.js"))
 );
 await import(
+  pathToFileURL(path.join(root, "server/infrastructure/persistence/phase2a1PostgresIntegrationGuards.test.js"))
+);
+await import(
   pathToFileURL(
     path.join(
       root,

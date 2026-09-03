@@ -150,6 +150,12 @@ test("runPostgresMigrations still seeds initial schema when missing", async () =
   assert.ok(
     queries.some((entry) => entry.sql.includes("INSERT INTO user_disciplines")),
   );
+  const cupboardSeed = queries.find((entry) =>
+    entry.sql.includes("INSERT INTO equipment_storage_locations"),
+  );
+  assert.ok(cupboardSeed);
+  assert.match(cupboardSeed.sql, /md5\('equipment_storage_locations:' \|\| \$1\)/);
+  assert.deepEqual(cupboardSeed.values, ["Main Cupboard"]);
   assert.ok(
     queries.some(
       (entry) =>

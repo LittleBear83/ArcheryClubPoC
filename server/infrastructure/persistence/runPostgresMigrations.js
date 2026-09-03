@@ -859,8 +859,8 @@ function buildRolePermissionSeedSql({
 
   statements.push({
     sql: `
-      INSERT INTO equipment_storage_locations (label, created_at_date, created_at_time)
-      VALUES ($1, '1970-01-01', '00:00:00.000Z')
+      INSERT INTO equipment_storage_locations (label, sync_id, created_at_date, created_at_time)
+      VALUES ($1, md5('equipment_storage_locations:' || $1), '1970-01-01', '00:00:00.000Z')
       ON CONFLICT(label) DO NOTHING
     `,
     values: [defaultEquipmentCupboardLabel],

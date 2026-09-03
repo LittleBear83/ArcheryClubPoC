@@ -143,6 +143,8 @@ test("migration runner upgrades representative pre-006 rows without history or t
   await pre006Pool.query(`INSERT INTO beginners_course_participants (id, course_id, username, first_name, surname, beginner_size_category, created_by_username, created_at_date, created_at_time) VALUES (430, 410, 'robin', 'Robin', 'Archer', 'adult', 'coach', '2026-07-01', '10:00:00')`);
   await runPostgresMigrations({ committeeRoleSeed: [], defaultEquipmentCupboardLabel: "Test cupboard", permissionDefinitions: [], pool: pre006Pool, seedUsers: [], systemRoleDefinitions: [] });
   await runPostgresMigrations({ committeeRoleSeed: [], defaultEquipmentCupboardLabel: "Test cupboard", permissionDefinitions: [], pool: pre006Pool, seedUsers: [], systemRoleDefinitions: [] });
+  assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM sync_local_outbox`)).rows[0].count), 0);
+  assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM sync_change_log WHERE domain IN ('login_events', 'guest_login_events', 'beginners_courses', 'beginners_course_participants')`)).rows[0].count), 0);
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM schema_migrations WHERE version = '006_phase_2a1_reporting_sync'`)).rows[0].count), 1);
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM login_events`)).rows[0].count), 3);
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM login_events WHERE sync_identity_origin = 'legacy'`)).rows[0].count), 2);
@@ -161,11 +163,10 @@ test("migration runner upgrades representative pre-006 rows without history or t
   await upgradedGateway.upsertLoginEventFromSync({ client: pre006Pool, eventId: "upgraded-sync", loggedInDate: "2026-07-03", loggedInTime: "11:00:00", loginMethod: "rfid", machineId: "pi-test", username: "robin" });
   await upgradedGateway.upsertLoginEventFromSync({ client: pre006Pool, eventId: "upgraded-sync", loggedInDate: "2026-07-03", loggedInTime: "11:00:00", loginMethod: "rfid", machineId: "pi-test", username: "robin" });
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM login_events WHERE sync_event_id = 'upgraded-sync'`)).rows[0].count), 1);
+  assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM sync_local_outbox`)).rows[0].count), 1);
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM beginners_courses WHERE sync_id IS NOT NULL AND id = 410`)).rows[0].count), 1);
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM beginners_course_lessons WHERE sync_id IS NOT NULL AND course_id = 410`)).rows[0].count), 1);
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM beginners_course_participants WHERE sync_id IS NOT NULL AND course_id = 410 AND user_id = 301`)).rows[0].count), 1);
-  assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM sync_local_outbox`)).rows[0].count), 0);
-  assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM sync_change_log WHERE domain IN ('login_events', 'guest_login_events', 'beginners_courses', 'beginners_course_participants')`)).rows[0].count), 0);
 });
 
 test("Pi login push, retry, acknowledgement, and echoed Cloud pull remain one event", async () => {
@@ -277,8 +278,7 @@ test("course graph snapshots update, transfer, delete, distinguish empty from om
   let checkpoint = 20;
   const applySnapshot = async (snapshot) => {
     checkpoint += 1;
-    await applyPulledSyncResponse({
-      client: piPool,
+    await applyPull(piPool, {
       currentCheckpoint: checkpoint - 1,
       deactivatedRfidSuffix: "-deactivated",
       pullResponse: { checkpoint, mode: "snapshot", snapshot },
@@ -495,6 +495,11 @@ test("PostgreSQL Cloud and Pi reporting gateways return equivalent reconciled Ph
   const cloud = await createTemporaryPool("reportcloud");
   const pi = await createTemporaryPool("reportpi");
   disposablePools.push(cloud, pi);
+  const [cloudCupboard, piCupboard] = await Promise.all([
+    cloud.query(`SELECT sync_id FROM equipment_storage_locations WHERE label = 'Test cupboard'`),
+    pi.query(`SELECT sync_id FROM equipment_storage_locations WHERE label = 'Test cupboard'`),
+  ]);
+  assert.equal(cloudCupboard.rows[0].sync_id, piCupboard.rows[0].sync_id);
   await seedUser(cloud, 10, "report-robin");
   await seedUser(cloud, 11, "report-coach");
   await cloud.query(`INSERT INTO user_disciplines (username, discipline, user_id) VALUES ('report-robin', 'target', 10), ('report-robin', 'field', 10)`);

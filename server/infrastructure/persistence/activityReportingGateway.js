@@ -91,11 +91,11 @@ const POSTGRES_MEMBER_PRESENCE_EVENTS_CTE = `
   member_presence_visit_starts AS (
     SELECT
       username,
-      logged_in_date,
-      logged_in_time,
-      logged_in_at
+      MIN(logged_in_date) AS logged_in_date,
+      MIN(logged_in_time) AS logged_in_time,
+      session_started_at AS logged_in_at
     FROM member_presence_sessions
-    WHERE logged_in_at = session_started_at
+    GROUP BY username, session_started_at
   )
 `;
 

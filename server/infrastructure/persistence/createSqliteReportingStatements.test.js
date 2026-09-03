@@ -184,6 +184,36 @@ test("member range usage collapses repeated on-site logins inside the two-hour w
   }
 });
 
+test("member range usage counts one visit for duplicate legacy rows at a session start", () => {
+  const db = new Database(":memory:");
+
+  try {
+    seedBaseSchema(db);
+    insertMember(db, 1, "member-one");
+    const insertLogin = createInsertLogin(db);
+    const statements = createSqliteReportingStatements(db);
+
+    for (const [date, time, method] of [
+      ["2026-06-01", "10:00:00", "rfid"],
+      ["2026-06-01", "11:00:00", "rfid"],
+      ["2026-06-01", "12:01:00", "rfid"],
+      ["2026-06-01", "14:00:00", "mobile-app"],
+      ["2026-06-02", "09:00:00", "rfid"],
+      ["2026-06-03", "10:00:00", "rfid"],
+      ["2026-06-03", "10:00:00", "rfid"],
+    ]) {
+      insertLogin.run(1, "member-one", method, date, time);
+    }
+
+    assert.deepEqual(
+      statements.countMemberLoginsInRange.get("2026-06-04T00:00:00", "2026-06-01T00:00:00"),
+      { count: 4 },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("member journey reporting keeps origin and conversion timestamps", () => {
   const db = new Database(":memory:");
 

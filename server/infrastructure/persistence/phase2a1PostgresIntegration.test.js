@@ -75,7 +75,7 @@ async function seedUser(pool, id, username = "robin") {
 }
 
 before(async () => {
-  assertSafeIntegrationEnvironment();
+  assertSafeIntegrationEnvironment(process.env);
   adminPool = new Pool({
     database: "postgres",
     host: process.env.PGHOST,

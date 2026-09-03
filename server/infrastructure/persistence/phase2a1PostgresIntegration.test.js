@@ -74,6 +74,16 @@ async function seedUser(pool, id, username = "robin") {
   await pool.query(`INSERT INTO user_types (username, user_type, user_id) VALUES ($1, 'member', $2)`, [username, id]);
 }
 
+async function applyPull(pool, options) {
+  const client = await pool.connect();
+
+  try {
+    return await applyPulledSyncResponse({ ...options, client });
+  } finally {
+    client.release();
+  }
+}
+
 before(async () => {
   assertSafeIntegrationEnvironment(process.env);
   adminPool = new Pool({
@@ -138,6 +148,19 @@ test("migration runner upgrades representative pre-006 rows without history or t
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM login_events WHERE sync_identity_origin = 'legacy'`)).rows[0].count), 2);
   assert.equal((await pre006Pool.query(`SELECT sync_event_id, sync_identity_origin FROM login_events WHERE login_method = 'mobile-app'`)).rows[0].sync_event_id, 'phase1-native-id');
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM guest_login_events WHERE sync_event_id IS NOT NULL`)).rows[0].count), 2);
+  const loginIndex = (await pre006Pool.query(`
+    SELECT indexes.indisunique, pg_get_expr(indexes.indpred, indexes.indrelid) AS predicate
+    FROM pg_index AS indexes
+    INNER JOIN pg_class AS index_class ON index_class.oid = indexes.indexrelid
+    WHERE index_class.relname = 'login_events_sync_event_id_uidx'
+  `)).rows[0];
+  assert.equal(loginIndex.indisunique, true);
+  assert.equal(loginIndex.predicate, null);
+  const upgradedGateway = createSyncGateway({ pool: pre006Pool });
+  await upgradedGateway.enqueueLoginEvent({ client: pre006Pool, eventId: "upgraded-enqueue", loggedInDate: "2026-07-03", loggedInTime: "10:00:00", loginMethod: "rfid", machineId: "pi-test", sourceNodeMode: "local-pi", username: "robin" });
+  await upgradedGateway.upsertLoginEventFromSync({ client: pre006Pool, eventId: "upgraded-sync", loggedInDate: "2026-07-03", loggedInTime: "11:00:00", loginMethod: "rfid", machineId: "pi-test", username: "robin" });
+  await upgradedGateway.upsertLoginEventFromSync({ client: pre006Pool, eventId: "upgraded-sync", loggedInDate: "2026-07-03", loggedInTime: "11:00:00", loginMethod: "rfid", machineId: "pi-test", username: "robin" });
+  assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM login_events WHERE sync_event_id = 'upgraded-sync'`)).rows[0].count), 1);
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM beginners_courses WHERE sync_id IS NOT NULL AND id = 410`)).rows[0].count), 1);
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM beginners_course_lessons WHERE sync_id IS NOT NULL AND course_id = 410`)).rows[0].count), 1);
   assert.equal(Number((await pre006Pool.query(`SELECT COUNT(*) AS count FROM beginners_course_participants WHERE sync_id IS NOT NULL AND course_id = 410 AND user_id = 301`)).rows[0].count), 1);
@@ -235,17 +258,17 @@ test("course graph snapshot remaps every Cloud relationship to Pi-local foreign 
     users: [],
   };
   const piGateway = createSyncGateway({ pool: piPool });
-  await applyPulledSyncResponse({ client: piPool, currentCheckpoint: 10, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: 11, mode: "snapshot", snapshot }, syncGateway: piGateway });
+  await applyPull(piPool, { currentCheckpoint: 10, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: 11, mode: "snapshot", snapshot }, syncGateway: piGateway });
   const graph = (await piPool.query(`SELECT courses.id AS course_id, lessons.course_id AS lesson_course_id, coaches.lesson_id, coaches.coach_user_id, participants.course_id AS participant_course_id, participants.user_id FROM beginners_courses courses JOIN beginners_course_lessons lessons ON lessons.sync_id = 'lesson-cloud-opaque' JOIN beginners_course_lesson_coaches coaches ON coaches.lesson_id = lessons.id JOIN beginners_course_participants participants ON participants.sync_id = 'participant-cloud-opaque' WHERE courses.sync_id = 'course-cloud-opaque'`)).rows[0];
   assert.notEqual(Number(graph.course_id), 10);
   assert.equal(Number(graph.lesson_course_id), Number(graph.course_id));
   assert.equal(Number(graph.participant_course_id), Number(graph.course_id));
   assert.equal(Number(graph.coach_user_id), 91);
   assert.equal(Number(graph.user_id), 87);
-  await applyPulledSyncResponse({ client: piPool, currentCheckpoint: 11, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: 12, mode: "snapshot", snapshot }, syncGateway: piGateway });
+  await applyPull(piPool, { currentCheckpoint: 11, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: 12, mode: "snapshot", snapshot }, syncGateway: piGateway });
   assert.equal(Number((await piPool.query(`SELECT COUNT(*) AS count FROM beginners_courses WHERE sync_id = 'course-cloud-opaque'`)).rows[0].count), 1);
   const invalidSnapshot = { ...snapshot, beginnersCourseLessons: [{ ...snapshot.beginnersCourseLessons[0], course_sync_id: "missing-parent" }] };
-  await assert.rejects(() => applyPulledSyncResponse({ client: piPool, currentCheckpoint: 12, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: 13, mode: "snapshot", snapshot: invalidSnapshot }, syncGateway: piGateway }));
+  await assert.rejects(() => applyPull(piPool, { currentCheckpoint: 12, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: 13, mode: "snapshot", snapshot: invalidSnapshot }, syncGateway: piGateway }));
   assert.equal(Number((await piPool.query(`SELECT COUNT(*) AS count FROM beginners_courses WHERE sync_id = 'course-cloud-opaque'`)).rows[0].count), 1);
 });
 
@@ -348,7 +371,7 @@ test("course graph snapshots update, transfer, delete, distinguish empty from om
     beginnersCourseParticipants: [],
   }));
   await piPool.query(`INSERT INTO login_events (username, login_method, logged_in_date, logged_in_time, user_id) VALUES ('robin', 'rfid', '2026-09-11', '10:00:00', 87)`);
-  await piPool.query(`INSERT INTO guest_login_events (first_name, surname, payment_method, logged_in_date, logged_in_time) VALUES ('Guest', 'History', 'cash', '2026-09-11', '10:00:00')`);
+  await piPool.query(`INSERT INTO guest_login_events (first_name, surname, archery_gb_membership_number, payment_method, logged_in_date, logged_in_time) VALUES ('Guest', 'History', 'AGB-HISTORY', 'cash', '2026-09-11', '10:00:00')`);
   await piPool.query(`INSERT INTO range_presence_extensions (username, active_until_date, active_until_time, updated_by_username, updated_at_date, updated_at_time) VALUES ('robin', '2026-09-11', '20:00:00', 'robin', '2026-09-11', '10:00:00') ON CONFLICT (username) DO UPDATE SET active_until_date = EXCLUDED.active_until_date`);
   const outboxCount = Number((await piPool.query(`SELECT COUNT(*) AS count FROM sync_local_outbox`)).rows[0].count);
 
@@ -486,11 +509,11 @@ test("PostgreSQL Cloud and Pi reporting gateways return equivalent reconciled Ph
       ('report-robin', 10, 'rfid', '2026-06-03', '10:00:00', 'report-legacy-2', 'legacy')
   `);
   await cloud.query(`
-    INSERT INTO guest_login_events (first_name, surname, payment_method, logged_in_date, logged_in_time, sync_event_id, sync_identity_origin) VALUES
-      ('Guest', 'One', 'cash', '2026-06-01', '10:00:00', 'report-guest-1', 'native'),
-      ('Guest', 'Two', 'cash', '2026-06-02', '11:00:00', 'report-guest-2', 'native'),
-      ('Guest', 'Three', 'cash', '2026-06-03', '12:00:00', 'report-guest-legacy-1', 'legacy'),
-      ('Guest', 'Three', 'cash', '2026-06-03', '12:00:00', 'report-guest-legacy-2', 'legacy')
+    INSERT INTO guest_login_events (first_name, surname, archery_gb_membership_number, payment_method, logged_in_date, logged_in_time, sync_event_id, sync_identity_origin) VALUES
+      ('Guest', 'One', 'AGB-REPORT-1', 'cash', '2026-06-01', '10:00:00', 'report-guest-1', 'native'),
+      ('Guest', 'Two', 'AGB-REPORT-2', 'cash', '2026-06-02', '11:00:00', 'report-guest-2', 'native'),
+      ('Guest', 'Three', 'AGB-REPORT-3', 'cash', '2026-06-03', '12:00:00', 'report-guest-legacy-1', 'legacy'),
+      ('Guest', 'Three', 'AGB-REPORT-3', 'cash', '2026-06-03', '12:00:00', 'report-guest-legacy-2', 'legacy')
   `);
   await cloud.query(`INSERT INTO club_events (sync_id, event_date, start_time, end_time, title, type, submitted_by_username, approval_status, created_at_date, created_at_time, submitted_by_user_id) VALUES ('report-event', '2026-06-10', '18:00:00', '20:00:00', 'Reporting event', 'social', 'report-coach', 'approved', '2026-06-01', '09:00:00', 11)`);
   await cloud.query(`INSERT INTO event_bookings (club_event_id, member_username, member_user_id, booked_at_date, booked_at_time) VALUES ((SELECT id FROM club_events WHERE sync_id = 'report-event'), 'report-robin', 10, '2026-06-01', '09:00:00')`);
@@ -529,24 +552,24 @@ test("PostgreSQL incremental Phase 2A1 pull rolls back the batch and checkpoint,
   const gateway = createSyncGateway({ pool: pi });
   await gateway.writeLocalState({ stateKey: "local_machine_sync", state: { currentCheckpoint: 41 } });
   const course = { sync_id: "rollback-course", course_type: "beginners", coordinator_username: "rollback-robin", submitted_by_username: "rollback-robin", first_lesson_date: "2026-06-20", start_time: "18:00:00", end_time: "20:00:00", lesson_count: 1, beginner_capacity: 8, approval_status: "approved", is_cancelled: 0, created_at_date: "2026-06-01", created_at_time: "09:00:00" };
-  const participant = { sync_id: "rollback-participant", course_sync_id: "missing-course", username: "rollback-robin", first_name: "Robin", surname: "Archer", beginner_size_category: "adult", created_by_username: "rollback-robin", created_at_date: "2026-06-01", created_at_time: "09:00:00" };
+  const participant = { sync_id: "rollback-participant", course_sync_id: "missing-course", username: "rollback-robin", first_name: "Robin", surname: "Archer", beginner_size_category: "adult", origin_course_type: "beginners", created_by_username: "rollback-robin", created_at_date: "2026-06-01", created_at_time: "09:00:00" };
   const changes = [
     { domain: "range_presence_extensions", operation: "upsert", recordKey: "rollback-robin", payload: { username: "rollback-robin", active_until_date: "2026-06-01", active_until_time: "20:00:00", updated_by_username: "rollback-robin", updated_at_date: "2026-06-01", updated_at_time: "09:00:00", sync_version: 1 } },
     { domain: "login_events", operation: "upsert", recordKey: "rollback-login", payload: { username: "rollback-robin", login_method: "rfid", logged_in_date: "2026-06-01", logged_in_time: "10:00:00", sync_event_id: "rollback-login", sync_identity_origin: "native" } },
     { domain: "beginners_courses", operation: "upsert", recordKey: course.sync_id, payload: course },
     { domain: "beginners_course_participants", operation: "upsert", recordKey: participant.sync_id, payload: participant },
-    { domain: "guest_login_events", operation: "upsert", recordKey: "rollback-guest", payload: { first_name: "Late", surname: "Guest", payment_method: "cash", logged_in_date: "2026-06-01", logged_in_time: "11:00:00", sync_event_id: "rollback-guest", sync_identity_origin: "native" } },
+    { domain: "guest_login_events", operation: "upsert", recordKey: "rollback-guest", payload: { first_name: "Late", surname: "Guest", archery_gb_membership_number: "AGB-ROLLBACK", payment_method: "cash", logged_in_date: "2026-06-01", logged_in_time: "11:00:00", sync_event_id: "rollback-guest", sync_identity_origin: "native" } },
   ];
   const pull = { changes, checkpoint: 99, mode: "incremental" };
-  await assert.rejects(() => applyPulledSyncResponse({ client: pi, currentCheckpoint: 41, deactivatedRfidSuffix: "-deactivated", pullResponse: pull, syncGateway: gateway }));
+  await assert.rejects(() => applyPull(pi, { currentCheckpoint: 41, deactivatedRfidSuffix: "-deactivated", pullResponse: pull, syncGateway: gateway }));
   assert.equal(Number((await pi.query(`SELECT COUNT(*) AS count FROM login_events WHERE sync_event_id = 'rollback-login'`)).rows[0].count), 0);
   assert.equal(Number((await pi.query(`SELECT COUNT(*) AS count FROM beginners_courses WHERE sync_id = 'rollback-course'`)).rows[0].count), 0);
   assert.equal(Number((await pi.query(`SELECT COUNT(*) AS count FROM guest_login_events WHERE sync_event_id = 'rollback-guest'`)).rows[0].count), 0);
   assert.equal((await gateway.readLocalState("local_machine_sync")).state.currentCheckpoint, 41);
   assert.equal(Number((await pi.query(`SELECT COUNT(*) AS count FROM sync_local_outbox`)).rows[0].count), 0);
   changes[3] = { ...changes[3], payload: { ...participant, course_sync_id: course.sync_id } };
-  await applyPulledSyncResponse({ client: pi, currentCheckpoint: 41, deactivatedRfidSuffix: "-deactivated", pullResponse: pull, syncGateway: gateway });
-  await applyPulledSyncResponse({ client: pi, currentCheckpoint: 99, deactivatedRfidSuffix: "-deactivated", pullResponse: pull, syncGateway: gateway });
+  await applyPull(pi, { currentCheckpoint: 41, deactivatedRfidSuffix: "-deactivated", pullResponse: pull, syncGateway: gateway });
+  await applyPull(pi, { currentCheckpoint: 99, deactivatedRfidSuffix: "-deactivated", pullResponse: pull, syncGateway: gateway });
   assert.equal((await gateway.readLocalState("local_machine_sync")).state.currentCheckpoint, 99);
   assert.equal(Number((await pi.query(`SELECT COUNT(*) AS count FROM login_events WHERE sync_event_id = 'rollback-login'`)).rows[0].count), 1);
   assert.equal(Number((await pi.query(`SELECT COUNT(*) AS count FROM beginners_courses WHERE sync_id = 'rollback-course'`)).rows[0].count), 1);
@@ -560,7 +583,7 @@ test("PostgreSQL mixed-version snapshots preserve omitted Phase 2A1 domains and 
   await seedUser(pi, 87, "mixed-robin");
   const gateway = createSyncGateway({ pool: pi });
   await pi.query(`INSERT INTO login_events (username, user_id, login_method, logged_in_date, logged_in_time, sync_event_id) VALUES ('mixed-robin', 87, 'rfid', '2026-06-01', '10:00:00', 'mixed-login')`);
-  await pi.query(`INSERT INTO guest_login_events (first_name, surname, payment_method, logged_in_date, logged_in_time, sync_event_id) VALUES ('Mixed', 'Guest', 'cash', '2026-06-01', '10:00:00', 'mixed-guest')`);
+  await pi.query(`INSERT INTO guest_login_events (first_name, surname, archery_gb_membership_number, payment_method, logged_in_date, logged_in_time, sync_event_id) VALUES ('Mixed', 'Guest', 'AGB-MIXED', 'cash', '2026-06-01', '10:00:00', 'mixed-guest')`);
   await pi.query(`INSERT INTO range_presence_extensions (username, active_until_date, active_until_time, updated_by_username, updated_at_date, updated_at_time) VALUES ('mixed-robin', '2026-06-01', '20:00:00', 'mixed-robin', '2026-06-01', '10:00:00')`);
   await pi.query(`INSERT INTO beginners_courses (sync_id, coordinator_username, submitted_by_username, first_lesson_date, start_time, end_time, lesson_count, beginner_capacity, created_at_date, created_at_time) VALUES ('mixed-course', 'mixed-robin', 'mixed-robin', '2026-06-10', '18:00:00', '20:00:00', 1, 8, '2026-06-01', '09:00:00')`);
   await pi.query(`INSERT INTO beginners_course_lessons (sync_id, course_id, lesson_number, lesson_date, start_time, end_time) VALUES ('mixed-lesson', (SELECT id FROM beginners_courses WHERE sync_id = 'mixed-course'), 1, '2026-06-10', '18:00:00', '20:00:00')`);

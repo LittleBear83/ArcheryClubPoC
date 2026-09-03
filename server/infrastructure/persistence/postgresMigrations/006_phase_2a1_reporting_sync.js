@@ -123,6 +123,11 @@ export const migration = {
     `ALTER TABLE beginners_courses ALTER COLUMN sync_id SET NOT NULL`,
     `ALTER TABLE beginners_course_participants ALTER COLUMN sync_id SET NOT NULL`,
     `ALTER TABLE beginners_course_lessons ALTER COLUMN sync_id SET NOT NULL`,
+    `DROP INDEX IF EXISTS login_events_sync_event_id_uidx`,
+    `
+      CREATE UNIQUE INDEX login_events_sync_event_id_uidx
+      ON login_events (sync_event_id)
+    `,
     `
       ALTER TABLE login_events
       ALTER COLUMN sync_event_id

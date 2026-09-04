@@ -252,20 +252,33 @@ test("course graph snapshot remaps every Cloud relationship to Pi-local foreign 
   await seedUser(cloudPool, 6, "coach");
   await seedUser(piPool, 91, "coach");
   const snapshot = {
+    equipmentItems: [{
+      sync_id: "case-cloud-opaque",
+      equipment_type: "case",
+      item_number: "CASE-TEST",
+      size_category: "standard",
+      arrow_quantity: 1,
+      status: "active",
+      location_type: "cupboard",
+      added_by_username: "coach",
+      added_at_date: "2026-09-01",
+      added_at_time: "09:00:00",
+    }],
     beginnersCourses: [{ sync_id: "course-cloud-opaque", course_type: "beginners", coordinator_username: "coach", submitted_by_username: "coach", first_lesson_date: "2026-10-01", start_time: "18:00:00", end_time: "20:00:00", lesson_count: 2, beginner_capacity: 12, approval_status: "approved", is_cancelled: 0, cancellation_reason: null, cancelled_by_username: null, cancelled_at_date: null, cancelled_at_time: null, rejection_reason: null, approved_by_username: "coach", approved_at_date: "2026-09-01", approved_at_time: "09:00:00", created_at_date: "2026-09-01", created_at_time: "09:00:00" }],
     beginnersCourseLessons: [{ sync_id: "lesson-cloud-opaque", course_sync_id: "course-cloud-opaque", lesson_number: 1, lesson_date: "2026-10-01", start_time: "18:00:00", end_time: "20:00:00" }],
     beginnersCourseLessonCoaches: [{ lesson_sync_id: "lesson-cloud-opaque", coach_username: "coach", assigned_by_username: "coach", assigned_at_date: "2026-09-01", assigned_at_time: "09:00:00" }],
-    beginnersCourseParticipants: [{ sync_id: "participant-cloud-opaque", course_sync_id: "course-cloud-opaque", username: "robin", first_name: "Robin", surname: "Archer", beginner_size_category: "adult", height_text: "", draw_length: "", handedness: "right", eye_dominance: "right", initial_email_sent: 0, thirty_day_reminder_sent: 0, course_fee_paid: 0, origin_course_type: "beginners", converted_to_member: 1, converted_at_date: "2026-11-01", converted_at_time: "10:00:00", converted_by_username: "coach", assigned_case_by_username: null, assigned_case_at_date: null, assigned_case_at_time: null, created_at_date: "2026-09-01", created_at_time: "09:00:00", created_by_username: "coach" }],
+    beginnersCourseParticipants: [{ sync_id: "participant-cloud-opaque", course_sync_id: "course-cloud-opaque", username: "robin", first_name: "Robin", surname: "Archer", beginner_size_category: "adult", height_text: "", draw_length: "", handedness: "right", eye_dominance: "right", initial_email_sent: 0, thirty_day_reminder_sent: 0, course_fee_paid: 0, origin_course_type: "beginners", converted_to_member: 1, converted_at_date: "2026-11-01", converted_at_time: "10:00:00", converted_by_username: "coach", assigned_case_sync_id: "case-cloud-opaque", assigned_case_by_username: null, assigned_case_at_date: null, assigned_case_at_time: null, created_at_date: "2026-09-01", created_at_time: "09:00:00", created_by_username: "coach" }],
     users: [],
   };
   const piGateway = createSyncGateway({ pool: piPool });
   await applyPull(piPool, { currentCheckpoint: 10, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: 11, mode: "snapshot", snapshot }, syncGateway: piGateway });
-  const graph = (await piPool.query(`SELECT courses.id AS course_id, lessons.course_id AS lesson_course_id, coaches.lesson_id, coaches.coach_user_id, participants.course_id AS participant_course_id, participants.user_id FROM beginners_courses courses JOIN beginners_course_lessons lessons ON lessons.sync_id = 'lesson-cloud-opaque' JOIN beginners_course_lesson_coaches coaches ON coaches.lesson_id = lessons.id JOIN beginners_course_participants participants ON participants.sync_id = 'participant-cloud-opaque' WHERE courses.sync_id = 'course-cloud-opaque'`)).rows[0];
+  const graph = (await piPool.query(`SELECT courses.id AS course_id, lessons.course_id AS lesson_course_id, coaches.lesson_id, coaches.coach_user_id, participants.course_id AS participant_course_id, participants.user_id, participants.assigned_case_id, assigned_case.id AS assigned_case_local_id FROM beginners_courses courses JOIN beginners_course_lessons lessons ON lessons.sync_id = 'lesson-cloud-opaque' JOIN beginners_course_lesson_coaches coaches ON coaches.lesson_id = lessons.id JOIN beginners_course_participants participants ON participants.sync_id = 'participant-cloud-opaque' JOIN equipment_items assigned_case ON assigned_case.sync_id = 'case-cloud-opaque' WHERE courses.sync_id = 'course-cloud-opaque'`)).rows[0];
   assert.notEqual(Number(graph.course_id), 10);
   assert.equal(Number(graph.lesson_course_id), Number(graph.course_id));
   assert.equal(Number(graph.participant_course_id), Number(graph.course_id));
   assert.equal(Number(graph.coach_user_id), 91);
   assert.equal(Number(graph.user_id), 87);
+  assert.equal(Number(graph.assigned_case_id), Number(graph.assigned_case_local_id));
   await applyPull(piPool, { currentCheckpoint: 11, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: 12, mode: "snapshot", snapshot }, syncGateway: piGateway });
   assert.equal(Number((await piPool.query(`SELECT COUNT(*) AS count FROM beginners_courses WHERE sync_id = 'course-cloud-opaque'`)).rows[0].count), 1);
   const invalidSnapshot = { ...snapshot, beginnersCourseLessons: [{ ...snapshot.beginnersCourseLessons[0], course_sync_id: "missing-parent" }] };
@@ -525,8 +538,14 @@ test("PostgreSQL Cloud and Pi reporting gateways return equivalent reconciled Ph
   await cloud.query(`INSERT INTO coaching_sessions (sync_id, coach_username, coach_user_id, session_date, start_time, end_time, available_slots, topic, summary, venue, approval_status, created_at_date, created_at_time) VALUES ('report-coaching', 'report-coach', 11, '2026-06-11', '18:00:00', '19:00:00', 2, 'Form', 'Form review', 'range', 'approved', '2026-06-01', '09:00:00')`);
   await cloud.query(`INSERT INTO coaching_session_bookings (coaching_session_id, member_username, member_user_id, booked_at_date, booked_at_time) VALUES ((SELECT id FROM coaching_sessions WHERE sync_id = 'report-coaching'), 'report-robin', 10, '2026-06-01', '09:00:00')`);
   await cloud.query(`INSERT INTO beginners_courses (sync_id, coordinator_username, submitted_by_username, first_lesson_date, start_time, end_time, lesson_count, beginner_capacity, created_at_date, created_at_time) VALUES ('report-course', 'report-coach', 'report-coach', '2026-06-15', '18:00:00', '20:00:00', 2, 12, '2026-06-01', '09:00:00')`);
+  await cloud.query(`INSERT INTO equipment_items (sync_id, equipment_type, item_number, size_category, arrow_quantity, status, location_type, added_by_username, added_at_date, added_at_time) VALUES ('report-case', 'case', 'REPORT-CASE', 'standard', 1, 'active', 'cupboard', 'report-coach', '2026-06-01', '09:00:00')`);
   await cloud.query(`INSERT INTO beginners_course_participants (sync_id, course_id, username, user_id, first_name, surname, beginner_size_category, converted_to_member, converted_at_date, converted_at_time, converted_by_username, created_by_username, created_at_date, created_at_time) VALUES ('report-participant', (SELECT id FROM beginners_courses WHERE sync_id = 'report-course'), 'report-robin', 10, 'Robin', 'Archer', 'adult', 1, '2026-07-01', '10:00:00', 'report-coach', 'report-coach', '2026-06-01', '09:00:00')`);
+  await cloud.query(`UPDATE beginners_course_participants SET assigned_case_id = (SELECT id FROM equipment_items WHERE sync_id = 'report-case') WHERE sync_id = 'report-participant'`);
   const snapshot = await createSyncGateway({ pool: cloud }).getAuthSnapshot();
+  const snapshotParticipant = snapshot.snapshot.beginnersCourseParticipants.find((entry) => entry.sync_id === "report-participant");
+  assert.equal(snapshotParticipant.assigned_case_sync_id, "report-case");
+  const participantChange = (await cloud.query(`SELECT payload_json FROM sync_change_log WHERE domain = 'beginners_course_participants' AND record_key = 'report-participant' AND payload_json->>'assigned_case_sync_id' = 'report-case' LIMIT 1`)).rows[0];
+  assert.equal(participantChange.payload_json.assigned_case_sync_id, "report-case");
   await applyPulledSyncResponse({ client: pi, currentCheckpoint: 0, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: snapshot.checkpoint, mode: "snapshot", snapshot: snapshot.snapshot }, syncGateway: createSyncGateway({ pool: pi }) });
   const cloudReporting = createActivityReportingGateway({ databaseEngine: "postgres", pool: cloud });
   const piReporting = createActivityReportingGateway({ databaseEngine: "postgres", pool: pi });
@@ -557,12 +576,14 @@ test("PostgreSQL incremental Phase 2A1 pull rolls back the batch and checkpoint,
   const gateway = createSyncGateway({ pool: pi });
   await gateway.writeLocalState({ stateKey: "local_machine_sync", state: { currentCheckpoint: 41 } });
   const course = { sync_id: "rollback-course", course_type: "beginners", coordinator_username: "rollback-robin", submitted_by_username: "rollback-robin", first_lesson_date: "2026-06-20", start_time: "18:00:00", end_time: "20:00:00", lesson_count: 1, beginner_capacity: 8, approval_status: "approved", is_cancelled: 0, created_at_date: "2026-06-01", created_at_time: "09:00:00" };
-  const participant = { sync_id: "rollback-participant", course_sync_id: "missing-course", username: "rollback-robin", first_name: "Robin", surname: "Archer", beginner_size_category: "adult", origin_course_type: "beginners", created_by_username: "rollback-robin", created_at_date: "2026-06-01", created_at_time: "09:00:00" };
+  const equipmentCase = { sync_id: "rollback-case", equipment_type: "case", item_number: "ROLLBACK-CASE", size_category: "standard", arrow_quantity: 1, status: "active", location_type: "cupboard", added_by_username: "rollback-robin", added_at_date: "2026-06-01", added_at_time: "09:00:00" };
+  const participant = { sync_id: "rollback-participant", course_sync_id: "missing-course", username: "rollback-robin", first_name: "Robin", surname: "Archer", beginner_size_category: "adult", origin_course_type: "beginners", assigned_case_sync_id: "rollback-case", created_by_username: "rollback-robin", created_at_date: "2026-06-01", created_at_time: "09:00:00" };
   const changes = [
     { domain: "range_presence_extensions", operation: "upsert", recordKey: "rollback-robin", payload: { username: "rollback-robin", active_until_date: "2026-06-01", active_until_time: "20:00:00", updated_by_username: "rollback-robin", updated_at_date: "2026-06-01", updated_at_time: "09:00:00", sync_version: 1 } },
     { domain: "login_events", operation: "upsert", recordKey: "rollback-login", payload: { username: "rollback-robin", login_method: "rfid", logged_in_date: "2026-06-01", logged_in_time: "10:00:00", sync_event_id: "rollback-login", sync_identity_origin: "native" } },
     { domain: "beginners_courses", operation: "upsert", recordKey: course.sync_id, payload: course },
     { domain: "beginners_course_participants", operation: "upsert", recordKey: participant.sync_id, payload: participant },
+    { domain: "equipment_items", operation: "upsert", recordKey: equipmentCase.sync_id, payload: equipmentCase },
     { domain: "guest_login_events", operation: "upsert", recordKey: "rollback-guest", payload: { first_name: "Late", surname: "Guest", archery_gb_membership_number: "AGB-ROLLBACK", payment_method: "cash", logged_in_date: "2026-06-01", logged_in_time: "11:00:00", sync_event_id: "rollback-guest", sync_identity_origin: "native" } },
   ];
   const pull = { changes, checkpoint: 99, mode: "incremental" };
@@ -579,7 +600,26 @@ test("PostgreSQL incremental Phase 2A1 pull rolls back the batch and checkpoint,
   assert.equal(Number((await pi.query(`SELECT COUNT(*) AS count FROM login_events WHERE sync_event_id = 'rollback-login'`)).rows[0].count), 1);
   assert.equal(Number((await pi.query(`SELECT COUNT(*) AS count FROM beginners_courses WHERE sync_id = 'rollback-course'`)).rows[0].count), 1);
   assert.equal(Number((await pi.query(`SELECT COUNT(*) AS count FROM beginners_course_participants WHERE sync_id = 'rollback-participant'`)).rows[0].count), 1);
+  const assignedCase = (await pi.query(`SELECT participants.assigned_case_id, equipment.id AS equipment_id FROM beginners_course_participants participants JOIN equipment_items equipment ON equipment.sync_id = 'rollback-case' WHERE participants.sync_id = 'rollback-participant'`)).rows[0];
+  assert.equal(Number(assignedCase.assigned_case_id), Number(assignedCase.equipment_id));
   assert.equal(Number((await pi.query(`SELECT COUNT(*) AS count FROM guest_login_events WHERE sync_event_id = 'rollback-guest'`)).rows[0].count), 1);
+
+  await applyPull(pi, {
+    currentCheckpoint: 99,
+    deactivatedRfidSuffix: "-deactivated",
+    pullResponse: {
+      checkpoint: 100,
+      mode: "incremental",
+      changes: [{
+        domain: "beginners_course_participants",
+        operation: "upsert",
+        recordKey: participant.sync_id,
+        payload: { ...participant, course_sync_id: course.sync_id, assigned_case_sync_id: null },
+      }],
+    },
+    syncGateway: gateway,
+  });
+  assert.equal((await pi.query(`SELECT assigned_case_id FROM beginners_course_participants WHERE sync_id = 'rollback-participant'`)).rows[0].assigned_case_id, null);
 });
 
 test("PostgreSQL mixed-version snapshots preserve omitted Phase 2A1 domains and apply only explicit empties", async () => {

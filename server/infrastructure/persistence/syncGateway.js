@@ -729,10 +729,13 @@ export function createSyncGateway({ pool }) {
             participants.assigned_case_by_username, participants.assigned_case_at_date,
             participants.assigned_case_at_time, participants.created_at_date,
             participants.created_at_time, participants.created_by_username,
-            courses.sync_id AS course_sync_id
+            courses.sync_id AS course_sync_id,
+            assigned_case.sync_id AS assigned_case_sync_id
           FROM beginners_course_participants AS participants
           INNER JOIN beginners_courses AS courses
             ON courses.id = participants.course_id
+          LEFT JOIN equipment_items AS assigned_case
+            ON assigned_case.id = participants.assigned_case_id
           ORDER BY participants.course_id ASC, participants.surname ASC, participants.first_name ASC, participants.id ASC
         `,
       );

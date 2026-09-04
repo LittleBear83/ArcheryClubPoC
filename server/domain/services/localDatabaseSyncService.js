@@ -34,15 +34,15 @@ function collapseChanges(changes = []) {
     ["users", 4],
     ["user_types", 5],
     ["user_disciplines", 6],
-    ["beginners_courses", 7],
-    ["beginners_course_lessons", 8],
-    ["beginners_course_lesson_coaches", 9],
-    ["beginners_course_participants", 10],
-    ["equipment_storage_locations", 11],
-    ["club_events", 12],
-    ["coaching_sessions", 13],
-    ["announcements", 14],
-    ["equipment_items", 15],
+    ["equipment_storage_locations", 7],
+    ["equipment_items", 8],
+    ["beginners_courses", 9],
+    ["beginners_course_lessons", 10],
+    ["beginners_course_lesson_coaches", 11],
+    ["beginners_course_participants", 12],
+    ["club_events", 13],
+    ["coaching_sessions", 14],
+    ["announcements", 15],
     ["range_presence_extensions", 16],
     ["login_events", 17],
     ["guest_login_events", 18],
@@ -55,18 +55,18 @@ function collapseChanges(changes = []) {
     ["beginners_course_lesson_coaches", 3],
     ["beginners_course_lessons", 4],
     ["beginners_course_participants", 5],
-    ["equipment_items", 4],
-    ["club_events", 5],
-    ["coaching_sessions", 6],
-    ["beginners_courses", 7],
-    ["range_presence_extensions", 8],
-    ["equipment_storage_locations", 9],
-    ["user_disciplines", 10],
-    ["user_types", 11],
-    ["role_permissions", 12],
-    ["users", 13],
-    ["roles", 14],
-    ["permissions", 15],
+    ["equipment_items", 6],
+    ["club_events", 7],
+    ["coaching_sessions", 8],
+    ["beginners_courses", 9],
+    ["range_presence_extensions", 10],
+    ["equipment_storage_locations", 11],
+    ["user_disciplines", 12],
+    ["user_types", 13],
+    ["role_permissions", 14],
+    ["users", 15],
+    ["roles", 16],
+    ["permissions", 17],
   ]);
 
   return [...latestByKey.values()].sort((left, right) => {
@@ -1224,15 +1224,15 @@ async function upsertBeginnersCourseParticipants(client, participants = []) {
           $17,
           $18,
           (SELECT id FROM users WHERE LOWER(username) = LOWER($18) LIMIT 1),
-          NULL,
-          $19,
-          (SELECT id FROM users WHERE LOWER(username) = LOWER($19) LIMIT 1),
+          (SELECT id FROM equipment_items WHERE sync_id = $19 LIMIT 1),
           $20,
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($20) LIMIT 1),
           $21,
           $22,
           $23,
           $24,
-          (SELECT id FROM users WHERE LOWER(username) = LOWER($24) LIMIT 1)
+          $25,
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($25) LIMIT 1)
         )
         ON CONFLICT (sync_id) DO UPDATE SET
           course_id = EXCLUDED.course_id,
@@ -1283,6 +1283,7 @@ async function upsertBeginnersCourseParticipants(client, participants = []) {
         participant.converted_at_date,
         participant.converted_at_time,
         participant.converted_by_username,
+        participant.assigned_case_sync_id ?? null,
         participant.assigned_case_by_username,
         participant.assigned_case_at_date,
         participant.assigned_case_at_time,
@@ -1436,10 +1437,6 @@ async function applyOperationalSnapshot({
     "beginnersCourseParticipants",
   ].every((property) => Object.hasOwn(snapshot, property));
 
-  if (hasCourseGraph) {
-    await replaceCourseReportingGraph(client, snapshot);
-  }
-
   if (Object.hasOwn(snapshot, "equipmentStorageLocations")) {
     await upsertEquipmentStorageLocations(client, snapshot.equipmentStorageLocations);
     await deleteMissingSnapshotRows({
@@ -1471,9 +1468,18 @@ async function applyOperationalSnapshot({
     await upsertAnnouncements(client, snapshot.announcements);
   }
 
-  if (Object.hasOwn(snapshot, "equipmentItems")) {
+  const hasEquipmentItems = Object.hasOwn(snapshot, "equipmentItems");
+
+  if (hasEquipmentItems) {
     await upsertEquipmentItems(client, snapshot.equipmentItems);
     await resolveEquipmentCaseRelationships(client, snapshot.equipmentItems);
+  }
+
+  if (hasCourseGraph) {
+    await replaceCourseReportingGraph(client, snapshot);
+  }
+
+  if (hasEquipmentItems) {
     await deleteMissingSnapshotRows({
       client,
       incomingKeys: snapshot.equipmentItems.map((entry) => entry.sync_id),

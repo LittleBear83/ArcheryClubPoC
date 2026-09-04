@@ -269,7 +269,8 @@ export const migration = {
         END IF;
         source_row := CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
         payload := (to_jsonb(source_row) - 'id' - 'course_id' - 'user_id' - 'converted_by_user_id' - 'assigned_case_id' - 'assigned_case_by_user_id' - 'created_by_user_id') || jsonb_build_object(
-          'course_sync_id', (SELECT sync_id FROM beginners_courses WHERE id = source_row.course_id LIMIT 1)
+          'course_sync_id', (SELECT sync_id FROM beginners_courses WHERE id = source_row.course_id LIMIT 1),
+          'assigned_case_sync_id', (SELECT sync_id FROM equipment_items WHERE id = source_row.assigned_case_id LIMIT 1)
         );
         INSERT INTO sync_change_log (domain, record_key, operation, payload_json)
         VALUES ('beginners_course_participants', COALESCE(payload->>'sync_id', ''), CASE WHEN TG_OP = 'DELETE' THEN 'delete' ELSE 'upsert' END, payload);

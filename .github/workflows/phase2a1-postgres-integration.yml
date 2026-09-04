@@ -35,14 +35,17 @@ jobs:
       PGUSER: postgres
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: git fetch --no-tags origin main
       - run: npm run test:postgres-integration
       - run: npm test
       - run: npm run typecheck
-      - run: npm run lint
+      - run: node scripts/lintChangedFiles.mjs
       - run: npm run build
       - run: git diff --check

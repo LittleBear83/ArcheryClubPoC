@@ -87,6 +87,7 @@ const databaseEngine = configuredDatabaseEngine || inferredDatabaseEngine;
 const databasePath = process.env.DATABASE_PATH ?? defaultSqliteDatabasePath;
 const distDirectory = path.join(serverRootDirectory, "..", "dist");
 const port = Number(process.env.PORT ?? 3001);
+const bindHost = process.env.BIND_HOST?.trim() || "";
 const trustProxyValue = process.env.TRUST_PROXY ?? process.env.ARCHERY_TRUST_PROXY ?? "";
 const headersTimeoutMs = Number(process.env.HEADERS_TIMEOUT_MS ?? 65000);
 const keepAliveTimeoutMs = Number(process.env.KEEP_ALIVE_TIMEOUT_MS ?? 5000);
@@ -187,6 +188,7 @@ export const serverRuntime = {
   appMode,
   isLive,
   port,
+  bindHost,
   headersTimeoutMs,
   keepAliveTimeoutMs,
   requestTimeoutMs,

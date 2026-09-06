@@ -7184,6 +7184,7 @@ app.use("/api", apiErrorHandler);
 
 startServer({
   app,
+  bindHost: serverRuntime.bindHost,
   databaseEngine: serverRuntime.databaseEngine,
   databasePath,
   databaseUrl: serverRuntime.databaseUrl,

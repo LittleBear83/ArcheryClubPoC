@@ -17,12 +17,136 @@ function normalizeCheckpoint(value) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
+async function streamSyncEvents(req, res, syncGateway) {
+  let client;
+  let closed = false;
+  let ready = false;
+  let heartbeat;
+  let cleanupPromise;
+  let clientFailed = false;
+  const pending = [];
+
+  function cleanup() {
+    closed = true;
+    clearInterval(heartbeat);
+    pending.length = 0;
+    req.off("aborted", disconnect);
+    res.off("close", disconnect);
+    res.off("error", disconnect);
+    // A disconnected request may still be waiting for pool.connect().
+    if (!client || cleanupPromise) return cleanupPromise;
+    client.off("notification", onNotification);
+    cleanupPromise = (async () => {
+      try {
+        await client.query("UNLISTEN archery_sync_change");
+      } catch {
+        clientFailed = true;
+      } finally {
+        // Keep the error handler attached until all pending database work ends.
+        client.off("error", onClientError);
+        client.release(clientFailed);
+      }
+    })();
+    return cleanupPromise;
+  }
+
+  function disconnect() {
+    void cleanup();
+    if (!res.writableEnded && !res.destroyed) res.end();
+  }
+
+  function onClientError() {
+    clientFailed = true;
+    disconnect();
+  }
+
+  function write(text) {
+    if (closed) return;
+    // Hints are recoverable by pulling; disconnect a slow reader instead of
+    // accumulating an unbounded response buffer.
+    if (!res.write(text)) disconnect();
+  }
+
+  function sendEvent(name, data) {
+    write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+  }
+
+  function onNotification(message) {
+    if (closed || message.channel !== "archery_sync_change") return;
+    let data;
+    try {
+      data = JSON.parse(message.payload);
+    } catch {
+      return;
+    }
+    if (
+      !data || typeof data !== "object" || Array.isArray(data)
+      || !Number.isSafeInteger(data.change_id) || data.change_id < 0
+      || typeof data.domain !== "string" || !data.domain.trim()
+    ) return;
+    const hint = { checkpoint: data.change_id, domain: data.domain };
+    if (ready) {
+      sendEvent("sync.available", hint);
+    } else if (pending.length < 1024) {
+      pending.push(hint);
+    } else {
+      disconnect();
+    }
+  }
+
+  req.on("aborted", disconnect);
+  res.on("close", disconnect);
+  res.on("error", disconnect);
+
+  try {
+    client = await syncGateway.pool.connect();
+    client.on("error", onClientError);
+    if (closed || req.aborted || res.destroyed) {
+      await cleanup();
+      return;
+    }
+    client.on("notification", onNotification);
+    // LISTEN runs in autocommit before the checkpoint read, so changes during
+    // setup are either visible in the checkpoint or queued as notifications.
+    await client.query("LISTEN archery_sync_change");
+    if (closed) return;
+    const checkpoint = await syncGateway.getLatestCheckpoint(client);
+    if (closed) return;
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders?.();
+    sendEvent("sync.ready", { checkpoint, serverVersion: "sync-v1" });
+    ready = true;
+    for (const hint of pending) sendEvent("sync.available", hint);
+    pending.length = 0;
+    if (!closed) {
+      heartbeat = setInterval(() => write(": ping\n\n"), 25000);
+      heartbeat.unref?.();
+    }
+  } catch (error) {
+    const wasClosed = closed;
+    await cleanup();
+    if (wasClosed || res.headersSent) {
+      if (!res.writableEnded && !res.destroyed) res.end();
+      return;
+    }
+    throw error;
+  }
+}
+
 export function registerSyncRoutes({
   app,
   authenticateMachineRequest,
   logSyncEvent = () => {},
   syncGateway,
 }) {
+  app.get("/api/sync/v1/events", authenticateMachineRequest, (req, res) =>
+    streamSyncEvents(req, res, syncGateway),
+  );
+
   app.get("/api/sync/v1/status", authenticateMachineRequest, async (_req, res) => {
     const latestCheckpoint = await syncGateway.getLatestCheckpoint();
 

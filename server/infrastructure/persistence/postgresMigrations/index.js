@@ -3,6 +3,7 @@ import { migration as syncLoginEventExternalIdsMigration } from "./003_sync_logi
 import { migration as fixSyncChangeTriggerMigration } from "./004_fix_sync_change_trigger.js";
 import { migration as operationalSyncMigration } from "./005_operational_sync.js";
 import { migration as phase2a1ReportingSyncMigration } from "./006_phase_2a1_reporting_sync.js";
+import { migration as syncChangeNotificationsMigration } from "./007_sync_change_notifications.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -10,4 +11,5 @@ export const postgresMigrations = [
   fixSyncChangeTriggerMigration,
   operationalSyncMigration,
   phase2a1ReportingSyncMigration,
+  syncChangeNotificationsMigration,
 ];

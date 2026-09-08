@@ -108,6 +108,124 @@ after(async () => {
   await adminPool?.end();
 });
 
+test("migration 007 notifies only committed change checkpoints with lightweight metadata and survives runner repeats", { timeout: 30000 }, async () => {
+  const pool = await createTemporaryPool("notifications");
+  disposablePools.push(pool);
+  const migrationVersion = "007_sync_change_notifications";
+  const readNotificationTriggers = () => pool.query(`
+    SELECT oid, tgname FROM pg_trigger
+    WHERE tgrelid = 'sync_change_log'::regclass AND NOT tgisinternal
+  `);
+  assert.equal((await pool.query(`SELECT 1 FROM schema_migrations WHERE version = $1`, [migrationVersion])).rowCount, 1);
+  const originalTriggers = (await readNotificationTriggers()).rows;
+  assert.equal(originalTriggers.length, 1);
+  assert.equal(originalTriggers[0].tgname, "sync_change_log_notify_trigger");
+  await runPostgresMigrations({ committeeRoleSeed: [], defaultEquipmentCupboardLabel: "Test cupboard", permissionDefinitions: [], pool, seedUsers: [], systemRoleDefinitions: [] });
+  assert.deepEqual((await readNotificationTriggers()).rows, originalTriggers, "the normal runner skips the installed trigger, preserving its OID");
+  assert.equal((await pool.query(`SELECT 1 FROM schema_migrations WHERE version = $1`, [migrationVersion])).rowCount, 1);
+
+  const listener = await pool.connect();
+  let writer;
+  const notifications = [];
+  const collect = (message) => {
+    if (message.channel === "archery_sync_change") notifications.push(message);
+  };
+  listener.on("notification", collect);
+  // A committed control notification fences delivery of earlier commits. This
+  // also proves the listener is live during negative assertions, without sleeps.
+  async function deliveryBarrier() {
+    const token = randomUUID();
+    let cleanup;
+    const received = new Promise((resolve, reject) => {
+      const onNotification = (message) => {
+        if (message.channel === "archery_sync_test_barrier" && message.payload === token) resolve();
+      };
+      const timer = setTimeout(() => reject(new Error("Timed out waiting for PostgreSQL notification delivery")), 5000);
+      listener.on("notification", onNotification);
+      listener.on("error", reject);
+      cleanup = () => {
+        clearTimeout(timer);
+        listener.off("notification", onNotification);
+        listener.off("error", reject);
+      };
+    });
+    try {
+      await Promise.all([
+        received,
+        pool.query(`SELECT pg_notify('archery_sync_test_barrier', $1)`, [token]),
+      ]);
+    } finally {
+      cleanup();
+    }
+  }
+  const recordPayload = { username: "notification-private-record", nested: { email: "private@example.test" } };
+  async function insertChange(domain = "users") {
+    const result = await writer.query(`
+      INSERT INTO sync_change_log (domain, record_key, operation, payload_json)
+      VALUES ($1, $2, 'upsert', $3::jsonb) RETURNING change_id, domain
+    `, [domain, "notification-private-key", JSON.stringify(recordPayload)]);
+    return { change_id: Number(result.rows[0].change_id), domain: result.rows[0].domain };
+  }
+  function assertNotifications(expected) {
+    const parsed = notifications.map((message) => {
+      assert.equal(message.channel, "archery_sync_change");
+      const payload = JSON.parse(message.payload);
+      assert.deepEqual(Object.keys(payload).sort(), ["change_id", "domain"]);
+      assert.doesNotMatch(message.payload, /notification-private|private@example|payload_json|record_key|operation|changed_at/);
+      return payload;
+    });
+    assert.deepEqual(parsed, expected);
+  }
+  try {
+    await listener.query("LISTEN archery_sync_change");
+    await listener.query("LISTEN archery_sync_test_barrier");
+    writer = await pool.connect();
+    const gateway = createSyncGateway({ pool });
+    const initialCheckpoint = await gateway.getLatestCheckpoint();
+    await writer.query("BEGIN");
+    const first = await insertChange();
+    assert.deepEqual((await writer.query(`SELECT payload_json FROM sync_change_log WHERE change_id = $1`, [first.change_id])).rows[0].payload_json, recordPayload);
+    await deliveryBarrier();
+    assertNotifications([]);
+    assert.equal(await gateway.getLatestCheckpoint(), initialCheckpoint);
+    await writer.query("COMMIT");
+    await deliveryBarrier();
+    assertNotifications([first]);
+    assert.equal(await gateway.getLatestCheckpoint(), first.change_id);
+
+    await writer.query("BEGIN");
+    const rolledBack = await insertChange();
+    await writer.query("ROLLBACK");
+    await deliveryBarrier();
+    assertNotifications([first]);
+    assert.equal((await pool.query(`SELECT 1 FROM sync_change_log WHERE change_id = $1`, [rolledBack.change_id])).rowCount, 0);
+    assert.equal(await gateway.getLatestCheckpoint(), first.change_id);
+
+    // Two same-domain rows in one commit must remain distinct notifications;
+    // another commit also checks ordering across transaction boundaries.
+    await writer.query("BEGIN");
+    const second = await insertChange();
+    const third = await insertChange();
+    await writer.query("COMMIT");
+    await deliveryBarrier();
+    assertNotifications([first, second, third]);
+    assert.equal(await gateway.getLatestCheckpoint(), third.change_id);
+    const fourth = await insertChange("roles");
+    await deliveryBarrier();
+    assertNotifications([first, second, third, fourth]);
+    assert.ok(second.change_id > rolledBack.change_id, "rolled-back sequence values are not reused");
+    assert.equal(await gateway.getLatestCheckpoint(), fourth.change_id);
+    const changes = await gateway.listChangesAfterCheckpoint({ checkpoint: first.change_id });
+    assert.deepEqual(changes.map((change) => ({ change_id: change.changeId, domain: change.domain })), [second, third, fourth]);
+  } finally {
+    // Destroy these dedicated connections even on failure: PostgreSQL rolls
+    // back any open transaction and removes the session's LISTEN registrations.
+    writer?.release(true);
+    listener.off("notification", collect);
+    listener.release(true);
+  }
+});
+
 test("migration 006 creates stable identities and cloud logins are tracked without Pi outbox", async () => {
   const gateway = createSyncGateway({ pool: cloudPool });
   const auth = createMemberAuthGateway({

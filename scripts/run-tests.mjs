@@ -80,6 +80,7 @@ await import(
 await import(
   pathToFileURL(path.join(outDir, "src/data/repositories/RoleRepositoryImpl.test.js"))
 );
+await import(new URL("./lib/liveSyncWatcher.test.mjs", import.meta.url));
 await import(pathToFileURL(path.join(root, "server/security/csrf.test.js")));
 await import(pathToFileURL(path.join(root, "server/security/rateLimit.test.js")));
 await import(

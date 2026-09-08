@@ -7,6 +7,23 @@ import {
 const SYNC_STATE_KEY = "local_machine_sync";
 export const PUBLICATION_SYNC_STATE_KEY = "local_machine_publication_sync_v2";
 export { isValidPublicationCursor, PUBLICATION_FEED_VERSION };
+export const REPLICATED_DOMAINS = [
+  "users", "user_types", "user_disciplines", "roles", "permissions",
+  "role_permissions", "club_events", "coaching_sessions", "event_bookings",
+  "coaching_session_bookings", "announcements", "equipment_storage_locations",
+  "equipment_items", "login_events", "guest_login_events",
+  "range_presence_extensions", "beginners_courses",
+  "beginners_course_participants", "beginners_course_lessons",
+  "beginners_course_lesson_coaches",
+];
+const PUBLICATION_SNAPSHOT_PROPERTIES = [
+  "users", "userTypes", "userDisciplines", "roles", "permissions",
+  "rolePermissions", "clubEvents", "coachingSessions", "eventBookings",
+  "coachingSessionBookings", "announcements", "equipmentStorageLocations",
+  "equipmentItems", "loginEvents", "guestLoginEvents",
+  "rangePresenceExtensions", "beginnersCourses", "beginnersCourseParticipants",
+  "beginnersCourseLessons", "beginnersCourseLessonCoaches",
+];
 
 function requirePublicationSyncState(stateEntry) {
   const state = stateEntry?.state;
@@ -1539,6 +1556,79 @@ async function applyOperationalSnapshot({
   await reapplyPendingBookingOverlay(client, syncGateway);
 }
 
+async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, snapshot }) {
+  await upsertUsers(client, snapshot.users, deactivatedRfidSuffix);
+
+  for (const role of snapshot.roles) {
+    await client.query(`
+      INSERT INTO roles (role_key, title, is_system) VALUES ($1, $2, $3)
+      ON CONFLICT (role_key) DO UPDATE SET title = EXCLUDED.title, is_system = EXCLUDED.is_system
+    `, [role.role_key, role.title, Number(role.is_system ?? 0)]);
+  }
+  for (const permission of snapshot.permissions) {
+    await client.query(`
+      INSERT INTO permissions (permission_key, label, description) VALUES ($1, $2, $3)
+      ON CONFLICT (permission_key) DO UPDATE SET label = EXCLUDED.label, description = EXCLUDED.description
+    `, [permission.permission_key, permission.label, permission.description]);
+  }
+  await replaceRolePermissions(client, snapshot.rolePermissions);
+  await replaceUserTypes(client, snapshot.userTypes);
+  await replaceUserDisciplines(client, snapshot.userDisciplines);
+
+  await upsertEquipmentStorageLocations(client, snapshot.equipmentStorageLocations);
+  await upsertClubEvents(client, snapshot.clubEvents);
+  await upsertCoachingSessions(client, snapshot.coachingSessions);
+  await upsertAnnouncements(client, snapshot.announcements);
+  await upsertEquipmentItems(client, snapshot.equipmentItems);
+  await resolveEquipmentCaseRelationships(client, snapshot.equipmentItems);
+  await replaceCourseReportingGraph(client, snapshot);
+  await upsertBookingSnapshotRows(client, "event", snapshot.eventBookings);
+  await upsertBookingSnapshotRows(client, "coaching", snapshot.coachingSessionBookings);
+  await upsertRangePresenceExtensionRows(client, snapshot.rangePresenceExtensions);
+  await reconcileLegacyHistorySnapshot(client, "login", snapshot.loginEvents);
+  await reconcileLegacyHistorySnapshot(client, "guest", snapshot.guestLoginEvents);
+
+  // Dependents first. Histories and local-only tables are deliberately never
+  // truncated; referenced replicated parents are retained where deletion is unsafe.
+  await deleteMissingBookingSnapshotRows(client, "event", snapshot.eventBookings);
+  await deleteMissingBookingSnapshotRows(client, "coaching", snapshot.coachingSessionBookings);
+  await deleteMissingSnapshotRows({ client, incomingKeys: snapshot.clubEvents.map((row) => row.sync_id), tableName: "club_events" });
+  await deleteMissingSnapshotRows({ client, incomingKeys: snapshot.coachingSessions.map((row) => row.sync_id), tableName: "coaching_sessions" });
+  await deleteMissingSnapshotRows({ client, incomingKeys: snapshot.rangePresenceExtensions.map((row) => row.username), keyColumn: "username", tableName: "range_presence_extensions" });
+
+  const equipmentKeys = snapshot.equipmentItems.map((row) => row.sync_id);
+  await client.query(`UPDATE equipment_items SET location_case_id = NULL WHERE sync_id <> ALL($1::text[])`, [equipmentKeys]);
+  await client.query(`
+    DELETE FROM equipment_items AS item
+    WHERE item.sync_id <> ALL($1::text[])
+      AND NOT EXISTS (
+        SELECT 1 FROM equipment_loans AS loan
+        WHERE loan.equipment_item_id = item.id
+          OR loan.loan_context_case_id = item.id
+          OR loan.return_case_id = item.id
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM beginners_course_participants AS participant
+        WHERE participant.assigned_case_id = item.id
+      )
+  `, [equipmentKeys]);
+  await deleteMissingSnapshotRows({ client, incomingKeys: snapshot.equipmentStorageLocations.map((row) => row.sync_id), tableName: "equipment_storage_locations" });
+
+  const announcementKeys = snapshot.announcements.map((row) => row.sync_id);
+  await client.query(`
+    DELETE FROM announcements AS announcement
+    WHERE announcement.sync_id <> ALL($1::text[])
+      AND NOT EXISTS (
+        SELECT 1 FROM announcement_seen_members AS seen
+        WHERE seen.announcement_id = announcement.id
+      )
+  `, [announcementKeys]);
+
+  await client.query(`DELETE FROM roles WHERE role_key <> ALL($1::text[])`, [snapshot.roles.map((row) => row.role_key)]);
+  await client.query(`DELETE FROM permissions WHERE permission_key <> ALL($1::text[])`, [snapshot.permissions.map((row) => row.permission_key)]);
+  await tombstoneMissingUsers(client, snapshot.users, deactivatedRfidSuffix);
+}
+
 export async function applyAuthSnapshot({
   client,
   deactivatedRfidSuffix,
@@ -1901,6 +1991,110 @@ export async function readPublicationSyncState({ syncGateway, client }) {
   return requirePublicationSyncState(
     await syncGateway.readLocalState(PUBLICATION_SYNC_STATE_KEY, client),
   );
+}
+
+export async function drainPendingOutboxCommands({ batchSize, pushEvents, syncGateway }) {
+  let batches = 0;
+  let resolvedEvents = 0;
+  for (;;) {
+    const events = await syncGateway.listPendingOutboxEvents({
+      includeUnavailable: true,
+      limit: batchSize,
+    });
+    if (events.length === 0) {
+      if (await syncGateway.countPendingOutboxEvents() !== 0) {
+        throw new Error("V2 rebaseline refused because unresolved outbox commands remain.");
+      }
+      return { batches, resolvedEvents };
+    }
+
+    let response;
+    try {
+      response = await pushEvents(events.map((entry) => ({
+        eventId: entry.eventId,
+        eventType: entry.eventType,
+        payload: entry.payload,
+      })));
+    } catch (error) {
+      await syncGateway.recordOutboxFailure({
+        errorMessage: error instanceof Error ? error.message : String(error),
+        eventIds: events.map((entry) => entry.eventId),
+      });
+      throw error;
+    }
+
+    const inputIds = new Set(events.map((entry) => entry.eventId));
+    const acceptedIds = Array.isArray(response?.acceptedEventIds) ? response.acceptedEventIds : [];
+    const rejections = Array.isArray(response?.rejectedEvents) ? response.rejectedEvents : [];
+    const rejectedIds = rejections.map((entry) => entry.eventId);
+    const acceptedIdSet = new Set(acceptedIds);
+    const rejectedIdSet = new Set(rejectedIds);
+    const resolvedIds = new Set([...acceptedIdSet, ...rejectedIdSet]);
+    const invalidOutcome = acceptedIdSet.size !== acceptedIds.length
+      || rejectedIdSet.size !== rejectedIds.length
+      || [...resolvedIds].some((eventId) => !inputIds.has(eventId))
+      || [...acceptedIdSet].some((eventId) => rejectedIdSet.has(eventId));
+    const unresolvedIds = [...inputIds].filter((eventId) => !resolvedIds.has(eventId));
+    if (invalidOutcome || unresolvedIds.length > 0) {
+      const failedIds = unresolvedIds.length > 0 ? unresolvedIds : [...inputIds];
+      await syncGateway.recordOutboxFailure({
+        errorMessage: "Cloud did not return one terminal outcome for every rebaseline outbox command.",
+        eventIds: failedIds,
+      });
+      throw new Error("V2 rebaseline refused because pending outbox commands could not be resolved.");
+    }
+
+    await syncGateway.rejectOutboxEvents({ rejections });
+    await syncGateway.acknowledgeOutboxEvents({ eventIds: acceptedIds });
+    batches += 1;
+    resolvedEvents += events.length;
+  }
+}
+
+export async function applyPublicationSnapshot({
+  client,
+  deactivatedRfidSuffix,
+  snapshotResponse,
+  syncGateway,
+  onSnapshotApplied,
+}) {
+  if (snapshotResponse?.feedVersion !== PUBLICATION_FEED_VERSION) {
+    throw new Error(`Publication feed-version mismatch: expected ${PUBLICATION_FEED_VERSION}.`);
+  }
+  if (snapshotResponse.mode !== "snapshot" || !isValidPublicationCursor(snapshotResponse.checkpoint)) {
+    throw new Error("Publication sync v2 returned an invalid rebaseline snapshot boundary.");
+  }
+  if (!snapshotResponse.snapshot || PUBLICATION_SNAPSHOT_PROPERTIES.some(
+    (property) => !Array.isArray(snapshotResponse.snapshot[property]),
+  )) {
+    throw new Error("Publication sync v2 returned an incomplete authoritative snapshot.");
+  }
+
+  await client.query("BEGIN");
+  try {
+    await client.query(`SELECT set_config('archery.sync.apply_mode', 'pull', true)`);
+    await reconcilePublicationSnapshot({
+      client,
+      deactivatedRfidSuffix,
+      snapshot: snapshotResponse.snapshot,
+    });
+    await syncGateway.writeLocalState({
+      client,
+      state: {
+        feedVersion: PUBLICATION_FEED_VERSION,
+        publicationCheckpoint: snapshotResponse.checkpoint,
+      },
+      stateKey: PUBLICATION_SYNC_STATE_KEY,
+    });
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+
+  if (onSnapshotApplied) {
+    try { await onSnapshotApplied(REPLICATED_DOMAINS); } catch { /* Best-effort invalidation. */ }
+  }
 }
 
 export async function applyPulledPublicationResponse({

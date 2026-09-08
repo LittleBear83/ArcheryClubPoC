@@ -17,6 +17,7 @@ import { createGoldenRecordsMemberSyncService } from "./domain/services/goldenRe
 import { startGoldenRecordsSyncScheduler } from "./domain/services/goldenRecordsSyncScheduler.js";
 import { createServerEventBus } from "./domain/services/serverEventBus.js";
 import { startLocalSyncBrowserBridge } from "./infrastructure/persistence/localSyncBrowserBridge.js";
+import { createLocalMutationMaintenanceGate } from "./infrastructure/persistence/localRebaselineMaintenanceGate.js";
 import { createCsrfProtection } from "./security/csrf.js";
 import { createRateLimiter } from "./security/rateLimit.js";
 import {
@@ -1132,6 +1133,10 @@ app.use(
     getClientIp,
   }),
 );
+app.use(createLocalMutationMaintenanceGate({
+  isLocalPiNode: serverRuntime.sync.isLocalPiNode,
+  pool: db.pool,
+}));
 app.use(
   helmet({
     contentSecurityPolicy: {

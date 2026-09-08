@@ -104,6 +104,9 @@ await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/handicapTableGateway.test.js"))
 );
 await import(
+  pathToFileURL(path.join(root, "server/infrastructure/persistence/localRebaselineMaintenanceGate.test.js"))
+);
+await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/syncGateway.test.js"))
 );
 await import(

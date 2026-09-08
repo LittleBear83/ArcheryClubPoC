@@ -36,3 +36,23 @@ test("schedule route wiring passes the local Pi flag only to schedule routes", a
     /isLocalPiNode: serverRuntime\.sync\.isLocalPiNode,/,
   );
 });
+
+test("the rebaseline maintenance gate encloses outbox drain and snapshot application", async () => {
+  const serverSource = await readFile(path.join(__dirname, "index.js"), "utf8");
+  const syncSource = await readFile(
+    path.join(__dirname, "../scripts/syncLocalDatabase.mjs"),
+    "utf8",
+  );
+  const mainSource = syncSource.slice(syncSource.indexOf("async function main()"));
+  const acquireIndex = mainSource.indexOf("await acquireLocalRebaselineMaintenanceGate(client)");
+  const drainIndex = mainSource.indexOf("await drainPendingOutboxCommands(");
+  const snapshotIndex = mainSource.indexOf("await applyPublicationSnapshot(");
+  const releaseIndex = mainSource.indexOf("await releaseLocalRebaselineMaintenanceGate(client)");
+
+  assert.ok(acquireIndex >= 0 && acquireIndex < drainIndex);
+  assert.ok(drainIndex < snapshotIndex && snapshotIndex < releaseIndex);
+  assert.match(
+    serverSource,
+    /app\.use\(createLocalMutationMaintenanceGate\(\{\s*isLocalPiNode: serverRuntime\.sync\.isLocalPiNode,\s*pool: db\.pool,/,
+  );
+});

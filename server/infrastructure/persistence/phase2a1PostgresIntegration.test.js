@@ -6,7 +6,13 @@ import pg from "pg";
 import express from "express";
 import { registerPublicationSyncRoutes } from "../../presentation/http/registerPublicationSyncRoutes.js";
 import { createMachineSyncAuth } from "../../security/machineAuth.js";
-import { applyAuthSnapshot, applyPulledSyncResponse } from "../../domain/services/localDatabaseSyncService.js";
+import {
+  applyAuthSnapshot,
+  applyPublicationSnapshot,
+  applyPulledPublicationResponse,
+  applyPulledSyncResponse,
+  PUBLICATION_SYNC_STATE_KEY,
+} from "../../domain/services/localDatabaseSyncService.js";
 import { postgresMigrations } from "./postgresMigrations/index.js";
 import { buildInitialSchemaSql, runPostgresMigrations } from "./runPostgresMigrations.js";
 import { createMemberAuthGateway } from "./memberAuthGateway.js";
@@ -1413,4 +1419,96 @@ test("PostgreSQL mixed-version snapshots preserve omitted Phase 2A1 domains and 
   await applyPulledSyncResponse({ client: pi, currentCheckpoint: 4, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: 5, mode: "snapshot", snapshot: { users: [], loginEvents: [], rangePresenceExtensions: [] } }, syncGateway: gateway });
   assert.equal(await count("guest_login_events"), 1);
   assert.equal(await count("range_presence_extensions"), 0);
+});
+
+test("PostgreSQL v2 rebaseline preserves local-only/history/outbox data, prunes stale replicated rows, and continues pulling", async () => {
+  const cloud = await createTemporaryPool("v2_rebaseline_cloud");
+  const local = await createTemporaryPool("v2_rebaseline_local");
+  disposablePools.push(cloud, local);
+  await seedUser(cloud, 501, "baseline-member");
+  await seedUser(local, 601, "baseline-member");
+  await local.query("INSERT INTO roles (role_key, title) VALUES ('stale-local-role', 'Stale')");
+  await local.query(`
+    INSERT INTO suggestions (
+      submitted_by_username, suggestion_title, improvement_text,
+      created_at_date, created_at_time
+    ) VALUES ('baseline-member', 'Keep me', 'Local-only data', '2026-09-08', '12:00:00')
+  `);
+  await local.query(`
+    INSERT INTO login_events (
+      username, login_method, logged_in_date, logged_in_time, sync_event_id
+    ) VALUES ('baseline-member', 'rfid', '2026-09-08', '12:01:00', 'local-history-1')
+  `);
+  await local.query(`
+    INSERT INTO sync_local_outbox (
+      event_id, event_type, aggregate_key, payload_json, acknowledged_at
+    ) VALUES
+      ('acked-command', 'login_event', 'baseline-member', '{}'::jsonb, NOW()),
+      ('rejected-command', 'login_event', 'baseline-member', '{}'::jsonb, NULL)
+  `);
+  await local.query(`
+    UPDATE sync_local_outbox
+    SET rejected_at = NOW(), rejection_code = 'invalid', rejection_reason = 'Preserved diagnostic'
+    WHERE event_id = 'rejected-command'
+  `);
+  await local.query(`
+    INSERT INTO sync_local_state (state_key, state_json)
+    VALUES ('local_machine_sync', '{"currentCheckpoint":77}'::jsonb)
+  `);
+
+  const snapshot = await createSyncPublicationGateway({ pool: cloud }).createSnapshot();
+  const localGateway = createSyncGateway({ pool: local });
+  const client = await local.connect();
+  try {
+    await applyPublicationSnapshot({
+      client,
+      deactivatedRfidSuffix: "-deactivated",
+      snapshotResponse: { ...snapshot, feedVersion: "sync-publication-v2", mode: "snapshot" },
+      syncGateway: localGateway,
+    });
+  } finally {
+    client.release();
+  }
+
+  assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM suggestions WHERE suggestion_title = 'Keep me'")).rows[0].n, 1);
+  assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM login_events WHERE sync_event_id = 'local-history-1'")).rows[0].n, 1);
+  assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM roles WHERE role_key = 'stale-local-role'")).rows[0].n, 0);
+  const outbox = (await local.query("SELECT event_id, acknowledged_at, rejected_at, rejection_code, rejection_reason FROM sync_local_outbox ORDER BY event_id")).rows;
+  assert.equal(outbox.length, 2);
+  assert.ok(outbox[0].acknowledged_at);
+  assert.equal(outbox[1].rejection_code, "invalid");
+  assert.equal(outbox[1].rejection_reason, "Preserved diagnostic");
+  assert.deepEqual((await localGateway.readLocalState("local_machine_sync")).state, { currentCheckpoint: 77 });
+  const publicationState = await localGateway.readLocalState(PUBLICATION_SYNC_STATE_KEY);
+  assert.deepEqual(publicationState.state, {
+    feedVersion: "sync-publication-v2",
+    publicationCheckpoint: snapshot.checkpoint,
+  });
+  assert.equal(typeof publicationState.state.publicationCheckpoint, "string");
+
+  const nextCursor = String(BigInt(snapshot.checkpoint) + 1n);
+  const incrementalClient = await local.connect();
+  try {
+    await applyPulledPublicationResponse({
+      client: incrementalClient,
+      deactivatedRfidSuffix: "-deactivated",
+      pullResponse: {
+        checkpoint: nextCursor,
+        feedVersion: "sync-publication-v2",
+        mode: "incremental",
+        changes: [{
+          domain: "roles",
+          operation: "upsert",
+          payload: { role_key: "member", title: "Updated Member", is_system: 0 },
+          publicationCursor: nextCursor,
+          recordKey: "member",
+        }],
+      },
+      syncGateway: localGateway,
+    });
+  } finally {
+    incrementalClient.release();
+  }
+  assert.equal((await local.query("SELECT title FROM roles WHERE role_key = 'member'")).rows[0].title, "Updated Member");
+  assert.equal((await localGateway.readLocalState(PUBLICATION_SYNC_STATE_KEY)).state.publicationCheckpoint, nextCursor);
 });

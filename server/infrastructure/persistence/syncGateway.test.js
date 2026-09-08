@@ -96,6 +96,17 @@ test("pending outbox queries use deterministic outbox ordering", async () => {
   );
 });
 
+test("rebaseline outbox reads can include commands delayed by retry backoff", async () => {
+  const { client, queries } = createClientDouble();
+  const gateway = createSyncGateway({ pool: client });
+
+  await gateway.listPendingOutboxEvents({ includeUnavailable: true });
+  await gateway.listPendingOutboxEvents();
+
+  assert.equal(queries[0].sql.includes("available_at <= NOW()"), false);
+  assert.equal(queries[1].sql.includes("available_at <= NOW()"), true);
+});
+
 test("rejected booking creates remove the optimistic local booking when no newer create remains", async () => {
   const queries = [];
   const client = {

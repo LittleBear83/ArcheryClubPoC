@@ -3,7 +3,11 @@ import { test } from "node:test";
 import {
   applyAuthChanges,
   applyAuthSnapshot,
+  applyPulledPublicationResponse,
   applyPulledSyncResponse,
+  PUBLICATION_FEED_VERSION,
+  PUBLICATION_SYNC_STATE_KEY,
+  readPublicationSyncState,
   readSyncStatus,
   writeSyncAttemptState,
 } from "./localDatabaseSyncService.js";
@@ -210,6 +214,151 @@ test("writeSyncAttemptState merges new values into the existing sync state", asy
     lastError: "network down",
     lastSuccessfulAt: "2026-08-31T00:01:02.000Z",
   });
+});
+
+function createPublicationSyncDouble({
+  checkpoint = "0",
+  failSql = null,
+  feedVersion = PUBLICATION_FEED_VERSION,
+} = {}) {
+  const queries = [];
+  const writes = [];
+  let state = { feedVersion, publicationCheckpoint: checkpoint };
+  const client = {
+    async query(sql, values = []) {
+      const normalizedSql = String(sql).replace(/\s+/g, " ").trim();
+      queries.push({ sql: normalizedSql, values });
+      if (failSql && normalizedSql.startsWith(failSql)) throw new Error("simulated v2 apply failure");
+      return { rowCount: /^\s*(INSERT|UPDATE|DELETE)\b/i.test(normalizedSql) ? 1 : 0, rows: [] };
+    },
+  };
+  const syncGateway = {
+    async listPendingBookingOverlayCommands() { return []; },
+    async readLocalState(stateKey, suppliedClient) {
+      assert.equal(stateKey, PUBLICATION_SYNC_STATE_KEY);
+      if (suppliedClient !== undefined) assert.equal(suppliedClient, client);
+      return state ? { state } : null;
+    },
+    async writeLocalState(entry) {
+      assert.equal(entry.client, client);
+      assert.equal(entry.stateKey, PUBLICATION_SYNC_STATE_KEY);
+      writes.push(entry);
+      state = entry.state;
+    },
+  };
+  return { client, getState: () => state, queries, syncGateway, writes };
+}
+
+test("publication state refuses v2 before a valid baseline is initialized", async () => {
+  for (const state of [
+    null,
+    { currentCheckpoint: 42 },
+    { feedVersion: "sync-v1", publicationCheckpoint: "42" },
+    { feedVersion: PUBLICATION_FEED_VERSION, publicationCheckpoint: 42 },
+    { feedVersion: PUBLICATION_FEED_VERSION, publicationCheckpoint: "01" },
+  ]) {
+    await assert.rejects(
+      readPublicationSyncState({
+        syncGateway: { async readLocalState() { return state ? { state } : null; } },
+      }),
+      /initialized v2 baseline/,
+    );
+  }
+});
+
+test("publication apply persists its feed and exact BIGINT checkpoint in the apply transaction", async () => {
+  const sync = createPublicationSyncDouble({ checkpoint: "9007199254740992" });
+  await applyPulledPublicationResponse({
+    client: sync.client,
+    deactivatedRfidSuffix: "-deactivated",
+    pullResponse: {
+      changes: [{
+        domain: "roles",
+        operation: "upsert",
+        payload: { is_system: 1, role_key: "admin", title: "Admin" },
+        publicationCursor: "9007199254740993",
+        recordKey: "admin",
+      }],
+      checkpoint: "9007199254740993",
+      feedVersion: PUBLICATION_FEED_VERSION,
+      mode: "incremental",
+    },
+    syncGateway: sync.syncGateway,
+  });
+
+  assert.deepEqual(sync.getState(), {
+    feedVersion: PUBLICATION_FEED_VERSION,
+    publicationCheckpoint: "9007199254740993",
+  });
+  assert.equal(typeof sync.getState().publicationCheckpoint, "string");
+  assert.deepEqual(sync.queries.map((entry) => entry.sql).filter((sql) => /^(BEGIN|COMMIT|ROLLBACK)$/.test(sql)), ["BEGIN", "COMMIT"]);
+  assert.equal(sync.writes.length, 1);
+  assert.ok(sync.queries.findIndex((entry) => entry.sql === "COMMIT") > -1, "checkpoint write uses the client transaction committed by the applier");
+});
+
+test("publication apply rolls back without persisting its checkpoint when a change fails", async () => {
+  const sync = createPublicationSyncDouble({ checkpoint: "10", failSql: "INSERT INTO roles" });
+  await assert.rejects(
+    applyPulledPublicationResponse({
+      client: sync.client,
+      deactivatedRfidSuffix: "-deactivated",
+      pullResponse: {
+        changes: [{
+          domain: "roles",
+          operation: "upsert",
+          payload: { is_system: 1, role_key: "admin", title: "Admin" },
+          publicationCursor: "11",
+          recordKey: "admin",
+        }],
+        checkpoint: "11",
+        feedVersion: PUBLICATION_FEED_VERSION,
+        mode: "incremental",
+      },
+      syncGateway: sync.syncGateway,
+    }),
+    /simulated v2 apply failure/,
+  );
+  assert.equal(sync.writes.length, 0);
+  assert.deepEqual(sync.getState(), { feedVersion: PUBLICATION_FEED_VERSION, publicationCheckpoint: "10" });
+  assert.equal(sync.queries.at(-1).sql, "ROLLBACK");
+});
+
+test("repeated publication pages are idempotent and do not reapply acknowledged cursors", async () => {
+  const sync = createPublicationSyncDouble({ checkpoint: "20" });
+  const pullResponse = {
+    changes: [{
+      domain: "roles",
+      operation: "upsert",
+      payload: { is_system: 1, role_key: "admin", title: "Admin" },
+      publicationCursor: "21",
+      recordKey: "admin",
+    }],
+    checkpoint: "21",
+    feedVersion: PUBLICATION_FEED_VERSION,
+    mode: "incremental",
+  };
+
+  await applyPulledPublicationResponse({ client: sync.client, deactivatedRfidSuffix: "-deactivated", pullResponse, syncGateway: sync.syncGateway });
+  await applyPulledPublicationResponse({ client: sync.client, deactivatedRfidSuffix: "-deactivated", pullResponse, syncGateway: sync.syncGateway });
+
+  assert.equal(sync.queries.filter((entry) => entry.sql.startsWith("INSERT INTO roles")).length, 1);
+  assert.equal(sync.getState().publicationCheckpoint, "21");
+});
+
+test("publication apply rejects a feed-version mismatch without applying or advancing", async () => {
+  const sync = createPublicationSyncDouble({ checkpoint: "7" });
+  await assert.rejects(
+    applyPulledPublicationResponse({
+      client: sync.client,
+      deactivatedRfidSuffix: "-deactivated",
+      pullResponse: { changes: [], checkpoint: "8", feedVersion: "sync-publication-v3", mode: "incremental" },
+      syncGateway: sync.syncGateway,
+    }),
+    /feed-version mismatch/,
+  );
+  assert.equal(sync.queries.length, 0);
+  assert.equal(sync.writes.length, 0);
+  assert.equal(sync.getState().publicationCheckpoint, "7");
 });
 
 function createOperationalClient({ pendingCommands = [] } = {}) {

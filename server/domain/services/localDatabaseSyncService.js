@@ -1,6 +1,31 @@
 import { normalizeMemberStatusWithFees } from "./memberPersistenceService.js";
+import { PUBLICATION_FEED_VERSION } from "../../../shared/syncPublicationProtocol.js";
 
 const SYNC_STATE_KEY = "local_machine_sync";
+export const PUBLICATION_SYNC_STATE_KEY = "local_machine_publication_sync_v2";
+export { PUBLICATION_FEED_VERSION };
+const MAX_PUBLICATION_CURSOR = 9223372036854775807n;
+
+export function isValidPublicationCursor(value) {
+  return typeof value === "string"
+    && /^(0|[1-9][0-9]{0,18})$/.test(value)
+    && BigInt(value) <= MAX_PUBLICATION_CURSOR;
+}
+
+function requirePublicationSyncState(stateEntry) {
+  const state = stateEntry?.state;
+  if (!state
+    || state.feedVersion !== PUBLICATION_FEED_VERSION
+    || !isValidPublicationCursor(state.publicationCheckpoint)) {
+    throw new Error(
+      "Publication sync v2 requires an initialized v2 baseline; refusing to reuse or convert the v1 checkpoint.",
+    );
+  }
+  return {
+    feedVersion: state.feedVersion,
+    publicationCheckpoint: state.publicationCheckpoint,
+  };
+}
 
 function normalizeIncomingUser(user, deactivatedRfidSuffix) {
   const normalized = normalizeMemberStatusWithFees(
@@ -1871,6 +1896,97 @@ export async function applyPulledSyncResponse({
   }
   // This runs outside the database transaction and its failure path. A hint
   // delivery failure must never roll back or mark a committed sync as failed.
+  if (appliedDomains.length > 0 && onIncrementalApplied) {
+    try { await onIncrementalApplied(appliedDomains); } catch { /* Best-effort invalidation. */ }
+  }
+}
+
+export async function readPublicationSyncState({ syncGateway, client }) {
+  return requirePublicationSyncState(
+    await syncGateway.readLocalState(PUBLICATION_SYNC_STATE_KEY, client),
+  );
+}
+
+export async function applyPulledPublicationResponse({
+  client,
+  deactivatedRfidSuffix,
+  pullResponse,
+  syncGateway,
+  onIncrementalApplied,
+}) {
+  if (pullResponse?.feedVersion !== PUBLICATION_FEED_VERSION) {
+    throw new Error(
+      `Publication feed-version mismatch: expected ${PUBLICATION_FEED_VERSION}, received ${String(pullResponse?.feedVersion ?? "missing")}.`,
+    );
+  }
+  if (pullResponse.mode !== "incremental") {
+    throw new Error("Publication sync v2 only supports incremental pages; rebaseline is not implemented.");
+  }
+  if (!isValidPublicationCursor(pullResponse.checkpoint)) {
+    throw new Error("Publication sync v2 returned an invalid checkpoint.");
+  }
+
+  const changes = pullResponse.changes ?? [];
+  if (!Array.isArray(changes)) {
+    throw new Error("Publication sync v2 returned invalid changes.");
+  }
+  for (const change of changes) {
+    if (!isValidPublicationCursor(change?.publicationCursor)) {
+      throw new Error("Publication sync v2 returned a change with an invalid publication cursor.");
+    }
+  }
+
+  let appliedDomains = [];
+  await client.query("BEGIN");
+  try {
+    const current = await readPublicationSyncState({ syncGateway, client });
+    const currentCursor = BigInt(current.publicationCheckpoint);
+    const responseCursor = BigInt(pullResponse.checkpoint);
+    if (responseCursor < currentCursor) {
+      throw new Error("Publication sync v2 refused to move its checkpoint backwards.");
+    }
+
+    let previousCursor = null;
+    for (const change of changes) {
+      const cursor = BigInt(change.publicationCursor);
+      if (previousCursor !== null && cursor <= previousCursor) {
+        throw new Error("Publication sync v2 changes are not in strictly increasing cursor order.");
+      }
+      if (cursor > responseCursor) {
+        throw new Error("Publication sync v2 change cursor exceeds the response checkpoint.");
+      }
+      previousCursor = cursor;
+    }
+    if (changes.length === 0 && responseCursor !== currentCursor) {
+      throw new Error("Publication sync v2 refused an empty page that advances the checkpoint.");
+    }
+    if (changes.length > 0 && previousCursor !== responseCursor) {
+      throw new Error("Publication sync v2 response checkpoint does not match its final change cursor.");
+    }
+
+    await client.query(
+      `SELECT set_config('archery.sync.apply_mode', 'pull', true)`,
+    );
+    appliedDomains = await applyAuthChanges({
+      changes: changes.filter((change) => BigInt(change.publicationCursor) > currentCursor),
+      client,
+      deactivatedRfidSuffix,
+      syncGateway,
+    });
+    await syncGateway.writeLocalState({
+      client,
+      state: {
+        feedVersion: PUBLICATION_FEED_VERSION,
+        publicationCheckpoint: pullResponse.checkpoint,
+      },
+      stateKey: PUBLICATION_SYNC_STATE_KEY,
+    });
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+
   if (appliedDomains.length > 0 && onIncrementalApplied) {
     try { await onIncrementalApplied(appliedDomains); } catch { /* Best-effort invalidation. */ }
   }

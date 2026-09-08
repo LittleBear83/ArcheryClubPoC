@@ -1,7 +1,14 @@
 import process from "node:process";
 import pg from "pg";
 import { serverRuntime } from "../server/config/runtime.js";
-import { applyPulledSyncResponse, readSyncStatus, writeSyncAttemptState } from "../server/domain/services/localDatabaseSyncService.js";
+import {
+  applyPulledPublicationResponse,
+  applyPulledSyncResponse,
+  PUBLICATION_FEED_VERSION,
+  readPublicationSyncState,
+  readSyncStatus,
+  writeSyncAttemptState,
+} from "../server/domain/services/localDatabaseSyncService.js";
 import { createSyncGateway } from "../server/infrastructure/persistence/syncGateway.js";
 import { notifyLocalSyncApplied } from "../server/infrastructure/persistence/localSyncBrowserBridge.js";
 
@@ -89,6 +96,7 @@ async function main() {
   }
 
   const isInitialSync = process.argv.includes("--initial");
+  const isPublicationSync = process.argv.includes("--v2");
   const pool = createLocalPool();
   const syncGateway = createSyncGateway({ pool });
   const client = await pool.connect();
@@ -101,6 +109,14 @@ async function main() {
       process.exitCode = 0;
       return;
     }
+
+    if (isPublicationSync && isInitialSync) {
+      throw new Error("Publication sync v2 rebaseline is not implemented; --v2 cannot be combined with --initial.");
+    }
+
+    const publicationState = isPublicationSync
+      ? await readPublicationSyncState({ syncGateway })
+      : null;
 
     await writeSyncAttemptState({
       syncGateway,
@@ -140,32 +156,50 @@ async function main() {
       }
     }
 
-    const pullResponse = await requestSyncJson("/api/sync/v1/pull", {
-      checkpoint: isInitialSync ? null : status.currentCheckpoint || null,
-      initialSync: isInitialSync || status.currentCheckpoint === 0,
-      limit: serverRuntime.sync.pullBatchSize,
-    });
+    const pullResponse = isPublicationSync
+      ? await requestSyncJson("/api/sync/v2/pull", {
+          checkpoint: publicationState.publicationCheckpoint,
+          limit: serverRuntime.sync.pullBatchSize,
+        })
+      : await requestSyncJson("/api/sync/v1/pull", {
+          checkpoint: isInitialSync ? null : status.currentCheckpoint || null,
+          initialSync: isInitialSync || status.currentCheckpoint === 0,
+          limit: serverRuntime.sync.pullBatchSize,
+        });
 
     const applyClient = await pool.connect();
 
     try {
-      await applyPulledSyncResponse({
+      const applyOptions = {
         client: applyClient,
-        currentCheckpoint: status.currentCheckpoint,
         deactivatedRfidSuffix: process.env.DEACTIVATED_RFID_SUFFIX ?? "-deactivated",
         pullResponse,
         syncGateway,
         onIncrementalApplied: (domains) => notifyLocalSyncApplied(applyClient, domains),
-      });
+      };
+      if (isPublicationSync) {
+        await applyPulledPublicationResponse(applyOptions);
+      } else {
+        await applyPulledSyncResponse({
+          ...applyOptions,
+          currentCheckpoint: status.currentCheckpoint,
+        });
+      }
     } finally {
       applyClient.release();
     }
 
     const nextStatus = await readSyncStatus({ syncGateway });
+    const nextPublicationState = isPublicationSync
+      ? await readPublicationSyncState({ syncGateway })
+      : null;
     console.log(
       JSON.stringify(
         {
-          checkpoint: nextStatus.currentCheckpoint,
+          checkpoint: isPublicationSync
+            ? nextPublicationState.publicationCheckpoint
+            : nextStatus.currentCheckpoint,
+          ...(isPublicationSync ? { feedVersion: PUBLICATION_FEED_VERSION } : {}),
           lastSuccessfulAt: nextStatus.lastSuccessfulAt,
           pendingOutboxCount: nextStatus.pendingOutboxCount,
           success: true,

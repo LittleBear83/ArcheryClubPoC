@@ -1,4 +1,5 @@
-export const PUBLICATION_FEED_VERSION = "sync-publication-v2";
+import { PUBLICATION_FEED_VERSION } from "../../../shared/syncPublicationProtocol.js";
+export { PUBLICATION_FEED_VERSION };
 
 export async function drainPublicationBacklog(gateway, isClosed = () => false) {
   for (let batch = 0; batch < 100; batch += 1) {

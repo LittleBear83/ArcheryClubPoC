@@ -22,6 +22,17 @@ export function registerPublicationSyncRoutes({ app, authenticateMachineRequest,
     res.json({ success: true, feedVersion: FEED_VERSION, checkpoint: await publicationGateway.getPublicationHead() });
   });
 
+  app.post("/api/sync/v2/snapshot", authenticateMachineRequest, async (_req, res) => {
+    const result = await publicationGateway.createSnapshot();
+    res.json({
+      success: true,
+      feedVersion: FEED_VERSION,
+      mode: "snapshot",
+      checkpoint: result.checkpoint,
+      snapshot: result.snapshot,
+    });
+  });
+
   app.post("/api/sync/v2/pull", authenticateMachineRequest, async (req, res) => {
     const checkpoint = req.body?.checkpoint;
     const limit = req.body?.limit === undefined ? 200 : req.body.limit;

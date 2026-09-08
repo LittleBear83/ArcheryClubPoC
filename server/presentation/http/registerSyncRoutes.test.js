@@ -45,11 +45,45 @@ test("v2 propagates publication failure without returning a successful head or p
   registerPublicationSyncRoutes({
     app: { get(path, ...chain) { if (path !== "/api/sync/v2/events") handlers.push(chain.at(-1)); }, post(_path, ...chain) { handlers.push(chain.at(-1)); } },
     authenticateMachineRequest() {},
-    publicationGateway: { async publishBatch() { throw failure; } },
+    publicationGateway: {
+      async createSnapshot() { throw failure; },
+      async publishBatch() { throw failure; },
+    },
   });
   for (const handler of handlers) {
     await assert.rejects(handler({ body: { checkpoint: "0" } }, { json() { assert.fail("must not return success"); } }), (error) => error === failure);
   }
+});
+
+test("v2 snapshot returns the authenticated publication boundary and authoritative snapshot", async () => {
+  const handlers = new Map();
+  const authenticate = () => {};
+  registerPublicationSyncRoutes({
+    app: {
+      get() {},
+      post(path, ...chain) { handlers.set(path, chain); },
+    },
+    authenticateMachineRequest: authenticate,
+    publicationGateway: {
+      async createSnapshot() {
+        return {
+          checkpoint: "9007199254740993",
+          snapshot: { roles: [{ role_key: "member", title: "Member" }] },
+        };
+      },
+    },
+  });
+  const chain = handlers.get("/api/sync/v2/snapshot");
+  assert.equal(chain[0], authenticate);
+  let body;
+  await chain[1]({}, { json(value) { body = value; } });
+  assert.deepEqual(body, {
+    success: true,
+    feedVersion: "sync-publication-v2",
+    mode: "snapshot",
+    checkpoint: "9007199254740993",
+    snapshot: { roles: [{ role_key: "member", title: "Member" }] },
+  });
 });
 
 function requestJson(baseUrl, path, { body = null, headers = {}, method = "GET" } = {}) {

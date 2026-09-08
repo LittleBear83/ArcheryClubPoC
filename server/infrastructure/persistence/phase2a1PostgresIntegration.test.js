@@ -266,6 +266,16 @@ async function publicationHttp(t, pool) {
     return { status: response.status, body: await response.json() };
   };
   request.baseUrl = `http://127.0.0.1:${server.address().port}`;
+  request.snapshot = async ({ headers = { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "test-secret" } } = {}) => {
+    const response = await fetch(`${request.baseUrl}/api/sync/v2/snapshot`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: "{}",
+      signal: AbortSignal.timeout(10000),
+    });
+    const text = await response.text();
+    return { status: response.status, body: text ? JSON.parse(text) : null };
+  };
   return request;
 }
 
@@ -626,6 +636,120 @@ test("publication snapshot retries a stale mutex snapshot after a concurrent pub
   assert.deepEqual(await assignPublications(reader), []);
   assert.equal((await reader.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "1");
   await reader.query("COMMIT");
+});
+
+test("v2 snapshot authenticates, drains its visible backlog at a BIGINT boundary, and leaves a late commit for pull", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const request = await publicationHttp(t, pool);
+  await pool.query("UPDATE sync_publication_state SET last_cursor = '9007199254740991'");
+  const late = await connect();
+  await late.query("BEGIN");
+  const lateIds = await insertPublicationRoles(late, "endpoint-snapshot-late");
+  const visibleIds = await insertPublicationRoles(pool, "endpoint-snapshot-visible", 2);
+
+  assert.equal((await request.snapshot({ headers: {} })).status, 401);
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM sync_publication")).rows[0].n, 0);
+
+  const response = await request.snapshot();
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.equal(response.body.feedVersion, "sync-publication-v2");
+  assert.equal(response.body.mode, "snapshot");
+  assert.equal(response.body.checkpoint, "9007199254740993");
+  assert.equal(typeof response.body.checkpoint, "string");
+  assert.deepEqual(
+    response.body.snapshot.roles.filter((role) => role.role_key.startsWith("endpoint-snapshot-")).map((role) => role.role_key),
+    ["endpoint-snapshot-visible-0", "endpoint-snapshot-visible-1"],
+  );
+  assert.deepEqual(
+    (await pool.query("SELECT change_id::text FROM sync_publication ORDER BY publication_cursor")).rows.map((row) => row.change_id),
+    visibleIds,
+  );
+
+  await late.query("COMMIT");
+  const pulled = await request({ checkpoint: response.body.checkpoint, limit: 10 });
+  assert.equal(pulled.status, 200);
+  assert.deepEqual(pulled.body.changes.map((change) => change.changeId), lateIds);
+  assert.equal(pulled.body.checkpoint, "9007199254740994");
+});
+
+test("v2 snapshot serializes a concurrent publisher behind its publication boundary", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const ids = await insertPublicationRoles(pool, "snapshot-serialization", 2);
+  const snapshotClient = await connect();
+  const publisherClient = await connect();
+  let snapshotReaderStarted;
+  let continueSnapshot;
+  const readerStarted = new Promise((resolve) => { snapshotReaderStarted = resolve; });
+  const mayContinue = new Promise((resolve) => { continueSnapshot = resolve; });
+  t.after(() => continueSnapshot());
+  const realSyncGateway = createSyncGateway({ pool });
+  const snapshotGateway = createSyncPublicationGateway({
+    pool: { async connect() { return { query: (...args) => snapshotClient.query(...args), release() {} }; } },
+    syncGateway: {
+      async getAuthSnapshot(client) {
+        snapshotReaderStarted();
+        await mayContinue;
+        return realSyncGateway.getAuthSnapshot(client);
+      },
+    },
+  });
+  const snapshotPending = snapshotGateway.createSnapshot();
+  await readerStarted;
+  const publisherGateway = createSyncPublicationGateway({
+    pool: { async connect() { return { query: (...args) => publisherClient.query(...args), release() {} }; } },
+  });
+  const publisherPending = publisherGateway.publishBatch();
+  await waitForDatabaseBlock(pool, snapshotClient, publisherClient);
+  continueSnapshot();
+  const [snapshot, published] = await Promise.all([snapshotPending, publisherPending]);
+  assert.equal(snapshot.checkpoint, "2");
+  assert.deepEqual(published, []);
+  assert.deepEqual(
+    (await pool.query("SELECT change_id::text FROM sync_publication ORDER BY publication_cursor")).rows.map((row) => row.change_id),
+    ids,
+  );
+});
+
+test("v2 snapshot retries the whole transaction after publication-lock serialization failure", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const ids = await insertPublicationRoles(pool, "snapshot-production-retry");
+  const publisher = await connect();
+  const reader = await connect();
+  await beginPublication(publisher);
+  let begins = 0;
+  const gateway = createSyncPublicationGateway({
+    pool: { async connect() { return {
+      async query(sql, values) {
+        if (sql === "BEGIN ISOLATION LEVEL REPEATABLE READ") begins += 1;
+        return reader.query(sql, values);
+      },
+      release() {},
+    }; } },
+    syncGateway: { async getAuthSnapshot() { return { snapshot: { roles: [] } }; } },
+  });
+  const pending = gateway.createSnapshot();
+  await waitForDatabaseBlock(pool, publisher, reader);
+  await assignPublications(publisher);
+  await publisher.query("COMMIT");
+  const result = await pending;
+  assert.equal(begins, 2);
+  assert.equal(result.checkpoint, "1");
+  assert.deepEqual(result.snapshot, { roles: [] });
+  assert.deepEqual((await pullPublications(pool)).changes.map((row) => row.change_id), ids);
+});
+
+test("v2 snapshot rolls back publication when authoritative snapshot reading fails", { timeout: 30000 }, async (t) => {
+  const { pool } = await publicationFixture(t);
+  await insertPublicationRoles(pool, "snapshot-reader-failure");
+  const failure = new Error("snapshot reader failed");
+  const gateway = createSyncPublicationGateway({
+    pool,
+    syncGateway: { async getAuthSnapshot() { throw failure; } },
+  });
+  await assert.rejects(gateway.createSnapshot(), (error) => error === failure);
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM sync_publication")).rows[0].n, 0);
+  assert.equal((await pool.query("SELECT last_cursor::text FROM sync_publication_state")).rows[0].last_cursor, "0");
 });
 
 test("migration 007 notifies only committed change checkpoints with lightweight metadata and survives runner repeats", { timeout: 30000 }, async () => {

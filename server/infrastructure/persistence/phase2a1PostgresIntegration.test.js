@@ -258,14 +258,100 @@ async function publicationHttp(t, pool) {
   registerPublicationSyncRoutes({ app, authenticateMachineRequest: auth.authenticateMachineRequest, publicationGateway: createSyncPublicationGateway({ pool }) });
   const server = await new Promise((resolve) => { const listener = app.listen(0, "127.0.0.1", () => resolve(listener)); });
   t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
-  return async (body, { headers = { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "test-secret" } } = {}) => {
+  const request = async (body, { headers = { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "test-secret" } } = {}) => {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api/sync/v2/${body === undefined ? "status" : "pull"}`, {
       method: body === undefined ? "GET" : "POST", headers: { "content-type": "application/json", ...headers },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000),
     });
     return { status: response.status, body: await response.json() };
   };
+  request.baseUrl = `http://127.0.0.1:${server.address().port}`;
+  return request;
 }
+
+async function publicationEvents(t, request) {
+  const controller = new AbortController();
+  const response = await fetch(`${request.baseUrl}/api/sync/v2/events`, {
+    headers: { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "test-secret" }, signal: controller.signal,
+  });
+  assert.equal(response.status, 200);
+  const reader = response.body.getReader();
+  t.after(() => controller.abort());
+  let buffer = "";
+  const decoder = new TextDecoder();
+  return {
+    close() { controller.abort(); },
+    async next() {
+      const timer = setTimeout(() => controller.abort(), 5000);
+      try {
+        for (;;) {
+          const boundary = buffer.indexOf("\n\n");
+          if (boundary >= 0) {
+            const frame = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            if (frame.startsWith(":")) continue;
+            const lines = frame.split("\n");
+            return { event: lines.find((line) => line.startsWith("event: ")).slice(7), data: JSON.parse(lines.find((line) => line.startsWith("data: ")).slice(6)) };
+          }
+          const { value, done } = await reader.read();
+          assert.equal(done, false, "SSE remains connected until the expected hint");
+          buffer += decoder.decode(value, { stream: true });
+        }
+      } finally { clearTimeout(timer); }
+    },
+  };
+}
+
+test("v2 SSE uses publication order, coexists with publishers and recovers missed notifications on reconnect", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const request = await publicationHttp(t, pool);
+  for (const [query, headers] of [["", {}], ["?x-sync-machine-id=v2-test&x-sync-machine-secret=test-secret", {}], ["", { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "wrong" }]]) {
+    const response = await fetch(`${request.baseUrl}/api/sync/v2/events${query}`, { headers, signal: AbortSignal.timeout(5000) });
+    assert.equal(response.status, 401);
+    await response.text();
+  }
+  const streams = await Promise.all([publicationEvents(t, request), publicationEvents(t, request)]);
+  for (const stream of streams) assert.deepEqual(await stream.next(), { event: "sync.ready", data: { feedVersion: "sync-publication-v2", checkpoint: "0" } });
+  await pool.query("SELECT setval('sync_change_log_change_id_seq', 100, false)");
+  const a = await connect();
+  const b = await connect();
+  await a.query("BEGIN");
+  assert.deepEqual(await insertPublicationRoles(a, "sse-late"), ["100"]);
+  await b.query("BEGIN");
+  assert.deepEqual(await insertPublicationRoles(b, "sse-early"), ["101"]);
+  await b.query("COMMIT");
+  await request(); // A third publisher competes with both SSE catch-up loops.
+  for (const stream of streams) assert.deepEqual(await stream.next(), { event: "sync.available", data: { feedVersion: "sync-publication-v2", checkpoint: "1" } });
+  await a.query("COMMIT");
+  for (const stream of streams) assert.deepEqual(await stream.next(), { event: "sync.available", data: { feedVersion: "sync-publication-v2", checkpoint: "2" } });
+  assert.deepEqual((await pool.query("SELECT change_id FROM sync_publication ORDER BY publication_cursor")).rows.map((row) => row.change_id), ["101", "100"]);
+  for (const stream of streams) stream.close();
+  // Wait for actual UNLISTEN/release before committing a change with nobody
+  // listening. Reconnect must discover it without any replayable NOTIFY.
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND query = 'LISTEN archery_sync_change'");
+    if (rows[0].n === 0) break;
+    assert.ok(Date.now() < deadline, "SSE listener cleanup completes");
+  }
+  await insertPublicationRoles(pool, "sse-disconnected");
+  assert.equal((await pool.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "2");
+  const reconnected = await publicationEvents(t, request);
+  assert.deepEqual(await reconnected.next(), { event: "sync.ready", data: { feedVersion: "sync-publication-v2", checkpoint: "3" } });
+  reconnected.close();
+});
+
+test("v2 SSE ready and available retain BIGINT precision", { timeout: 30000 }, async (t) => {
+  const { pool } = await publicationFixture(t);
+  const request = await publicationHttp(t, pool);
+  await pool.query("UPDATE sync_publication_state SET last_cursor = '9007199254740991'");
+  await insertPublicationRoles(pool, "sse-bigint-before");
+  const stream = await publicationEvents(t, request);
+  assert.deepEqual(await stream.next(), { event: "sync.ready", data: { feedVersion: "sync-publication-v2", checkpoint: "9007199254740992" } });
+  await insertPublicationRoles(pool, "sse-bigint-after");
+  assert.deepEqual(await stream.next(), { event: "sync.available", data: { feedVersion: "sync-publication-v2", checkpoint: "9007199254740993" } });
+  stream.close();
+});
 
 for (const { count, limit } of [{ count: 1, limit: 10 }, { count: 3, limit: 10 }, { count: 3, limit: 1 }]) {
   test(`actual v2 route loses no late commit: ${count} rows, pull limit ${limit}`, { timeout: 30000 }, async (t) => {

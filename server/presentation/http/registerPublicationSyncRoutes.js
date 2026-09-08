@@ -1,4 +1,4 @@
-const FEED_VERSION = "sync-publication-v2";
+import { PUBLICATION_FEED_VERSION as FEED_VERSION, drainPublicationBacklog, streamPublicationEvents } from "./streamPublicationEvents.js";
 const MAX_CURSOR = 9223372036854775807n;
 
 function validCursor(value) {
@@ -10,12 +10,12 @@ export function registerPublicationSyncRoutes({ app, authenticateMachineRequest,
   async function publishCommittedChanges(res) {
     // Discover until an empty committed visibility snapshot, including lower
     // source IDs. Bound work under sustained writes; retry continues safely.
-    for (let batch = 0; batch < 100; batch += 1) {
-      if ((await publicationGateway.publishBatch({ limit: 500 })).length === 0) return true;
-    }
+    if (await drainPublicationBacklog(publicationGateway)) return true;
     res.status(503).json({ success: false, code: "publication_backlog", message: "Publication is catching up; retry the request." });
     return false;
   }
+
+  app.get("/api/sync/v2/events", authenticateMachineRequest, (req, res) => streamPublicationEvents(req, res, publicationGateway));
 
   app.get("/api/sync/v2/status", authenticateMachineRequest, async (_req, res) => {
     if (!await publishCommittedChanges(res)) return;

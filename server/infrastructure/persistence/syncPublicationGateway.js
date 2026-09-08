@@ -3,6 +3,7 @@
 // wired into the v1 sync protocol: this is an additive foundation only.
 export function createSyncPublicationGateway({ pool }) {
   return {
+    pool,
     async getPublicationHead() {
       const { rows } = await pool.query("SELECT last_cursor::text AS checkpoint FROM sync_publication_state WHERE singleton");
       if (rows.length !== 1) throw new Error("Sync publication state is missing; run PostgreSQL migrations.");

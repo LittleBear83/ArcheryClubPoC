@@ -43,7 +43,7 @@ test("v2 propagates publication failure without returning a successful head or p
   const handlers = [];
   const failure = new Error("publisher failed");
   registerPublicationSyncRoutes({
-    app: { get(_path, ...chain) { handlers.push(chain.at(-1)); }, post(_path, ...chain) { handlers.push(chain.at(-1)); } },
+    app: { get(path, ...chain) { if (path !== "/api/sync/v2/events") handlers.push(chain.at(-1)); }, post(_path, ...chain) { handlers.push(chain.at(-1)); } },
     authenticateMachineRequest() {},
     publicationGateway: { async publishBatch() { throw failure; } },
   });
@@ -269,15 +269,17 @@ test("sync events send ready then metadata notifications and clean up on HTTP cl
   assert.equal(client.listenerCount("error"), 0);
 });
 
-function createStreamHarness(gateway) {
+function createStreamHarness(gateway, publication = false) {
   let handler;
-  registerSyncRoutes({
+  const register = publication ? registerPublicationSyncRoutes : registerSyncRoutes;
+  register({
     app: {
-      get(path, _auth, route) { if (path === "/api/sync/v1/events") handler = route; },
+      get(path, _auth, route) { if (path === (publication ? "/api/sync/v2/events" : "/api/sync/v1/events")) handler = route; },
       post() {},
     },
     authenticateMachineRequest() {},
     syncGateway: gateway,
+    publicationGateway: gateway,
   });
   const req = new EventEmitter();
   const res = new EventEmitter();
@@ -286,7 +288,160 @@ function createStreamHarness(gateway) {
   res.flushHeaders = () => { res.headersSent = true; };
   res.write = (text) => { writes.push(text); return true; };
   res.end = () => { res.writableEnded = true; res.emit("close"); };
+  res.status = (code) => { res.statusCode = code; return res; };
+  res.json = (value) => { res.body = value; res.end(); };
   return { req, res, writes, run: () => handler(req, res) };
+}
+
+test("v2 SSE listens first, preserves setup wake-ups and reconciles lost wake-ups on heartbeat", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const { client, queries, releases, released } = createListenerDouble();
+  let head = "9007199254740992";
+  let first = true;
+  let published = 0;
+  const stream = createStreamHarness({ pool: { async connect() { return client; } },
+    async publishBatch() { assert.equal(queries[0], "LISTEN archery_sync_change"); published += 1; return []; },
+    async getPublicationHead() {
+      if (first) {
+        first = false;
+        client.emit("notification", { channel: "archery_sync_change", payload: '{"change_id":999,"payload":"SECRET"}' });
+        return "9007199254740991";
+      }
+      return head;
+    },
+  }, true);
+  await stream.run();
+  // Drain promise microtasks, without wall-clock sleeps.
+  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  assert.match(stream.writes[0], /sync.ready/);
+  assert.match(stream.writes[0], /"checkpoint":"9007199254740991"/);
+  assert.match(stream.writes[1], /sync.available/);
+  assert.match(stream.writes[1], /"checkpoint":"9007199254740992"/);
+  assert.ok(!stream.writes.join("").includes("SECRET"));
+  head = "9007199254740993"; // Durable progress with no notification.
+  t.mock.timers.tick(25000);
+  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  assert.equal(stream.writes[2], ": ping\n\n");
+  assert.match(stream.writes[3], /"checkpoint":"9007199254740993"/);
+  client.emit("error", new Error("listener lost"));
+  stream.req.emit("aborted");
+  await released;
+  const before = published;
+  t.mock.timers.tick(50000);
+  assert.equal(published, before);
+  assert.deepEqual(releases, [true]);
+  assert.equal(client.listenerCount("notification"), 0);
+  assert.equal(client.listenerCount("error"), 0);
+});
+
+test("v2 SSE coalesces a notification burst and discards a slow reader", async () => {
+  const { client, released, releases } = createListenerDouble();
+  let head = "0";
+  let unblock;
+  const barrier = new Promise((resolve) => { unblock = resolve; });
+  let calls = 0;
+  const stream = createStreamHarness({ pool: { async connect() { return client; } },
+    async publishBatch() { calls += 1; if (calls === 2) await barrier; return []; }, async getPublicationHead() { return head; },
+  }, true);
+  await stream.run();
+  for (let i = 0; i < 100; i += 1) client.emit("notification", { channel: "archery_sync_change", payload: "ignored" });
+  head = "1";
+  stream.res.write = () => false;
+  unblock();
+  await released;
+  assert.equal(stream.res.writableEnded, true);
+  assert.deepEqual(releases, [false]);
+  assert.equal(calls, 2);
+});
+
+for (const stage of ["startup", "streaming"]) {
+  test(`v2 SSE bounds ${stage} backlog and releases its listener`, async () => {
+    const { client, released, releases } = createListenerDouble();
+    let backlog = stage === "startup";
+    const stream = createStreamHarness({ pool: { async connect() { return client; } },
+      async publishBatch() { return backlog ? [{}] : []; }, async getPublicationHead() { return "0"; },
+    }, true);
+    await stream.run();
+    if (stage === "streaming") {
+      backlog = true;
+      client.emit("notification", { channel: "archery_sync_change" });
+    }
+    await released;
+    assert.deepEqual(releases, [false]);
+    if (stage === "startup") { assert.equal(stream.res.statusCode, 503); assert.deepEqual(stream.writes, []); }
+    else assert.equal(stream.res.writableEnded, true);
+  });
+}
+
+test("v2 SSE releases late connections and disconnects on publication failure", async () => {
+  const late = createListenerDouble();
+  let connect;
+  const stream = createStreamHarness({ pool: { connect() { return new Promise((resolve) => { connect = resolve; }); } } }, true);
+  const running = stream.run();
+  stream.req.emit("aborted");
+  connect(late.client);
+  await running;
+  await late.released;
+  assert.deepEqual(late.releases, [false]);
+  assert.deepEqual(stream.writes, []);
+  const live = createListenerDouble();
+  let fail = false;
+  const active = createStreamHarness({ pool: { async connect() { return live.client; } },
+    async publishBatch() { if (fail) throw new Error("publisher failed"); return []; }, async getPublicationHead() { return "0"; },
+  }, true);
+  await active.run();
+  fail = true;
+  live.client.emit("notification", { channel: "archery_sync_change" });
+  await live.released;
+  assert.equal(active.res.writableEnded, true);
+});
+
+for (const stage of ["LISTEN", "publish", "head", "UNLISTEN"]) {
+  test(`v2 SSE cleans up a ${stage} failure`, async () => {
+    const { client, released, releases } = createListenerDouble();
+    const query = client.query;
+    client.query = async (sql) => {
+      if (sql.startsWith(`${stage} `)) throw new Error(`${stage} failed`);
+      return query(sql);
+    };
+    const stream = createStreamHarness({ pool: { async connect() { return client; } },
+      async publishBatch() { if (stage === "publish") throw new Error("publish failed"); return []; },
+      async getPublicationHead() { if (stage === "head") throw new Error("head failed"); return "0"; },
+    }, true);
+    if (stage === "UNLISTEN") { await stream.run(); stream.res.emit("close"); }
+    else await assert.rejects(stream.run(), new RegExp(`${stage} failed`));
+    await released;
+    assert.deepEqual(releases, [stage === "UNLISTEN"]);
+    assert.equal(client.listenerCount("notification"), 0);
+    assert.equal(client.listenerCount("error"), 0);
+  });
+}
+
+for (const stage of ["LISTEN", "publish"]) {
+  test(`v2 SSE cleans up HTTP abort during ${stage}`, async () => {
+    const { client, released, releases } = createListenerDouble();
+    let reach;
+    let resume;
+    const reached = new Promise((resolve) => { reach = resolve; });
+    const barrier = new Promise((resolve) => { resume = resolve; });
+    const query = client.query;
+    client.query = async (sql) => {
+      if (stage === "LISTEN" && sql.startsWith("LISTEN ")) { reach(); await barrier; }
+      return query(sql);
+    };
+    const stream = createStreamHarness({ pool: { async connect() { return client; } },
+      async publishBatch() { reach(); await barrier; return []; },
+      getPublicationHead() { assert.fail("no head read after abort"); },
+    }, true);
+    const running = stream.run();
+    await reached;
+    stream.req.emit("aborted");
+    resume();
+    await running;
+    await released;
+    assert.deepEqual(stream.writes, []);
+    assert.deepEqual(releases, [false]);
+  });
 }
 
 test("sync events heartbeat stops and database failure ends the stream with idempotent cleanup", async (t) => {

@@ -9,6 +9,8 @@ import { buildInitialSchemaSql, runPostgresMigrations } from "./runPostgresMigra
 import { createMemberAuthGateway } from "./memberAuthGateway.js";
 import { createActivityReportingGateway } from "./activityReportingGateway.js";
 import { createSyncGateway } from "./syncGateway.js";
+import { registerSyncRoutes } from "../../presentation/http/registerSyncRoutes.js";
+import { installPublicationPrototype, beginPublication, assignPublications, publish, pullPublications, waitForDatabaseBlock } from "./syncPublicationPrototype.test-support.js";
 import {
   assertSafeIntegrationEnvironment,
   assertSafeTemporaryDatabaseName,
@@ -106,6 +108,266 @@ after(async () => {
     await adminPool.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(databaseName)} WITH (FORCE)`);
   }
   await adminPool?.end();
+});
+
+// Phase 1 characterization: these assertions document the omission in the
+// current protocol. A production fix must turn them into no-loss regressions.
+for (const { label, rowsPerTransaction, limit } of [
+  { label: "single row", rowsPerTransaction: 1, limit: 10 },
+  { label: "multiple rows", rowsPerTransaction: 3, limit: 10 },
+  { label: "paginated rows", rowsPerTransaction: 3, limit: 1 },
+]) {
+  test(`incremental cursor reproduces lower-ID late-commit omission: ${label}`, { timeout: 30000 }, async (t) => {
+    const pool = await createTemporaryPool("cursor_order");
+    disposablePools.push(pool);
+    const gateway = createSyncGateway({ pool });
+    // Keep the starting checkpoint nonzero, as the normal Pi script requests
+    // an initial snapshot when its local checkpoint is zero.
+    await pool.query(`INSERT INTO roles (role_key, title) VALUES ('cursor-anchor', 'Anchor')`);
+    const initialCheckpoint = await gateway.getLatestCheckpoint();
+    assert.ok(initialCheckpoint > 0);
+
+    // Capture the actual route handler, retaining its repeatable-read
+    // transaction and response checkpoint calculation, without an HTTP server.
+    let pullHandler;
+    registerSyncRoutes({
+      app: { get() {}, post(path, ...handlers) {
+        if (path === "/api/sync/v1/pull") pullHandler = handlers.at(-1);
+      } },
+      authenticateMachineRequest() {},
+      syncGateway: gateway,
+    });
+    async function pull(checkpoint) {
+      let response;
+      await pullHandler({ body: { checkpoint, limit }, syncMachine: { machineId: "cursor-test" } }, {
+        json(payload) { response = payload; },
+      });
+      assert.equal(response.mode, "incremental");
+      assert.equal(response.success, true);
+      return response;
+    }
+
+    const connections = [];
+    t.after(() => { for (const client of connections) client.release(true); });
+    async function connect() {
+      const client = await pool.connect();
+      connections.push(client);
+      await client.query("SET statement_timeout = '5s'");
+      return client;
+    }
+    const a = await connect();
+    const b = await connect();
+    const listener = await connect();
+    const notifications = [];
+    listener.on("notification", (message) => {
+      if (message.channel === "archery_sync_change") notifications.push(JSON.parse(message.payload).change_id);
+    });
+    await listener.query("LISTEN archery_sync_change");
+    async function waitForNotifications(count) {
+      if (notifications.length >= count) return;
+      let timer;
+      let onNotification;
+      try {
+        await new Promise((resolve, reject) => {
+          onNotification = () => { if (notifications.length >= count) resolve(); };
+          listener.on("notification", onNotification);
+          timer = setTimeout(() => reject(new Error(`Expected ${count} committed notifications`)), 5000);
+        });
+      } finally {
+        clearTimeout(timer);
+        listener.off("notification", onNotification);
+      }
+    }
+    async function insertRoles(client, prefix) {
+      const ids = [];
+      for (let index = 0; index < rowsPerTransaction; index += 1) {
+        const key = `${prefix}-${index}`;
+        await client.query(`INSERT INTO roles (role_key, title) VALUES ($1, $1)`, [key]);
+        const result = await client.query(`SELECT change_id FROM sync_change_log WHERE domain = 'roles' AND record_key = $1`, [key]);
+        assert.equal(result.rowCount, 1);
+        ids.push(Number(result.rows[0].change_id));
+      }
+      return ids;
+    }
+
+    await a.query("BEGIN");
+    const aIds = await insertRoles(a, "cursor-a");
+    await b.query("BEGIN");
+    const bIds = await insertRoles(b, "cursor-b");
+    assert.ok(aIds.at(-1) < bIds[0]);
+    await b.query("COMMIT");
+    await waitForNotifications(bIds.length);
+    assert.deepEqual(notifications, bIds);
+    assert.equal(await gateway.getLatestCheckpoint(), bIds.at(-1));
+    assert.equal((await pool.query(`SELECT 1 FROM roles WHERE role_key LIKE 'cursor-a-%'`)).rowCount, 0, "A is still uncommitted");
+
+    const first = await pull(initialCheckpoint);
+    assert.deepEqual(first.changes.map((change) => change.changeId), bIds.slice(0, limit));
+    assert.equal(first.checkpoint, bIds[Math.min(limit, bIds.length) - 1]);
+    await a.query("COMMIT");
+    await waitForNotifications(aIds.length + bIds.length);
+    assert.deepEqual(notifications, [...bIds, ...aIds], "NOTIFY follows commit order, not change_id order");
+
+    const pages = [first];
+    do {
+      pages.push(await pull(pages.at(-1).checkpoint));
+      assert.ok(pages.length <= bIds.length + 2, "pagination terminates");
+    } while (pages.at(-1).changes.length > 0);
+    const delivered = pages.flatMap((page) => page.changes.map((change) => change.changeId));
+    assert.deepEqual(delivered, bIds, "the late-committed A rows are omitted from incremental pulls");
+    assert.equal(pages.at(-1).checkpoint, bIds.at(-1));
+    const replay = await gateway.listChangesAfterCheckpoint({ checkpoint: initialCheckpoint, limit: 100 });
+    assert.deepEqual(replay.map((change) => change.changeId), [...aIds, ...bIds], "omitted rows exist and are visible from the earlier checkpoint");
+    t.diagnostic(JSON.stringify({ label, postgres: (await pool.query("SHOW server_version")).rows[0].server_version,
+      initialCheckpoint, aIds, bIds, checkpoints: pages.map((page) => page.checkpoint),
+      pageIds: pages.map((page) => page.changes.map((change) => change.changeId)), notifications, omittedIds: aIds,
+    }));
+  });
+}
+
+async function publicationFixture(t) {
+  const pool = await createTemporaryPool("publication");
+  disposablePools.push(pool);
+  await installPublicationPrototype(pool);
+  const clients = new Set();
+  t.after(() => { for (const client of clients) client.release(true); });
+  return { pool, async connect() {
+    const client = await pool.connect();
+    clients.add(client);
+    client.on("error", () => {}); // A crash test deliberately terminates a backend.
+    await client.query("SET statement_timeout = '5s'");
+    return client;
+  } };
+}
+
+async function insertPublicationRoles(client, prefix, count = 1) {
+  for (let i = 0; i < count; i += 1) {
+    await client.query("INSERT INTO roles (role_key, title) VALUES ($1, $1)", [`${prefix}-${i}`]);
+  }
+  const { rows } = await client.query("SELECT change_id FROM sync_change_log WHERE domain = 'roles' AND record_key LIKE $1 ORDER BY change_id", [`${prefix}-%`]);
+  return rows.map((row) => row.change_id);
+}
+
+for (const { count, limit } of [{ count: 1, limit: 10 }, { count: 3, limit: 10 }, { count: 3, limit: 1 }]) {
+  test(`publication cursor loses no late commit: ${count} rows, pull limit ${limit}`, { timeout: 30000 }, async (t) => {
+    const { pool, connect } = await publicationFixture(t);
+    const a = await connect();
+    const b = await connect();
+    await a.query("BEGIN");
+    const aIds = await insertPublicationRoles(a, "late-a", count);
+    await b.query("BEGIN");
+    const bIds = await insertPublicationRoles(b, "early-b", count);
+    await b.query("COMMIT");
+    assert.ok(BigInt(aIds.at(-1)) < BigInt(bIds[0]));
+    assert.deepEqual((await publish(pool)).map((row) => row.change_id), bIds);
+    const first = await pullPublications(pool, "0", limit);
+    assert.deepEqual(first.changes.map((row) => row.change_id), bIds.slice(0, limit));
+    await a.query("COMMIT");
+    // Limit publication batches too: discovery must repeatedly find unpublished
+    // lower raw IDs even though higher IDs have already been published/pulled.
+    const late = [];
+    for (let i = 0; i < count; i += 1) late.push(...await publish(pool, 1));
+    assert.deepEqual(late.map((row) => row.change_id), aIds);
+    const pages = [first];
+    do {
+      pages.push(await pullPublications(pool, pages.at(-1).checkpoint, limit));
+      assert.ok(pages.length <= count * 2 + 2);
+    } while (pages.at(-1).changes.length);
+    const all = pages.flatMap((page) => page.changes);
+    assert.deepEqual(all.map((row) => row.change_id), [...bIds, ...aIds]);
+    assert.equal(new Set(all.map((row) => row.change_id)).size, count * 2);
+    assert.deepEqual(all.map((row) => row.publication_cursor), Array.from({ length: count * 2 }, (_, i) => String(i + 1)));
+    assert.deepEqual(await publish(pool), []);
+    t.diagnostic(JSON.stringify({ aIds, bIds, checkpoints: pages.map((page) => page.checkpoint), delivered: all.map((row) => row.change_id) }));
+  });
+}
+
+for (const ending of ["COMMIT", "ROLLBACK", "crash"]) {
+  test(`publication serializes competing publishers and survives ${ending}`, { timeout: 30000 }, async (t) => {
+    const { pool, connect } = await publicationFixture(t);
+    const initialIds = await insertPublicationRoles(pool, "original", 3);
+    const a = await connect();
+    const b = await connect();
+    await beginPublication(a);
+    assert.deepEqual((await assignPublications(a, 2)).map((row) => row.change_id), initialIds.slice(0, 2));
+    assert.deepEqual((await pullPublications(pool)).changes, [], "uncommitted publication is invisible");
+    const bWaiting = beginPublication(b).then(() => null, (error) => error);
+    await waitForDatabaseBlock(pool, a, b);
+    // Publishers never acquire business locks. A business write still commits
+    // while A holds the publisher mutex and B is blocked behind it.
+    const business = await connect();
+    const extraIds = await insertPublicationRoles(business, "during-publication");
+    if (ending === "crash") {
+      assert.equal((await pool.query("SELECT pg_terminate_backend($1) AS terminated", [a.processID])).rows[0].terminated, true);
+    } else {
+      await a.query(ending);
+    }
+    assert.equal(await bWaiting, null);
+    const assignedB = await assignPublications(b);
+    assert.deepEqual(assignedB.map((row) => row.change_id), ending === "COMMIT" ? [...initialIds.slice(2), ...extraIds] : [...initialIds, ...extraIds]);
+    await b.query("COMMIT");
+    // Simulates losing the acknowledgement after COMMIT: retry assigns nothing.
+    assert.deepEqual(await publish(pool), []);
+    const final = await pullPublications(pool);
+    assert.deepEqual(final.changes.map((row) => row.change_id), [...initialIds, ...extraIds]);
+    assert.deepEqual(final.changes.map((row) => row.publication_cursor), ["1", "2", "3", "4"]);
+    assert.equal((await pool.query("SELECT last_cursor FROM test_sync_publication_state")).rows[0].last_cursor, "4");
+  });
+}
+
+test("publication excludes rolled-back source changes", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const writer = await connect();
+  await writer.query("BEGIN");
+  await insertPublicationRoles(writer, "rolled-back");
+  assert.deepEqual(await publish(pool), []);
+  await writer.query("ROLLBACK");
+  const committed = await insertPublicationRoles(pool, "committed");
+  assert.deepEqual((await publish(pool)).map((row) => row.change_id), committed);
+  assert.equal((await pullPublications(pool)).checkpoint, "1");
+});
+
+test("publication snapshot drains visible backlog and preserves a late commit beyond its boundary", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const late = await connect();
+  await late.query("BEGIN");
+  const lateIds = await insertPublicationRoles(late, "snapshot-late");
+  await insertPublicationRoles(pool, "snapshot-visible");
+  await pool.query("UPDATE roles SET title = 'Current' WHERE role_key = 'snapshot-visible-0'");
+  const snapshotClient = await connect();
+  await beginPublication(snapshotClient, { snapshot: true });
+  while ((await assignPublications(snapshotClient, 1)).length) { /* Drain this fixed MVCC snapshot. */ }
+  const checkpoint = (await snapshotClient.query("SELECT last_cursor FROM test_sync_publication_state")).rows[0].last_cursor;
+  await late.query("COMMIT");
+  // Use the existing full snapshot reader, but deliberately discard its v1 raw
+  // checkpoint. The v2 boundary comes from publication in this SAME snapshot.
+  const { snapshot } = await createSyncGateway({ pool }).getAuthSnapshot(snapshotClient);
+  assert.deepEqual(snapshot.roles.map((role) => role.role_key), ["snapshot-visible-0"]);
+  assert.equal(snapshot.roles[0].title, "Current");
+  await snapshotClient.query("COMMIT");
+  assert.deepEqual((await publish(pool)).map((row) => row.change_id), lateIds);
+  const after = await pullPublications(pool, checkpoint);
+  assert.deepEqual(after.changes.map((row) => row.change_id), lateIds, "no pre-snapshot stale payload is replayed after the boundary");
+  assert.equal(checkpoint, "2");
+  assert.equal(after.checkpoint, "3");
+});
+
+test("publication snapshot retries a stale mutex snapshot after a concurrent publisher", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  await insertPublicationRoles(pool, "snapshot-retry");
+  const publisher = await connect();
+  const reader = await connect();
+  await beginPublication(publisher);
+  const pending = beginPublication(reader, { snapshot: true }).then(() => null, (error) => error);
+  await waitForDatabaseBlock(pool, publisher, reader);
+  await assignPublications(publisher);
+  await publisher.query("COMMIT");
+  assert.equal((await pending)?.code, "40001", "retry the entire snapshot, never reuse a stale MVCC boundary");
+  await reader.query("ROLLBACK");
+  await beginPublication(reader, { snapshot: true });
+  assert.deepEqual(await assignPublications(reader), []);
+  assert.equal((await reader.query("SELECT last_cursor FROM test_sync_publication_state")).rows[0].last_cursor, "1");
+  await reader.query("COMMIT");
 });
 
 test("migration 007 notifies only committed change checkpoints with lightweight metadata and survives runner repeats", { timeout: 30000 }, async () => {

@@ -3,6 +3,22 @@
 // wired into the v1 sync protocol: this is an additive foundation only.
 export function createSyncPublicationGateway({ pool }) {
   return {
+    async getPublicationHead() {
+      const { rows } = await pool.query("SELECT last_cursor::text AS checkpoint FROM sync_publication_state WHERE singleton");
+      if (rows.length !== 1) throw new Error("Sync publication state is missing; run PostgreSQL migrations.");
+      return rows[0].checkpoint;
+    },
+    async listPublishedChanges({ checkpoint, limit }) {
+      const { rows } = await pool.query(`
+        SELECT p.publication_cursor::text AS "publicationCursor",
+          c.change_id::text AS "changeId", c.domain, c.record_key AS "recordKey",
+          c.operation, c.payload_json AS payload, c.changed_at AS "changedAt"
+        FROM sync_publication p JOIN sync_change_log c ON c.change_id = p.change_id
+        WHERE p.publication_cursor > $1
+        ORDER BY p.publication_cursor LIMIT $2
+      `, [checkpoint, limit]);
+      return rows;
+    },
     async publishBatch({ limit = 500 } = {}) {
       if (!Number.isInteger(limit) || limit < 1 || limit > 5000) {
         throw new RangeError("Publication batch limit must be an integer between 1 and 5000.");

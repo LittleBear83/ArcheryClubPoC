@@ -120,6 +120,8 @@ import { registerSuggestionRoutes } from "./presentation/http/registerSuggestion
 import { registerMemberQuestionRoutes } from "./presentation/http/registerMemberQuestionRoutes.js";
 import { registerCommitteeMinutesRoutes } from "./presentation/http/registerCommitteeMinutesRoutes.js";
 import { registerSyncRoutes } from "./presentation/http/registerSyncRoutes.js";
+import { registerPublicationSyncRoutes } from "./presentation/http/registerPublicationSyncRoutes.js";
+import { createSyncPublicationGateway } from "./infrastructure/persistence/syncPublicationGateway.js";
 import { createMachineSyncAuth } from "./security/machineAuth.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
@@ -158,6 +160,7 @@ const CSRF_EXCLUDED_PATHS = new Set([
   "/api/auth/guest-login",
   "/api/sync/v1/pull",
   "/api/sync/v1/push",
+  "/api/sync/v2/pull",
 ]);
 const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/login",
@@ -4828,6 +4831,11 @@ if (
       });
     },
     syncGateway,
+  });
+  registerPublicationSyncRoutes({
+    app,
+    authenticateMachineRequest: machineSyncAuth.authenticateMachineRequest,
+    publicationGateway: createSyncPublicationGateway({ pool: db.pool }),
   });
 }
 

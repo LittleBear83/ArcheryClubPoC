@@ -3,6 +3,9 @@ import { randomUUID } from "node:crypto";
 import process from "node:process";
 import { after, before, test } from "node:test";
 import pg from "pg";
+import express from "express";
+import { registerPublicationSyncRoutes } from "../../presentation/http/registerPublicationSyncRoutes.js";
+import { createMachineSyncAuth } from "../../security/machineAuth.js";
 import { applyAuthSnapshot, applyPulledSyncResponse } from "../../domain/services/localDatabaseSyncService.js";
 import { postgresMigrations } from "./postgresMigrations/index.js";
 import { buildInitialSchemaSql, runPostgresMigrations } from "./runPostgresMigrations.js";
@@ -248,9 +251,32 @@ async function insertPublicationRoles(client, prefix, count = 1) {
   return rows.map((row) => row.change_id);
 }
 
+async function publicationHttp(t, pool) {
+  const app = express();
+  app.use(express.json());
+  const auth = createMachineSyncAuth({ credentials: [{ machineId: "v2-test", secretHash: "test-secret" }], verifySecret: (secret, hash) => secret === hash });
+  registerPublicationSyncRoutes({ app, authenticateMachineRequest: auth.authenticateMachineRequest, publicationGateway: createSyncPublicationGateway({ pool }) });
+  const server = await new Promise((resolve) => { const listener = app.listen(0, "127.0.0.1", () => resolve(listener)); });
+  t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
+  return async (body, { headers = { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "test-secret" } } = {}) => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/sync/v2/${body === undefined ? "status" : "pull"}`, {
+      method: body === undefined ? "GET" : "POST", headers: { "content-type": "application/json", ...headers },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+}
+
 for (const { count, limit } of [{ count: 1, limit: 10 }, { count: 3, limit: 10 }, { count: 3, limit: 1 }]) {
-  test(`publication cursor loses no late commit: ${count} rows, pull limit ${limit}`, { timeout: 30000 }, async (t) => {
+  test(`actual v2 route loses no late commit: ${count} rows, pull limit ${limit}`, { timeout: 30000 }, async (t) => {
     const { pool, connect } = await publicationFixture(t);
+    const request = await publicationHttp(t, pool);
+    async function pullV2(checkpoint, pageLimit) {
+      const { status, body } = await request({ checkpoint, limit: pageLimit });
+      assert.equal(status, 200);
+      assert.equal(body.feedVersion, "sync-publication-v2");
+      return { checkpoint: body.checkpoint, changes: body.changes.map((row) => ({ publication_cursor: row.publicationCursor, change_id: row.changeId })) };
+    }
     const a = await connect();
     const b = await connect();
     await a.query("BEGIN");
@@ -259,18 +285,12 @@ for (const { count, limit } of [{ count: 1, limit: 10 }, { count: 3, limit: 10 }
     const bIds = await insertPublicationRoles(b, "early-b", count);
     await b.query("COMMIT");
     assert.ok(BigInt(aIds.at(-1)) < BigInt(bIds[0]));
-    assert.deepEqual((await publish(pool)).map((row) => row.change_id), bIds);
-    const first = await pullPublications(pool, "0", limit);
+    const first = await pullV2("0", limit);
     assert.deepEqual(first.changes.map((row) => row.change_id), bIds.slice(0, limit));
     await a.query("COMMIT");
-    // Limit publication batches too: discovery must repeatedly find unpublished
-    // lower raw IDs even though higher IDs have already been published/pulled.
-    const late = [];
-    for (let i = 0; i < count; i += 1) late.push(...await publish(pool, 1));
-    assert.deepEqual(late.map((row) => row.change_id), aIds);
     const pages = [first];
     do {
-      pages.push(await pullPublications(pool, pages.at(-1).checkpoint, limit));
+      pages.push(await pullV2(pages.at(-1).checkpoint, limit));
       assert.ok(pages.length <= count * 2 + 2);
     } while (pages.at(-1).changes.length);
     const all = pages.flatMap((page) => page.changes);
@@ -281,6 +301,82 @@ for (const { count, limit } of [{ count: 1, limit: 10 }, { count: 3, limit: 10 }
     t.diagnostic(JSON.stringify({ aIds, bIds, checkpoints: pages.map((page) => page.checkpoint), delivered: all.map((row) => row.change_id) }));
   });
 }
+
+test("v2 auth, strict cursor validation, pagination bounds and BIGINT HTTP precision", { timeout: 30000 }, async (t) => {
+  const { pool } = await publicationFixture(t);
+  const request = await publicationHttp(t, pool);
+  for (const body of [undefined, { checkpoint: "0" }]) {
+    for (const headers of [{}, { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "wrong" }]) {
+      assert.equal((await request(body, { headers })).status, 401);
+    }
+  }
+  await pool.query("UPDATE sync_publication_state SET last_cursor = '9007199254740991'");
+  await pool.query("SELECT setval('sync_change_log_change_id_seq', '9007199254740992', false)");
+  await insertPublicationRoles(pool, "v2-bigint", 2);
+  for (const checkpoint of [null, 0, 9007199254740992, "", "01", "-1", "+1", " 1", "1 ", "1\n", "1.0", "1e2", "0x10", "1;SELECT 1", "9223372036854775808", "9".repeat(100), [], {}]) {
+    assert.equal((await request({ checkpoint })).status, 400);
+  }
+  assert.equal((await request({})).status, 400);
+  for (const limit of [null, 0, -1, 501, 1.5, "1"]) assert.equal((await request({ checkpoint: "0", limit })).status, 400);
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM sync_publication")).rows[0].n, 0, "rejected requests never publish");
+  assert.deepEqual(await request(), { status: 200, body: { success: true, feedVersion: "sync-publication-v2", checkpoint: "9007199254740993" } });
+  const first = await request({ checkpoint: "9007199254740991", limit: 1 });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.checkpoint, "9007199254740992");
+  assert.equal(first.body.changes[0].changeId, "9007199254740992");
+  assert.equal(first.body.changes[0].publicationCursor, "9007199254740992");
+  assert.equal(first.body.changes[0].domain, "roles");
+  assert.equal(first.body.changes[0].recordKey, "v2-bigint-0");
+  assert.equal(first.body.changes[0].payload.title, "v2-bigint-0");
+  const second = await request({ checkpoint: first.body.checkpoint, limit: 1 });
+  assert.equal(second.body.checkpoint, "9007199254740993");
+  for (const checkpoint of [second.body.checkpoint, "9223372036854775807"]) {
+    const empty = await request({ checkpoint });
+    assert.equal(empty.status, 200);
+    assert.equal(empty.body.checkpoint, checkpoint);
+    assert.deepEqual(empty.body.changes, []);
+  }
+});
+
+test("concurrent v2 status and pull drain multiple publication batches exactly once", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const request = await publicationHttp(t, pool);
+  assert.equal((await request()).body.checkpoint, "0");
+  await pool.query("INSERT INTO roles (role_key, title) SELECT 'v2-batch-' || n, 'Role' FROM generate_series(1, 501) n");
+  const blocker = await connect();
+  await beginPublication(blocker);
+  const requests = [request(), request({ checkpoint: "0", limit: 500 })]
+    .map((pending) => pending.then((value) => ({ value }), (error) => ({ error })));
+  // Explicit barrier: both actual HTTP requests are waiting for the publisher
+  // row lock; release them together without arbitrary timing sleeps.
+  const deadline = Date.now() + 5000;
+  try {
+    for (;;) {
+      // PostgreSQL may queue the second waiter behind the first waiter rather
+      // than report the original holder as its direct blocker.
+      const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND wait_event_type = 'Lock'
+          AND query = 'SELECT last_cursor FROM sync_publication_state WHERE singleton FOR UPDATE'
+          AND cardinality(pg_blocking_pids(pid)) > 0`);
+      if (rows[0].n >= 2) break;
+      assert.ok(Date.now() < deadline, "both v2 requests reach publication");
+    }
+  } finally {
+    await blocker.query("COMMIT");
+  }
+  const outcomes = await Promise.all(requests);
+  for (const outcome of outcomes) assert.equal(outcome.error, undefined);
+  const [status, pull] = outcomes.map((outcome) => outcome.value);
+  assert.equal(status.status, 200);
+  assert.equal(status.body.checkpoint, "501");
+  assert.equal(pull.status, 200);
+  assert.equal(pull.body.changes.length, 500);
+  assert.equal(pull.body.checkpoint, "500");
+  const tail = await request({ checkpoint: "500", limit: 1 });
+  assert.equal(tail.body.checkpoint, "501");
+  assert.equal(tail.body.changes.length, 1);
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM sync_publication")).rows[0].n, 501);
+});
 
 for (const ending of ["COMMIT", "ROLLBACK", "crash"]) {
   test(`publication serializes competing publishers and survives ${ending}`, { timeout: 30000 }, async (t) => {

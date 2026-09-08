@@ -5,6 +5,7 @@ import { EventEmitter } from "node:events";
 import { test } from "node:test";
 import express from "express";
 import { registerSyncRoutes } from "./registerSyncRoutes.js";
+import { registerPublicationSyncRoutes } from "./registerPublicationSyncRoutes.js";
 import { createMachineSyncAuth } from "../../security/machineAuth.js";
 
 async function startTestServer(app) {
@@ -17,6 +18,39 @@ async function startTestServer(app) {
     server,
   };
 }
+
+test("v2 publication backlog returns retryable 503 without answering from a partial drain", async () => {
+  const handlers = new Map();
+  let calls = 0;
+  const unexpectedRead = () => assert.fail("must not read a head/page after an incomplete drain");
+  registerPublicationSyncRoutes({
+    app: { get(path, ...chain) { handlers.set(path, chain.at(-1)); }, post(path, ...chain) { handlers.set(path, chain.at(-1)); } },
+    authenticateMachineRequest() {},
+    publicationGateway: { async publishBatch() { calls += 1; return [{ publicationCursor: String(calls) }]; }, getPublicationHead: unexpectedRead, listPublishedChanges: unexpectedRead },
+  });
+  for (const path of ["/api/sync/v2/status", "/api/sync/v2/pull"]) {
+    let status;
+    let body;
+    calls = 0;
+    await handlers.get(path)({ body: { checkpoint: "0" } }, { status(code) { status = code; return this; }, json(value) { body = value; } });
+    assert.equal(calls, 100);
+    assert.equal(status, 503);
+    assert.equal(body.code, "publication_backlog");
+  }
+});
+
+test("v2 propagates publication failure without returning a successful head or pull", async () => {
+  const handlers = [];
+  const failure = new Error("publisher failed");
+  registerPublicationSyncRoutes({
+    app: { get(_path, ...chain) { handlers.push(chain.at(-1)); }, post(_path, ...chain) { handlers.push(chain.at(-1)); } },
+    authenticateMachineRequest() {},
+    publicationGateway: { async publishBatch() { throw failure; } },
+  });
+  for (const handler of handlers) {
+    await assert.rejects(handler({ body: { checkpoint: "0" } }, { json() { assert.fail("must not return success"); } }), (error) => error === failure);
+  }
+});
 
 function requestJson(baseUrl, path, { body = null, headers = {}, method = "GET" } = {}) {
   const url = new URL(path, baseUrl);

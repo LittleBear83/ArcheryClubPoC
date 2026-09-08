@@ -1,41 +1,29 @@
-// Test-only protocol prototype. Not imported by the application or migration runner.
-export async function installPublicationPrototype(pool) {
-  await pool.query(`
-    CREATE TABLE test_sync_publication_state (
-      singleton BOOLEAN PRIMARY KEY CHECK (singleton),
-      last_cursor BIGINT NOT NULL CHECK (last_cursor >= 0)
-    );
-    INSERT INTO test_sync_publication_state VALUES (true, 0);
-    CREATE TABLE test_sync_publication (
-      publication_cursor BIGINT PRIMARY KEY CHECK (publication_cursor > 0),
-      change_id BIGINT NOT NULL UNIQUE REFERENCES sync_change_log(change_id)
-    )
-  `);
-}
+import { createSyncPublicationGateway } from "./syncPublicationGateway.js";
 
+// Test-only snapshot/pull helpers; production v1 readers remain unchanged.
 // Only publishers lock this private row. Never call this from a business-write
 // transaction. Discovery is a separate statement AFTER acquiring the mutex, so
 // READ COMMITTED sees the preceding publisher's committed mappings.
 export async function beginPublication(client, { snapshot = false } = {}) {
   await client.query(snapshot ? "BEGIN ISOLATION LEVEL REPEATABLE READ" : "BEGIN ISOLATION LEVEL READ COMMITTED");
   await client.query("SET LOCAL statement_timeout = '5s'");
-  await client.query("SELECT last_cursor FROM test_sync_publication_state WHERE singleton FOR UPDATE");
+  await client.query("SELECT last_cursor FROM sync_publication_state WHERE singleton FOR UPDATE");
 }
 
 export async function assignPublications(client, limit = 500) {
   const result = await client.query(`
     WITH candidates AS MATERIALIZED (
       SELECT c.change_id FROM sync_change_log c
-      WHERE NOT EXISTS (SELECT 1 FROM test_sync_publication p WHERE p.change_id = c.change_id)
+      WHERE NOT EXISTS (SELECT 1 FROM sync_publication p WHERE p.change_id = c.change_id)
       ORDER BY c.change_id LIMIT $1
     ), assigned AS (
-      INSERT INTO test_sync_publication (publication_cursor, change_id)
+      INSERT INTO sync_publication (publication_cursor, change_id)
       SELECT s.last_cursor + row_number() OVER (ORDER BY c.change_id), c.change_id
-      FROM candidates c CROSS JOIN test_sync_publication_state s
+      FROM candidates c CROSS JOIN sync_publication_state s
       WHERE s.singleton
       RETURNING publication_cursor, change_id
     ), advanced AS (
-      UPDATE test_sync_publication_state
+      UPDATE sync_publication_state
       SET last_cursor = (SELECT MAX(publication_cursor) FROM assigned)
       WHERE singleton AND EXISTS (SELECT 1 FROM assigned)
       RETURNING last_cursor
@@ -46,18 +34,8 @@ export async function assignPublications(client, limit = 500) {
 }
 
 export async function publish(pool, limit = 500) {
-  const client = await pool.connect();
-  try {
-    await beginPublication(client);
-    const rows = await assignPublications(client, limit);
-    await client.query("COMMIT");
-    return rows;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  const rows = await createSyncPublicationGateway({ pool }).publishBatch({ limit });
+  return rows.map((row) => ({ publication_cursor: row.publicationCursor, change_id: row.changeId }));
 }
 
 // Publication order, not original change-ID order. Empty pages retain the
@@ -65,7 +43,7 @@ export async function publish(pool, limit = 500) {
 export async function pullPublications(pool, checkpoint = "0", limit = 500) {
   const { rows } = await pool.query(`
     SELECT p.publication_cursor, c.change_id, c.domain, c.record_key, c.operation, c.payload_json
-    FROM test_sync_publication p JOIN sync_change_log c ON c.change_id = p.change_id
+    FROM sync_publication p JOIN sync_change_log c ON c.change_id = p.change_id
     WHERE p.publication_cursor > $1 ORDER BY p.publication_cursor LIMIT $2
   `, [checkpoint, limit]);
   return { checkpoint: rows.at(-1)?.publication_cursor ?? checkpoint, changes: rows };

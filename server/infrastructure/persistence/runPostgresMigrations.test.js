@@ -5,6 +5,7 @@ import { migration as fixSyncChangeTriggerMigration } from "./postgresMigrations
 import { migration as operationalSyncMigration } from "./postgresMigrations/005_operational_sync.js";
 import { migration as phase2a1ReportingSyncMigration } from "./postgresMigrations/006_phase_2a1_reporting_sync.js";
 import { migration as syncChangeNotificationsMigration } from "./postgresMigrations/007_sync_change_notifications.js";
+import { migration as syncPublicationMigration } from "./postgresMigrations/008_sync_publication.js";
 
 const NUMBERED_MIGRATION_VERSIONS = [
   "002_sync_foundation",
@@ -13,6 +14,7 @@ const NUMBERED_MIGRATION_VERSIONS = [
   "005_operational_sync",
   "006_phase_2a1_reporting_sync",
   "007_sync_change_notifications",
+  "008_sync_publication",
 ];
 
 function createPoolDouble({
@@ -303,6 +305,25 @@ test("007 runs after 006, records its version, and skips when already applied", 
       assert.ok(versionIndex > triggerIndex);
     }
     assert.equal(queries[0].sql, "BEGIN");
+    assert.equal(queries.at(-1).sql, "COMMIT");
+  }
+});
+
+test("008 is additive, runs after 007, and is skipped once recorded", async () => {
+  for (const installed of [false, true]) {
+    const { pool, queries } = createPoolDouble({
+      appliedVersions: NUMBERED_MIGRATION_VERSIONS.filter((version) => installed || version !== syncPublicationMigration.version),
+    });
+    await runPostgresMigrations({ committeeRoleSeed: [], defaultEquipmentCupboardLabel: "Test cupboard", permissionDefinitions: [], pool, seedUsers: [], systemRoleDefinitions: [] });
+    const publicationQueries = queries.filter((entry) => /(?:CREATE TABLE IF NOT EXISTS|INSERT INTO) sync_publication/.test(entry.sql));
+    assert.equal(publicationQueries.length, installed ? 0 : 3);
+    if (!installed) {
+      const previousCheck = queries.findIndex((entry) => entry.sql.includes("FROM schema_migrations") && entry.values[0] === syncChangeNotificationsMigration.version);
+      assert.ok(queries.indexOf(publicationQueries[0]) > previousCheck);
+      assert.ok(publicationQueries[1].sql.includes("ON CONFLICT (singleton) DO NOTHING"));
+      const versionWrite = queries.findIndex((entry) => entry.sql.startsWith("INSERT INTO schema_migrations") && entry.values[0] === syncPublicationMigration.version);
+      assert.ok(versionWrite > queries.indexOf(publicationQueries[2]));
+    }
     assert.equal(queries.at(-1).sql, "COMMIT");
   }
 });

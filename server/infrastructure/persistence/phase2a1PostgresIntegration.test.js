@@ -9,8 +9,9 @@ import { buildInitialSchemaSql, runPostgresMigrations } from "./runPostgresMigra
 import { createMemberAuthGateway } from "./memberAuthGateway.js";
 import { createActivityReportingGateway } from "./activityReportingGateway.js";
 import { createSyncGateway } from "./syncGateway.js";
+import { createSyncPublicationGateway } from "./syncPublicationGateway.js";
 import { registerSyncRoutes } from "../../presentation/http/registerSyncRoutes.js";
-import { installPublicationPrototype, beginPublication, assignPublications, publish, pullPublications, waitForDatabaseBlock } from "./syncPublicationPrototype.test-support.js";
+import { beginPublication, assignPublications, publish, pullPublications, waitForDatabaseBlock } from "./syncPublicationPrototype.test-support.js";
 import {
   assertSafeIntegrationEnvironment,
   assertSafeTemporaryDatabaseName,
@@ -228,7 +229,6 @@ for (const { label, rowsPerTransaction, limit } of [
 async function publicationFixture(t) {
   const pool = await createTemporaryPool("publication");
   disposablePools.push(pool);
-  await installPublicationPrototype(pool);
   const clients = new Set();
   t.after(() => { for (const client of clients) client.release(true); });
   return { pool, async connect() {
@@ -288,10 +288,31 @@ for (const ending of ["COMMIT", "ROLLBACK", "crash"]) {
     const initialIds = await insertPublicationRoles(pool, "original", 3);
     const a = await connect();
     const b = await connect();
-    await beginPublication(a);
-    assert.deepEqual((await assignPublications(a, 2)).map((row) => row.change_id), initialIds.slice(0, 2));
+    let reachedCommit;
+    let finishCommit;
+    const beforeCommit = new Promise((resolve) => { reachedCommit = resolve; });
+    const mayCommit = new Promise((resolve) => { finishCommit = resolve; });
+    t.after(() => finishCommit());
+    // Pause only the transport immediately before COMMIT. Locking, discovery,
+    // allocation and rollback all execute through the production publisher.
+    const aPool = { async connect() { return {
+      async query(sql, values) {
+        if (sql === "COMMIT") {
+          reachedCommit();
+          await mayCommit;
+          if (ending === "ROLLBACK") throw new Error("Injected pre-commit failure");
+        }
+        return a.query(sql, values);
+      },
+      release() {}, // Fixture owns this explicitly held connection.
+    }; } };
+    const aPending = createSyncPublicationGateway({ pool: aPool }).publishBatch({ limit: 2 })
+      .then((rows) => ({ rows }), (error) => ({ error }));
+    await beforeCommit;
     assert.deepEqual((await pullPublications(pool)).changes, [], "uncommitted publication is invisible");
-    const bWaiting = beginPublication(b).then(() => null, (error) => error);
+    const bPool = { async connect() { return { query: (...args) => b.query(...args), release() {} }; } };
+    const bPending = createSyncPublicationGateway({ pool: bPool }).publishBatch()
+      .then((rows) => ({ rows }), (error) => ({ error }));
     await waitForDatabaseBlock(pool, a, b);
     // Publishers never acquire business locks. A business write still commits
     // while A holds the publisher mutex and B is blocked behind it.
@@ -299,21 +320,76 @@ for (const ending of ["COMMIT", "ROLLBACK", "crash"]) {
     const extraIds = await insertPublicationRoles(business, "during-publication");
     if (ending === "crash") {
       assert.equal((await pool.query("SELECT pg_terminate_backend($1) AS terminated", [a.processID])).rows[0].terminated, true);
-    } else {
-      await a.query(ending);
     }
-    assert.equal(await bWaiting, null);
-    const assignedB = await assignPublications(b);
-    assert.deepEqual(assignedB.map((row) => row.change_id), ending === "COMMIT" ? [...initialIds.slice(2), ...extraIds] : [...initialIds, ...extraIds]);
-    await b.query("COMMIT");
+    finishCommit();
+    const [aResult, bResult] = await Promise.all([aPending, bPending]);
+    if (ending === "COMMIT") assert.deepEqual(aResult.rows.map((row) => row.changeId), initialIds.slice(0, 2));
+    else assert.ok(aResult.error);
+    assert.equal(bResult.error, undefined);
+    assert.deepEqual(bResult.rows.map((row) => row.changeId), ending === "COMMIT" ? [...initialIds.slice(2), ...extraIds] : [...initialIds, ...extraIds]);
     // Simulates losing the acknowledgement after COMMIT: retry assigns nothing.
     assert.deepEqual(await publish(pool), []);
     const final = await pullPublications(pool);
     assert.deepEqual(final.changes.map((row) => row.change_id), [...initialIds, ...extraIds]);
     assert.deepEqual(final.changes.map((row) => row.publication_cursor), ["1", "2", "3", "4"]);
-    assert.equal((await pool.query("SELECT last_cursor FROM test_sync_publication_state")).rows[0].last_cursor, "4");
+    assert.equal((await pool.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "4");
   });
 }
+
+test("migration 008 preserves published mappings and counter on normal runner repeats", { timeout: 30000 }, async (t) => {
+  const { pool } = await publicationFixture(t);
+  const ids = await insertPublicationRoles(pool, "migration-008", 2);
+  const gateway = createSyncPublicationGateway({ pool });
+  assert.deepEqual(await gateway.publishBatch({ limit: 1 }), [{ publicationCursor: "1", changeId: ids[0] }]);
+  const before = (await pool.query("SELECT * FROM sync_publication ORDER BY publication_cursor")).rows;
+  for (let i = 0; i < 2; i += 1) {
+    await runPostgresMigrations({ committeeRoleSeed: [], defaultEquipmentCupboardLabel: "Test cupboard", permissionDefinitions: [], pool, seedUsers: [], systemRoleDefinitions: [] });
+  }
+  assert.deepEqual((await pool.query("SELECT * FROM sync_publication ORDER BY publication_cursor")).rows, before);
+  assert.equal((await pool.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "1");
+  assert.equal((await pool.query("SELECT 1 FROM schema_migrations WHERE version = '008_sync_publication'")).rowCount, 1);
+  assert.deepEqual(await gateway.publishBatch({ limit: 1 }), [{ publicationCursor: "2", changeId: ids[1] }]);
+  assert.deepEqual(await gateway.publishBatch(), []);
+  await assert.rejects(pool.query("INSERT INTO sync_publication_state VALUES (false, 0)"), { code: "23514" });
+  await assert.rejects(pool.query("UPDATE sync_publication_state SET last_cursor = -1"), { code: "23514" });
+  await assert.rejects(pool.query("INSERT INTO sync_publication VALUES (0, $1)", [ids[0]]), { code: "23514" });
+  await assert.rejects(pool.query("INSERT INTO sync_publication VALUES (3, $1)", [ids[0]]), { code: "23505" });
+  await assert.rejects(pool.query("INSERT INTO sync_publication VALUES (3, 999999)"), { code: "23503" });
+});
+
+test("publication preserves BIGINT precision and validates batch bounds", { timeout: 30000 }, async (t) => {
+  const { pool } = await publicationFixture(t);
+  await pool.query("UPDATE sync_publication_state SET last_cursor = '9007199254740991'");
+  await pool.query("SELECT setval('sync_change_log_change_id_seq', '9007199254740992', false)");
+  await insertPublicationRoles(pool, "bigint", 2);
+  const gateway = createSyncPublicationGateway({ pool });
+  for (const limit of [0, -1, 1.5, 5001, "1", NaN, Infinity]) {
+    await assert.rejects(gateway.publishBatch({ limit }), RangeError);
+  }
+  assert.deepEqual(await gateway.publishBatch({ limit: 1 }), [{ publicationCursor: "9007199254740992", changeId: "9007199254740992" }]);
+  assert.deepEqual(await gateway.publishBatch(), [{ publicationCursor: "9007199254740993", changeId: "9007199254740993" }]);
+  assert.deepEqual(await gateway.publishBatch(), []);
+  assert.equal((await pool.query("SELECT last_cursor::text FROM sync_publication_state")).rows[0].last_cursor, "9007199254740993");
+});
+
+test("publication retries safely after a lost COMMIT acknowledgement", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const ids = await insertPublicationRoles(pool, "lost-ack");
+  const client = await connect();
+  const lostAck = new Error("Injected lost COMMIT acknowledgement");
+  const gateway = createSyncPublicationGateway({ pool: { async connect() { return {
+    async query(sql, values) {
+      const result = await client.query(sql, values);
+      if (sql === "COMMIT") throw lostAck;
+      return result;
+    },
+    release() {},
+  }; } } });
+  await assert.rejects(gateway.publishBatch(), (error) => error === lostAck);
+  assert.deepEqual(await createSyncPublicationGateway({ pool }).publishBatch(), []);
+  assert.deepEqual((await pullPublications(pool)).changes.map((row) => row.change_id), ids);
+  assert.equal((await pool.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "1");
+});
 
 test("publication excludes rolled-back source changes", { timeout: 30000 }, async (t) => {
   const { pool, connect } = await publicationFixture(t);
@@ -337,7 +413,7 @@ test("publication snapshot drains visible backlog and preserves a late commit be
   const snapshotClient = await connect();
   await beginPublication(snapshotClient, { snapshot: true });
   while ((await assignPublications(snapshotClient, 1)).length) { /* Drain this fixed MVCC snapshot. */ }
-  const checkpoint = (await snapshotClient.query("SELECT last_cursor FROM test_sync_publication_state")).rows[0].last_cursor;
+  const checkpoint = (await snapshotClient.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor;
   await late.query("COMMIT");
   // Use the existing full snapshot reader, but deliberately discard its v1 raw
   // checkpoint. The v2 boundary comes from publication in this SAME snapshot.
@@ -366,7 +442,7 @@ test("publication snapshot retries a stale mutex snapshot after a concurrent pub
   await reader.query("ROLLBACK");
   await beginPublication(reader, { snapshot: true });
   assert.deepEqual(await assignPublications(reader), []);
-  assert.equal((await reader.query("SELECT last_cursor FROM test_sync_publication_state")).rows[0].last_cursor, "1");
+  assert.equal((await reader.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "1");
   await reader.query("COMMIT");
 });
 

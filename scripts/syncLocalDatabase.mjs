@@ -3,6 +3,7 @@ import pg from "pg";
 import { serverRuntime } from "../server/config/runtime.js";
 import { applyPulledSyncResponse, readSyncStatus, writeSyncAttemptState } from "../server/domain/services/localDatabaseSyncService.js";
 import { createSyncGateway } from "../server/infrastructure/persistence/syncGateway.js";
+import { notifyLocalSyncApplied } from "../server/infrastructure/persistence/localSyncBrowserBridge.js";
 
 const { Pool } = pg;
 const SYNC_CLIENT_VERSION = "sync-v1";
@@ -154,6 +155,7 @@ async function main() {
         deactivatedRfidSuffix: process.env.DEACTIVATED_RFID_SUFFIX ?? "-deactivated",
         pullResponse,
         syncGateway,
+        onIncrementalApplied: (domains) => notifyLocalSyncApplied(applyClient, domains),
       });
     } finally {
       applyClient.release();

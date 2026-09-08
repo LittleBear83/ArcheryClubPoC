@@ -115,6 +115,7 @@ await import(
 await import(
   pathToFileURL(path.join(root, "server/domain/services/localDatabaseSyncService.test.js"))
 );
+await import("../server/domain/services/localSyncBrowserEvents.test.js");
 await import(
   pathToFileURL(path.join(root, "server/domain/services/tournamentEngine.test.js"))
 );

@@ -1796,15 +1796,30 @@ export async function applyAuthChanges({
   deactivatedRfidSuffix,
   syncGateway,
 }) {
+  const appliedDomains = new Set();
   for (const change of collapseChanges(changes)) {
+    // Count writes made by the actual application path, including its no-op
+    // guards, rather than treating every incoming domain as an applied change.
+    let wroteRows = false;
+    const trackingClient = {
+      async query(...args) {
+        const result = await client.query(...args);
+        if (/^\s*(INSERT|UPDATE|DELETE)\b/i.test(String(args[0])) && result.rowCount > 0) {
+          wroteRows = true;
+        }
+        return result;
+      },
+    };
     await applyCollapsedChange({
       change,
-      client,
+      client: trackingClient,
       deactivatedRfidSuffix,
     });
+    if (wroteRows) appliedDomains.add(change.domain);
   }
 
   await reapplyPendingBookingOverlay(client, syncGateway);
+  return [...appliedDomains];
 }
 
 export async function applyPulledSyncResponse({
@@ -1813,7 +1828,9 @@ export async function applyPulledSyncResponse({
   deactivatedRfidSuffix,
   pullResponse,
   syncGateway,
+  onIncrementalApplied,
 }) {
+  let appliedDomains = [];
   await client.query("BEGIN");
 
   try {
@@ -1829,7 +1846,7 @@ export async function applyPulledSyncResponse({
         syncGateway,
       });
     } else {
-      await applyAuthChanges({
+      appliedDomains = await applyAuthChanges({
         changes: pullResponse.changes ?? [],
         client,
         deactivatedRfidSuffix,
@@ -1851,6 +1868,11 @@ export async function applyPulledSyncResponse({
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
+  }
+  // This runs outside the database transaction and its failure path. A hint
+  // delivery failure must never roll back or mark a committed sync as failed.
+  if (appliedDomains.length > 0 && onIncrementalApplied) {
+    try { await onIncrementalApplied(appliedDomains); } catch { /* Best-effort invalidation. */ }
   }
 }
 

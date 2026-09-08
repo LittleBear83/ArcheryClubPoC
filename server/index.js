@@ -16,6 +16,7 @@ import {
 import { createGoldenRecordsMemberSyncService } from "./domain/services/goldenRecordsMemberSyncService.js";
 import { startGoldenRecordsSyncScheduler } from "./domain/services/goldenRecordsSyncScheduler.js";
 import { createServerEventBus } from "./domain/services/serverEventBus.js";
+import { startLocalSyncBrowserBridge } from "./infrastructure/persistence/localSyncBrowserBridge.js";
 import { createCsrfProtection } from "./security/csrf.js";
 import { createRateLimiter } from "./security/rateLimit.js";
 import {
@@ -7182,7 +7183,7 @@ registerMemberActivityRoutes({
 
 app.use("/api", apiErrorHandler);
 
-startServer({
+const httpServer = startServer({
   app,
   bindHost: serverRuntime.bindHost,
   databaseEngine: serverRuntime.databaseEngine,
@@ -7195,3 +7196,10 @@ startServer({
   port,
   requestTimeoutMs: serverRuntime.requestTimeoutMs,
 });
+const stopLocalSyncBrowserBridge = startLocalSyncBrowserBridge({
+  pool: db.pool,
+  serverEventBus,
+  isLocalPiNode: serverRuntime.sync.isLocalPiNode,
+  refreshRoleAccess: refreshRoleAccessSnapshot,
+});
+httpServer.once("close", stopLocalSyncBrowserBridge);

@@ -1,13 +1,17 @@
 import process from "node:process";
 import pg from "pg";
 import { serverRuntime } from "../server/config/runtime.js";
-import { readSyncStatus } from "../server/domain/services/localDatabaseSyncService.js";
+import {
+  readPublicationSyncState,
+  readSyncStatus,
+} from "../server/domain/services/localDatabaseSyncService.js";
 import { createSyncGateway } from "../server/infrastructure/persistence/syncGateway.js";
 import { runLiveSyncWatcher, runLocalSyncChild, validateWatcherConfig } from "./lib/liveSyncWatcher.mjs";
 
 async function main() {
   const { sync } = serverRuntime;
-  validateWatcherConfig(sync);
+  const publicationSync = process.argv.includes("--v2");
+  validateWatcherConfig(sync, { publicationSync });
   const local = sync.localPostgres;
   if (!local.url && (!local.databaseName || !local.user || !local.host)) {
     throw new Error("Local PostgreSQL configuration is required.");
@@ -36,9 +40,14 @@ async function main() {
     await runLiveSyncWatcher({
       sync,
       signal: controller.signal,
-      readCheckpoint: async () => (await readSyncStatus({ syncGateway })).currentCheckpoint,
-      runSync: runLocalSyncChild,
+      readCheckpoint: publicationSync
+        ? async () => (await readPublicationSyncState({ syncGateway })).publicationCheckpoint
+        : async () => (await readSyncStatus({ syncGateway })).currentCheckpoint,
+      runSync: publicationSync
+        ? (signal) => runLocalSyncChild(signal, { publicationSync: true })
+        : runLocalSyncChild,
       log,
+      publicationSync,
     });
   } finally {
     await pool.end();

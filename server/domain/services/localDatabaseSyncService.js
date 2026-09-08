@@ -1,16 +1,12 @@
 import { normalizeMemberStatusWithFees } from "./memberPersistenceService.js";
-import { PUBLICATION_FEED_VERSION } from "../../../shared/syncPublicationProtocol.js";
+import {
+  isValidPublicationCursor,
+  PUBLICATION_FEED_VERSION,
+} from "../../../shared/syncPublicationProtocol.js";
 
 const SYNC_STATE_KEY = "local_machine_sync";
 export const PUBLICATION_SYNC_STATE_KEY = "local_machine_publication_sync_v2";
-export { PUBLICATION_FEED_VERSION };
-const MAX_PUBLICATION_CURSOR = 9223372036854775807n;
-
-export function isValidPublicationCursor(value) {
-  return typeof value === "string"
-    && /^(0|[1-9][0-9]{0,18})$/.test(value)
-    && BigInt(value) <= MAX_PUBLICATION_CURSOR;
-}
+export { isValidPublicationCursor, PUBLICATION_FEED_VERSION };
 
 function requirePublicationSyncState(stateEntry) {
   const state = stateEntry?.state;

@@ -11,6 +11,8 @@ const sync = {
 };
 const frame = (checkpoint, event = "sync.available") =>
   `event: ${event}\ndata: ${JSON.stringify({ checkpoint })}\n\n`;
+const publicationFrame = (checkpoint, event = "sync.available", feedVersion = "sync-publication-v2") =>
+  `event: ${event}\ndata: ${JSON.stringify({ checkpoint, feedVersion })}\n\n`;
 const deferred = () => {
   let resolve;
   const promise = new Promise((done) => { resolve = done; });
@@ -26,7 +28,7 @@ async function until(predicate) {
 
 function harness(t, overrides = {}) {
   const abort = new AbortController();
-  const state = { local: 100, reads: 0, runs: 0, requests: [], streams: [], waits: [], logs: [] };
+  const state = { local: overrides.publicationSync ? "100" : 100, reads: 0, runs: 0, requests: [], streams: [], waits: [], logs: [] };
   function fetchStream(url, options) {
     state.requests.push({ url: String(url), ...options });
     let controller;
@@ -56,6 +58,7 @@ function harness(t, overrides = {}) {
       state.local = 1000;
     },
     log: (message) => state.logs.push(message),
+    publicationSync: overrides.publicationSync ?? false,
     wait: (ms, signal) => {
       const pending = deferred();
       state.waits.push({ ms, resolve: pending.resolve });
@@ -88,6 +91,110 @@ test("fetch sends credentials only in headers and refuses redirects", async (t) 
   assert.equal(request.headers["x-sync-machine-secret"], sync.machineSecret);
   assert.equal(request.url.includes(sync.machineSecret), false);
   assert.equal(request.url.includes(sync.machineId), false);
+});
+
+test("v2 watcher uses the publication event stream and requires an initialized string checkpoint", async (t) => {
+  const { state } = harness(t, { publicationSync: true });
+  await until(() => state.requests.length === 1);
+  assert.equal(state.requests[0].url, "https://sync.example.test/api/sync/v2/events");
+  assert.equal(state.reads, 1, "v2 validates local state before opening the stream");
+});
+
+test("v2 watcher refuses operation before publication state initialization", async () => {
+  const controller = new AbortController();
+  let fetches = 0;
+  await assert.rejects(runLiveSyncWatcher({
+    sync,
+    signal: controller.signal,
+    readCheckpoint: async () => { throw new Error("v2 baseline missing"); },
+    runSync: async () => assert.fail("must not sync"),
+    fetchImpl: async () => { fetches += 1; assert.fail("must not connect"); },
+    publicationSync: true,
+  }), /v2 baseline missing/);
+  assert.equal(fetches, 0);
+});
+
+test("v2 watcher ignores missing or mismatched feeds and non-string cursors", async (t) => {
+  const { state } = harness(t, { publicationSync: true });
+  await until(() => state.streams.length === 1);
+  state.streams[0].push(publicationFrame("101", "sync.ready", "sync-publication-v3"));
+  state.streams[0].push(frame("101"));
+  state.streams[0].push(publicationFrame(101));
+  state.streams[0].push(publicationFrame("01"));
+  state.streams[0].push(publicationFrame("+101"));
+  state.streams[0].push(publicationFrame("9223372036854775808"));
+  await nextTurn();
+  assert.equal(state.runs, 0);
+  assert.equal(state.reads, 1);
+  state.streams[0].push(publicationFrame("101"));
+  await until(() => state.runs === 1);
+});
+
+test("v2 watcher compares BIGINT cursors exactly and ignores stale repeated hints", async (t) => {
+  const { state } = harness(t, { publicationSync: true });
+  state.local = "9007199254740993";
+  await until(() => state.streams.length === 1);
+  state.streams[0].push(publicationFrame("9007199254740992", "sync.ready"));
+  state.streams[0].push(publicationFrame("9007199254740993"));
+  state.streams[0].push(publicationFrame("9007199254740993"));
+  await until(() => state.reads > 1);
+  assert.equal(state.runs, 0);
+  state.streams[0].push(publicationFrame("9007199254740994"));
+  await until(() => state.runs === 1);
+});
+
+test("v2 hints coalesce while a child is running and use the committed publication checkpoint", async (t) => {
+  const firstPass = deferred();
+  t.after(() => firstPass.resolve());
+  let active = 0;
+  let maxActive = 0;
+  const { state } = harness(t, {
+    publicationSync: true,
+    runSync: async (current) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      if (current.runs === 1) {
+        await firstPass.promise;
+        current.local = "101";
+      } else current.local = "104";
+      active -= 1;
+    },
+  });
+  await until(() => state.streams.length === 1);
+  state.streams[0].push(publicationFrame("101"));
+  await until(() => state.runs === 1);
+  state.streams[0].push(publicationFrame("102") + publicationFrame("104") + publicationFrame("103"));
+  firstPass.resolve();
+  await until(() => state.runs === 2 && state.local === "104" && active === 0);
+  assert.equal(maxActive, 1);
+  assert.ok(state.reads >= 5, "initial, before, and committed-after checkpoints are read");
+});
+
+test("v2 reconnect retains exact cursor handling and catches a missed change", async (t) => {
+  const { state } = harness(t, { publicationSync: true });
+  await until(() => state.streams.length === 1);
+  state.streams[0].fail();
+  await until(() => state.waits.length === 1);
+  state.waits[0].resolve();
+  await until(() => state.streams.length === 2);
+  state.streams[1].push(publicationFrame("101", "sync.ready"));
+  await until(() => state.runs === 1);
+});
+
+test("v2 child failure backs off without losing the publication target", async (t) => {
+  const { state } = harness(t, {
+    publicationSync: true,
+    runSync: async (current) => {
+      if (current.runs === 1) throw new Error(sync.machineSecret);
+      current.local = "104";
+    },
+  });
+  await until(() => state.streams.length === 1);
+  state.streams[0].push(publicationFrame("104"));
+  await until(() => state.waits.length === 1);
+  state.waits[0].resolve();
+  await until(() => state.runs === 2 && state.local === "104");
+  assert.equal(state.logs.join(" ").includes(sync.machineSecret), false);
 });
 
 for (const event of ["sync.ready", "sync.available"]) {
@@ -293,6 +400,22 @@ test("child uses existing normal sync script without credentials or inherited ou
     assert.equal(JSON.stringify({ args, options }).includes(sync.machineSecret), false);
     return child;
   } });
+  child.emit("exit", 0);
+  await promise;
+});
+
+test("v2 child explicitly launches the local sync script in publication mode", async () => {
+  const controller = new AbortController();
+  const child = new EventEmitter();
+  const promise = runLocalSyncChild(controller.signal, {
+    publicationSync: true,
+    spawnProcess(_command, args) {
+      assert.equal(args.length, 2);
+      assert.match(args[0], /syncLocalDatabase\.mjs$/);
+      assert.equal(args[1], "--v2");
+      return child;
+    },
+  });
   child.emit("exit", 0);
   await promise;
 });

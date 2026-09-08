@@ -2,6 +2,10 @@ import { spawn } from "node:child_process";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import {
+  isValidPublicationCursor,
+  PUBLICATION_FEED_VERSION,
+} from "../../shared/syncPublicationProtocol.js";
 
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 15000, 30000];
 const sleep = (ms, signal) => delay(ms, undefined, { signal });
@@ -47,7 +51,7 @@ export function createSseParser(onEvent) {
   };
 }
 
-export function validateWatcherConfig(sync) {
+export function validateWatcherConfig(sync, { publicationSync = false } = {}) {
   if (sync.nodeMode !== "local-pi") {
     throw new Error("SYNC_NODE_MODE=local-pi is required for the sync watcher.");
   }
@@ -61,7 +65,7 @@ export function validateWatcherConfig(sync) {
   if (!["http:", "https:"].includes(base.protocol) || base.username || base.password) {
     throw new Error("SYNC_API_BASE_URL must be HTTP(S) without embedded credentials.");
   }
-  return new URL("/api/sync/v1/events", base);
+  return new URL(publicationSync ? "/api/sync/v2/events" : "/api/sync/v1/events", base);
 }
 
 export async function runLiveSyncWatcher({
@@ -70,9 +74,10 @@ export async function runLiveSyncWatcher({
   wait = sleep,
   log = () => {},
   idleTimeoutMs = 75000,
+  publicationSync = false,
 }) {
-  const url = validateWatcherConfig(sync);
-  let highestCheckpoint = 0;
+  const url = validateWatcherConfig(sync, { publicationSync });
+  let highestCheckpoint = publicationSync ? "0" : 0;
   let requested = false;
   let wake;
   const wakeWorker = () => wake?.();
@@ -89,10 +94,29 @@ export async function runLiveSyncWatcher({
     let payload;
     try { payload = JSON.parse(data); } catch { return; }
     const checkpoint = payload?.checkpoint;
-    if (!Number.isSafeInteger(checkpoint) || checkpoint < 0) return;
-    highestCheckpoint = Math.max(highestCheckpoint, checkpoint);
+    if (publicationSync) {
+      if (payload?.feedVersion !== PUBLICATION_FEED_VERSION || !isValidPublicationCursor(checkpoint)) return;
+      if (BigInt(checkpoint) > BigInt(highestCheckpoint)) highestCheckpoint = checkpoint;
+    } else {
+      if (!Number.isSafeInteger(checkpoint) || checkpoint < 0) return;
+      highestCheckpoint = Math.max(highestCheckpoint, checkpoint);
+    }
     requested = true;
     wakeWorker();
+  }
+
+  function validLocalCheckpoint(checkpoint) {
+    return publicationSync
+      ? isValidPublicationCursor(checkpoint)
+      : Number.isSafeInteger(checkpoint) && checkpoint >= 0;
+  }
+
+  function atOrBeyond(left, right) {
+    return publicationSync ? BigInt(left) >= BigInt(right) : left >= right;
+  }
+
+  function advanced(after, before) {
+    return publicationSync ? BigInt(after) > BigInt(before) : after > before;
   }
 
   async function synchronize() {
@@ -106,15 +130,15 @@ export async function runLiveSyncWatcher({
       try {
         const before = await readCheckpoint();
         if (signal.aborted) break;
-        if (!Number.isSafeInteger(before) || before < 0) throw new Error("Invalid local checkpoint.");
-        if (before >= highestCheckpoint) { requested = false; retry = 0; continue; }
+        if (!validLocalCheckpoint(before)) throw new Error("Invalid local checkpoint.");
+        if (atOrBeyond(before, highestCheckpoint)) { requested = false; retry = 0; continue; }
         await runSync(signal);
         if (signal.aborted) break;
         const after = await readCheckpoint();
         if (signal.aborted) break;
-        if (!Number.isSafeInteger(after) || after < 0) throw new Error("Invalid local checkpoint.");
-        if (after >= highestCheckpoint) { requested = false; retry = 0; continue; }
-        if (after > before) { retry = 0; continue; }
+        if (!validLocalCheckpoint(after)) throw new Error("Invalid local checkpoint.");
+        if (atOrBeyond(after, highestCheckpoint)) { requested = false; retry = 0; continue; }
+        if (advanced(after, before)) { retry = 0; continue; }
         // Lock contention or a failed/no-progress pass must not spin children.
         log("Sync has not advanced; retrying with backoff.");
       } catch {
@@ -179,6 +203,10 @@ export async function runLiveSyncWatcher({
   }
 
   try {
+    if (signal.aborted) return;
+    if (publicationSync && !validLocalCheckpoint(await readCheckpoint())) {
+      throw new Error("Publication sync v2 requires an initialized local checkpoint.");
+    }
     await Promise.all([synchronize(), listen()]);
   } finally {
     signal.removeEventListener("abort", wakeWorker);
@@ -192,6 +220,7 @@ export function runLocalSyncChild(signal, {
   spawnProcess = spawn,
   graceMs = 30000,
   terminateMs = 5000,
+  publicationSync = false,
 } = {}) {
   if (signal.aborted) return Promise.resolve();
   return new Promise((resolve, reject) => {
@@ -216,7 +245,10 @@ export function runLocalSyncChild(signal, {
       }, graceMs);
     };
     try {
-      child = spawnProcess(process.execPath, [fileURLToPath(new URL("../syncLocalDatabase.mjs", import.meta.url))], {
+      child = spawnProcess(process.execPath, [
+        fileURLToPath(new URL("../syncLocalDatabase.mjs", import.meta.url)),
+        ...(publicationSync ? ["--v2"] : []),
+      ], {
         cwd: fileURLToPath(new URL("../../", import.meta.url)),
         stdio: "ignore",
         shell: false,

@@ -1,0 +1,11 @@
+{
+  "host": "127.0.0.1",
+  "port": 8765,
+  "pollIntervalMs": 350,
+  "scanTimeoutMs": 15000,
+  "allowedOrigins": [
+    "https://archeryclub-poc-76370894029.europe-west2.run.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173"
+  ]
+}

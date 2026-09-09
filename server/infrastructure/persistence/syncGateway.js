@@ -25,6 +25,10 @@ const SYNCED_DOMAINS = new Set([
   "beginners_course_participants",
   "beginners_course_lessons",
   "beginners_course_lesson_coaches",
+  "golden_records_member_sync",
+  "golden_records_integration_status",
+  "golden_records_lookup_cache",
+  "outdoor_table_entries",
 ]);
 
 function hasScheduleEntryEnded(date, endTime) {
@@ -758,6 +762,35 @@ export function createSyncGateway({ pool }) {
           ORDER BY lessons.sync_id ASC, coaches.coach_username ASC
         `,
       );
+      const goldenRecordsMemberSync = await snapshotClient.query(
+        `
+          SELECT *
+          FROM golden_records_member_sync
+          ORDER BY username ASC
+        `,
+      );
+      const goldenRecordsIntegrationStatus = await snapshotClient.query(
+        `
+          SELECT *
+          FROM golden_records_integration_status
+          ORDER BY status_key ASC
+        `,
+      );
+      const goldenRecordsLookupCache = await snapshotClient.query(
+        `
+          SELECT *
+          FROM golden_records_lookup_cache
+          ORDER BY lookup_type ASC
+        `,
+      );
+      const outdoorTableEntries = await snapshotClient.query(
+        `
+          SELECT *
+          FROM outdoor_table_entries
+          ORDER BY season_year ASC, archer_username ASC, bow_type ASC
+        `,
+      );
+
       const checkpointRow = await querySingleValue(
         snapshotClient,
         `SELECT COALESCE(MAX(change_id), 0) AS checkpoint FROM sync_change_log`,
@@ -780,6 +813,10 @@ export function createSyncGateway({ pool }) {
           beginnersCourseParticipants: beginnersCourseParticipants.rows,
           beginnersCourseLessons: beginnersCourseLessons.rows,
           beginnersCourseLessonCoaches: beginnersCourseLessonCoaches.rows,
+          goldenRecordsMemberSync: goldenRecordsMemberSync.rows,
+          goldenRecordsIntegrationStatus: goldenRecordsIntegrationStatus.rows,
+          goldenRecordsLookupCache: goldenRecordsLookupCache.rows,
+          outdoorTableEntries: outdoorTableEntries.rows,
           permissions: permissions.rows,
           rolePermissions: rolePermissions.rows,
           roles: roles.rows,

@@ -996,3 +996,107 @@ test("beginners course reporting snapshot upserts courses before participants", 
   assert.ok(participantInsertIndex > -1);
   assert.ok(courseInsertIndex < participantInsertIndex);
 });
+
+test("extended SSE domains respect user dependency ordering", async () => {
+  const { client, queries } = createClientDouble();
+
+  await applyAuthChanges({
+    changes: [
+      {
+        domain: "outdoor_table_entries",
+        operation: "upsert",
+        payload: {
+          season_year: 2026,
+          archer_username: "robin",
+          bow_type: "Recurve",
+        },
+        recordKey: "2026:robin:recurve",
+      },
+      {
+        domain: "golden_records_member_sync",
+        operation: "upsert",
+        payload: {
+          username: "robin",
+          snapshot_json: {},
+          fetched_at: "",
+          synced_at_date: "2026-09-09",
+          synced_at_time: "17:00:00",
+        },
+        recordKey: "robin",
+      },
+      {
+        domain: "users",
+        operation: "upsert",
+        payload: {
+          username: "robin",
+          first_name: "Robin",
+          surname: "Example",
+          active_member: 1,
+        },
+        recordKey: "robin",
+      },
+    ],
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+  });
+
+  const userUpsert = queries.findIndex((q) =>
+    q.sql.startsWith("INSERT INTO users"),
+  );
+  const goldenUpsert = queries.findIndex((q) =>
+    q.sql.startsWith("INSERT INTO golden_records_member_sync"),
+  );
+  const outdoorUpsert = queries.findIndex((q) =>
+    q.sql.startsWith("INSERT INTO outdoor_table_entries"),
+  );
+
+  assert.ok(userUpsert > -1);
+  assert.ok(goldenUpsert > userUpsert);
+  assert.ok(outdoorUpsert > goldenUpsert);
+
+  queries.length = 0;
+
+  await applyAuthChanges({
+    changes: [
+      {
+        domain: "users",
+        operation: "delete",
+        payload: { username: "robin", rfid_tag: "TAG-1" },
+        recordKey: "robin",
+      },
+      {
+        domain: "outdoor_table_entries",
+        operation: "delete",
+        payload: {
+          season_year: 2026,
+          archer_username: "robin",
+          bow_type: "Recurve",
+        },
+        recordKey: "2026:robin:recurve",
+      },
+      {
+        domain: "golden_records_member_sync",
+        operation: "delete",
+        payload: { username: "robin" },
+        recordKey: "robin",
+      },
+    ],
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+  });
+
+  const goldenDelete = queries.findIndex((q) =>
+    q.sql.startsWith("DELETE FROM golden_records_member_sync"),
+  );
+  const outdoorDelete = queries.findIndex((q) =>
+    q.sql.startsWith("DELETE FROM outdoor_table_entries"),
+  );
+  const userTombstone = queries.findIndex((q) =>
+    q.sql.startsWith("UPDATE users SET password = NULL"),
+  );
+
+  assert.ok(goldenDelete > -1);
+  assert.ok(outdoorDelete > -1);
+  assert.ok(userTombstone > goldenDelete);
+  assert.ok(userTombstone > outdoorDelete);
+});

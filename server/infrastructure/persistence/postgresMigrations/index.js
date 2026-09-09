@@ -5,6 +5,7 @@ import { migration as operationalSyncMigration } from "./005_operational_sync.js
 import { migration as phase2a1ReportingSyncMigration } from "./006_phase_2a1_reporting_sync.js";
 import { migration as syncChangeNotificationsMigration } from "./007_sync_change_notifications.js";
 import { migration as syncPublicationMigration } from "./008_sync_publication.js";
+import { migration as extendedSseDomainsMigration } from "./009_extended_sse_domains.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -14,4 +15,5 @@ export const postgresMigrations = [
   phase2a1ReportingSyncMigration,
   syncChangeNotificationsMigration,
   syncPublicationMigration,
+  extendedSseDomainsMigration,
 ];

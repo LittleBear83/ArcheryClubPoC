@@ -6,6 +6,7 @@ import { migration as operationalSyncMigration } from "./postgresMigrations/005_
 import { migration as phase2a1ReportingSyncMigration } from "./postgresMigrations/006_phase_2a1_reporting_sync.js";
 import { migration as syncChangeNotificationsMigration } from "./postgresMigrations/007_sync_change_notifications.js";
 import { migration as syncPublicationMigration } from "./postgresMigrations/008_sync_publication.js";
+import { migration as extendedSseDomainsMigration } from "./postgresMigrations/009_extended_sse_domains.js";
 
 const NUMBERED_MIGRATION_VERSIONS = [
   "002_sync_foundation",
@@ -15,6 +16,7 @@ const NUMBERED_MIGRATION_VERSIONS = [
   "006_phase_2a1_reporting_sync",
   "007_sync_change_notifications",
   "008_sync_publication",
+  "009_extended_sse_domains",
 ];
 
 function createPoolDouble({
@@ -398,4 +400,85 @@ test("fresh databases repair the trigger before seed writes and suppress startup
   assert.ok(repairIndex > -1);
   assert.ok(maintenanceModeIndex > repairIndex);
   assert.ok(firstUserSeedIndex > maintenanceModeIndex);
+});
+
+test("009 adds extended SSE triggers and protects outdoor natural-key changes", () => {
+  const statements = extendedSseDomainsMigration.statements.join("\n");
+  const outdoorFunction = extendedSseDomainsMigration.statements[0];
+
+  assert.match(statements, /sync_golden_records_member_sync_change_log_trigger/);
+  assert.match(statements, /sync_golden_records_integration_status_change_log_trigger/);
+  assert.match(statements, /sync_golden_records_lookup_cache_change_log_trigger/);
+  assert.match(statements, /sync_outdoor_table_entries_change_log_trigger/);
+
+  assert.match(
+    outdoorFunction,
+    /current_setting\('archery\.sync\.apply_mode', true\) IN \('pull', 'maintenance'\)/,
+  );
+  assert.match(outdoorFunction, /TG_OP = 'UPDATE'/);
+  assert.match(outdoorFunction, /IS DISTINCT FROM/);
+  assert.match(outdoorFunction, /OLD\.season_year/);
+  assert.match(outdoorFunction, /NEW\.season_year/);
+  assert.match(outdoorFunction, /'delete'/);
+  assert.match(outdoorFunction, /'upsert'/);
+});
+
+test("009 runs after 008, records its version, and skips once applied", async () => {
+  for (const installed of [false, true]) {
+    const { pool, queries } = createPoolDouble({
+      appliedVersions: NUMBERED_MIGRATION_VERSIONS.filter(
+        (version) => installed || version !== extendedSseDomainsMigration.version,
+      ),
+    });
+
+    await runPostgresMigrations({
+      committeeRoleSeed: [],
+      defaultEquipmentCupboardLabel: "Test cupboard",
+      permissionDefinitions: [],
+      pool,
+      seedUsers: [],
+      systemRoleDefinitions: [],
+    });
+
+    const previousCheck = queries.findIndex(
+      (entry) =>
+        entry.sql.includes("FROM schema_migrations") &&
+        entry.values[0] === syncPublicationMigration.version,
+    );
+
+    const migrationCheck = queries.findIndex(
+      (entry) =>
+        entry.sql.includes("FROM schema_migrations") &&
+        entry.values[0] === extendedSseDomainsMigration.version,
+    );
+
+    const extendedQueries = queries.filter(
+      (entry) =>
+        entry.sql.includes("append_sync_outdoor_table_change_log") ||
+        entry.sql.includes("sync_golden_records_member_sync_change_log_trigger") ||
+        entry.sql.includes("sync_golden_records_integration_status_change_log_trigger") ||
+        entry.sql.includes("sync_golden_records_lookup_cache_change_log_trigger") ||
+        entry.sql.includes("sync_outdoor_table_entries_change_log_trigger"),
+    );
+
+    const versionWrite = queries.findIndex(
+      (entry) =>
+        entry.sql.startsWith("INSERT INTO schema_migrations") &&
+        entry.values[0] === extendedSseDomainsMigration.version,
+    );
+
+    assert.ok(previousCheck > -1);
+    assert.ok(migrationCheck > previousCheck);
+
+    if (installed) {
+      assert.equal(extendedQueries.length, 0);
+      assert.equal(versionWrite, -1);
+    } else {
+      assert.equal(
+        extendedQueries.length,
+        extendedSseDomainsMigration.statements.length,
+      );
+      assert.ok(versionWrite > queries.indexOf(extendedQueries.at(-1)));
+    }
+  }
 });

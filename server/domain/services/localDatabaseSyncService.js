@@ -15,6 +15,10 @@ export const REPLICATED_DOMAINS = [
   "range_presence_extensions", "beginners_courses",
   "beginners_course_participants", "beginners_course_lessons",
   "beginners_course_lesson_coaches",
+  "golden_records_member_sync",
+  "golden_records_integration_status",
+  "golden_records_lookup_cache",
+  "outdoor_table_entries",
 ];
 const PUBLICATION_SNAPSHOT_PROPERTIES = [
   "users", "userTypes", "userDisciplines", "roles", "permissions",
@@ -72,20 +76,24 @@ function collapseChanges(changes = []) {
     ["users", 4],
     ["user_types", 5],
     ["user_disciplines", 6],
-    ["equipment_storage_locations", 7],
-    ["equipment_items", 8],
-    ["beginners_courses", 9],
-    ["beginners_course_lessons", 10],
-    ["beginners_course_lesson_coaches", 11],
-    ["beginners_course_participants", 12],
-    ["club_events", 13],
-    ["coaching_sessions", 14],
-    ["announcements", 15],
-    ["range_presence_extensions", 16],
-    ["login_events", 17],
-    ["guest_login_events", 18],
-    ["event_bookings", 19],
-    ["coaching_session_bookings", 20],
+    ["golden_records_member_sync", 7],
+    ["golden_records_integration_status", 8],
+    ["golden_records_lookup_cache", 9],
+    ["outdoor_table_entries", 10],
+    ["equipment_storage_locations", 11],
+    ["equipment_items", 12],
+    ["beginners_courses", 13],
+    ["beginners_course_lessons", 14],
+    ["beginners_course_lesson_coaches", 15],
+    ["beginners_course_participants", 16],
+    ["club_events", 17],
+    ["coaching_sessions", 18],
+    ["announcements", 19],
+    ["range_presence_extensions", 20],
+    ["login_events", 21],
+    ["guest_login_events", 22],
+    ["event_bookings", 23],
+    ["coaching_session_bookings", 24],
   ]);
   const deleteOrder = new Map([
     ["coaching_session_bookings", 1],
@@ -99,12 +107,16 @@ function collapseChanges(changes = []) {
     ["beginners_courses", 9],
     ["range_presence_extensions", 10],
     ["equipment_storage_locations", 11],
-    ["user_disciplines", 12],
-    ["user_types", 13],
-    ["role_permissions", 14],
-    ["users", 15],
-    ["roles", 16],
-    ["permissions", 17],
+    ["golden_records_member_sync", 12],
+    ["golden_records_integration_status", 13],
+    ["golden_records_lookup_cache", 14],
+    ["outdoor_table_entries", 15],
+    ["user_disciplines", 16],
+    ["user_types", 17],
+    ["role_permissions", 18],
+    ["users", 19],
+    ["roles", 20],
+    ["permissions", 21],
   ]);
 
   return [...latestByKey.values()].sort((left, right) => {
@@ -829,6 +841,253 @@ async function upsertRangePresenceExtensionRows(client, rows = []) {
         row.updated_at_date,
         row.updated_at_time,
         Number(row.sync_version ?? 0),
+      ],
+    );
+  }
+}
+
+
+
+const OUTDOOR_TABLE_REPLICATED_COLUMNS = [
+  "season_year",
+  "archer_username",
+  "bow_type",
+  "handicap",
+  "archer_3rd",
+  "archer_2nd",
+  "archer_1st",
+  "bowman_3rd",
+  "bowman_2nd",
+  "bowman_1st",
+  "master_bowman",
+  "grand_master_bowman",
+  "elite_master_bowman",
+  "archer_3rd_date",
+  "archer_2nd_date",
+  "archer_1st_date",
+  "bowman_3rd_date",
+  "bowman_2nd_date",
+  "bowman_1st_date",
+  "master_bowman_date",
+  "grand_master_bowman_date",
+  "elite_master_bowman_date",
+  "award_252_20",
+  "award_252_30",
+  "award_252_40",
+  "award_252_50",
+  "award_252_60",
+  "award_252_80",
+  "award_252_100",
+  "award_252_20_sign_off_dates",
+  "award_252_30_sign_off_dates",
+  "award_252_40_sign_off_dates",
+  "award_252_50_sign_off_dates",
+  "award_252_60_sign_off_dates",
+  "award_252_80_sign_off_dates",
+  "award_252_100_sign_off_dates",
+  "clout_white_20",
+  "clout_white_30",
+  "clout_white_40",
+  "clout_white_50",
+  "clout_white_60",
+  "clout_white_70_80",
+  "clout_white_90_100",
+  "created_at_date",
+  "created_at_time",
+  "updated_at_date",
+  "updated_at_time",
+  "updated_by_username",
+];
+
+const OUTDOOR_TABLE_JSON_COLUMNS = new Set([
+  "award_252_20_sign_off_dates",
+  "award_252_30_sign_off_dates",
+  "award_252_40_sign_off_dates",
+  "award_252_50_sign_off_dates",
+  "award_252_60_sign_off_dates",
+  "award_252_80_sign_off_dates",
+  "award_252_100_sign_off_dates",
+]);
+
+async function upsertOutdoorTableRows(client, rows = []) {
+  const keyColumns = new Set(["season_year", "archer_username", "bow_type"]);
+
+  const placeholders = OUTDOOR_TABLE_REPLICATED_COLUMNS.map((column, index) =>
+    OUTDOOR_TABLE_JSON_COLUMNS.has(column)
+      ? `$${index + 1}::jsonb`
+      : `$${index + 1}`,
+  );
+
+  const updateColumns = OUTDOOR_TABLE_REPLICATED_COLUMNS
+    .filter((column) => !keyColumns.has(column))
+    .map((column) => `${column} = EXCLUDED.${column}`)
+    .join(",\n          ");
+
+  const updatedByUsernameIndex =
+    OUTDOOR_TABLE_REPLICATED_COLUMNS.indexOf("updated_by_username") + 1;
+
+  for (const row of rows) {
+    const values = OUTDOOR_TABLE_REPLICATED_COLUMNS.map((column) => {
+      const value = row[column];
+
+      if (OUTDOOR_TABLE_JSON_COLUMNS.has(column)) {
+        return JSON.stringify(value ?? ["", "", ""]);
+      }
+
+      return value ?? null;
+    });
+
+    await client.query(
+      `
+        INSERT INTO outdoor_table_entries (
+          ${OUTDOOR_TABLE_REPLICATED_COLUMNS.join(",\n          ")},
+          updated_by_user_id
+        )
+        VALUES (
+          ${placeholders.join(",\n          ")},
+          (
+            SELECT id
+            FROM users
+            WHERE LOWER(username) = LOWER($${updatedByUsernameIndex})
+            LIMIT 1
+          )
+        )
+        ON CONFLICT (season_year, archer_username, bow_type) DO UPDATE SET
+          ${updateColumns},
+          updated_by_user_id = EXCLUDED.updated_by_user_id
+      `,
+      values,
+    );
+  }
+}
+
+
+async function deleteMissingOutdoorTableRows(client, rows = []) {
+  const keys = rows.map((row) =>
+    [
+      row.season_year,
+      String(row.archer_username ?? "").toLowerCase(),
+      String(row.bow_type ?? "").toLowerCase(),
+    ].join(":"),
+  );
+
+  if (keys.length === 0) {
+    await client.query(`DELETE FROM outdoor_table_entries`);
+    return;
+  }
+
+  await client.query(
+    `
+      DELETE FROM outdoor_table_entries
+      WHERE concat_ws(
+        ':',
+        season_year::text,
+        LOWER(COALESCE(archer_username, '')),
+        LOWER(COALESCE(bow_type, ''))
+      ) <> ALL($1::text[])
+    `,
+    [keys],
+  );
+}
+
+async function upsertGoldenRecordsMemberSyncRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO golden_records_member_sync (
+          username,
+          snapshot_json,
+          fetched_at,
+          synced_at_date,
+          synced_at_time,
+          updated_by_username,
+          user_id,
+          updated_by_user_id
+        )
+        VALUES (
+          $1,
+          $2::jsonb,
+          $3,
+          $4,
+          $5,
+          $6,
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1),
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($6) LIMIT 1)
+        )
+        ON CONFLICT (username) DO UPDATE SET
+          snapshot_json = EXCLUDED.snapshot_json,
+          fetched_at = EXCLUDED.fetched_at,
+          synced_at_date = EXCLUDED.synced_at_date,
+          synced_at_time = EXCLUDED.synced_at_time,
+          updated_by_username = EXCLUDED.updated_by_username,
+          user_id = EXCLUDED.user_id,
+          updated_by_user_id = EXCLUDED.updated_by_user_id
+      `,
+      [
+        row.username,
+        JSON.stringify(row.snapshot_json ?? {}),
+        row.fetched_at ?? "",
+        row.synced_at_date,
+        row.synced_at_time,
+        row.updated_by_username ?? null,
+      ],
+    );
+  }
+}
+
+async function upsertGoldenRecordsIntegrationStatusRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO golden_records_integration_status (
+          status_key,
+          status_json,
+          updated_at
+        )
+        VALUES ($1, $2::jsonb, $3)
+        ON CONFLICT (status_key) DO UPDATE SET
+          status_json = EXCLUDED.status_json,
+          updated_at = EXCLUDED.updated_at
+      `,
+      [
+        row.status_key,
+        JSON.stringify(row.status_json ?? {}),
+        row.updated_at ?? "",
+      ],
+    );
+  }
+}
+
+async function upsertGoldenRecordsLookupCacheRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO golden_records_lookup_cache (
+          lookup_type,
+          item_count,
+          payload_json,
+          fetched_at,
+          synced_at_date,
+          synced_at_time,
+          updated_by_username
+        )
+        VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7)
+        ON CONFLICT (lookup_type) DO UPDATE SET
+          item_count = EXCLUDED.item_count,
+          payload_json = EXCLUDED.payload_json,
+          fetched_at = EXCLUDED.fetched_at,
+          synced_at_date = EXCLUDED.synced_at_date,
+          synced_at_time = EXCLUDED.synced_at_time,
+          updated_by_username = EXCLUDED.updated_by_username
+      `,
+      [
+        row.lookup_type,
+        Number(row.item_count ?? 0),
+        JSON.stringify(row.payload_json ?? []),
+        row.fetched_at ?? "",
+        row.synced_at_date ?? "",
+        row.synced_at_time ?? "",
+        row.updated_by_username ?? null,
       ],
     );
   }
@@ -1588,6 +1847,34 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
   await reconcileLegacyHistorySnapshot(client, "login", snapshot.loginEvents);
   await reconcileLegacyHistorySnapshot(client, "guest", snapshot.guestLoginEvents);
 
+  if (Object.hasOwn(snapshot, "goldenRecordsMemberSync")) {
+    await upsertGoldenRecordsMemberSyncRows(
+      client,
+      snapshot.goldenRecordsMemberSync,
+    );
+  }
+
+  if (Object.hasOwn(snapshot, "goldenRecordsIntegrationStatus")) {
+    await upsertGoldenRecordsIntegrationStatusRows(
+      client,
+      snapshot.goldenRecordsIntegrationStatus,
+    );
+  }
+
+  if (Object.hasOwn(snapshot, "goldenRecordsLookupCache")) {
+    await upsertGoldenRecordsLookupCacheRows(
+      client,
+      snapshot.goldenRecordsLookupCache,
+    );
+  }
+
+  if (Object.hasOwn(snapshot, "outdoorTableEntries")) {
+    await upsertOutdoorTableRows(
+      client,
+      snapshot.outdoorTableEntries,
+    );
+  }
+
   // Dependents first. Histories and local-only tables are deliberately never
   // truncated; referenced replicated parents are retained where deletion is unsafe.
   await deleteMissingBookingSnapshotRows(client, "event", snapshot.eventBookings);
@@ -1613,6 +1900,37 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
       )
   `, [equipmentKeys]);
   await deleteMissingSnapshotRows({ client, incomingKeys: snapshot.equipmentStorageLocations.map((row) => row.sync_id), tableName: "equipment_storage_locations" });
+
+  if (Object.hasOwn(snapshot, "goldenRecordsMemberSync")) {
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.goldenRecordsMemberSync.map((row) => row.username),
+      keyColumn: "username",
+      tableName: "golden_records_member_sync",
+    });
+  }
+
+  if (Object.hasOwn(snapshot, "goldenRecordsIntegrationStatus")) {
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.goldenRecordsIntegrationStatus.map((row) => row.status_key),
+      keyColumn: "status_key",
+      tableName: "golden_records_integration_status",
+    });
+  }
+
+  if (Object.hasOwn(snapshot, "goldenRecordsLookupCache")) {
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.goldenRecordsLookupCache.map((row) => row.lookup_type),
+      keyColumn: "lookup_type",
+      tableName: "golden_records_lookup_cache",
+    });
+  }
+
+  if (Object.hasOwn(snapshot, "outdoorTableEntries")) {
+    await deleteMissingOutdoorTableRows(client, snapshot.outdoorTableEntries);
+  }
 
   const announcementKeys = snapshot.announcements.map((row) => row.sync_id);
   await client.query(`
@@ -1877,6 +2195,59 @@ async function applyCollapsedChange({
       await upsertEquipmentItems(client, [change.payload]);
       await resolveEquipmentCaseRelationships(client, [change.payload]);
       return;
+    case "golden_records_member_sync":
+      if (change.operation === "delete") {
+        await client.query(
+          `DELETE FROM golden_records_member_sync WHERE username = $1`,
+          [change.payload.username],
+        );
+        return;
+      }
+      await upsertGoldenRecordsMemberSyncRows(client, [change.payload]);
+      return;
+
+    case "golden_records_integration_status":
+      if (change.operation === "delete") {
+        await client.query(
+          `DELETE FROM golden_records_integration_status WHERE status_key = $1`,
+          [change.payload.status_key],
+        );
+        return;
+      }
+      await upsertGoldenRecordsIntegrationStatusRows(client, [change.payload]);
+      return;
+
+    case "golden_records_lookup_cache":
+      if (change.operation === "delete") {
+        await client.query(
+          `DELETE FROM golden_records_lookup_cache WHERE lookup_type = $1`,
+          [change.payload.lookup_type],
+        );
+        return;
+      }
+      await upsertGoldenRecordsLookupCacheRows(client, [change.payload]);
+      return;
+
+    case "outdoor_table_entries":
+      if (change.operation === "delete") {
+        await client.query(
+          `
+            DELETE FROM outdoor_table_entries
+            WHERE season_year = $1
+              AND LOWER(archer_username) = LOWER($2)
+              AND LOWER(bow_type) = LOWER($3)
+          `,
+          [
+            change.payload.season_year,
+            change.payload.archer_username,
+            change.payload.bow_type,
+          ],
+        );
+        return;
+      }
+      await upsertOutdoorTableRows(client, [change.payload]);
+      return;
+
     case "range_presence_extensions":
       if (change.operation === "delete") {
         await client.query(`DELETE FROM range_presence_extensions WHERE username = $1`, [change.payload.username]);

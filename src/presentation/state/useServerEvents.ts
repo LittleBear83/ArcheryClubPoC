@@ -99,6 +99,12 @@ export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
       (actorUsername) => ["outdoor-table-members", actorUsername],
     ],
   },
+  {
+    event: "golden-records.updated",
+    queryKeys: [
+      (actorUsername) => ["golden-records-admin", actorUsername],
+    ],
+  },
 ];
 
 export function useServerEvents({
@@ -212,6 +218,13 @@ export function useServerEvents({
           invalidateQueries([
             ["outdoor-table"],
             ["outdoor-table-members", actorUsername],
+          ]),
+      },
+      {
+        event: "golden-records.updated",
+        invalidate: () =>
+          invalidateQueries([
+            ["golden-records-admin", actorUsername],
           ]),
       },
     ];

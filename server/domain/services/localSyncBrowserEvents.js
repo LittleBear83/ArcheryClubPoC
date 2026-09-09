@@ -21,6 +21,10 @@ export const LOCAL_SYNC_EVENT_GROUPS = {
   beginners_course_participants: ["beginners.updated", "members.updated"],
   beginners_course_lessons: ["beginners.updated", "calendar.updated"],
   beginners_course_lesson_coaches: ["beginners.updated", "calendar.updated"],
+  golden_records_member_sync: ["golden-records.updated", "outdoor-table.updated"],
+  golden_records_integration_status: ["golden-records.updated"],
+  golden_records_lookup_cache: ["golden-records.updated"],
+  outdoor_table_entries: ["outdoor-table.updated"],
 };
 
 export function localSyncBrowserEventNames(domains) {

@@ -16,6 +16,8 @@ import {
 import { createGoldenRecordsMemberSyncService } from "./domain/services/goldenRecordsMemberSyncService.js";
 import { startGoldenRecordsSyncScheduler } from "./domain/services/goldenRecordsSyncScheduler.js";
 import { createServerEventBus } from "./domain/services/serverEventBus.js";
+import { startLocalSyncBrowserBridge } from "./infrastructure/persistence/localSyncBrowserBridge.js";
+import { createLocalMutationMaintenanceGate } from "./infrastructure/persistence/localRebaselineMaintenanceGate.js";
 import { createCsrfProtection } from "./security/csrf.js";
 import { createRateLimiter } from "./security/rateLimit.js";
 import {
@@ -119,6 +121,8 @@ import { registerSuggestionRoutes } from "./presentation/http/registerSuggestion
 import { registerMemberQuestionRoutes } from "./presentation/http/registerMemberQuestionRoutes.js";
 import { registerCommitteeMinutesRoutes } from "./presentation/http/registerCommitteeMinutesRoutes.js";
 import { registerSyncRoutes } from "./presentation/http/registerSyncRoutes.js";
+import { registerPublicationSyncRoutes } from "./presentation/http/registerPublicationSyncRoutes.js";
+import { createSyncPublicationGateway } from "./infrastructure/persistence/syncPublicationGateway.js";
 import { createMachineSyncAuth } from "./security/machineAuth.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
@@ -157,6 +161,7 @@ const CSRF_EXCLUDED_PATHS = new Set([
   "/api/auth/guest-login",
   "/api/sync/v1/pull",
   "/api/sync/v1/push",
+  "/api/sync/v2/pull",
 ]);
 const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/login",
@@ -1128,6 +1133,10 @@ app.use(
     getClientIp,
   }),
 );
+app.use(createLocalMutationMaintenanceGate({
+  isLocalPiNode: serverRuntime.sync.isLocalPiNode,
+  pool: db.pool,
+}));
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -4828,6 +4837,11 @@ if (
     },
     syncGateway,
   });
+  registerPublicationSyncRoutes({
+    app,
+    authenticateMachineRequest: machineSyncAuth.authenticateMachineRequest,
+    publicationGateway: createSyncPublicationGateway({ pool: db.pool }),
+  });
 }
 
 registerAuthRoutes({
@@ -7182,8 +7196,9 @@ registerMemberActivityRoutes({
 
 app.use("/api", apiErrorHandler);
 
-startServer({
+const httpServer = startServer({
   app,
+  bindHost: serverRuntime.bindHost,
   databaseEngine: serverRuntime.databaseEngine,
   databasePath,
   databaseUrl: serverRuntime.databaseUrl,
@@ -7194,3 +7209,10 @@ startServer({
   port,
   requestTimeoutMs: serverRuntime.requestTimeoutMs,
 });
+const stopLocalSyncBrowserBridge = startLocalSyncBrowserBridge({
+  pool: db.pool,
+  serverEventBus,
+  isLocalPiNode: serverRuntime.sync.isLocalPiNode,
+  refreshRoleAccess: refreshRoleAccessSnapshot,
+});
+httpServer.once("close", stopLocalSyncBrowserBridge);

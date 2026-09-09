@@ -14,6 +14,7 @@
     "sync:local": "node scripts/syncLocalDatabase.mjs",
     "sync:local:initial": "node scripts/syncLocalDatabase.mjs --initial",
     "sync:status": "node scripts/showLocalSyncStatus.mjs",
+    "sync:watch": "node scripts/watchSyncEvents.mjs",
     "seed:live-showcase": "node scripts/seedLiveShowcase.mjs",
     "seed:runtime-showcase": "node scripts/seedRuntimeShowcase.mjs",
     "test": "node scripts/run-tests.mjs",

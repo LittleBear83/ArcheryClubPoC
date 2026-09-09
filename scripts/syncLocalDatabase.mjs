@@ -1,8 +1,22 @@
 import process from "node:process";
 import pg from "pg";
 import { serverRuntime } from "../server/config/runtime.js";
-import { applyPulledSyncResponse, readSyncStatus, writeSyncAttemptState } from "../server/domain/services/localDatabaseSyncService.js";
+import {
+  applyPublicationSnapshot,
+  applyPulledPublicationResponse,
+  applyPulledSyncResponse,
+  drainPendingOutboxCommands,
+  PUBLICATION_FEED_VERSION,
+  readPublicationSyncState,
+  readSyncStatus,
+  writeSyncAttemptState,
+} from "../server/domain/services/localDatabaseSyncService.js";
 import { createSyncGateway } from "../server/infrastructure/persistence/syncGateway.js";
+import { notifyLocalSyncApplied } from "../server/infrastructure/persistence/localSyncBrowserBridge.js";
+import {
+  acquireLocalRebaselineMaintenanceGate,
+  releaseLocalRebaselineMaintenanceGate,
+} from "../server/infrastructure/persistence/localRebaselineMaintenanceGate.js";
 
 const { Pool } = pg;
 const SYNC_CLIENT_VERSION = "sync-v1";
@@ -88,9 +102,12 @@ async function main() {
   }
 
   const isInitialSync = process.argv.includes("--initial");
+  const isPublicationSync = process.argv.includes("--v2");
+  const isRebaseline = process.argv.includes("--rebaseline");
   const pool = createLocalPool();
   const syncGateway = createSyncGateway({ pool });
   const client = await pool.connect();
+  let maintenanceGateAcquired = false;
 
   try {
     const acquired = await syncGateway.acquireSyncLock(client);
@@ -101,17 +118,42 @@ async function main() {
       return;
     }
 
-    await writeSyncAttemptState({
-      syncGateway,
-      values: {
-        lastAttemptedAt: new Date().toISOString(),
-        lastError: null,
-        syncClientVersion: SYNC_CLIENT_VERSION,
-      },
-    });
+    if (isRebaseline && !isPublicationSync) {
+      throw new Error("--rebaseline requires explicit --v2 mode.");
+    }
+    if (isPublicationSync && isInitialSync) {
+      throw new Error("--v2 cannot be combined with --initial; use --v2 --rebaseline.");
+    }
+    if (isRebaseline) {
+      await acquireLocalRebaselineMaintenanceGate(client);
+      maintenanceGateAcquired = true;
+    }
+
+    const publicationState = isPublicationSync && !isRebaseline
+      ? await readPublicationSyncState({ syncGateway })
+      : null;
+
+    if (!isRebaseline) {
+      await writeSyncAttemptState({
+        syncGateway,
+        values: {
+          lastAttemptedAt: new Date().toISOString(),
+          lastError: null,
+          syncClientVersion: SYNC_CLIENT_VERSION,
+        },
+      });
+    }
 
     const status = await readSyncStatus({ syncGateway });
-    const pendingEvents = await syncGateway.listPendingOutboxEvents({
+    if (isRebaseline) {
+      await drainPendingOutboxCommands({
+        batchSize: serverRuntime.sync.pushBatchSize,
+        pushEvents: (events) => requestSyncJson("/api/sync/v1/push", { events }),
+        syncGateway,
+      });
+    }
+
+    const pendingEvents = isRebaseline ? [] : await syncGateway.listPendingOutboxEvents({
       limit: serverRuntime.sync.pushBatchSize,
     });
 
@@ -139,31 +181,60 @@ async function main() {
       }
     }
 
-    const pullResponse = await requestSyncJson("/api/sync/v1/pull", {
-      checkpoint: isInitialSync ? null : status.currentCheckpoint || null,
-      initialSync: isInitialSync || status.currentCheckpoint === 0,
-      limit: serverRuntime.sync.pullBatchSize,
-    });
+    const pullResponse = isRebaseline
+      ? await requestSyncJson("/api/sync/v2/snapshot", {})
+      : isPublicationSync
+      ? await requestSyncJson("/api/sync/v2/pull", {
+          checkpoint: publicationState.publicationCheckpoint,
+          limit: serverRuntime.sync.pullBatchSize,
+        })
+      : await requestSyncJson("/api/sync/v1/pull", {
+          checkpoint: isInitialSync ? null : status.currentCheckpoint || null,
+          initialSync: isInitialSync || status.currentCheckpoint === 0,
+          limit: serverRuntime.sync.pullBatchSize,
+        });
 
     const applyClient = await pool.connect();
 
     try {
-      await applyPulledSyncResponse({
+      const applyOptions = {
         client: applyClient,
-        currentCheckpoint: status.currentCheckpoint,
         deactivatedRfidSuffix: process.env.DEACTIVATED_RFID_SUFFIX ?? "-deactivated",
         pullResponse,
         syncGateway,
-      });
+        onIncrementalApplied: (domains) => notifyLocalSyncApplied(applyClient, domains),
+      };
+      if (isRebaseline) {
+        await applyPublicationSnapshot({
+          client: applyClient,
+          deactivatedRfidSuffix: applyOptions.deactivatedRfidSuffix,
+          snapshotResponse: pullResponse,
+          syncGateway,
+          onSnapshotApplied: (domains) => notifyLocalSyncApplied(applyClient, domains),
+        });
+      } else if (isPublicationSync) {
+        await applyPulledPublicationResponse(applyOptions);
+      } else {
+        await applyPulledSyncResponse({
+          ...applyOptions,
+          currentCheckpoint: status.currentCheckpoint,
+        });
+      }
     } finally {
       applyClient.release();
     }
 
     const nextStatus = await readSyncStatus({ syncGateway });
+    const nextPublicationState = isPublicationSync
+      ? await readPublicationSyncState({ syncGateway })
+      : null;
     console.log(
       JSON.stringify(
         {
-          checkpoint: nextStatus.currentCheckpoint,
+          checkpoint: isPublicationSync
+            ? nextPublicationState.publicationCheckpoint
+            : nextStatus.currentCheckpoint,
+          ...(isPublicationSync ? { feedVersion: PUBLICATION_FEED_VERSION } : {}),
           lastSuccessfulAt: nextStatus.lastSuccessfulAt,
           pendingOutboxCount: nextStatus.pendingOutboxCount,
           success: true,
@@ -173,15 +244,24 @@ async function main() {
       ),
     );
   } catch (error) {
-    await writeSyncAttemptState({
-      syncGateway,
-      values: {
-        lastError: error instanceof Error ? error.message : String(error),
-      },
-    });
+    if (!isRebaseline) {
+      await writeSyncAttemptState({
+        syncGateway,
+        values: {
+          lastError: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
   } finally {
+    if (maintenanceGateAcquired) {
+      try {
+        await releaseLocalRebaselineMaintenanceGate(client);
+      } catch {
+        // The session is closed below, which also releases its advisory locks.
+      }
+    }
     try {
       await syncGateway.releaseSyncLock(client);
     } catch {

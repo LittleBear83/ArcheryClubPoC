@@ -4,6 +4,8 @@ import { runPostgresMigrations } from "./runPostgresMigrations.js";
 import { migration as fixSyncChangeTriggerMigration } from "./postgresMigrations/004_fix_sync_change_trigger.js";
 import { migration as operationalSyncMigration } from "./postgresMigrations/005_operational_sync.js";
 import { migration as phase2a1ReportingSyncMigration } from "./postgresMigrations/006_phase_2a1_reporting_sync.js";
+import { migration as syncChangeNotificationsMigration } from "./postgresMigrations/007_sync_change_notifications.js";
+import { migration as syncPublicationMigration } from "./postgresMigrations/008_sync_publication.js";
 
 const NUMBERED_MIGRATION_VERSIONS = [
   "002_sync_foundation",
@@ -11,6 +13,8 @@ const NUMBERED_MIGRATION_VERSIONS = [
   "004_fix_sync_change_trigger",
   "005_operational_sync",
   "006_phase_2a1_reporting_sync",
+  "007_sync_change_notifications",
+  "008_sync_publication",
 ];
 
 function createPoolDouble({
@@ -249,6 +253,79 @@ test("006 reporting sync migration adds stable identities and reporting change t
   assert.match(statements, /CREATE TRIGGER sync_login_events_change_log_trigger/i);
   assert.match(statements, /CREATE TRIGGER sync_guest_login_events_change_log_trigger/i);
   assert.match(statements, /CREATE TRIGGER sync_range_presence_extensions_change_log_trigger/i);
+});
+
+test("007 installs an idempotent row insert notification with only change metadata", () => {
+  const [functionSql, triggerSql] = syncChangeNotificationsMigration.statements;
+
+  assert.match(functionSql, /CREATE OR REPLACE FUNCTION notify_sync_change\(\)/);
+  assert.match(functionSql, /RETURNS TRIGGER\s+LANGUAGE plpgsql/);
+  assert.match(functionSql, /PERFORM pg_notify\(\s*'archery_sync_change',\s*json_build_object\(\s*'change_id', NEW\.change_id,\s*'domain', NEW\.domain\s*\)::text\s*\);/);
+  assert.match(functionSql, /RETURN NEW;/);
+  assert.doesNotMatch(functionSql, /payload_json|to_jsonb?\s*\(NEW\)|current_setting/i);
+  assert.match(triggerSql, /DROP TRIGGER IF EXISTS sync_change_log_notify_trigger ON sync_change_log;\s+CREATE TRIGGER sync_change_log_notify_trigger\s+AFTER INSERT ON sync_change_log\s+FOR EACH ROW EXECUTE FUNCTION notify_sync_change\(\)/);
+});
+
+test("007 runs after 006, records its version, and skips when already applied", async () => {
+  for (const alreadyApplied of [false, true]) {
+    const { pool, queries } = createPoolDouble({
+      appliedVersions: alreadyApplied ? NUMBERED_MIGRATION_VERSIONS : [],
+    });
+
+    await runPostgresMigrations({
+      committeeRoleSeed: [],
+      defaultEquipmentCupboardLabel: "Main Cupboard",
+      permissionDefinitions: [],
+      pool,
+      seedUsers: [],
+      systemRoleDefinitions: [],
+    });
+
+    const notificationQueries = queries.filter((entry) =>
+      entry.sql.includes("FUNCTION notify_sync_change()"),
+    );
+    const versionIndex = queries.findIndex((entry) =>
+      entry.sql.includes("INSERT INTO schema_migrations (version)") &&
+      entry.values[0] === syncChangeNotificationsMigration.version,
+    );
+
+    assert.equal(notificationQueries.length, alreadyApplied ? 0 : 2);
+    if (alreadyApplied) {
+      assert.equal(versionIndex, -1);
+    } else {
+      const previousVersionIndex = queries.findIndex((entry) =>
+        entry.sql.includes("INSERT INTO schema_migrations (version)") &&
+        entry.values[0] === phase2a1ReportingSyncMigration.version,
+      );
+      const functionIndex = queries.indexOf(notificationQueries[0]);
+      const triggerIndex = queries.indexOf(notificationQueries[1]);
+      assert.ok(previousVersionIndex > -1);
+      assert.ok(functionIndex > previousVersionIndex);
+      assert.ok(triggerIndex > functionIndex);
+      assert.ok(versionIndex > triggerIndex);
+    }
+    assert.equal(queries[0].sql, "BEGIN");
+    assert.equal(queries.at(-1).sql, "COMMIT");
+  }
+});
+
+test("008 is additive, runs after 007, and is skipped once recorded", async () => {
+  for (const installed of [false, true]) {
+    const { pool, queries } = createPoolDouble({
+      appliedVersions: NUMBERED_MIGRATION_VERSIONS.filter((version) => installed || version !== syncPublicationMigration.version),
+    });
+    await runPostgresMigrations({ committeeRoleSeed: [], defaultEquipmentCupboardLabel: "Test cupboard", permissionDefinitions: [], pool, seedUsers: [], systemRoleDefinitions: [] });
+    const publicationQueries = queries.filter((entry) => /(?:CREATE TABLE IF NOT EXISTS|INSERT INTO) sync_publication/.test(entry.sql));
+    assert.equal(publicationQueries.length, installed ? 0 : 3);
+    if (!installed) {
+      const previousCheck = queries.findIndex((entry) => entry.sql.includes("FROM schema_migrations") && entry.values[0] === syncChangeNotificationsMigration.version);
+      assert.ok(queries.indexOf(publicationQueries[0]) > previousCheck);
+      assert.ok(publicationQueries[1].sql.includes("ON CONFLICT (singleton) DO NOTHING"));
+      const versionWrite = queries.findIndex((entry) => entry.sql.startsWith("INSERT INTO schema_migrations") && entry.values[0] === syncPublicationMigration.version);
+      assert.ok(versionWrite > queries.indexOf(publicationQueries[2]));
+    }
+    assert.equal(queries.at(-1).sql, "COMMIT");
+  }
 });
 
 test("004 repairs an upgraded database before bootstrap updates can invoke the old trigger", async () => {

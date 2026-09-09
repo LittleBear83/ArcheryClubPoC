@@ -822,7 +822,7 @@ export function createSyncGateway({ pool }) {
 
       return Number(row?.checkpoint ?? 0);
     },
-    async listPendingOutboxEvents({ client = pool, limit = 100 } = {}) {
+    async listPendingOutboxEvents({ client = pool, includeUnavailable = false, limit = 100 } = {}) {
       const result = await client.query(
         `
           SELECT
@@ -843,7 +843,7 @@ export function createSyncGateway({ pool }) {
           FROM sync_local_outbox
           WHERE acknowledged_at IS NULL
             AND rejected_at IS NULL
-            AND available_at <= NOW()
+            ${includeUnavailable ? "" : "AND available_at <= NOW()"}
           ORDER BY outbox_order ASC, created_at ASC, event_id ASC
           LIMIT $1
         `,

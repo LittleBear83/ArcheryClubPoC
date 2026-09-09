@@ -80,6 +80,7 @@ await import(
 await import(
   pathToFileURL(path.join(outDir, "src/data/repositories/RoleRepositoryImpl.test.js"))
 );
+await import(new URL("./lib/liveSyncWatcher.test.mjs", import.meta.url));
 await import(pathToFileURL(path.join(root, "server/security/csrf.test.js")));
 await import(pathToFileURL(path.join(root, "server/security/rateLimit.test.js")));
 await import(
@@ -103,7 +104,13 @@ await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/handicapTableGateway.test.js"))
 );
 await import(
+  pathToFileURL(path.join(root, "server/infrastructure/persistence/localRebaselineMaintenanceGate.test.js"))
+);
+await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/syncGateway.test.js"))
+);
+await import(
+  pathToFileURL(path.join(root, "server/infrastructure/persistence/syncPublicationGateway.test.js"))
 );
 await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/sqliteToPostgresMigration.test.js"))
@@ -114,6 +121,7 @@ await import(
 await import(
   pathToFileURL(path.join(root, "server/domain/services/localDatabaseSyncService.test.js"))
 );
+await import("../server/domain/services/localSyncBrowserEvents.test.js");
 await import(
   pathToFileURL(path.join(root, "server/domain/services/tournamentEngine.test.js"))
 );

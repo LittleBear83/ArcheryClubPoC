@@ -4,6 +4,7 @@ import path from "node:path";
 
 export function startServer({
   app,
+  bindHost,
   databaseEngine,
   databasePath,
   databaseUrl,
@@ -42,7 +43,7 @@ export function startServer({
 
   onBeforeListen?.();
 
-  const server = app.listen(port, () => {
+  const server = app.listen({ port, ...(bindHost ? { host: bindHost } : {}) }, () => {
     console.log(`Backend/API server listening on http://localhost:${port}`);
     if (databaseEngine === "postgres") {
       console.log(

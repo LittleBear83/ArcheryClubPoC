@@ -3,12 +3,24 @@ import { randomUUID } from "node:crypto";
 import process from "node:process";
 import { after, before, test } from "node:test";
 import pg from "pg";
-import { applyAuthSnapshot, applyPulledSyncResponse } from "../../domain/services/localDatabaseSyncService.js";
+import express from "express";
+import { registerPublicationSyncRoutes } from "../../presentation/http/registerPublicationSyncRoutes.js";
+import { createMachineSyncAuth } from "../../security/machineAuth.js";
+import {
+  applyAuthSnapshot,
+  applyPublicationSnapshot,
+  applyPulledPublicationResponse,
+  applyPulledSyncResponse,
+  PUBLICATION_SYNC_STATE_KEY,
+} from "../../domain/services/localDatabaseSyncService.js";
 import { postgresMigrations } from "./postgresMigrations/index.js";
 import { buildInitialSchemaSql, runPostgresMigrations } from "./runPostgresMigrations.js";
 import { createMemberAuthGateway } from "./memberAuthGateway.js";
 import { createActivityReportingGateway } from "./activityReportingGateway.js";
 import { createSyncGateway } from "./syncGateway.js";
+import { createSyncPublicationGateway } from "./syncPublicationGateway.js";
+import { registerSyncRoutes } from "../../presentation/http/registerSyncRoutes.js";
+import { beginPublication, assignPublications, publish, pullPublications, waitForDatabaseBlock } from "./syncPublicationPrototype.test-support.js";
 import {
   assertSafeIntegrationEnvironment,
   assertSafeTemporaryDatabaseName,
@@ -106,6 +118,762 @@ after(async () => {
     await adminPool.query(`DROP DATABASE IF EXISTS ${quoteIdentifier(databaseName)} WITH (FORCE)`);
   }
   await adminPool?.end();
+});
+
+// Phase 1 characterization: these assertions document the omission in the
+// current protocol. A production fix must turn them into no-loss regressions.
+for (const { label, rowsPerTransaction, limit } of [
+  { label: "single row", rowsPerTransaction: 1, limit: 10 },
+  { label: "multiple rows", rowsPerTransaction: 3, limit: 10 },
+  { label: "paginated rows", rowsPerTransaction: 3, limit: 1 },
+]) {
+  test(`incremental cursor reproduces lower-ID late-commit omission: ${label}`, { timeout: 30000 }, async (t) => {
+    const pool = await createTemporaryPool("cursor_order");
+    disposablePools.push(pool);
+    const gateway = createSyncGateway({ pool });
+    // Keep the starting checkpoint nonzero, as the normal Pi script requests
+    // an initial snapshot when its local checkpoint is zero.
+    await pool.query(`INSERT INTO roles (role_key, title) VALUES ('cursor-anchor', 'Anchor')`);
+    const initialCheckpoint = await gateway.getLatestCheckpoint();
+    assert.ok(initialCheckpoint > 0);
+
+    // Capture the actual route handler, retaining its repeatable-read
+    // transaction and response checkpoint calculation, without an HTTP server.
+    let pullHandler;
+    registerSyncRoutes({
+      app: { get() {}, post(path, ...handlers) {
+        if (path === "/api/sync/v1/pull") pullHandler = handlers.at(-1);
+      } },
+      authenticateMachineRequest() {},
+      syncGateway: gateway,
+    });
+    async function pull(checkpoint) {
+      let response;
+      await pullHandler({ body: { checkpoint, limit }, syncMachine: { machineId: "cursor-test" } }, {
+        json(payload) { response = payload; },
+      });
+      assert.equal(response.mode, "incremental");
+      assert.equal(response.success, true);
+      return response;
+    }
+
+    const connections = [];
+    t.after(() => { for (const client of connections) client.release(true); });
+    async function connect() {
+      const client = await pool.connect();
+      connections.push(client);
+      await client.query("SET statement_timeout = '5s'");
+      return client;
+    }
+    const a = await connect();
+    const b = await connect();
+    const listener = await connect();
+    const notifications = [];
+    listener.on("notification", (message) => {
+      if (message.channel === "archery_sync_change") notifications.push(JSON.parse(message.payload).change_id);
+    });
+    await listener.query("LISTEN archery_sync_change");
+    async function waitForNotifications(count) {
+      if (notifications.length >= count) return;
+      let timer;
+      let onNotification;
+      try {
+        await new Promise((resolve, reject) => {
+          onNotification = () => { if (notifications.length >= count) resolve(); };
+          listener.on("notification", onNotification);
+          timer = setTimeout(() => reject(new Error(`Expected ${count} committed notifications`)), 5000);
+        });
+      } finally {
+        clearTimeout(timer);
+        listener.off("notification", onNotification);
+      }
+    }
+    async function insertRoles(client, prefix) {
+      const ids = [];
+      for (let index = 0; index < rowsPerTransaction; index += 1) {
+        const key = `${prefix}-${index}`;
+        await client.query(`INSERT INTO roles (role_key, title) VALUES ($1, $1)`, [key]);
+        const result = await client.query(`SELECT change_id FROM sync_change_log WHERE domain = 'roles' AND record_key = $1`, [key]);
+        assert.equal(result.rowCount, 1);
+        ids.push(Number(result.rows[0].change_id));
+      }
+      return ids;
+    }
+
+    await a.query("BEGIN");
+    const aIds = await insertRoles(a, "cursor-a");
+    await b.query("BEGIN");
+    const bIds = await insertRoles(b, "cursor-b");
+    assert.ok(aIds.at(-1) < bIds[0]);
+    await b.query("COMMIT");
+    await waitForNotifications(bIds.length);
+    assert.deepEqual(notifications, bIds);
+    assert.equal(await gateway.getLatestCheckpoint(), bIds.at(-1));
+    assert.equal((await pool.query(`SELECT 1 FROM roles WHERE role_key LIKE 'cursor-a-%'`)).rowCount, 0, "A is still uncommitted");
+
+    const first = await pull(initialCheckpoint);
+    assert.deepEqual(first.changes.map((change) => change.changeId), bIds.slice(0, limit));
+    assert.equal(first.checkpoint, bIds[Math.min(limit, bIds.length) - 1]);
+    await a.query("COMMIT");
+    await waitForNotifications(aIds.length + bIds.length);
+    assert.deepEqual(notifications, [...bIds, ...aIds], "NOTIFY follows commit order, not change_id order");
+
+    const pages = [first];
+    do {
+      pages.push(await pull(pages.at(-1).checkpoint));
+      assert.ok(pages.length <= bIds.length + 2, "pagination terminates");
+    } while (pages.at(-1).changes.length > 0);
+    const delivered = pages.flatMap((page) => page.changes.map((change) => change.changeId));
+    assert.deepEqual(delivered, bIds, "the late-committed A rows are omitted from incremental pulls");
+    assert.equal(pages.at(-1).checkpoint, bIds.at(-1));
+    const replay = await gateway.listChangesAfterCheckpoint({ checkpoint: initialCheckpoint, limit: 100 });
+    assert.deepEqual(replay.map((change) => change.changeId), [...aIds, ...bIds], "omitted rows exist and are visible from the earlier checkpoint");
+    t.diagnostic(JSON.stringify({ label, postgres: (await pool.query("SHOW server_version")).rows[0].server_version,
+      initialCheckpoint, aIds, bIds, checkpoints: pages.map((page) => page.checkpoint),
+      pageIds: pages.map((page) => page.changes.map((change) => change.changeId)), notifications, omittedIds: aIds,
+    }));
+  });
+}
+
+async function publicationFixture(t) {
+  const pool = await createTemporaryPool("publication");
+  disposablePools.push(pool);
+  const clients = new Set();
+  t.after(() => { for (const client of clients) client.release(true); });
+  return { pool, async connect() {
+    const client = await pool.connect();
+    clients.add(client);
+    client.on("error", () => {}); // A crash test deliberately terminates a backend.
+    await client.query("SET statement_timeout = '5s'");
+    return client;
+  } };
+}
+
+async function insertPublicationRoles(client, prefix, count = 1) {
+  for (let i = 0; i < count; i += 1) {
+    await client.query("INSERT INTO roles (role_key, title) VALUES ($1, $1)", [`${prefix}-${i}`]);
+  }
+  const { rows } = await client.query("SELECT change_id FROM sync_change_log WHERE domain = 'roles' AND record_key LIKE $1 ORDER BY change_id", [`${prefix}-%`]);
+  return rows.map((row) => row.change_id);
+}
+
+async function publicationHttp(t, pool) {
+  const app = express();
+  app.use(express.json());
+  const auth = createMachineSyncAuth({ credentials: [{ machineId: "v2-test", secretHash: "test-secret" }], verifySecret: (secret, hash) => secret === hash });
+  registerPublicationSyncRoutes({ app, authenticateMachineRequest: auth.authenticateMachineRequest, publicationGateway: createSyncPublicationGateway({ pool }) });
+  const server = await new Promise((resolve) => { const listener = app.listen(0, "127.0.0.1", () => resolve(listener)); });
+  t.after(() => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }));
+  const request = async (body, { headers = { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "test-secret" } } = {}) => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/sync/v2/${body === undefined ? "status" : "pull"}`, {
+      method: body === undefined ? "GET" : "POST", headers: { "content-type": "application/json", ...headers },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000),
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  request.baseUrl = `http://127.0.0.1:${server.address().port}`;
+  request.snapshot = async ({ headers = { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "test-secret" } } = {}) => {
+    const response = await fetch(`${request.baseUrl}/api/sync/v2/snapshot`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: "{}",
+      signal: AbortSignal.timeout(10000),
+    });
+    const text = await response.text();
+    return { status: response.status, body: text ? JSON.parse(text) : null };
+  };
+  return request;
+}
+
+async function publicationEvents(t, request) {
+  const controller = new AbortController();
+  const response = await fetch(`${request.baseUrl}/api/sync/v2/events`, {
+    headers: { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "test-secret" }, signal: controller.signal,
+  });
+  assert.equal(response.status, 200);
+  const reader = response.body.getReader();
+  t.after(() => controller.abort());
+  let buffer = "";
+  const decoder = new TextDecoder();
+  return {
+    close() { controller.abort(); },
+    async next() {
+      const timer = setTimeout(() => controller.abort(), 5000);
+      try {
+        for (;;) {
+          const boundary = buffer.indexOf("\n\n");
+          if (boundary >= 0) {
+            const frame = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            if (frame.startsWith(":")) continue;
+            const lines = frame.split("\n");
+            return { event: lines.find((line) => line.startsWith("event: ")).slice(7), data: JSON.parse(lines.find((line) => line.startsWith("data: ")).slice(6)) };
+          }
+          const { value, done } = await reader.read();
+          assert.equal(done, false, "SSE remains connected until the expected hint");
+          buffer += decoder.decode(value, { stream: true });
+        }
+      } finally { clearTimeout(timer); }
+    },
+  };
+}
+
+test("v2 SSE uses publication order, coexists with publishers and recovers missed notifications on reconnect", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const request = await publicationHttp(t, pool);
+  for (const [query, headers] of [["", {}], ["?x-sync-machine-id=v2-test&x-sync-machine-secret=test-secret", {}], ["", { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "wrong" }]]) {
+    const response = await fetch(`${request.baseUrl}/api/sync/v2/events${query}`, { headers, signal: AbortSignal.timeout(5000) });
+    assert.equal(response.status, 401);
+    await response.text();
+  }
+  const streams = await Promise.all([publicationEvents(t, request), publicationEvents(t, request)]);
+  for (const stream of streams) assert.deepEqual(await stream.next(), { event: "sync.ready", data: { feedVersion: "sync-publication-v2", checkpoint: "0" } });
+  await pool.query("SELECT setval('sync_change_log_change_id_seq', 100, false)");
+  const a = await connect();
+  const b = await connect();
+  await a.query("BEGIN");
+  assert.deepEqual(await insertPublicationRoles(a, "sse-late"), ["100"]);
+  await b.query("BEGIN");
+  assert.deepEqual(await insertPublicationRoles(b, "sse-early"), ["101"]);
+  await b.query("COMMIT");
+  await request(); // A third publisher competes with both SSE catch-up loops.
+  for (const stream of streams) assert.deepEqual(await stream.next(), { event: "sync.available", data: { feedVersion: "sync-publication-v2", checkpoint: "1" } });
+  await a.query("COMMIT");
+  for (const stream of streams) assert.deepEqual(await stream.next(), { event: "sync.available", data: { feedVersion: "sync-publication-v2", checkpoint: "2" } });
+  assert.deepEqual((await pool.query("SELECT change_id FROM sync_publication ORDER BY publication_cursor")).rows.map((row) => row.change_id), ["101", "100"]);
+  for (const stream of streams) stream.close();
+  // Wait for actual UNLISTEN/release before committing a change with nobody
+  // listening. Reconnect must discover it without any replayable NOTIFY.
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    const { rows } = await pool.query("SELECT COUNT(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND query = 'LISTEN archery_sync_change'");
+    if (rows[0].n === 0) break;
+    assert.ok(Date.now() < deadline, "SSE listener cleanup completes");
+  }
+  await insertPublicationRoles(pool, "sse-disconnected");
+  assert.equal((await pool.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "2");
+  const reconnected = await publicationEvents(t, request);
+  assert.deepEqual(await reconnected.next(), { event: "sync.ready", data: { feedVersion: "sync-publication-v2", checkpoint: "3" } });
+  reconnected.close();
+});
+
+test("v2 SSE ready and available retain BIGINT precision", { timeout: 30000 }, async (t) => {
+  const { pool } = await publicationFixture(t);
+  const request = await publicationHttp(t, pool);
+  await pool.query("UPDATE sync_publication_state SET last_cursor = '9007199254740991'");
+  await insertPublicationRoles(pool, "sse-bigint-before");
+  const stream = await publicationEvents(t, request);
+  assert.deepEqual(await stream.next(), { event: "sync.ready", data: { feedVersion: "sync-publication-v2", checkpoint: "9007199254740992" } });
+  await insertPublicationRoles(pool, "sse-bigint-after");
+  assert.deepEqual(await stream.next(), { event: "sync.available", data: { feedVersion: "sync-publication-v2", checkpoint: "9007199254740993" } });
+  stream.close();
+});
+
+for (const { count, limit } of [{ count: 1, limit: 10 }, { count: 3, limit: 10 }, { count: 3, limit: 1 }]) {
+  test(`actual v2 route loses no late commit: ${count} rows, pull limit ${limit}`, { timeout: 30000 }, async (t) => {
+    const { pool, connect } = await publicationFixture(t);
+    const request = await publicationHttp(t, pool);
+    async function pullV2(checkpoint, pageLimit) {
+      const { status, body } = await request({ checkpoint, limit: pageLimit });
+      assert.equal(status, 200);
+      assert.equal(body.feedVersion, "sync-publication-v2");
+      return { checkpoint: body.checkpoint, changes: body.changes.map((row) => ({ publication_cursor: row.publicationCursor, change_id: row.changeId })) };
+    }
+    const a = await connect();
+    const b = await connect();
+    await a.query("BEGIN");
+    const aIds = await insertPublicationRoles(a, "late-a", count);
+    await b.query("BEGIN");
+    const bIds = await insertPublicationRoles(b, "early-b", count);
+    await b.query("COMMIT");
+    assert.ok(BigInt(aIds.at(-1)) < BigInt(bIds[0]));
+    const first = await pullV2("0", limit);
+    assert.deepEqual(first.changes.map((row) => row.change_id), bIds.slice(0, limit));
+    await a.query("COMMIT");
+    const pages = [first];
+    do {
+      pages.push(await pullV2(pages.at(-1).checkpoint, limit));
+      assert.ok(pages.length <= count * 2 + 2);
+    } while (pages.at(-1).changes.length);
+    const all = pages.flatMap((page) => page.changes);
+    assert.deepEqual(all.map((row) => row.change_id), [...bIds, ...aIds]);
+    assert.equal(new Set(all.map((row) => row.change_id)).size, count * 2);
+    assert.deepEqual(all.map((row) => row.publication_cursor), Array.from({ length: count * 2 }, (_, i) => String(i + 1)));
+    assert.deepEqual(await publish(pool), []);
+    t.diagnostic(JSON.stringify({ aIds, bIds, checkpoints: pages.map((page) => page.checkpoint), delivered: all.map((row) => row.change_id) }));
+  });
+}
+
+test("v2 auth, strict cursor validation, pagination bounds and BIGINT HTTP precision", { timeout: 30000 }, async (t) => {
+  const { pool } = await publicationFixture(t);
+  const request = await publicationHttp(t, pool);
+  for (const body of [undefined, { checkpoint: "0" }]) {
+    for (const headers of [{}, { "x-sync-machine-id": "v2-test", "x-sync-machine-secret": "wrong" }]) {
+      assert.equal((await request(body, { headers })).status, 401);
+    }
+  }
+  await pool.query("UPDATE sync_publication_state SET last_cursor = '9007199254740991'");
+  await pool.query("SELECT setval('sync_change_log_change_id_seq', '9007199254740992', false)");
+  await insertPublicationRoles(pool, "v2-bigint", 2);
+  for (const checkpoint of [null, 0, 9007199254740992, "", "01", "-1", "+1", " 1", "1 ", "1\n", "1.0", "1e2", "0x10", "1;SELECT 1", "9223372036854775808", "9".repeat(100), [], {}]) {
+    assert.equal((await request({ checkpoint })).status, 400);
+  }
+  assert.equal((await request({})).status, 400);
+  for (const limit of [null, 0, -1, 501, 1.5, "1"]) assert.equal((await request({ checkpoint: "0", limit })).status, 400);
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM sync_publication")).rows[0].n, 0, "rejected requests never publish");
+  assert.deepEqual(await request(), { status: 200, body: { success: true, feedVersion: "sync-publication-v2", checkpoint: "9007199254740993" } });
+  const first = await request({ checkpoint: "9007199254740991", limit: 1 });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.checkpoint, "9007199254740992");
+  assert.equal(first.body.changes[0].changeId, "9007199254740992");
+  assert.equal(first.body.changes[0].publicationCursor, "9007199254740992");
+  assert.equal(first.body.changes[0].domain, "roles");
+  assert.equal(first.body.changes[0].recordKey, "v2-bigint-0");
+  assert.equal(first.body.changes[0].payload.title, "v2-bigint-0");
+  const second = await request({ checkpoint: first.body.checkpoint, limit: 1 });
+  assert.equal(second.body.checkpoint, "9007199254740993");
+  for (const checkpoint of [second.body.checkpoint, "9223372036854775807"]) {
+    const empty = await request({ checkpoint });
+    assert.equal(empty.status, 200);
+    assert.equal(empty.body.checkpoint, checkpoint);
+    assert.deepEqual(empty.body.changes, []);
+  }
+});
+
+test("concurrent v2 status and pull drain multiple publication batches exactly once", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const request = await publicationHttp(t, pool);
+  assert.equal((await request()).body.checkpoint, "0");
+  await pool.query("INSERT INTO roles (role_key, title) SELECT 'v2-batch-' || n, 'Role' FROM generate_series(1, 501) n");
+  const blocker = await connect();
+  await beginPublication(blocker);
+  const requests = [request(), request({ checkpoint: "0", limit: 500 })]
+    .map((pending) => pending.then((value) => ({ value }), (error) => ({ error })));
+  // Explicit barrier: both actual HTTP requests are waiting for the publisher
+  // row lock; release them together without arbitrary timing sleeps.
+  const deadline = Date.now() + 5000;
+  try {
+    for (;;) {
+      // PostgreSQL may queue the second waiter behind the first waiter rather
+      // than report the original holder as its direct blocker.
+      const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM pg_stat_activity
+        WHERE datname = current_database() AND wait_event_type = 'Lock'
+          AND query = 'SELECT last_cursor FROM sync_publication_state WHERE singleton FOR UPDATE'
+          AND cardinality(pg_blocking_pids(pid)) > 0`);
+      if (rows[0].n >= 2) break;
+      assert.ok(Date.now() < deadline, "both v2 requests reach publication");
+    }
+  } finally {
+    await blocker.query("COMMIT");
+  }
+  const outcomes = await Promise.all(requests);
+  for (const outcome of outcomes) assert.equal(outcome.error, undefined);
+  const [status, pull] = outcomes.map((outcome) => outcome.value);
+  assert.equal(status.status, 200);
+  assert.equal(status.body.checkpoint, "501");
+  assert.equal(pull.status, 200);
+  assert.equal(pull.body.changes.length, 500);
+  assert.equal(pull.body.checkpoint, "500");
+  const tail = await request({ checkpoint: "500", limit: 1 });
+  assert.equal(tail.body.checkpoint, "501");
+  assert.equal(tail.body.changes.length, 1);
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM sync_publication")).rows[0].n, 501);
+});
+
+for (const ending of ["COMMIT", "ROLLBACK", "crash"]) {
+  test(`publication serializes competing publishers and survives ${ending}`, { timeout: 30000 }, async (t) => {
+    const { pool, connect } = await publicationFixture(t);
+    const initialIds = await insertPublicationRoles(pool, "original", 3);
+    const a = await connect();
+    const b = await connect();
+    let reachedCommit;
+    let finishCommit;
+    const beforeCommit = new Promise((resolve) => { reachedCommit = resolve; });
+    const mayCommit = new Promise((resolve) => { finishCommit = resolve; });
+    t.after(() => finishCommit());
+    // Pause only the transport immediately before COMMIT. Locking, discovery,
+    // allocation and rollback all execute through the production publisher.
+    const aPool = { async connect() { return {
+      async query(sql, values) {
+        if (sql === "COMMIT") {
+          reachedCommit();
+          await mayCommit;
+          if (ending === "ROLLBACK") throw new Error("Injected pre-commit failure");
+        }
+        return a.query(sql, values);
+      },
+      release() {}, // Fixture owns this explicitly held connection.
+    }; } };
+    const aPending = createSyncPublicationGateway({ pool: aPool }).publishBatch({ limit: 2 })
+      .then((rows) => ({ rows }), (error) => ({ error }));
+    await beforeCommit;
+    assert.deepEqual((await pullPublications(pool)).changes, [], "uncommitted publication is invisible");
+    const bPool = { async connect() { return { query: (...args) => b.query(...args), release() {} }; } };
+    const bPending = createSyncPublicationGateway({ pool: bPool }).publishBatch()
+      .then((rows) => ({ rows }), (error) => ({ error }));
+    await waitForDatabaseBlock(pool, a, b);
+    // Publishers never acquire business locks. A business write still commits
+    // while A holds the publisher mutex and B is blocked behind it.
+    const business = await connect();
+    const extraIds = await insertPublicationRoles(business, "during-publication");
+    if (ending === "crash") {
+      assert.equal((await pool.query("SELECT pg_terminate_backend($1) AS terminated", [a.processID])).rows[0].terminated, true);
+    }
+    finishCommit();
+    const [aResult, bResult] = await Promise.all([aPending, bPending]);
+    if (ending === "COMMIT") assert.deepEqual(aResult.rows.map((row) => row.changeId), initialIds.slice(0, 2));
+    else assert.ok(aResult.error);
+    assert.equal(bResult.error, undefined);
+    assert.deepEqual(bResult.rows.map((row) => row.changeId), ending === "COMMIT" ? [...initialIds.slice(2), ...extraIds] : [...initialIds, ...extraIds]);
+    // Simulates losing the acknowledgement after COMMIT: retry assigns nothing.
+    assert.deepEqual(await publish(pool), []);
+    const final = await pullPublications(pool);
+    assert.deepEqual(final.changes.map((row) => row.change_id), [...initialIds, ...extraIds]);
+    assert.deepEqual(final.changes.map((row) => row.publication_cursor), ["1", "2", "3", "4"]);
+    assert.equal((await pool.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "4");
+  });
+}
+
+test("migration 008 preserves published mappings and counter on normal runner repeats", { timeout: 30000 }, async (t) => {
+  const { pool } = await publicationFixture(t);
+  const ids = await insertPublicationRoles(pool, "migration-008", 2);
+  const gateway = createSyncPublicationGateway({ pool });
+  assert.deepEqual(await gateway.publishBatch({ limit: 1 }), [{ publicationCursor: "1", changeId: ids[0] }]);
+  const before = (await pool.query("SELECT * FROM sync_publication ORDER BY publication_cursor")).rows;
+  for (let i = 0; i < 2; i += 1) {
+    await runPostgresMigrations({ committeeRoleSeed: [], defaultEquipmentCupboardLabel: "Test cupboard", permissionDefinitions: [], pool, seedUsers: [], systemRoleDefinitions: [] });
+  }
+  assert.deepEqual((await pool.query("SELECT * FROM sync_publication ORDER BY publication_cursor")).rows, before);
+  assert.equal((await pool.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "1");
+  assert.equal((await pool.query("SELECT 1 FROM schema_migrations WHERE version = '008_sync_publication'")).rowCount, 1);
+  assert.deepEqual(await gateway.publishBatch({ limit: 1 }), [{ publicationCursor: "2", changeId: ids[1] }]);
+  assert.deepEqual(await gateway.publishBatch(), []);
+  await assert.rejects(pool.query("INSERT INTO sync_publication_state VALUES (false, 0)"), { code: "23514" });
+  await assert.rejects(pool.query("UPDATE sync_publication_state SET last_cursor = -1"), { code: "23514" });
+  await assert.rejects(pool.query("INSERT INTO sync_publication VALUES (0, $1)", [ids[0]]), { code: "23514" });
+  await assert.rejects(pool.query("INSERT INTO sync_publication VALUES (3, $1)", [ids[0]]), { code: "23505" });
+  await assert.rejects(pool.query("INSERT INTO sync_publication VALUES (3, 999999)"), { code: "23503" });
+});
+
+test("publication preserves BIGINT precision and validates batch bounds", { timeout: 30000 }, async (t) => {
+  const { pool } = await publicationFixture(t);
+  await pool.query("UPDATE sync_publication_state SET last_cursor = '9007199254740991'");
+  await pool.query("SELECT setval('sync_change_log_change_id_seq', '9007199254740992', false)");
+  await insertPublicationRoles(pool, "bigint", 2);
+  const gateway = createSyncPublicationGateway({ pool });
+  for (const limit of [0, -1, 1.5, 5001, "1", NaN, Infinity]) {
+    await assert.rejects(gateway.publishBatch({ limit }), RangeError);
+  }
+  assert.deepEqual(await gateway.publishBatch({ limit: 1 }), [{ publicationCursor: "9007199254740992", changeId: "9007199254740992" }]);
+  assert.deepEqual(await gateway.publishBatch(), [{ publicationCursor: "9007199254740993", changeId: "9007199254740993" }]);
+  assert.deepEqual(await gateway.publishBatch(), []);
+  assert.equal((await pool.query("SELECT last_cursor::text FROM sync_publication_state")).rows[0].last_cursor, "9007199254740993");
+});
+
+test("publication retries safely after a lost COMMIT acknowledgement", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const ids = await insertPublicationRoles(pool, "lost-ack");
+  const client = await connect();
+  const lostAck = new Error("Injected lost COMMIT acknowledgement");
+  const gateway = createSyncPublicationGateway({ pool: { async connect() { return {
+    async query(sql, values) {
+      const result = await client.query(sql, values);
+      if (sql === "COMMIT") throw lostAck;
+      return result;
+    },
+    release() {},
+  }; } } });
+  await assert.rejects(gateway.publishBatch(), (error) => error === lostAck);
+  assert.deepEqual(await createSyncPublicationGateway({ pool }).publishBatch(), []);
+  assert.deepEqual((await pullPublications(pool)).changes.map((row) => row.change_id), ids);
+  assert.equal((await pool.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "1");
+});
+
+test("publication excludes rolled-back source changes", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const writer = await connect();
+  await writer.query("BEGIN");
+  await insertPublicationRoles(writer, "rolled-back");
+  assert.deepEqual(await publish(pool), []);
+  await writer.query("ROLLBACK");
+  const committed = await insertPublicationRoles(pool, "committed");
+  assert.deepEqual((await publish(pool)).map((row) => row.change_id), committed);
+  assert.equal((await pullPublications(pool)).checkpoint, "1");
+});
+
+test("publication snapshot drains visible backlog and preserves a late commit beyond its boundary", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const late = await connect();
+  await late.query("BEGIN");
+  const lateIds = await insertPublicationRoles(late, "snapshot-late");
+  await insertPublicationRoles(pool, "snapshot-visible");
+  await pool.query("UPDATE roles SET title = 'Current' WHERE role_key = 'snapshot-visible-0'");
+  const snapshotClient = await connect();
+  await beginPublication(snapshotClient, { snapshot: true });
+  while ((await assignPublications(snapshotClient, 1)).length) { /* Drain this fixed MVCC snapshot. */ }
+  const checkpoint = (await snapshotClient.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor;
+  await late.query("COMMIT");
+  // Use the existing full snapshot reader, but deliberately discard its v1 raw
+  // checkpoint. The v2 boundary comes from publication in this SAME snapshot.
+  const { snapshot } = await createSyncGateway({ pool }).getAuthSnapshot(snapshotClient);
+  assert.deepEqual(snapshot.roles.map((role) => role.role_key), ["snapshot-visible-0"]);
+  assert.equal(snapshot.roles[0].title, "Current");
+  await snapshotClient.query("COMMIT");
+  assert.deepEqual((await publish(pool)).map((row) => row.change_id), lateIds);
+  const after = await pullPublications(pool, checkpoint);
+  assert.deepEqual(after.changes.map((row) => row.change_id), lateIds, "no pre-snapshot stale payload is replayed after the boundary");
+  assert.equal(checkpoint, "2");
+  assert.equal(after.checkpoint, "3");
+});
+
+test("publication snapshot retries a stale mutex snapshot after a concurrent publisher", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  await insertPublicationRoles(pool, "snapshot-retry");
+  const publisher = await connect();
+  const reader = await connect();
+  await beginPublication(publisher);
+  const pending = beginPublication(reader, { snapshot: true }).then(() => null, (error) => error);
+  await waitForDatabaseBlock(pool, publisher, reader);
+  await assignPublications(publisher);
+  await publisher.query("COMMIT");
+  assert.equal((await pending)?.code, "40001", "retry the entire snapshot, never reuse a stale MVCC boundary");
+  await reader.query("ROLLBACK");
+  await beginPublication(reader, { snapshot: true });
+  assert.deepEqual(await assignPublications(reader), []);
+  assert.equal((await reader.query("SELECT last_cursor FROM sync_publication_state")).rows[0].last_cursor, "1");
+  await reader.query("COMMIT");
+});
+
+test("v2 snapshot authenticates, drains its visible backlog at a BIGINT boundary, and leaves a late commit for pull", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const request = await publicationHttp(t, pool);
+  await pool.query("UPDATE sync_publication_state SET last_cursor = '9007199254740991'");
+  const late = await connect();
+  await late.query("BEGIN");
+  const lateIds = await insertPublicationRoles(late, "endpoint-snapshot-late");
+  const visibleIds = await insertPublicationRoles(pool, "endpoint-snapshot-visible", 2);
+
+  assert.equal((await request.snapshot({ headers: {} })).status, 401);
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM sync_publication")).rows[0].n, 0);
+
+  const response = await request.snapshot();
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.equal(response.body.feedVersion, "sync-publication-v2");
+  assert.equal(response.body.mode, "snapshot");
+  assert.equal(response.body.checkpoint, "9007199254740993");
+  assert.equal(typeof response.body.checkpoint, "string");
+  assert.deepEqual(
+    response.body.snapshot.roles.filter((role) => role.role_key.startsWith("endpoint-snapshot-")).map((role) => role.role_key),
+    ["endpoint-snapshot-visible-0", "endpoint-snapshot-visible-1"],
+  );
+  assert.deepEqual(
+    (await pool.query("SELECT change_id::text FROM sync_publication ORDER BY publication_cursor")).rows.map((row) => row.change_id),
+    visibleIds,
+  );
+
+  await late.query("COMMIT");
+  const pulled = await request({ checkpoint: response.body.checkpoint, limit: 10 });
+  assert.equal(pulled.status, 200);
+  assert.deepEqual(pulled.body.changes.map((change) => change.changeId), lateIds);
+  assert.equal(pulled.body.checkpoint, "9007199254740994");
+});
+
+test("v2 snapshot serializes a concurrent publisher behind its publication boundary", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const ids = await insertPublicationRoles(pool, "snapshot-serialization", 2);
+  const snapshotClient = await connect();
+  const publisherClient = await connect();
+  let snapshotReaderStarted;
+  let continueSnapshot;
+  const readerStarted = new Promise((resolve) => { snapshotReaderStarted = resolve; });
+  const mayContinue = new Promise((resolve) => { continueSnapshot = resolve; });
+  t.after(() => continueSnapshot());
+  const realSyncGateway = createSyncGateway({ pool });
+  const snapshotGateway = createSyncPublicationGateway({
+    pool: { async connect() { return { query: (...args) => snapshotClient.query(...args), release() {} }; } },
+    syncGateway: {
+      async getAuthSnapshot(client) {
+        snapshotReaderStarted();
+        await mayContinue;
+        return realSyncGateway.getAuthSnapshot(client);
+      },
+    },
+  });
+  const snapshotPending = snapshotGateway.createSnapshot();
+  await readerStarted;
+  const publisherGateway = createSyncPublicationGateway({
+    pool: { async connect() { return { query: (...args) => publisherClient.query(...args), release() {} }; } },
+  });
+  const publisherPending = publisherGateway.publishBatch();
+  await waitForDatabaseBlock(pool, snapshotClient, publisherClient);
+  continueSnapshot();
+  const [snapshot, published] = await Promise.all([snapshotPending, publisherPending]);
+  assert.equal(snapshot.checkpoint, "2");
+  assert.deepEqual(published, []);
+  assert.deepEqual(
+    (await pool.query("SELECT change_id::text FROM sync_publication ORDER BY publication_cursor")).rows.map((row) => row.change_id),
+    ids,
+  );
+});
+
+test("v2 snapshot retries the whole transaction after publication-lock serialization failure", { timeout: 30000 }, async (t) => {
+  const { pool, connect } = await publicationFixture(t);
+  const ids = await insertPublicationRoles(pool, "snapshot-production-retry");
+  const publisher = await connect();
+  const reader = await connect();
+  await beginPublication(publisher);
+  let begins = 0;
+  const gateway = createSyncPublicationGateway({
+    pool: { async connect() { return {
+      async query(sql, values) {
+        if (sql === "BEGIN ISOLATION LEVEL REPEATABLE READ") begins += 1;
+        return reader.query(sql, values);
+      },
+      release() {},
+    }; } },
+    syncGateway: { async getAuthSnapshot() { return { snapshot: { roles: [] } }; } },
+  });
+  const pending = gateway.createSnapshot();
+  await waitForDatabaseBlock(pool, publisher, reader);
+  await assignPublications(publisher);
+  await publisher.query("COMMIT");
+  const result = await pending;
+  assert.equal(begins, 2);
+  assert.equal(result.checkpoint, "1");
+  assert.deepEqual(result.snapshot, { roles: [] });
+  assert.deepEqual((await pullPublications(pool)).changes.map((row) => row.change_id), ids);
+});
+
+test("v2 snapshot rolls back publication when authoritative snapshot reading fails", { timeout: 30000 }, async (t) => {
+  const { pool } = await publicationFixture(t);
+  await insertPublicationRoles(pool, "snapshot-reader-failure");
+  const failure = new Error("snapshot reader failed");
+  const gateway = createSyncPublicationGateway({
+    pool,
+    syncGateway: { async getAuthSnapshot() { throw failure; } },
+  });
+  await assert.rejects(gateway.createSnapshot(), (error) => error === failure);
+  assert.equal((await pool.query("SELECT COUNT(*)::int AS n FROM sync_publication")).rows[0].n, 0);
+  assert.equal((await pool.query("SELECT last_cursor::text FROM sync_publication_state")).rows[0].last_cursor, "0");
+});
+
+test("migration 007 notifies only committed change checkpoints with lightweight metadata and survives runner repeats", { timeout: 30000 }, async () => {
+  const pool = await createTemporaryPool("notifications");
+  disposablePools.push(pool);
+  const migrationVersion = "007_sync_change_notifications";
+  const readNotificationTriggers = () => pool.query(`
+    SELECT oid, tgname FROM pg_trigger
+    WHERE tgrelid = 'sync_change_log'::regclass AND NOT tgisinternal
+  `);
+  assert.equal((await pool.query(`SELECT 1 FROM schema_migrations WHERE version = $1`, [migrationVersion])).rowCount, 1);
+  const originalTriggers = (await readNotificationTriggers()).rows;
+  assert.equal(originalTriggers.length, 1);
+  assert.equal(originalTriggers[0].tgname, "sync_change_log_notify_trigger");
+  await runPostgresMigrations({ committeeRoleSeed: [], defaultEquipmentCupboardLabel: "Test cupboard", permissionDefinitions: [], pool, seedUsers: [], systemRoleDefinitions: [] });
+  assert.deepEqual((await readNotificationTriggers()).rows, originalTriggers, "the normal runner skips the installed trigger, preserving its OID");
+  assert.equal((await pool.query(`SELECT 1 FROM schema_migrations WHERE version = $1`, [migrationVersion])).rowCount, 1);
+
+  const listener = await pool.connect();
+  let writer;
+  const notifications = [];
+  const collect = (message) => {
+    if (message.channel === "archery_sync_change") notifications.push(message);
+  };
+  listener.on("notification", collect);
+  // A committed control notification fences delivery of earlier commits. This
+  // also proves the listener is live during negative assertions, without sleeps.
+  async function deliveryBarrier() {
+    const token = randomUUID();
+    let cleanup;
+    const received = new Promise((resolve, reject) => {
+      const onNotification = (message) => {
+        if (message.channel === "archery_sync_test_barrier" && message.payload === token) resolve();
+      };
+      const timer = setTimeout(() => reject(new Error("Timed out waiting for PostgreSQL notification delivery")), 5000);
+      listener.on("notification", onNotification);
+      listener.on("error", reject);
+      cleanup = () => {
+        clearTimeout(timer);
+        listener.off("notification", onNotification);
+        listener.off("error", reject);
+      };
+    });
+    try {
+      await Promise.all([
+        received,
+        pool.query(`SELECT pg_notify('archery_sync_test_barrier', $1)`, [token]),
+      ]);
+    } finally {
+      cleanup();
+    }
+  }
+  const recordPayload = { username: "notification-private-record", nested: { email: "private@example.test" } };
+  async function insertChange(domain = "users") {
+    const result = await writer.query(`
+      INSERT INTO sync_change_log (domain, record_key, operation, payload_json)
+      VALUES ($1, $2, 'upsert', $3::jsonb) RETURNING change_id, domain
+    `, [domain, "notification-private-key", JSON.stringify(recordPayload)]);
+    return { change_id: Number(result.rows[0].change_id), domain: result.rows[0].domain };
+  }
+  function assertNotifications(expected) {
+    const parsed = notifications.map((message) => {
+      assert.equal(message.channel, "archery_sync_change");
+      const payload = JSON.parse(message.payload);
+      assert.deepEqual(Object.keys(payload).sort(), ["change_id", "domain"]);
+      assert.doesNotMatch(message.payload, /notification-private|private@example|payload_json|record_key|operation|changed_at/);
+      return payload;
+    });
+    assert.deepEqual(parsed, expected);
+  }
+  try {
+    await listener.query("LISTEN archery_sync_change");
+    await listener.query("LISTEN archery_sync_test_barrier");
+    writer = await pool.connect();
+    const gateway = createSyncGateway({ pool });
+    const initialCheckpoint = await gateway.getLatestCheckpoint();
+    await writer.query("BEGIN");
+    const first = await insertChange();
+    assert.deepEqual((await writer.query(`SELECT payload_json FROM sync_change_log WHERE change_id = $1`, [first.change_id])).rows[0].payload_json, recordPayload);
+    await deliveryBarrier();
+    assertNotifications([]);
+    assert.equal(await gateway.getLatestCheckpoint(), initialCheckpoint);
+    await writer.query("COMMIT");
+    await deliveryBarrier();
+    assertNotifications([first]);
+    assert.equal(await gateway.getLatestCheckpoint(), first.change_id);
+
+    await writer.query("BEGIN");
+    const rolledBack = await insertChange();
+    await writer.query("ROLLBACK");
+    await deliveryBarrier();
+    assertNotifications([first]);
+    assert.equal((await pool.query(`SELECT 1 FROM sync_change_log WHERE change_id = $1`, [rolledBack.change_id])).rowCount, 0);
+    assert.equal(await gateway.getLatestCheckpoint(), first.change_id);
+
+    // Two same-domain rows in one commit must remain distinct notifications;
+    // another commit also checks ordering across transaction boundaries.
+    await writer.query("BEGIN");
+    const second = await insertChange();
+    const third = await insertChange();
+    await writer.query("COMMIT");
+    await deliveryBarrier();
+    assertNotifications([first, second, third]);
+    assert.equal(await gateway.getLatestCheckpoint(), third.change_id);
+    const fourth = await insertChange("roles");
+    await deliveryBarrier();
+    assertNotifications([first, second, third, fourth]);
+    assert.ok(second.change_id > rolledBack.change_id, "rolled-back sequence values are not reused");
+    assert.equal(await gateway.getLatestCheckpoint(), fourth.change_id);
+    const changes = await gateway.listChangesAfterCheckpoint({ checkpoint: first.change_id });
+    assert.deepEqual(changes.map((change) => ({ change_id: change.changeId, domain: change.domain })), [second, third, fourth]);
+  } finally {
+    // Destroy these dedicated connections even on failure: PostgreSQL rolls
+    // back any open transaction and removes the session's LISTEN registrations.
+    writer?.release(true);
+    listener.off("notification", collect);
+    listener.release(true);
+  }
 });
 
 test("migration 006 creates stable identities and cloud logins are tracked without Pi outbox", async () => {
@@ -651,4 +1419,96 @@ test("PostgreSQL mixed-version snapshots preserve omitted Phase 2A1 domains and 
   await applyPulledSyncResponse({ client: pi, currentCheckpoint: 4, deactivatedRfidSuffix: "-deactivated", pullResponse: { checkpoint: 5, mode: "snapshot", snapshot: { users: [], loginEvents: [], rangePresenceExtensions: [] } }, syncGateway: gateway });
   assert.equal(await count("guest_login_events"), 1);
   assert.equal(await count("range_presence_extensions"), 0);
+});
+
+test("PostgreSQL v2 rebaseline preserves local-only/history/outbox data, prunes stale replicated rows, and continues pulling", async () => {
+  const cloud = await createTemporaryPool("v2_rebaseline_cloud");
+  const local = await createTemporaryPool("v2_rebaseline_local");
+  disposablePools.push(cloud, local);
+  await seedUser(cloud, 501, "baseline-member");
+  await seedUser(local, 601, "baseline-member");
+  await local.query("INSERT INTO roles (role_key, title) VALUES ('stale-local-role', 'Stale')");
+  await local.query(`
+    INSERT INTO suggestions (
+      submitted_by_username, suggestion_title, improvement_text,
+      created_at_date, created_at_time
+    ) VALUES ('baseline-member', 'Keep me', 'Local-only data', '2026-09-08', '12:00:00')
+  `);
+  await local.query(`
+    INSERT INTO login_events (
+      username, login_method, logged_in_date, logged_in_time, sync_event_id
+    ) VALUES ('baseline-member', 'rfid', '2026-09-08', '12:01:00', 'local-history-1')
+  `);
+  await local.query(`
+    INSERT INTO sync_local_outbox (
+      event_id, event_type, aggregate_key, payload_json, acknowledged_at
+    ) VALUES
+      ('acked-command', 'login_event', 'baseline-member', '{}'::jsonb, NOW()),
+      ('rejected-command', 'login_event', 'baseline-member', '{}'::jsonb, NULL)
+  `);
+  await local.query(`
+    UPDATE sync_local_outbox
+    SET rejected_at = NOW(), rejection_code = 'invalid', rejection_reason = 'Preserved diagnostic'
+    WHERE event_id = 'rejected-command'
+  `);
+  await local.query(`
+    INSERT INTO sync_local_state (state_key, state_json)
+    VALUES ('local_machine_sync', '{"currentCheckpoint":77}'::jsonb)
+  `);
+
+  const snapshot = await createSyncPublicationGateway({ pool: cloud }).createSnapshot();
+  const localGateway = createSyncGateway({ pool: local });
+  const client = await local.connect();
+  try {
+    await applyPublicationSnapshot({
+      client,
+      deactivatedRfidSuffix: "-deactivated",
+      snapshotResponse: { ...snapshot, feedVersion: "sync-publication-v2", mode: "snapshot" },
+      syncGateway: localGateway,
+    });
+  } finally {
+    client.release();
+  }
+
+  assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM suggestions WHERE suggestion_title = 'Keep me'")).rows[0].n, 1);
+  assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM login_events WHERE sync_event_id = 'local-history-1'")).rows[0].n, 1);
+  assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM roles WHERE role_key = 'stale-local-role'")).rows[0].n, 0);
+  const outbox = (await local.query("SELECT event_id, acknowledged_at, rejected_at, rejection_code, rejection_reason FROM sync_local_outbox ORDER BY event_id")).rows;
+  assert.equal(outbox.length, 2);
+  assert.ok(outbox[0].acknowledged_at);
+  assert.equal(outbox[1].rejection_code, "invalid");
+  assert.equal(outbox[1].rejection_reason, "Preserved diagnostic");
+  assert.deepEqual((await localGateway.readLocalState("local_machine_sync")).state, { currentCheckpoint: 77 });
+  const publicationState = await localGateway.readLocalState(PUBLICATION_SYNC_STATE_KEY);
+  assert.deepEqual(publicationState.state, {
+    feedVersion: "sync-publication-v2",
+    publicationCheckpoint: snapshot.checkpoint,
+  });
+  assert.equal(typeof publicationState.state.publicationCheckpoint, "string");
+
+  const nextCursor = String(BigInt(snapshot.checkpoint) + 1n);
+  const incrementalClient = await local.connect();
+  try {
+    await applyPulledPublicationResponse({
+      client: incrementalClient,
+      deactivatedRfidSuffix: "-deactivated",
+      pullResponse: {
+        checkpoint: nextCursor,
+        feedVersion: "sync-publication-v2",
+        mode: "incremental",
+        changes: [{
+          domain: "roles",
+          operation: "upsert",
+          payload: { role_key: "member", title: "Updated Member", is_system: 0 },
+          publicationCursor: nextCursor,
+          recordKey: "member",
+        }],
+      },
+      syncGateway: localGateway,
+    });
+  } finally {
+    incrementalClient.release();
+  }
+  assert.equal((await local.query("SELECT title FROM roles WHERE role_key = 'member'")).rows[0].title, "Updated Member");
+  assert.equal((await localGateway.readLocalState(PUBLICATION_SYNC_STATE_KEY)).state.publicationCheckpoint, nextCursor);
 });

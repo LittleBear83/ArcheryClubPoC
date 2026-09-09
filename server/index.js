@@ -162,6 +162,7 @@ const CSRF_EXCLUDED_PATHS = new Set([
   "/api/sync/v1/pull",
   "/api/sync/v1/push",
   "/api/sync/v2/pull",
+  "/api/sync/v2/snapshot",
 ]);
 const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/login",

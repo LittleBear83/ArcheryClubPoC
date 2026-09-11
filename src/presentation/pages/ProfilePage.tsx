@@ -289,6 +289,23 @@ export function ProfilePage({
             <p className="profile-card-issue-note">
               This will register the presented tag for the selected user.
             </p>
+
+            {profilePageState.rfidReaderStatus ? (
+              <p className="profile-card-issue-status" role="status">
+                {!profilePageState.rfidReaderStatus.bridgeAvailable
+                  ? "⚠ RFID Reader Bridge not available"
+                  : !profilePageState.rfidReaderStatus.pcscAvailable
+                    ? "⚠ RFID reader driver unavailable"
+                    : profilePageState.rfidReaderStatus.readerCount === 0
+                      ? "○ No RFID reader connected"
+                      : `● Reader connected — ${profilePageState.rfidReaderStatus.readers.join(", ")}`}
+              </p>
+            ) : (
+              <p className="profile-card-issue-status" role="status">
+                Checking RFID reader...
+              </p>
+            )}
+
             {profilePageState.cardIssueStatus ? (
               <p className="profile-card-issue-status">
                 {profilePageState.cardIssueStatus}

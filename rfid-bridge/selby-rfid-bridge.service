@@ -1,0 +1,19 @@
+[Unit]
+Description=Selby Archery Club RFID Reader Bridge
+Wants=pcscd.socket
+After=pcscd.socket
+
+[Service]
+Type=simple
+User=archeryapp
+Group=archeryapp
+WorkingDirectory=/opt/selby-rfid-bridge
+ExecStart=/usr/bin/python3 /opt/selby-rfid-bridge/bridge.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

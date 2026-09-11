@@ -1143,7 +1143,7 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", "http://127.0.0.1:8765"],
         fontSrc: ["'self'"],
         frameAncestors: ["'none'"],
         imgSrc: ["'self'", "data:"],

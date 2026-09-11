@@ -41,6 +41,7 @@ export function useProfileMemberActionsState({
   const [cardIssueError, setCardIssueError] = useState("");
   const [cardIssueStatus, setCardIssueStatus] = useState("");
   const [cardIssueSuccess, setCardIssueSuccess] = useState("");
+  const [rfidReaderStatus, setRfidReaderStatus] = useState<any>(null);
   const [isIssuingCard, setIsIssuingCard] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteConfirmationUsername, setDeleteConfirmationUsername] = useState("");
@@ -81,6 +82,7 @@ export function useProfileMemberActionsState({
     setCardIssueError("");
     setCardIssueStatus("");
     setCardIssueSuccess("");
+    setRfidReaderStatus(null);
     setIsIssuingCard(false);
     setIsDeleteModalOpen(false);
     setDeleteConfirmationUsername("");
@@ -161,21 +163,59 @@ export function useProfileMemberActionsState({
     };
 
     setCardIssueError("");
-    setCardIssueStatus("Waiting for a card to be presented...");
+    setCardIssueStatus("Checking local RFID reader...");
 
-    return subscribeToRfidScans(async (scan) => {
-      if (!isActive || isIssuingCardRef.current || !scan?.rfidTag) {
-        return;
-      }
-
-      try {
-        await assignPresentedTag(scan.rfidTag);
-      } catch {
-        if (isActive) {
-          setCardIssueStatus("Waiting for a card to be presented...");
+    return subscribeToRfidScans(
+      async (scan) => {
+        if (!isActive || isIssuingCardRef.current || !scan?.rfidTag) {
+          return;
         }
-      }
-    });
+
+        try {
+          await assignPresentedTag(scan.rfidTag);
+        } catch {
+          if (isActive) {
+            setCardIssueStatus("Waiting for a card to be presented...");
+          }
+        }
+      },
+      {
+        onStatus: (status) => {
+          if (!isActive) {
+            return;
+          }
+
+          setRfidReaderStatus(status);
+
+          if (isIssuingCardRef.current) {
+            return;
+          }
+
+          if (!status?.bridgeAvailable) {
+            setCardIssueStatus(
+              "RFID Reader Bridge is not available on this device.",
+            );
+            return;
+          }
+
+          if (!status.pcscAvailable) {
+            setCardIssueStatus(
+              "RFID Reader Bridge is running, but the PC/SC driver is unavailable.",
+            );
+            return;
+          }
+
+          if (status.readerCount === 0) {
+            setCardIssueStatus(
+              "RFID Reader Bridge is running, but no RFID reader is connected.",
+            );
+            return;
+          }
+
+          setCardIssueStatus("Waiting for a card to be presented...");
+        },
+      },
+    );
   }, [
     actorUsername,
     canManageMembers,
@@ -194,6 +234,7 @@ export function useProfileMemberActionsState({
     setCardIssueError("");
     setCardIssueStatus("");
     setCardIssueSuccess("");
+    setRfidReaderStatus(null);
     setIsIssuingCard(false);
     setIsCardModalOpen(true);
   };
@@ -377,6 +418,7 @@ export function useProfileMemberActionsState({
     cardIssueError,
     cardIssueStatus,
     cardIssueSuccess,
+    rfidReaderStatus,
     deleteConfirmationUsername,
     deleteError,
     distanceSignOffForm,

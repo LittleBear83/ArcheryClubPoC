@@ -300,6 +300,7 @@ export function useProfilePageState({
     cardIssueError: memberActionsState.cardIssueError,
     cardIssueStatus: memberActionsState.cardIssueStatus,
     cardIssueSuccess: memberActionsState.cardIssueSuccess,
+    rfidReaderStatus: memberActionsState.rfidReaderStatus,
     deleteConfirmationUsername: memberActionsState.deleteConfirmationUsername,
     deleteError: memberActionsState.deleteError,
     currentUserProfile,

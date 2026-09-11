@@ -2614,6 +2614,36 @@ while ($true) {
   });
 }
 
+function startConfiguredRfidReaderMonitor() {
+  const enabled =
+    String(process.env.RFID_READER_MONITOR_ENABLED ?? "")
+      .trim()
+      .toLowerCase() === "true";
+
+  rfidReaderStatus.checked = true;
+  rfidReaderStatus.detected = false;
+
+  if (!enabled) {
+    console.log(
+      "Legacy RFID reader monitor disabled; local RFID Reader Bridge is the preferred hardware path.",
+    );
+    return;
+  }
+
+  if (process.platform !== "win32") {
+    console.warn(
+      "RFID_READER_MONITOR_ENABLED=true was ignored because the legacy RFID monitor requires Windows.",
+    );
+    return;
+  }
+
+  console.warn(
+    "Starting legacy Windows RFID reader monitor because RFID_READER_MONITOR_ENABLED=true.",
+  );
+
+  startRfidReaderMonitor();
+}
+
 function buildClubEvent(event, bookings = [], actor = null) {
   const actorUsername = actor?.username ?? null;
   const canApprove = actorHasPermission(actor, PERMISSIONS.APPROVE_EVENTS);
@@ -7206,7 +7236,7 @@ const httpServer = startServer({
   distDirectory,
   headersTimeoutMs: serverRuntime.headersTimeoutMs,
   keepAliveTimeoutMs: serverRuntime.keepAliveTimeoutMs,
-  onBeforeListen: startRfidReaderMonitor,
+  onBeforeListen: startConfiguredRfidReaderMonitor,
   port,
   requestTimeoutMs: serverRuntime.requestTimeoutMs,
 });

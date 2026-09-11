@@ -4,6 +4,7 @@ import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Button } from "../components/Button";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { getCurrentMobileInstallContext } from "../../utils/mobileInstall";
+import { subscribeToLocalRfidBridgeScans } from "../../utils/localRfidBridge";
 import {
   connectPublicServerEvents,
   disconnectPublicServerEvents,
@@ -14,6 +15,15 @@ const SIMULATED_RFID_TAG = "7673CF3D";
 const ENABLE_RFID_SIMULATOR =
   import.meta.env.DEV || import.meta.env.VITE_ENABLE_RFID_SIMULATOR === "true";
 
+type LocalRfidReaderStatus = {
+  bridgeAvailable: boolean;
+  available: boolean;
+  pcscAvailable: boolean;
+  readerCount: number;
+  readers: string[];
+  lastError?: string | null;
+};
+
 export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
   const isMobile = useIsMobile();
   const installContext = getCurrentMobileInstallContext();
@@ -21,7 +31,12 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState(initialMessage);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [rfidReaderStatus, setRfidReaderStatus] =
+    useState<LocalRfidReaderStatus | null>(null);
   const latestRfidSequenceRef = useRef(0);
+  const isSubmittingRef = useRef(false);
+  const lastProcessedRfidTagRef = useRef("");
+  const lastProcessedRfidAtRef = useRef(0);
   const showInstallHelp = isMobile && installContext.isIos;
 
   let installTitle = "";
@@ -73,6 +88,10 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
   }, [initialMessage]);
 
   useEffect(() => {
+    isSubmittingRef.current = isSubmitting;
+  }, [isSubmitting]);
+
+  useEffect(() => {
     connectPublicServerEvents();
 
     const unsubscribe = subscribeToPublicServerEvent("rfid.scan", async (scan) => {
@@ -83,7 +102,7 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
       } | null;
 
       if (
-        isSubmitting ||
+        isSubmittingRef.current ||
         !latestScan?.rfidTag ||
         latestScan.scanType === "payment-card" ||
         (latestScan.sequence ?? 0) <= latestRfidSequenceRef.current
@@ -93,8 +112,21 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
 
       latestRfidSequenceRef.current = latestScan.sequence ?? 0;
 
+      const rfidTag = String(latestScan.rfidTag).trim().toUpperCase();
+      const now = Date.now();
+
+      if (
+        lastProcessedRfidTagRef.current === rfidTag &&
+        now - lastProcessedRfidAtRef.current < 1000
+      ) {
+        return;
+      }
+
+      lastProcessedRfidTagRef.current = rfidTag;
+      lastProcessedRfidAtRef.current = now;
+
       try {
-        const loginResult = await onRfidLogin(latestScan.rfidTag);
+        const loginResult = await onRfidLogin(rfidTag);
         if (!loginResult?.success) {
           setError(loginResult?.message ?? "Unable to log in with RFID.");
           return;
@@ -112,7 +144,57 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
       unsubscribe();
       disconnectPublicServerEvents();
     };
-  }, [isSubmitting, onRfidLogin]);
+  }, [onRfidLogin]);
+
+  useEffect(() => {
+    return subscribeToLocalRfidBridgeScans(
+      async (scan) => {
+        const rfidTag = String(scan?.rfidTag ?? "").trim().toUpperCase();
+
+        if (isSubmittingRef.current || !rfidTag) {
+          return;
+        }
+
+        const now = Date.now();
+
+        if (
+          lastProcessedRfidTagRef.current === rfidTag &&
+          now - lastProcessedRfidAtRef.current < 1000
+        ) {
+          return;
+        }
+
+        lastProcessedRfidTagRef.current = rfidTag;
+        lastProcessedRfidAtRef.current = now;
+
+        isSubmittingRef.current = true;
+        setIsSubmitting(true);
+
+        try {
+          const loginResult = await onRfidLogin(rfidTag);
+
+          if (!loginResult?.success) {
+            setError(loginResult?.message ?? "Unable to log in with RFID.");
+            return;
+          }
+
+          setError("");
+        } catch {
+          setError(
+            "RFID service is unavailable. Make sure the local reader bridge is running.",
+          );
+        } finally {
+          isSubmittingRef.current = false;
+          setIsSubmitting(false);
+        }
+      },
+      {
+        onStatus: (status) => {
+          setRfidReaderStatus(status);
+        },
+      },
+    );
+  }, [onRfidLogin]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -230,22 +312,46 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
             </form>
           </section>
 
-          {ENABLE_RFID_SIMULATOR ? (
+          {ENABLE_RFID_SIMULATOR || rfidReaderStatus?.bridgeAvailable ? (
             <section className="rfid-panel" aria-label="RFID sign in">
               <p className="section-title">RFID Access</p>
-              <p className="rfid-copy">
-                Tap your club card to sign in. For now, use the simulator below
-                to test RFID sign-in.
-              </p>
-              <Button
-                type="button"
-                className="rfid-simulate-button"
-                onClick={handleSimulatedRfid}
-                disabled={isSubmitting || !ENABLE_RFID_SIMULATOR}
-                variant="secondary"
-              >
-                {isSubmitting ? "Checking RFID..." : "Simulate RFID Tap"}
-              </Button>
+
+              {rfidReaderStatus?.available ? (
+                <>
+                  <p className="rfid-copy">
+                    RFID reader connected. Tap your club card or fob to sign in.
+                  </p>
+                  <p className="rfid-copy">
+                    Reader: {rfidReaderStatus.readers.join(", ")}
+                  </p>
+                </>
+              ) : rfidReaderStatus?.bridgeAvailable &&
+                !rfidReaderStatus.pcscAvailable ? (
+                <p className="rfid-copy">
+                  RFID Reader Bridge is running, but the reader driver is
+                  unavailable.
+                </p>
+              ) : rfidReaderStatus?.bridgeAvailable ? (
+                <p className="rfid-copy">
+                  RFID Reader Bridge is running, but no RFID reader is connected.
+                </p>
+              ) : (
+                <p className="rfid-copy">
+                  Use the simulator below to test RFID sign-in.
+                </p>
+              )}
+
+              {ENABLE_RFID_SIMULATOR ? (
+                <Button
+                  type="button"
+                  className="rfid-simulate-button"
+                  onClick={handleSimulatedRfid}
+                  disabled={isSubmitting}
+                  variant="secondary"
+                >
+                  {isSubmitting ? "Checking RFID..." : "Simulate RFID Tap"}
+                </Button>
+              ) : null}
             </section>
           ) : null}
         </div>

@@ -29,6 +29,8 @@ const SYNCED_DOMAINS = new Set([
   "golden_records_integration_status",
   "golden_records_lookup_cache",
   "outdoor_table_entries",
+  "member_distance_sign_offs",
+  "committee_roles",
 ]);
 
 function hasScheduleEntryEnded(date, endTime) {
@@ -639,6 +641,38 @@ export function createSyncGateway({ pool }) {
           ORDER BY role_key ASC, permission_key ASC
         `,
       );
+      const memberDistanceSignOffs = await snapshotClient.query(
+        `
+          SELECT
+            username,
+            discipline,
+            distance_yards,
+            signed_off_by_username,
+            source,
+            signed_off_at_date,
+            signed_off_at_time
+          FROM member_distance_sign_offs
+          ORDER BY
+            LOWER(username) ASC,
+            LOWER(discipline) ASC,
+            distance_yards ASC
+        `,
+      );
+      const committeeRoles = await snapshotClient.query(
+        `
+          SELECT
+            role_key,
+            title,
+            summary,
+            responsibilities,
+            personal_blurb,
+            photo_data_url,
+            display_order,
+            assigned_username
+          FROM committee_roles
+          ORDER BY display_order ASC, role_key ASC
+        `,
+      );
       const clubEvents = await snapshotClient.query(
         `SELECT * FROM club_events ORDER BY event_date ASC, start_time ASC`,
       );
@@ -800,6 +834,8 @@ export function createSyncGateway({ pool }) {
         checkpoint: Number(checkpointRow?.checkpoint ?? 0),
         snapshot: {
           announcements: announcements.rows,
+          committeeRoles: committeeRoles.rows,
+          memberDistanceSignOffs: memberDistanceSignOffs.rows,
           clubEvents: clubEvents.rows,
           coachingSessionBookings: coachingSessionBookings.rows,
           coachingSessions: coachingSessions.rows,

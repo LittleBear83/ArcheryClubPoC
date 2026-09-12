@@ -7,6 +7,7 @@ import { migration as syncChangeNotificationsMigration } from "./007_sync_change
 import { migration as syncPublicationMigration } from "./008_sync_publication.js";
 import { migration as extendedSseDomainsMigration } from "./009_extended_sse_domains.js";
 import { migration as memberSignoffCommitteeSyncMigration } from "./010_member_signoff_committee_sync.js";
+import { migration as committeeMinutesSyncMigration } from "./011_committee_minutes_sync.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -18,4 +19,5 @@ export const postgresMigrations = [
   syncPublicationMigration,
   extendedSseDomainsMigration,
   memberSignoffCommitteeSyncMigration,
+  committeeMinutesSyncMigration,
 ];

@@ -16,6 +16,20 @@ test("beginners course write gateway receives participant deletion support", asy
   );
 });
 
+test("local Pi blocks cloud-authoritative committee minute writes", async () => {
+  const source = await readFile(path.join(__dirname, "index.js"), "utf8");
+
+  assert.match(
+    source,
+    /app\.use\("\/api\/committee-minutes",/,
+  );
+
+  assert.match(
+    source,
+    /Committee minutes are cloud-authoritative and unavailable for editing on the Pi\./,
+  );
+});
+
 test("schedule route wiring passes the local Pi flag only to schedule routes", async () => {
   const source = await readFile(path.join(__dirname, "index.js"), "utf8");
   const memberQuestionCall = source.slice(

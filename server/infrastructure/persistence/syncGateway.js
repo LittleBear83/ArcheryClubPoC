@@ -31,6 +31,7 @@ const SYNCED_DOMAINS = new Set([
   "outdoor_table_entries",
   "member_distance_sign_offs",
   "committee_roles",
+  "committee_meeting_minutes",
 ]);
 
 function hasScheduleEntryEnded(date, endTime) {
@@ -658,6 +659,24 @@ export function createSyncGateway({ pool }) {
             distance_yards ASC
         `,
       );
+      const committeeMeetingMinutes = await snapshotClient.query(
+        `
+          SELECT
+            sync_id,
+            meeting_date,
+            title,
+            sections_json,
+            actions_json,
+            created_at_date,
+            created_at_time,
+            updated_at_date,
+            updated_at_time,
+            updated_by_username
+          FROM committee_meeting_minutes
+          ORDER BY meeting_date DESC, sync_id ASC
+        `,
+      );
+
       const committeeRoles = await snapshotClient.query(
         `
           SELECT
@@ -835,6 +854,7 @@ export function createSyncGateway({ pool }) {
         snapshot: {
           announcements: announcements.rows,
           committeeRoles: committeeRoles.rows,
+          committeeMeetingMinutes: committeeMeetingMinutes.rows,
           memberDistanceSignOffs: memberDistanceSignOffs.rows,
           clubEvents: clubEvents.rows,
           coachingSessionBookings: coachingSessionBookings.rows,

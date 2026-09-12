@@ -7180,6 +7180,19 @@ if (serverRuntime.sync.isLocalPiNode) {
     }
     next();
   });
+
+  app.use("/api/committee-minutes", (req, res, next) => {
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+      res.status(503).json({
+        success: false,
+        message:
+          "Committee minutes are cloud-authoritative and unavailable for editing on the Pi.",
+      });
+      return;
+    }
+
+    next();
+  });
 }
 
 registerScheduleRoutes({

@@ -25,6 +25,7 @@ export const LOCAL_SYNC_EVENT_GROUPS = {
   golden_records_integration_status: ["golden-records.updated"],
   golden_records_lookup_cache: ["golden-records.updated"],
   outdoor_table_entries: ["outdoor-table.updated"],
+  committee_meeting_minutes: ["committee-minutes.updated"],
 };
 
 export function localSyncBrowserEventNames(domains) {

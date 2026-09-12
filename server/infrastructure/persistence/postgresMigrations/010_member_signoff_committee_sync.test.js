@@ -9,14 +9,20 @@ test("migration 010 is registered after migration 009", () => {
 
   const versions = postgresMigrations.map((entry) => entry.version);
 
-  assert.equal(
-    versions.at(-2),
+  const migration009Index = versions.indexOf(
     "009_extended_sse_domains",
   );
 
-  assert.equal(
-    versions.at(-1),
+  const migration010Index = versions.indexOf(
     "010_member_signoff_committee_sync",
+  );
+
+  assert.notEqual(migration009Index, -1);
+  assert.notEqual(migration010Index, -1);
+
+  assert.equal(
+    migration010Index,
+    migration009Index + 1,
   );
 });
 

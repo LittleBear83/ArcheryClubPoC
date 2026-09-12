@@ -90,6 +90,30 @@ await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/runPostgresMigrations.test.js"))
 );
 await import(
+  pathToFileURL(
+    path.join(
+      root,
+      "server/infrastructure/persistence/postgresMigrations/010_member_signoff_committee_sync.test.js",
+    ),
+  ),
+);
+await import(
+  pathToFileURL(
+    path.join(
+      root,
+      "server/infrastructure/persistence/postgresMigrations/011_committee_minutes_sync.test.js",
+    ),
+  ),
+);
+await import(
+  pathToFileURL(
+    path.join(
+      root,
+      "server/infrastructure/persistence/committeeMinutesSyncPublication.test.js",
+    ),
+  ),
+);
+await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/phase2a1PostgresIntegrationGuards.test.js"))
 );
 await import(
@@ -120,6 +144,14 @@ await import(
 );
 await import(
   pathToFileURL(path.join(root, "server/domain/services/localDatabaseSyncService.test.js"))
+);
+await import(
+  pathToFileURL(
+    path.join(
+      root,
+      "server/domain/services/committeeMinutesLocalSync.test.js",
+    ),
+  ),
 );
 await import("../server/domain/services/localSyncBrowserEvents.test.js");
 await import(

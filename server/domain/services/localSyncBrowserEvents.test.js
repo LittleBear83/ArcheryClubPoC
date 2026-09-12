@@ -21,6 +21,13 @@ test("range presence invalidation includes member identity, role and discipline 
   }
 });
 
+test("committee minutes sync refreshes open committee minute views", () => {
+  assert.deepEqual(
+    localSyncBrowserEventNames(["committee_meeting_minutes"]),
+    ["committee-minutes.updated"],
+  );
+});
+
 function application({ changes = [], rowCount = 1, failAt, notify, mode = "incremental" } = {}) {
   const queries = [];
   const domains = [];

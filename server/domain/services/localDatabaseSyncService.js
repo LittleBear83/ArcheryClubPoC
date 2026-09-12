@@ -21,6 +21,7 @@ export const REPLICATED_DOMAINS = [
   "outdoor_table_entries",
   "member_distance_sign_offs",
   "committee_roles",
+  "committee_meeting_minutes",
 ];
 const PUBLICATION_SNAPSHOT_PROPERTIES = [
   "users", "userTypes", "userDisciplines", "roles", "permissions",
@@ -98,6 +99,7 @@ function collapseChanges(changes = []) {
     ["coaching_session_bookings", 24],
     ["committee_roles", 25],
     ["member_distance_sign_offs", 26],
+    ["committee_meeting_minutes", 27],
   ]);
   const deleteOrder = new Map([
     ["coaching_session_bookings", 1],
@@ -123,6 +125,7 @@ function collapseChanges(changes = []) {
     ["permissions", 21],
     ["member_distance_sign_offs", 22],
     ["committee_roles", 23],
+    ["committee_meeting_minutes", 24],
   ]);
 
   return [...latestByKey.values()].sort((left, right) => {
@@ -1480,6 +1483,69 @@ async function upsertCommitteeRoleRows(client, rows = []) {
   }
 }
 
+async function upsertCommitteeMeetingMinuteRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO committee_meeting_minutes (
+          sync_id,
+          meeting_date,
+          title,
+          sections_json,
+          actions_json,
+          created_at_date,
+          created_at_time,
+          updated_at_date,
+          updated_at_time,
+          updated_by_username,
+          updated_by_user_id
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4::jsonb,
+          $5::jsonb,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          (
+            SELECT id
+            FROM users
+            WHERE LOWER(username) = LOWER($10)
+            LIMIT 1
+          )
+        )
+        ON CONFLICT (sync_id) DO UPDATE SET
+          meeting_date = EXCLUDED.meeting_date,
+          title = EXCLUDED.title,
+          sections_json = EXCLUDED.sections_json,
+          actions_json = EXCLUDED.actions_json,
+          created_at_date = EXCLUDED.created_at_date,
+          created_at_time = EXCLUDED.created_at_time,
+          updated_at_date = EXCLUDED.updated_at_date,
+          updated_at_time = EXCLUDED.updated_at_time,
+          updated_by_username = EXCLUDED.updated_by_username,
+          updated_by_user_id = EXCLUDED.updated_by_user_id
+      `,
+      [
+        row.sync_id,
+        row.meeting_date,
+        row.title,
+        JSON.stringify(row.sections_json ?? []),
+        JSON.stringify(row.actions_json ?? []),
+        row.created_at_date,
+        row.created_at_time,
+        row.updated_at_date,
+        row.updated_at_time,
+        row.updated_by_username ?? null,
+      ],
+    );
+  }
+}
+
 async function upsertBeginnersCourses(client, courses = []) {
   for (const course of courses) {
     await client.query(
@@ -1948,6 +2014,20 @@ async function applyOperationalSnapshot({
     });
   }
 
+  if (Object.hasOwn(snapshot, "committeeMeetingMinutes")) {
+    await upsertCommitteeMeetingMinuteRows(
+      client,
+      snapshot.committeeMeetingMinutes,
+    );
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.committeeMeetingMinutes.map(
+        (row) => row.sync_id,
+      ),
+      tableName: "committee_meeting_minutes",
+    });
+  }
+
   if (Object.hasOwn(snapshot, "memberDistanceSignOffs")) {
     await upsertMemberDistanceSignOffRows(client, snapshot.memberDistanceSignOffs);
     await deleteMissingMemberDistanceSignOffRows(
@@ -2021,6 +2101,13 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
 
   if (Object.hasOwn(snapshot, "committeeRoles")) {
     await upsertCommitteeRoleRows(client, snapshot.committeeRoles);
+  }
+
+  if (Object.hasOwn(snapshot, "committeeMeetingMinutes")) {
+    await upsertCommitteeMeetingMinuteRows(
+      client,
+      snapshot.committeeMeetingMinutes,
+    );
   }
 
   if (Object.hasOwn(snapshot, "memberDistanceSignOffs")) {
@@ -2100,6 +2187,16 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
       incomingKeys: snapshot.committeeRoles.map((row) => row.role_key),
       keyColumn: "role_key",
       tableName: "committee_roles",
+    });
+  }
+
+  if (Object.hasOwn(snapshot, "committeeMeetingMinutes")) {
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.committeeMeetingMinutes.map(
+        (row) => row.sync_id,
+      ),
+      tableName: "committee_meeting_minutes",
     });
   }
 
@@ -2417,6 +2514,17 @@ async function applyCollapsedChange({
         return;
       }
       await upsertOutdoorTableRows(client, [change.payload]);
+      return;
+
+    case "committee_meeting_minutes":
+      if (change.operation === "delete") {
+        await client.query(
+          `DELETE FROM committee_meeting_minutes WHERE sync_id = $1`,
+          [change.payload.sync_id],
+        );
+        return;
+      }
+      await upsertCommitteeMeetingMinuteRows(client, [change.payload]);
       return;
 
     case "committee_roles":

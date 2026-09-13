@@ -1,3 +1,4 @@
+import { hasPairingResults, validateRoundPairings } from "../../../shared/tournamentPairingRules.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
@@ -122,6 +123,7 @@ function createEmptyTournamentForm(
     tournamentType: defaultTournamentType,
     roundOneStartDate: today,
     roundWindowDays: 14,
+    randomiseEveryRound: false,
     roundRestDays: 0,
     registrationStartDate: today,
     registrationEndDate: today,
@@ -616,7 +618,7 @@ function TournamentBracketMatchCard({
 function TournamentBracketGraphic({ tournament }) {
   const { matches, roundTitles } = useMemo(
     () => buildTournamentBracketMatches(tournament),
-    [tournament.bracket.rounds],
+    [tournament],
   );
 
   return (
@@ -755,6 +757,9 @@ function TournamentSetupReview({ form, selectedTemplate, registrationCount = nul
         </p>
         <p>
           <strong>Tournament type:</strong> {form.tournamentType}
+        </p>
+        <p>
+          <strong>Randomise every round:</strong> {form.randomiseEveryRound ? "Yes" : "No"}
         </p>
         <p>
           <strong>Registration:</strong> {formatDate(form.registrationStartDate)} to{" "}
@@ -960,6 +965,9 @@ export function TournamentsPage({
 }) {
   const isMobile = useIsMobile();
   const today = new Date().toISOString().slice(0, 10);
+  const [pairingRoundNumber, setPairingRoundNumber] = useState<number | null>(null);
+  const [manualPairings, setManualPairings] = useState<(string | null)[][]>([]);
+  const [pairingCandidates, setPairingCandidates] = useState<{ username: string; fullName: string }[]>([]);
   const [tournaments, setTournaments] = useState([]);
   const [tournamentTypes, setTournamentTypes] = useState([]);
   const [tournamentTemplates, setTournamentTemplates] = useState<
@@ -1397,6 +1405,7 @@ export function TournamentsPage({
           selectedTournament.roundSchedule?.[0]?.publishDate ??
           today,
         roundWindowDays: Number(selectedTournament.roundWindowDays ?? 14),
+        randomiseEveryRound: selectedTournament.randomiseEveryRound ?? false,
         roundRestDays: Number(selectedTournament.roundRestDays ?? 0),
         registrationStartDate: selectedTournament.registrationWindow.startDate,
         registrationEndDate: selectedTournament.registrationWindow.endDate,
@@ -2262,7 +2271,18 @@ export function TournamentsPage({
       )
     : [];
 
-  const captainOperationsContent =
+  const editableRound = selectedTournament?.bracket?.rounds?.find((round) => round.roundNumber === selectedTournament.currentRoundNumber);
+  const canEditPairings = canManageTournaments && selectedTournament?.registrationWindow?.isClosed && editableRound && !hasPairingResults(editableRound.matches);
+  const pairingControls = canEditPairings ? (
+    <Button variant="secondary" disabled={isSaving} onClick={() => {
+      setError("");
+      setPairingRoundNumber(editableRound.roundNumber);
+      setManualPairings(editableRound.matches.map((match) => [match.leftParticipant?.username ?? null, match.rightParticipant?.username ?? null]));
+      setPairingCandidates(editableRound.matches.flatMap((match) => [match.leftParticipant, match.rightParticipant]).filter((participant) => Boolean(participant?.username)).map((participant) => ({ username: participant.username, fullName: participant.fullName })));
+    }}>Edit pairings</Button>
+  ) : null;
+
+  const matchCaptainOperationsContent =
     canManageTournaments && captainOperationMatches.length > 0 ? (
       <div className="tournament-registrations-card">
         <details className="tournament-captain-operations-details">
@@ -2948,7 +2968,7 @@ export function TournamentsPage({
         </form>
       ) : null}
 
-      {captainOperationsContent}
+      {pairingControls}{matchCaptainOperationsContent}
     </>
   ) : (
     <p>Select a tournament to view the registration list and bracket.</p>
@@ -2988,6 +3008,7 @@ export function TournamentsPage({
 
               {currentEditStep.key === "basics" ? (
                 <div className="profile-form-grid tournament-basics-grid">
+                      <label><input type="checkbox" checked={form.randomiseEveryRound} onChange={(event) => setForm((current) => ({ ...current, randomiseEveryRound: event.target.checked }))} /> Randomise every round</label>
                   <label className="tournament-basics-field tournament-basics-field--full">
                     Tournament name
                     <input
@@ -3298,6 +3319,7 @@ export function TournamentsPage({
 
               {currentCreateStep.key === "basics" ? (
                 <div className="profile-form-grid tournament-basics-grid">
+                      <label><input type="checkbox" checked={createForm.randomiseEveryRound} onChange={(event) => setCreateForm((current) => ({ ...current, randomiseEveryRound: event.target.checked }))} /> Randomise every round</label>
                   <label className="tournament-basics-field tournament-basics-field--full">
                     Tournament name
                     <input
@@ -3579,7 +3601,7 @@ export function TournamentsPage({
             matchCompetitorARetired={matchCompetitorARetired}
             matchCompetitorBRetired={matchCompetitorBRetired}
             matchDisputeReason={matchDisputeReason}
-            captainOperationsContent={captainOperationsContent}
+            captainOperationsContent={<>{pairingControls}{matchCaptainOperationsContent}</>}
             isArchiveExpanded={isArchiveExpanded}
             registrationBowOptions={registrationBowOptions}
             requireRegistrationBowSelection={
@@ -3645,6 +3667,36 @@ export function TournamentsPage({
           />
         )
       ) : null}
+      <Modal open={pairingRoundNumber !== null} onClose={() => setPairingRoundNumber(null)} title={`Edit round ${pairingRoundNumber ?? ""} pairings`}>
+        {error ? <p className="profile-error" role="alert">{error}</p> : null}
+        <p>Assign each eligible archer once. Keep any bye slots. Pairings remain as saved until the round is played.</p>
+        {manualPairings.map((pair, index) => (
+          <div key={index} className="tournament-score-card">
+            <strong>Match {index + 1}</strong>
+            {pair.map((username, side) => (
+              <label key={side}>Archer {side + 1}
+                <select value={username ?? ""} onChange={(event) => setManualPairings((current) => current.map((entry, entryIndex) => entryIndex === index ? entry.map((value, valueSide) => valueSide === side ? event.target.value || null : value) : entry))}>
+                  <option value="">Bye</option>
+                  {pairingCandidates.map((candidate) => <option key={candidate.username} value={candidate.username}>{candidate.fullName}</option>)}
+                </select>
+              </label>
+            ))}
+          </div>
+        ))}
+        <Button disabled={isSaving} onClick={() => {
+          if (!selectedTournament || pairingRoundNumber === null) return;
+          const eligibleSlots = [...pairingCandidates.map((candidate) => candidate.username), ...Array(manualPairings.length * 2 - pairingCandidates.length).fill(null)];
+          if (!validateRoundPairings(manualPairings, eligibleSlots)) { setError("Include every eligible archer exactly once and preserve the bye slots."); return; }
+          setIsSaving(true);
+          setError("");
+          void fetchApi<{ success: true; tournament: TournamentRecord }>(`/api/tournaments/${selectedTournament.id}/rounds/${pairingRoundNumber}/pairings`, { method: "PUT", headers: buildActorHeaders(actorUsername, true), body: JSON.stringify({ pairings: manualPairings }), cache: "no-store" }).then((result) => {
+            setTournaments((current) => current.map((tournament) => tournament.id === result.tournament.id ? result.tournament : tournament));
+            setPairingRoundNumber(null);
+            setMessage("Round pairings saved.");
+          }).catch((error) => setError(error.message)).finally(() => setIsSaving(false));
+        }}>Save pairings</Button>
+      </Modal>
+
       <Modal
         open={isTemplateModalOpen}
         onClose={closeTemplateModal}
@@ -3759,7 +3811,7 @@ export function TournamentsPage({
                     }))
                   }
                 />
-                <span>Randomized draw</span>
+                <span>Randomised draw</span>
               </label>
               <label className="tournament-template-checkbox">
                 <input

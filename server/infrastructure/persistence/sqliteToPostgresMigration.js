@@ -450,7 +450,7 @@ const orderedTableCopies = [
   },
   {
     tableName: "beginners_course_lessons",
-    columns: ["id", "course_id", "lesson_number", "lesson_date", "start_time", "end_time"],
+    columns: ["id", "course_id", "lesson_number", "lesson_date", "start_time", "end_time", "is_cancelled"],
   },
   {
     tableName: "beginners_course_participants",

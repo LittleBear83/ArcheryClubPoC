@@ -178,3 +178,6 @@ await import(
 await import(
   pathToFileURL(path.join(root, "server/presentation/http/registerScheduleRoutes.test.js"))
 );
+
+await import("../server/domain/services/tournamentPairings.test.js");
+await import("../server/presentation/http/workflowEnhancements.test.js");

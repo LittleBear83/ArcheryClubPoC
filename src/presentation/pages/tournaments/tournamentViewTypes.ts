@@ -67,6 +67,7 @@ export type TournamentRound = {
 };
 
 export type TournamentRecord = {
+  randomiseEveryRound?: boolean;
   id: string | number;
   name: string;
   type: string;

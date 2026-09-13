@@ -1789,21 +1789,22 @@ async function upsertBeginnersCourseLessons(client, lessons = []) {
     await client.query(
       `
         INSERT INTO beginners_course_lessons (
-          sync_id, course_id, lesson_number, lesson_date, start_time, end_time
+          sync_id, course_id, lesson_number, lesson_date, start_time, end_time, is_cancelled
         )
         VALUES (
           $1,
           (SELECT id FROM beginners_courses WHERE sync_id = $2 LIMIT 1),
-          $3, $4, $5, $6
+          $3, $4, $5, $6, $7
         )
         ON CONFLICT (sync_id) DO UPDATE SET
           course_id = EXCLUDED.course_id,
           lesson_number = EXCLUDED.lesson_number,
           lesson_date = EXCLUDED.lesson_date,
           start_time = EXCLUDED.start_time,
-          end_time = EXCLUDED.end_time
+          end_time = EXCLUDED.end_time,
+          is_cancelled = EXCLUDED.is_cancelled
       `,
-      [lesson.sync_id, lesson.course_sync_id, lesson.lesson_number, lesson.lesson_date, lesson.start_time, lesson.end_time],
+      [lesson.sync_id, lesson.course_sync_id, lesson.lesson_number, lesson.lesson_date, lesson.start_time, lesson.end_time, lesson.is_cancelled ?? 0],
     );
   }
 }

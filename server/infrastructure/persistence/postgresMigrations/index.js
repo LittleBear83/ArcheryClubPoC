@@ -9,6 +9,8 @@ import { migration as extendedSseDomainsMigration } from "./009_extended_sse_dom
 import { migration as memberSignoffCommitteeSyncMigration } from "./010_member_signoff_committee_sync.js";
 import { migration as committeeMinutesSyncMigration } from "./011_committee_minutes_sync.js";
 
+import { migration as lessonCancellationMigration } from "./012_lesson_cancellation.js";
+
 export const postgresMigrations = [
   syncFoundationMigration,
   syncLoginEventExternalIdsMigration,
@@ -20,4 +22,5 @@ export const postgresMigrations = [
   extendedSseDomainsMigration,
   memberSignoffCommitteeSyncMigration,
   committeeMinutesSyncMigration,
+  lessonCancellationMigration,
 ];

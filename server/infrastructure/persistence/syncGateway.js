@@ -799,7 +799,7 @@ export function createSyncGateway({ pool }) {
       const beginnersCourseLessons = await snapshotClient.query(
         `
           SELECT lessons.sync_id, lessons.lesson_number, lessons.lesson_date,
-            lessons.start_time, lessons.end_time, courses.sync_id AS course_sync_id
+            lessons.start_time, lessons.end_time, lessons.is_cancelled, courses.sync_id AS course_sync_id
           FROM beginners_course_lessons AS lessons
           INNER JOIN beginners_courses AS courses ON courses.id = lessons.course_id
           ORDER BY courses.sync_id ASC, lessons.lesson_number ASC

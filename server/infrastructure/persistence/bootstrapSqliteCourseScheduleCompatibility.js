@@ -39,6 +39,7 @@ function migrateCombinedDateTimeColumn({
 }
 
 function rebuildBeginnersCourseLessonsTable(db) {
+  const cancellationColumn = db.prepare("PRAGMA table_info(beginners_course_lessons)").all().some((column) => column.name === "is_cancelled") ? "is_cancelled" : "0";
   db.exec(`
     PRAGMA foreign_keys = OFF;
     BEGIN TRANSACTION;
@@ -50,6 +51,7 @@ function rebuildBeginnersCourseLessonsTable(db) {
       lesson_date TEXT NOT NULL,
       start_time TEXT NOT NULL,
       end_time TEXT NOT NULL,
+      is_cancelled INTEGER NOT NULL DEFAULT 0 CHECK (is_cancelled IN (0, 1)),
       UNIQUE (course_id, lesson_number),
       FOREIGN KEY (course_id) REFERENCES beginners_courses(id)
     );
@@ -59,7 +61,8 @@ function rebuildBeginnersCourseLessonsTable(db) {
       lesson_number,
       lesson_date,
       start_time,
-      end_time
+      end_time,
+      is_cancelled
     )
     SELECT
       id,
@@ -67,7 +70,8 @@ function rebuildBeginnersCourseLessonsTable(db) {
       lesson_number,
       lesson_date,
       start_time,
-      end_time
+      end_time,
+      ${cancellationColumn}
     FROM beginners_course_lessons_old;
     DROP TABLE beginners_course_lessons_old;
     COMMIT;
@@ -404,6 +408,10 @@ export function bootstrapSqliteCourseScheduleCompatibility({
 
   if (beginnersCourseLessonsTable?.sql?.includes("beginners_courses_old")) {
     rebuildBeginnersCourseLessonsTable(db);
+  }
+
+  if (!db.prepare("PRAGMA table_info(beginners_course_lessons)").all().some((column) => column.name === "is_cancelled")) {
+    db.exec("ALTER TABLE beginners_course_lessons ADD COLUMN is_cancelled INTEGER NOT NULL DEFAULT 0 CHECK (is_cancelled IN (0, 1))");
   }
 
   const beginnersCourseParticipantsTable = db

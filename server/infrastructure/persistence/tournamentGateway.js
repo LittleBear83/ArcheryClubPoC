@@ -414,6 +414,21 @@ function createSqliteTournamentGateway({
 
 function createPostgresTournamentGateway({ pool }) {
   return {
+    async acquireWorkflowLock() {
+      const client = await pool.connect();
+      try {
+        await client.query("SELECT pg_advisory_lock(18401, 5)");
+      } catch (error) {
+        client.release();
+        throw error;
+      }
+      return async () => {
+        let discard = false;
+        try { await client.query("SELECT pg_advisory_unlock(18401, 5)"); }
+        catch (error) { discard = true; throw error; }
+        finally { client.release(discard); }
+      };
+    },
     async createTournament(args) {
       const result = await pool.query(
         `

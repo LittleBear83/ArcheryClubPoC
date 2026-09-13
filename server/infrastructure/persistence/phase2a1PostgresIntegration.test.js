@@ -1,3 +1,4 @@
+import { createBeginnersCourseWriteGateway } from "./beginnersCourseWriteGateway.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import process from "node:process";
@@ -1511,4 +1512,63 @@ test("PostgreSQL v2 rebaseline preserves local-only/history/outbox data, prunes 
   }
   assert.equal((await local.query("SELECT title FROM roles WHERE role_key = 'member'")).rows[0].title, "Updated Member");
   assert.equal((await localGateway.readLocalState(PUBLICATION_SYNC_STATE_KEY)).state.publicationCheckpoint, nextCursor);
+});
+
+
+async function createPre012Pool() {
+  const databaseName = `${TEST_DATABASE_PREFIX}pre012_${randomUUID().replaceAll("-", "")}`;
+  assertSafeTemporaryDatabaseName(databaseName);
+  await adminPool.query(`CREATE DATABASE ${quoteIdentifier(databaseName)}`);
+  databaseNames.push(databaseName);
+  const pool = new Pool({ database: databaseName, host: process.env.PGHOST, password: process.env.PGPASSWORD, port: Number(process.env.PGPORT ?? 5432), user: process.env.PGUSER });
+  await pool.query(buildInitialSchemaSql());
+  for (const migration of postgresMigrations) {
+    if (migration.version === "012_lesson_cancellation") break;
+    for (const statement of migration.statements) await pool.query(statement);
+  }
+  return pool;
+}
+
+test("lesson cancellation persists, rolls back mixed selections and replicates snapshot/incremental v2 without echoes", async () => {
+  const cloud = await createPre012Pool();
+  const local = await createTemporaryPool("lesson_cancel_pi");
+  disposablePools.push(cloud, local);
+  await seedUser(cloud, 5);
+  await seedUser(local, 87);
+  const write = createBeginnersCourseWriteGateway({ databaseEngine: "postgres", pool: cloud });
+  const courseId = await write.createCourseWithLessons({ actorUsername: "robin", courseType: "taster-session", coordinatorUsername: "robin", firstLessonDate: "2026-10-01", startTime: "18:00:00", endTime: "20:00:00", lessonCount: 3, beginnerCapacity: 12, lessonDates: [1,2,3].map((number) => ({ lessonNumber: number, lessonDate: `2026-10-0${number}` })), createdAtDate: "2026-09-01", createdAtTime: "09:00:00" });
+  const beforeMigration = (await cloud.query("SELECT id, sync_id FROM beginners_course_lessons WHERE course_id = $1 ORDER BY lesson_number", [courseId])).rows;
+  for (const statement of postgresMigrations.find((migration) => migration.version === "012_lesson_cancellation").statements) await cloud.query(statement);
+  const lessons = (await cloud.query("SELECT id, sync_id, is_cancelled FROM beginners_course_lessons WHERE course_id = $1 ORDER BY lesson_number", [courseId])).rows;
+  assert.deepEqual(lessons.map(({ id, sync_id }) => ({ id, sync_id })), beforeMigration);
+  assert.deepEqual(lessons.map((lesson) => lesson.is_cancelled), [0,0,0]);
+  await write.cancelLessonDates({ courseId, lessonIds: [Number(lessons[0].id)] });
+  await assert.rejects(write.cancelLessonDates({ courseId, lessonIds: [Number(lessons[0].id), Number(lessons[1].id)] }));
+  assert.equal((await cloud.query("SELECT is_cancelled FROM beginners_course_lessons WHERE id = $1", [lessons[1].id])).rows[0].is_cancelled, 0);
+  const publication = createSyncPublicationGateway({ pool: cloud });
+  const snapshot = await publication.createSnapshot();
+  assert.equal(snapshot.snapshot.beginnersCourseLessons.find((lesson) => lesson.sync_id === lessons[0].sync_id).is_cancelled, 1);
+  const localGateway = createSyncGateway({ pool: local });
+  const client = await local.connect();
+  const applySnapshot = (response) => applyPublicationSnapshot({ client, deactivatedRfidSuffix: "-deactivated", snapshotResponse: { ...response, feedVersion: "sync-publication-v2", mode: "snapshot" }, syncGateway: localGateway });
+  try {
+    await applySnapshot(snapshot);
+    assert.equal((await local.query("SELECT is_cancelled FROM beginners_course_lessons WHERE sync_id = $1", [lessons[0].sync_id])).rows[0].is_cancelled, 1);
+    const ids = (await local.query("SELECT id FROM beginners_course_lessons ORDER BY lesson_number")).rows;
+    const changesBefore = (await local.query("SELECT COUNT(*)::int AS n FROM sync_change_log")).rows[0].n;
+    await write.cancelLessonDates({ courseId, lessonIds: lessons.slice(1).map((lesson) => Number(lesson.id)) });
+    await publication.publishBatch();
+    const changes = await publication.listPublishedChanges({ checkpoint: snapshot.checkpoint, limit: 500 });
+    assert.equal(changes.filter((change) => change.domain === "beginners_course_lessons" && change.payload.is_cancelled === 1).length, 2);
+    const response = { feedVersion: "sync-publication-v2", mode: "incremental", checkpoint: changes.at(-1).publicationCursor, changes };
+    await applyPulledPublicationResponse({ client, deactivatedRfidSuffix: "-deactivated", pullResponse: response, syncGateway: localGateway });
+    await applyPulledPublicationResponse({ client, deactivatedRfidSuffix: "-deactivated", pullResponse: response, syncGateway: localGateway });
+    assert.deepEqual((await local.query("SELECT is_cancelled FROM beginners_course_lessons ORDER BY lesson_number")).rows.map((lesson) => lesson.is_cancelled), [1,1,1]);
+    assert.equal((await cloud.query("SELECT is_cancelled FROM beginners_courses WHERE id = $1", [courseId])).rows[0].is_cancelled, 0);
+    assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM sync_change_log")).rows[0].n, changesBefore);
+    assert.deepEqual((await local.query("SELECT id FROM beginners_course_lessons ORDER BY lesson_number")).rows, ids);
+    await write.cancelCourse({ courseId, actorUsername: "robin", cancelledAtDate: "2026-09-02", cancelledAtTime: "12:00:00", reason: "Whole course cancelled" });
+    assert.equal((await cloud.query("SELECT is_cancelled FROM beginners_courses WHERE id = $1", [courseId])).rows[0].is_cancelled, 1);
+    assert.equal((await cloud.query("SELECT COUNT(*)::int AS n FROM beginners_course_lessons WHERE course_id = $1", [courseId])).rows[0].n, 3);
+  } finally { client.release(); }
 });

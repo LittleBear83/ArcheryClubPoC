@@ -381,6 +381,7 @@ export function createSqliteBeginnersCourseStatements(db) {
     WHERE beginners_course_lesson_coaches.coach_user_id = ?
       AND beginners_courses.is_cancelled = 0
       AND beginners_courses.approval_status = 'approved'
+            AND beginners_course_lessons.is_cancelled = 0
     ORDER BY beginners_course_lessons.lesson_date ASC, beginners_course_lessons.start_time ASC
   `);
 

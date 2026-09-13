@@ -1,3 +1,4 @@
+import { registerCourseDateCancellationRoutes } from "./presentation/http/registerCourseDateCancellationRoutes.js";
 import express from "express";
 import helmet from "helmet";
 import { Buffer } from "node:buffer";
@@ -1836,6 +1837,7 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
       date: lesson.lesson_date,
       startTime: lesson.start_time,
       endTime: lesson.end_time,
+      isCancelled: Boolean(lesson.is_cancelled),
       coaches: coachesByLessonId.get(lesson.id) ?? [],
     }));
     const beginners = (participantsByCourseId.get(course.id) ?? []).map((participant) => ({
@@ -2059,7 +2061,9 @@ async function hasBeginnersCourseCompleted(course) {
     return false;
   }
 
-  const lessons = await beginnersCourseReadGateway.listLessonsByCourseId(course.id);
+  const allLessons = await beginnersCourseReadGateway.listLessonsByCourseId(course.id);
+  const activeLessons = allLessons.filter((lesson) => !lesson.is_cancelled);
+  const lessons = activeLessons.length ? activeLessons : allLessons;
 
   if (!lessons.length) {
     return false;
@@ -2161,7 +2165,7 @@ async function buildBeginnersCourseCalendarLessons(courseType = null) {
         beginnerCapacity: course.beginner_capacity,
         participantCapacity: course.beginner_capacity,
         placesRemaining: Math.max(course.beginner_capacity - participantCount, 0),
-        isCancelled: Boolean(course.is_cancelled),
+        isCancelled: Boolean(course.is_cancelled || lesson.is_cancelled),
         cancellationReason: course.cancellation_reason ?? "",
       }));
     })
@@ -3226,6 +3230,7 @@ function buildTournament(
     persistedMatchesByKey,
     {
       frozenDrawOrderUsernames: roundPlan.draw?.orderUsernames ?? [],
+      roundPairings: roundPlan.draw?.roundPairings ?? {},
       supportsHighestLoserProgression:
         template?.capabilities?.supportsHighestLoserProgression ?? false,
     },
@@ -3499,6 +3504,7 @@ function buildTournament(
     },
     bracketReady: registrationClosed && normalizedRegistrations.length > 1,
     currentRoundNumber,
+    randomiseEveryRound: roundPlan.draw?.randomiseEveryRound ?? false,
     isRegistered: Boolean(
       actorUsername && registrationLookup.has(actorUsername),
     ),
@@ -5718,6 +5724,8 @@ app.delete("/api/beginners-courses/:id", async (req, res) => {
   });
 });
 
+registerCourseDateCancellationRoutes({ app, getActorUser, actorHasPermission, getCourseTypePermissions, beginnersCourseReadGateway, beginnersCourseWriteGateway, auditChangeLogger, getUtcTimestampParts, broadcastBeginnersUpdated, broadcastCalendarUpdated });
+
 app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
   const actor = getActorUser(req);
 
@@ -6963,6 +6971,10 @@ app.post("/api/beginners-course-lessons/:id/coaches", async (req, res) => {
     return;
   }
 
+  if (lesson.is_cancelled || course?.is_cancelled) {
+    return res.status(409).json({ success: false, message: "Coaches cannot be assigned to a cancelled session date." });
+  }
+
   const coachUsernames = Array.isArray(req.body?.coachUsernames)
     ? [...new Set(req.body.coachUsernames.filter((value) => typeof value === "string"))]
     : [];
@@ -7058,7 +7070,7 @@ app.get("/api/my-beginner-dashboard", async (req, res) => {
   }
   const today = toUtcDateString(new Date());
   const lessons = await beginnersCourseReadGateway.listLessonsByCourseId(course.id);
-  const todayLesson = lessons.find((lesson) => lesson.lesson_date === today) ?? null;
+  const todayLesson = lessons.find((lesson) => !lesson.is_cancelled && lesson.lesson_date === today) ?? null;
   const coaches = todayLesson
     ? (await beginnersCourseReadGateway.listLessonCoachesByLessonId(todayLesson.id)).map((row) => ({
         username: row.coach_username,

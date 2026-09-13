@@ -438,6 +438,13 @@ test(
       beforePullEcho.rows[0].count,
     );
 
+    // Keep migration 011 assertions above unchanged; current snapshot code also
+    // requires forward migrations introduced after the schema under test.
+    const migration011Index = postgresMigrations.indexOf(migration011);
+    for (const forwardMigration of postgresMigrations.slice(migration011Index + 1)) {
+      for (const statement of forwardMigration.statements) await testPool.query(statement);
+    }
+
     const publicationGateway = createSyncPublicationGateway({
       pool: testPool,
     });

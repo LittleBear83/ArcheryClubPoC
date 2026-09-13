@@ -180,4 +180,5 @@ await import(
 );
 
 await import("../server/domain/services/tournamentPairings.test.js");
+await import("../server/infrastructure/persistence/bootstrapSqliteBaseSchema.test.js");
 await import("../server/presentation/http/workflowEnhancements.test.js");

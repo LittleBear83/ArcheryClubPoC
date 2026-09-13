@@ -122,6 +122,7 @@ export function bootstrapSqliteUserData({
       upsertUser.run({
         ...user,
         goldenRecordsId: user.goldenRecordsId ?? null,
+        archeryGbMembershipNumber: user.archeryGbMembershipNumber ?? null,
         emailAddress: user.emailAddress ?? null,
         rfidTag: user.rfidTag ?? null,
         activeMember: user.activeMember ? 1 : 0,

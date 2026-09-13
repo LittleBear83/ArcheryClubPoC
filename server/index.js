@@ -5724,7 +5724,7 @@ app.delete("/api/beginners-courses/:id", async (req, res) => {
   });
 });
 
-registerCourseDateCancellationRoutes({ app, getActorUser, actorHasPermission, getCourseTypePermissions, beginnersCourseReadGateway, beginnersCourseWriteGateway, auditChangeLogger, getUtcTimestampParts, broadcastBeginnersUpdated, broadcastCalendarUpdated });
+registerCourseDateCancellationRoutes({ app, isLocalPiNode: serverRuntime.sync.isLocalPiNode, getActorUser, actorHasPermission, getCourseTypePermissions, beginnersCourseReadGateway, beginnersCourseWriteGateway, auditChangeLogger, getUtcTimestampParts, broadcastBeginnersUpdated, broadcastCalendarUpdated });
 
 app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
   const actor = getActorUser(req);

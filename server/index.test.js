@@ -51,6 +51,11 @@ test("schedule route wiring passes the local Pi flag only to schedule routes", a
   );
 });
 
+test("course date cancellation receives the runtime local Pi flag", async () => {
+  const source = await readFile(path.join(__dirname, "index.js"), "utf8");
+  assert.match(source, /registerCourseDateCancellationRoutes\(\{ app, isLocalPiNode: serverRuntime\.sync\.isLocalPiNode,/);
+});
+
 test("the rebaseline maintenance gate encloses outbox drain and snapshot application", async () => {
   const serverSource = await readFile(path.join(__dirname, "index.js"), "utf8");
   const syncSource = await readFile(

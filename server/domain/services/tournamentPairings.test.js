@@ -64,3 +64,49 @@ test("odd fields preserve bye slots and no archer appears twice", () => {
   assert.equal(round.matches[1].status, "bye");
   assert.equal(round.matches[1].winner.username, "b");
 });
+
+test("five archers in eight slots distribute all three byes and persist a valid draw", async () => {
+  // The identity shuffle previously paired the final two null slots together.
+  for (const chooseIndex of [(limit) => limit - 1, () => 0, (limit) => Math.floor(limit / 2)]) {
+    const field = entrants.slice(0, 5);
+    let plan = { draw: { randomiseEveryRound: true, roundPairings: {} } };
+    let writes = 0;
+    const round = buildTournamentBracket(field, new Map()).rounds[0];
+    await ensureRandomisedRoundDraw({ plan, round, previousRoundsReady: true, registrationClosed: true, chooseIndex, persist: async (number, pairings) => {
+      writes += 1;
+      plan = parseTournamentRoundPlan(buildTournamentRoundPlanJson({ draw: { ...plan.draw, roundPairings: { [number]: pairings } } }));
+      return plan;
+    } });
+    const pairings = plan.draw.roundPairings[1];
+    const slots = pairings.flat();
+    assert.deepEqual(slots.filter((slot) => slot !== null).sort(), ["a", "b", "c", "d", "e"]);
+    assert.equal(new Set(slots.filter((slot) => slot !== null)).size, 5);
+    assert.equal(slots.filter((slot) => slot === null).length, 3);
+    assert.equal(validateRoundPairings(pairings, names(round).flat()), true);
+    for (const [left, right] of pairings) {
+      assert.ok(left !== null || right !== null, "avoidable null/null match");
+      assert.notEqual(left, right, "self pairing");
+    }
+    const bracket = buildTournamentBracket(field, new Map(), new Map(), { roundPairings: plan.draw.roundPairings });
+    const reloaded = bracket.rounds[0];
+    assert.deepEqual(names(reloaded), pairings);
+    const byes = reloaded.matches.filter((match) => match.status === "bye");
+    assert.equal(byes.length, 3);
+    for (const match of byes) assert.equal(match.winner.username, (match.leftParticipant ?? match.rightParticipant).username);
+    assert.equal(reloaded.matches.filter((match) => match.leftParticipant && match.rightParticipant).length, 1);
+    assert.equal(await ensureRandomisedRoundDraw({ plan, round: reloaded, previousRoundsReady: true, registrationClosed: true, persist: () => { throw new Error("Persisted draw rewritten"); }, chooseIndex: () => { throw new Error("Persisted draw reshuffled"); } }), null);
+    assert.equal(writes, 1);
+    const scores = new Map([[1, new Map(field.map((archer, index) => [archer.username, 100 - index]))]]);
+    const progressed = buildTournamentBracket(field, scores, new Map(), { roundPairings: plan.draw.roundPairings });
+    const winners = progressed.rounds[0].matches.map((match) => match.winner.username).sort();
+    assert.deepEqual(names(progressed.rounds[1]).flat().sort(), winners);
+  }
+});
+
+test("sparse slots retain unavoidable empty matches without losing archers", () => {
+  const slots = randomiseRoundSlots(["a", "b", null, null, null, null, null, null], (limit) => limit - 1);
+  const pairings = Array.from({ length: 4 }, (_, index) => slots.slice(index * 2, index * 2 + 2));
+  assert.deepEqual(slots.filter((slot) => slot !== null).sort(), ["a", "b"]);
+  assert.equal(pairings.filter(([left, right]) => left === null && right === null).length, 2);
+  assert.equal(pairings.filter(([left, right]) => (left === null) !== (right === null)).length, 2);
+});

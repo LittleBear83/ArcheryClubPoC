@@ -79,6 +79,25 @@ test("cancel one or multiple dates atomically; history and whole-course cancella
   } finally { db.close(); }
 });
 
+test("local Pi rejects lesson-date cancellation before database access and retains reads", async () => {
+  const db = new Database(":memory:");
+  db.exec("CREATE TABLE beginners_course_lessons (id INTEGER PRIMARY KEY, course_id INTEGER, is_cancelled INTEGER NOT NULL DEFAULT 0); INSERT INTO beginners_course_lessons VALUES (1,10,0);");
+  const app = express(); app.use(express.json());
+  const unexpected = () => { throw new Error("Pi cancellation accessed a gateway or emitted a side effect"); };
+  registerCourseDateCancellationRoutes({ app, isLocalPiNode: true, getActorUser: unexpected, beginnersCourseReadGateway: { findCourseById: unexpected, listLessonsByCourseId: unexpected }, beginnersCourseWriteGateway: { cancelLessonDates: unexpected }, auditChangeLogger: { recordEntityChange: unexpected }, broadcastBeginnersUpdated: unexpected, broadcastCalendarUpdated: unexpected });
+  app.get("/api/beginners-courses/:id", (_req, res) => res.json(db.prepare("SELECT * FROM beginners_course_lessons WHERE course_id = 10").all()));
+  try {
+    await serve(app, async (request) => {
+      const response = await request("/api/beginners-courses/10/cancel-dates", { lessonIds: [1] });
+      assert.equal(response.status, 503);
+      assert.deepEqual(response.body, { success: false, message: "Course session date cancellation is cloud-authoritative and unavailable on the Pi." });
+      const read = await request("/api/beginners-courses/10", {}, "coordinator", "GET");
+      assert.equal(read.status, 200);
+      assert.deepEqual(read.body, [{ id: 1, course_id: 10, is_cancelled: 0 }]);
+    });
+  } finally { db.close(); }
+});
+
 test("captain pairing endpoint rejects invalid, unauthorised, future and result-bearing edits", async () => {
   const app = express(); app.use(express.json());
   let round = { roundNumber: 1, matches: [{ leftParticipant: { username: "a" }, rightParticipant: { username: "b" }, status: "scheduled" }, { leftParticipant: { username: "c" }, rightParticipant: null, status: "bye" }] };

@@ -1,5 +1,7 @@
-export function registerCourseDateCancellationRoutes({ app, getActorUser, actorHasPermission, getCourseTypePermissions, beginnersCourseReadGateway, beginnersCourseWriteGateway, auditChangeLogger, getUtcTimestampParts, broadcastBeginnersUpdated, broadcastCalendarUpdated }) {
+export function registerCourseDateCancellationRoutes({ app, isLocalPiNode = false, getActorUser, actorHasPermission, getCourseTypePermissions, beginnersCourseReadGateway, beginnersCourseWriteGateway, auditChangeLogger, getUtcTimestampParts, broadcastBeginnersUpdated, broadcastCalendarUpdated }) {
   app.post("/api/beginners-courses/:id/cancel-dates", async (req, res) => {
+    // Lesson dates are Cloud-authoritative; other course actions have their own sync contracts.
+    if (isLocalPiNode) return res.status(503).json({ success: false, message: "Course session date cancellation is cloud-authoritative and unavailable on the Pi." });
     const actor = getActorUser(req);
     if (!actor) return res.status(401).json({ success: false, message: "An authenticated member is required." });
     const course = await beginnersCourseReadGateway.findCourseById(req.params.id);

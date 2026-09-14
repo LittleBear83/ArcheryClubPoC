@@ -7269,6 +7269,7 @@ const stopLocalSyncBrowserBridge = startLocalSyncBrowserBridge({
   pool: db.pool,
   serverEventBus,
   isLocalPiNode: serverRuntime.sync.isLocalPiNode,
+  isCloudSyncServer: serverRuntime.sync.isCloudSyncServer,
   refreshRoleAccess: refreshRoleAccessSnapshot,
 });
 httpServer.once("close", stopLocalSyncBrowserBridge);

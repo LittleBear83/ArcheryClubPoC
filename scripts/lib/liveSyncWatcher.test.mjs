@@ -4,6 +4,7 @@ import process from "node:process";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { test } from "node:test";
 import { createSseParser, runLiveSyncWatcher, runLocalSyncChild, validateWatcherConfig } from "./liveSyncWatcher.mjs";
+import { listenLocalOutbox, LOCAL_OUTBOX_CHANNEL } from "./localOutboxListener.mjs";
 
 const sync = {
   nodeMode: "local-pi", apiBaseUrl: "https://sync.example.test/",
@@ -59,6 +60,8 @@ function harness(t, overrides = {}) {
     },
     log: (message) => state.logs.push(message),
     publicationSync: overrides.publicationSync ?? false,
+    listenLocalOutbox: overrides.listenLocalOutbox,
+    countPendingOutbox: overrides.countPendingOutbox,
     wait: (ms, signal) => {
       const pending = deferred();
       state.waits.push({ ms, resolve: pending.resolve });
@@ -446,3 +449,142 @@ test("child failures are sanitized and an aborted watcher cannot spawn", async (
   controller.abort();
   await runLocalSyncChild(controller.signal, { spawnProcess() { assert.fail("must not spawn"); } });
 });
+
+for (const publicationSync of [false, true]) {
+  test(`local INSERT wake and restart recovery ignore current cloud cursor (v2=${publicationSync})`, async (t) => {
+    const clients = [];
+    const queries = [];
+    let pending = 1;
+    const { state } = harness(t, {
+      publicationSync,
+      countPendingOutbox: async () => pending,
+      listenLocalOutbox: ({ signal, onWake }) => listenLocalOutbox({
+        signal, onWake,
+        pool: { async connect() {
+          const client = new EventEmitter();
+          client.query = async ({ text }) => queries.push(text);
+          client.release = () => {};
+          clients.push(client);
+          return client;
+        } },
+        countPendingOutbox: async () => {
+          assert.equal(queries.at(-1), `LISTEN ${LOCAL_OUTBOX_CHANNEL}`);
+          return pending;
+        },
+      }),
+      runSync: async () => { pending = 0; },
+    });
+    await until(() => state.runs === 1);
+    assert.equal(state.local, publicationSync ? '100' : 100);
+    pending = 1;
+    clients[0].emit('notification', { channel: LOCAL_OUTBOX_CHANNEL, payload: '' });
+    await until(() => state.runs === 2 && pending === 0);
+  });
+}
+
+for (const failure of ['throw', 'no-progress']) {
+  test(`local work survives ${failure} and wake bursts serialize children`, async (t) => {
+    let wake;
+    let pending = 1;
+    let active = 0;
+    let maxActive = 0;
+    const pass = deferred();
+    t.after(() => pass.resolve());
+    const { state } = harness(t, {
+      listenLocalOutbox: async ({ onWake }) => { wake = onWake; onWake(); },
+      countPendingOutbox: async () => pending,
+      runSync: async (current) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        try {
+          if (current.runs === 1) {
+            await pass.promise;
+            if (failure === 'throw') throw new Error(sync.machineSecret);
+          } else pending = 0;
+        } finally { active -= 1; }
+      },
+    });
+    await until(() => state.runs === 1);
+    for (let i = 0; i < 10; i += 1) wake();
+    pass.resolve();
+    await until(() => state.waits.length === 1);
+    assert.equal(pending, 1);
+    assert.equal(state.runs, 1);
+    assert.equal(state.waits[0].ms, 1000);
+    state.waits[0].resolve();
+    await until(() => state.runs === 2 && pending === 0);
+    await nextTurn();
+    assert.equal(state.runs, 2);
+    assert.equal(maxActive, 1);
+  });
+}
+
+test('local listener reconnect checks durable work again and ignores other channels', async () => {
+  const abort = new AbortController();
+  const clients = [];
+  const waits = [];
+  const releases = [];
+  let wakes = 0;
+  let pending = 0;
+  const task = listenLocalOutbox({
+    signal: abort.signal, onWake: () => { wakes += 1; },
+    countPendingOutbox: async () => pending,
+    pool: { async connect() {
+      const client = new EventEmitter();
+      client.query = async () => {};
+      client.release = () => releases.push(client);
+      clients.push(client);
+      return client;
+    } },
+    wait: async () => { const pause = deferred(); waits.push(pause); await pause.promise; },
+  });
+  await nextTurn();
+  clients[0].emit('notification', { channel: 'other' });
+  assert.equal(wakes, 0);
+  clients[0].emit('end');
+  await until(() => waits.length === 1);
+  pending = 1;
+  waits[0].resolve();
+  await until(() => wakes === 1);
+  abort.abort();
+  await task;
+  assert.equal(clients.length, 2);
+  assert.equal(releases.length, 2);
+  assert.equal(clients[1].listenerCount('notification'), 0);
+});
+
+for (const drained of [true, false]) {
+  test(`local hints during a successful child coalesce; drained=${drained}`, async (t) => {
+    let wake;
+    let pending = 1;
+    let active = 0;
+    let maxActive = 0;
+    const pass = deferred();
+    t.after(() => pass.resolve());
+    const { state } = harness(t, {
+      listenLocalOutbox: async ({ onWake }) => { wake = onWake; onWake(); },
+      countPendingOutbox: async () => pending,
+      runSync: async (current) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        if (current.runs === 1) {
+          await pass.promise;
+          pending = drained ? 0 : 1;
+        } else pending = 0;
+        active -= 1;
+      },
+    });
+    await until(() => state.runs === 1);
+    pending = 2;
+    for (let i = 0; i < 10; i += 1) wake();
+    pass.resolve();
+    if (!drained) {
+      await until(() => state.waits.length === 1);
+      state.waits[0].resolve();
+    }
+    await until(() => pending === 0 && active === 0);
+    await nextTurn();
+    assert.equal(state.runs, drained ? 1 : 2);
+    assert.equal(maxActive, 1);
+  });
+}

@@ -297,7 +297,7 @@ test("catch-up failures leave the new listener connected and able to deliver lat
   }
 });
 
-test("bridge is local-Pi only and closes connections acquired after shutdown", async () => {
+test("bridge ignores standalone nodes and closes connections acquired after shutdown", async () => {
   let connects = 0;
   startLocalSyncBrowserBridge({ pool: { connect() { connects += 1; } }, isLocalPiNode: false })();
   assert.equal(connects, 0);
@@ -342,4 +342,60 @@ test("every mapped event reaches the existing React hook's query invalidations",
     assert.deepEqual(invalidated, group.queryKeys.map((key) => key("kiosk")), event);
   }
   for (const dispose of cleanup) dispose?.();
+});
+
+for (const domain of ['login_events', 'guest_login_events', 'range_presence_extensions']) {
+  test(`cloud DB ${domain} sends range invalidation without database data`, async (t) => {
+    const client = new EventEmitter();
+    client.query = async ({ text }) => assert.equal(text, 'LISTEN archery_sync_change');
+    client.release = () => {};
+    const bus = createServerEventBus();
+    let wire = '';
+    const connection = bus.addClient({ username: 'member', res: { write: (text) => { wire += text; } } });
+    t.after(connection.disconnect);
+    const stop = startLocalSyncBrowserBridge({
+      isCloudSyncServer: true, isLocalPiNode: false,
+      pool: { connect: async () => client }, serverEventBus: bus,
+    });
+    t.after(stop);
+    await tick();
+    for (const payload of ['invalid', JSON.stringify({ domain: 'unknown' }), JSON.stringify({ domain: '__proto__' })]) {
+      client.emit('notification', { channel: 'archery_sync_change', payload });
+    }
+    client.emit('notification', { channel: 'archery_local_sync_applied', payload: JSON.stringify({ domains: ['users'] }) });
+    await tick();
+    assert.equal(wire, '');
+    client.emit('notification', { channel: 'archery_sync_change', payload: JSON.stringify({
+      domain, change_id: 123, recordKey: 'private', username: 'private', machineSecret: 'private', payload: { private: true },
+    }) });
+    await tick();
+    assert.equal(wire, 'event: range-members.updated\ndata: {}\n\n');
+  });
+}
+
+test('cloud bridge reconnect refreshes mapped groups and resumes domain hints', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const clients = [];
+  const events = [];
+  const stop = startLocalSyncBrowserBridge({
+    isCloudSyncServer: true,
+    pool: { async connect() {
+      const client = new EventEmitter();
+      client.query = async () => {};
+      client.release = () => {};
+      clients.push(client);
+      return client;
+    } },
+    serverEventBus: { broadcastToAll: (...args) => events.push(args) },
+  });
+  t.after(stop);
+  await tick();
+  clients[0].emit('error', new Error('lost'));
+  t.mock.timers.tick(5000);
+  await tick();
+  assert.deepEqual(events, localSyncBrowserEventNames(Object.keys(LOCAL_SYNC_EVENT_GROUPS)).map((name) => [name, {}]));
+  events.length = 0;
+  clients[1].emit('notification', { channel: 'archery_sync_change', payload: JSON.stringify({ domain: 'login_events' }) });
+  await tick();
+  assert.deepEqual(events, [['range-members.updated', {}]]);
 });

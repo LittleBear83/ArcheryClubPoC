@@ -11,6 +11,8 @@ import { migration as committeeMinutesSyncMigration } from "./011_committee_minu
 
 import { migration as lessonCancellationMigration } from "./012_lesson_cancellation.js";
 
+import { migration as localOutboxNotificationsMigration } from "./013_local_outbox_notifications.js";
+
 export const postgresMigrations = [
   syncFoundationMigration,
   syncLoginEventExternalIdsMigration,
@@ -23,4 +25,5 @@ export const postgresMigrations = [
   memberSignoffCommitteeSyncMigration,
   committeeMinutesSyncMigration,
   lessonCancellationMigration,
+  localOutboxNotificationsMigration,
 ];

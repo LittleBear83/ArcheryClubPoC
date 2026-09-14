@@ -1572,3 +1572,57 @@ test("lesson cancellation persists, rolls back mixed selections and replicates s
     assert.equal((await cloud.query("SELECT COUNT(*)::int AS n FROM beginners_course_lessons WHERE course_id = $1", [courseId])).rows[0].n, 3);
   } finally { client.release(); }
 });
+
+test('local outbox INSERT wakes only on commit and remains durable after listener restart', { timeout: 30000 }, async () => {
+  const pool = await createTemporaryPool('outbox_notify');
+  disposablePools.push(pool);
+  const listener = await pool.connect();
+  const writer = await pool.connect();
+  const notifications = [];
+  listener.on('notification', (message) => {
+    if (message.channel === 'archery_local_sync_outbox') notifications.push(message.payload);
+  });
+  async function barrier() {
+    const token = randomUUID();
+    let receive;
+    const delivered = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Notification barrier timed out')), 5000);
+      receive = (message) => {
+        if (message.channel === 'archery_outbox_test_barrier' && message.payload === token) {
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+      listener.on('notification', receive);
+    });
+    try {
+      await pool.query("SELECT pg_notify('archery_outbox_test_barrier', $1)", [token]);
+      await delivered;
+    } finally { listener.off('notification', receive); }
+  }
+  const insert = (id) => writer.query(`INSERT INTO sync_local_outbox
+    (event_id, event_type, aggregate_key, payload_json)
+    VALUES ($1, 'login_event', 'private-key', '{"username":"private"}'::jsonb)`, [id]);
+  try {
+    await listener.query('LISTEN archery_local_sync_outbox');
+    await listener.query('LISTEN archery_outbox_test_barrier');
+    await writer.query('BEGIN');
+    await insert('committed');
+    await barrier();
+    assert.deepEqual(notifications, []);
+    await writer.query('COMMIT');
+    await barrier();
+    assert.deepEqual(notifications, ['']);
+    await writer.query('BEGIN');
+    await insert('rolled-back');
+    await writer.query('ROLLBACK');
+    await barrier();
+    assert.deepEqual(notifications, ['']);
+    await listener.query('UNLISTEN archery_local_sync_outbox');
+    await insert('missed-wake');
+    await listener.query('LISTEN archery_local_sync_outbox');
+    assert.equal(await createSyncGateway({ pool }).countPendingOutboxEvents(listener), 2);
+    await barrier();
+    assert.deepEqual(notifications, ['']);
+  } finally { writer.release(true); listener.release(true); }
+});

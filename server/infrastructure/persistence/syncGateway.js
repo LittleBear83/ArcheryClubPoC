@@ -1051,14 +1051,18 @@ export function createSyncGateway({ pool }) {
           // Lock the member before checking newer commands, so a profile save
           // cannot commit a newer assignment between the guard and compensation.
           await client.query("SELECT username FROM users WHERE LOWER(username) = LOWER($1) FOR UPDATE", [payload.username]);
+          const owner = replacement ? await querySingleValue(client, `SELECT 1 FROM users
+            WHERE LOWER(BTRIM(rfid_tag)) = LOWER($1) AND LOWER(username) <> LOWER($2) LIMIT 1`,
+          [replacement, payload.username]) : null;
+          // A chained optimistic assignment may have taken the rollback tag.
+          // Fail closed instead of leaving the rejected credential active.
+          const safeReplacement = owner ? null : replacement;
           const compensated = await client.query(`UPDATE users SET rfid_tag = $2
             WHERE LOWER(username) = LOWER($1)
               AND LOWER(NULLIF(BTRIM(rfid_tag), '')) IS NOT DISTINCT FROM LOWER($3::text)
               AND NOT EXISTS (SELECT 1 FROM sync_local_outbox
-                WHERE event_type = 'member_rfid_updated' AND aggregate_key = $4 AND outbox_order > $5)
-              AND NOT EXISTS (SELECT 1 FROM users AS owner
-                WHERE LOWER(BTRIM(owner.rfid_tag)) = LOWER($2::text) AND LOWER(owner.username) <> LOWER($1))`,
-          [payload.username, replacement, normalizeRfidTag(payload.rfidTag), updatedRow.aggregate_key, updatedRow.outbox_order]);
+                WHERE event_type = 'member_rfid_updated' AND aggregate_key = $4 AND outbox_order > $5)`,
+          [payload.username, safeReplacement, normalizeRfidTag(payload.rfidTag), updatedRow.aggregate_key, updatedRow.outbox_order]);
           if (compensated.rowCount > 0) await notifyLocalSyncApplied(client, ["users"]);
           continue;
         }

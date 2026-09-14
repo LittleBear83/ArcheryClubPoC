@@ -1691,3 +1691,31 @@ test('RFID assignments commit atomically, replicate through users, reject duplic
   assert.equal((await local.query("SELECT rfid_tag FROM users WHERE username = 'Canonical'")).rows[0].rfid_tag, 'CLOUD');
   assert.equal(await localSync.countPendingOutboxEvents(), 0);
 });
+
+test('chained pending RFID assignments clear rejected credentials when rollback tags are locally owned', { timeout: 30000 }, async () => {
+  const pool = await createTemporaryPool('rfid_rejection_chain');
+  disposablePools.push(pool);
+  const gateway = createSyncGateway({ pool });
+  const profile = createMemberProfileGateway({ databaseEngine: 'postgres', pool, syncGateway: gateway });
+  for (const [id, username, tag] of [[1, 'A', 'RED'], [2, 'B', 'BLUE'], [3, 'C', 'GREEN']]) {
+    await seedUser(pool, id, username);
+    await pool.query('UPDATE users SET rfid_tag = $2 WHERE username = $1', [username, tag]);
+  }
+  for (const [username, rfidTag] of [['A', 'REJECTED'], ['B', 'red'], ['C', 'blue']]) {
+    await profile.saveMemberProfile({ userPayload: { username, firstName: 'Member', surname: 'Example', password: 'hash',
+      rfidTag, activeMember: 1, affiliateMember: 0, juniorMember: 0, coachingVolunteer: 0,
+      membershipStatus: 'member', programmeType: 'none', archeryGbMembershipNumber: '', emailAddress: '' },
+      userType: 'member', disciplines: [], loanBow: {}, rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } });
+  }
+  const events = await gateway.listPendingOutboxEvents({ limit: 10 });
+  assert.equal(events.length, 3);
+  await gateway.rejectOutboxEvents({ rejections: [{ eventId: events[0].eventId, code: 'member_rfid_conflict', authoritativeRfidTag: 'RED' }] });
+  assert.equal((await pool.query("SELECT rfid_tag FROM users WHERE username = 'A'")).rows[0].rfid_tag, null);
+  await gateway.rejectOutboxEvents({ rejections: [{ eventId: events[1].eventId, code: 'rfid_tag_in_use' }] });
+  assert.equal((await pool.query("SELECT rfid_tag FROM users WHERE username = 'B'")).rows[0].rfid_tag, null);
+  await gateway.rejectOutboxEvents({ rejections: [{ eventId: events[2].eventId, code: 'malformed_member_rfid_update' }] });
+  assert.deepEqual((await pool.query('SELECT username, rfid_tag FROM users ORDER BY username')).rows,
+    [{ username: 'A', rfid_tag: null }, { username: 'B', rfid_tag: null }, { username: 'C', rfid_tag: 'GREEN' }]);
+  assert.equal(await gateway.countPendingOutboxEvents(), 0);
+  assert.equal(await gateway.countRejectedOutboxEvents(), 3);
+});

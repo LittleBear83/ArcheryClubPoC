@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createSyncGateway } from "./syncGateway.js";
+import { createMemberProfileGateway } from "./memberProfileGateway.js";
 
 function createClientDouble() {
   const queries = [];
@@ -668,3 +669,70 @@ test('RFID compensation uses existing domain-only Pi browser hint in its transac
   assert.equal(queries.at(-1).text, 'COMMIT');
   assert.doesNotMatch(JSON.stringify(hint), /OLD|NEW|rfid_tag|rfidTag/);
 });
+
+for (const [code, guard] of [
+  ['rfid_tag_in_use', null], ['member_not_found', null],
+  ['malformed_member_rfid_update', null], ['member_rfid_conflict', null],
+  ['rfid_tag_in_use', 'newer-command'], ['member_rfid_conflict', 'current-value'],
+]) {
+  test(`chained pending RFID assignments fail closed on ${code}, guard=${guard}`, async () => {
+    const users = new Map([['A', 'RED'], ['B', 'BLUE'], ['C', 'GREEN']]);
+    const outbox = [];
+    const hints = [];
+    const statements = [];
+    const normalized = (value) => value?.trim().toLowerCase() ?? null;
+    const client = { async query(sql, parameters = []) {
+      const text = (typeof sql === 'object' ? sql.text : sql).replace(/\s+/g, ' ').trim();
+      const values = typeof sql === 'object' ? sql.values : parameters;
+      statements.push(text);
+      if (text.startsWith('SELECT username, rfid_tag')) return { rows: [{ username: values[0], rfid_tag: users.get(values[0]) }], rowCount: 1 };
+      if (text.startsWith('SELECT 1 FROM sync_local_outbox')) {
+        const pending = outbox.some((event) => event.aggregate_key === values[0].toLowerCase() && !event.rejected);
+        return { rows: pending ? [{}] : [], rowCount: pending ? 1 : 0 };
+      }
+      if (text.startsWith('SELECT 1 FROM users')) {
+        assert.match(text, /LOWER\(BTRIM\(rfid_tag\)\)/);
+        const owner = [...users].some(([name, tag]) => name.toLowerCase() !== values[1].toLowerCase() && normalized(tag) === normalized(values[0]));
+        return { rows: owner ? [{}] : [], rowCount: owner ? 1 : 0 };
+      }
+      if (text.startsWith('INSERT INTO users')) users.set(values[0], values[6]);
+      if (text.startsWith('INSERT INTO sync_local_outbox')) outbox.push({ event_id: values[0], event_type: 'member_rfid_updated', aggregate_key: values[1], payload_json: JSON.parse(values[2]), outbox_order: outbox.length + 1 });
+      if (text.startsWith('UPDATE sync_local_outbox')) {
+        const event = outbox.find((entry) => entry.event_id === values[0]);
+        event.rejected = true;
+        return { rows: [event], rowCount: 1 };
+      }
+      if (text.startsWith('UPDATE users')) {
+        assert.match(text, /outbox_order > \$5/);
+        assert.match(text, /IS NOT DISTINCT FROM/);
+        const newer = outbox.some((event) => event.aggregate_key === values[3] && event.outbox_order > values[4]);
+        if (newer || normalized(users.get(values[0])) !== normalized(values[2])) return { rows: [], rowCount: 0 };
+        assert.equal([...users].some(([name, tag]) => name !== values[0] && values[1] !== null && normalized(tag) === normalized(values[1])), false);
+        users.set(values[0], values[1]);
+        return { rows: [], rowCount: 1 };
+      }
+      if (text === 'SELECT pg_notify($1, $2)') hints.push(values);
+      return { rows: [], rowCount: 0 };
+    }, release() {} };
+    const pool = { connect: async () => client };
+    const gateway = createSyncGateway({ pool });
+    const profile = createMemberProfileGateway({ databaseEngine: 'postgres', pool, syncGateway: gateway });
+    for (const [username, rfidTag] of [['A', 'REJECTED'], ['B', 'red'], ['C', 'blue']]) {
+      await profile.saveMemberProfile({ userPayload: { username, rfidTag }, disciplines: [], loanBow: {}, userType: 'member',
+        rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } });
+    }
+    assert.equal(outbox.length, 3);
+    if (guard === 'newer-command') outbox.push({ ...outbox[0], event_id: 'newer', outbox_order: 4, rejected: false });
+    if (guard === 'current-value') users.set('A', 'LATEST');
+    for (const event of outbox.slice(0, 3)) {
+      await gateway.rejectOutboxEvents({ rejections: [{ eventId: event.event_id, code,
+        authoritativeRfidTag: event.payload_json.previousRfidTag }] });
+    }
+    assert.deepEqual([...users], [['A', guard === 'newer-command' ? 'REJECTED' : guard === 'current-value' ? 'LATEST' : null], ['B', null], ['C', 'GREEN']]);
+    assert.ok(outbox.slice(0, 3).every((event) => event.rejected));
+    assert.equal(hints.length, guard ? 2 : 3);
+    for (const hint of hints) assert.deepEqual(hint, ['archery_local_sync_applied', JSON.stringify({ domains: ['users'] })]);
+    assert.doesNotMatch(JSON.stringify(hints), /RED|BLUE|GREEN|REJECTED|authoritativeRfidTag/);
+    assert.equal(statements.at(-1), 'COMMIT');
+  });
+}

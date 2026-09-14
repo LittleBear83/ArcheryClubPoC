@@ -14,4 +14,3 @@ export const migration = {
      FOR EACH ROW EXECUTE FUNCTION notify_local_sync_outbox()`,
   ],
 };
-

@@ -1035,6 +1035,7 @@ const memberAuthGateway = createMemberAuthGateway({
 });
 
 const memberProfileGateway = createMemberProfileGateway({
+  syncGateway,
   databaseEngine: serverRuntime.databaseEngine,
   deleteUserDisciplines,
   findLoanBowByUsername,
@@ -4905,6 +4906,7 @@ registerAuthRoutes({
 });
 
 registerAdminMemberRoutes({
+  syncNodeMode: serverRuntime.sync.nodeMode,
   actorHasPermission,
   ALLOWED_DISCIPLINES,
   app,

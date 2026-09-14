@@ -860,3 +860,30 @@ test("presence command returns terminal conflict details without retrying foreve
     server.close();
   }
 });
+
+for (const outcome of [{ accepted: true }, { accepted: false, code: 'rfid_tag_in_use', reason: 'Already assigned.' },
+  { accepted: false, code: 'member_rfid_conflict', reason: 'Refresh cloud state.', authoritativeRfidTag: 'CLOUD' }]) {
+  test(`push delegates RFID command and returns machine-only outcome ${outcome.code ?? 'accepted'}`, async () => {
+    const handlers = new Map();
+    const auth = () => {};
+    const queries = [];
+    const client = { query: async (sql) => { queries.push(sql); }, release() {} };
+    const event = { eventId: 'rfid-1', eventType: 'member_rfid_updated', payload: { private: 'rfid' } };
+    registerSyncRoutes({
+      app: { get() {}, post(path, ...chain) { handlers.set(path, chain); } },
+      authenticateMachineRequest: auth,
+      syncGateway: { pool: { connect: async () => client }, async processMemberRfidUpdateCommand(args) {
+        assert.deepEqual(args, { client, event, machineId: 'Pi' });
+        return outcome;
+      } },
+    });
+    const chain = handlers.get('/api/sync/v1/push');
+    assert.equal(chain[0], auth);
+    let body;
+    await chain[1]({ body: { events: [event] }, syncMachine: { machineId: 'Pi' } }, { json(value) { body = value; } });
+    assert.deepEqual(body.acceptedEventIds, outcome.accepted ? ['rfid-1'] : []);
+    assert.deepEqual(body.rejectedEvents, outcome.accepted ? [] : [{ eventId: 'rfid-1', code: outcome.code, reason: outcome.reason,
+      ...(Object.hasOwn(outcome, 'authoritativeRfidTag') ? { authoritativeRfidTag: 'CLOUD' } : {}) }]);
+    assert.deepEqual(queries, ['BEGIN', 'COMMIT']);
+  });
+}

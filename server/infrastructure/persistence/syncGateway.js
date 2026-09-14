@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { normalizeRfidTag, rfidTagsEqual } from "../../domain/services/memberPersistenceService.js";
+import { notifyLocalSyncApplied } from "./localSyncBrowserBridge.js";
 import {
   validateCoachingBookingEligibility,
   validateEventBookingEligibility,
@@ -997,6 +999,18 @@ export function createSyncGateway({ pool }) {
       );
     },
     async rejectOutboxEvents({ client = pool, rejections = [] }) {
+      if (rejections.length && client === pool && typeof pool.connect === "function") {
+        const transaction = await pool.connect();
+        try {
+          await transaction.query("BEGIN");
+          await this.rejectOutboxEvents({ client: transaction, rejections });
+          await transaction.query("COMMIT");
+        } catch (error) {
+          await transaction.query("ROLLBACK");
+          throw error;
+        } finally { transaction.release(); }
+        return;
+      }
       for (const rejection of rejections) {
         const updatedRow = await querySingleValue(
           client,
@@ -1021,6 +1035,31 @@ export function createSyncGateway({ pool }) {
         );
 
         if (!updatedRow) {
+          continue;
+        }
+
+        if (updatedRow.event_type === "member_rfid_updated") {
+          const payload = updatedRow.payload_json;
+          const nullableTag = (value) => value === null || typeof value === "string";
+          if (typeof payload?.username !== "string" || !nullableTag(payload.rfidTag)
+            || !nullableTag(payload.previousRfidTag)) continue;
+          const conflict = rejection.code === "member_rfid_conflict";
+          if (conflict && !nullableTag(rejection.authoritativeRfidTag)) continue;
+          if (!conflict && !["rfid_tag_in_use", "member_not_found", "malformed_member_rfid_update"].includes(rejection.code)) continue;
+          const replacement = normalizeRfidTag(conflict ? rejection.authoritativeRfidTag : payload.previousRfidTag);
+          if (replacement) await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`archery:rfid:${replacement.toLowerCase()}`]);
+          // Lock the member before checking newer commands, so a profile save
+          // cannot commit a newer assignment between the guard and compensation.
+          await client.query("SELECT username FROM users WHERE LOWER(username) = LOWER($1) FOR UPDATE", [payload.username]);
+          const compensated = await client.query(`UPDATE users SET rfid_tag = $2
+            WHERE LOWER(username) = LOWER($1)
+              AND LOWER(NULLIF(BTRIM(rfid_tag), '')) IS NOT DISTINCT FROM LOWER($3::text)
+              AND NOT EXISTS (SELECT 1 FROM sync_local_outbox
+                WHERE event_type = 'member_rfid_updated' AND aggregate_key = $4 AND outbox_order > $5)
+              AND NOT EXISTS (SELECT 1 FROM users AS owner
+                WHERE LOWER(BTRIM(owner.rfid_tag)) = LOWER($2::text) AND LOWER(owner.username) <> LOWER($1))`,
+          [payload.username, replacement, normalizeRfidTag(payload.rfidTag), updatedRow.aggregate_key, updatedRow.outbox_order]);
+          if (compensated.rowCount > 0) await notifyLocalSyncApplied(client, ["users"]);
           continue;
         }
 
@@ -1364,6 +1403,51 @@ export function createSyncGateway({ pool }) {
           machineId ?? null,
         ],
       );
+    },
+    async enqueueMemberRfidUpdateCommand({ client, payload }) {
+      await client.query(`INSERT INTO sync_local_outbox (event_id, event_type, aggregate_key, payload_json)
+        VALUES ($1, 'member_rfid_updated', $2, $3::jsonb)`,
+      [payload.eventId, payload.username.toLowerCase(), JSON.stringify(payload)]);
+    },
+    async processMemberRfidUpdateCommand({ client = pool, event, machineId }) {
+      // All command processing uses the caller's push transaction. Serialize
+      // replay before checking the durable outcome, including terminal failures.
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`archery:rfid-command:${event.eventId}`]);
+      const prior = await querySingleValue(client,
+        "SELECT outcome_json FROM sync_received_commands WHERE event_id = $1", [event.eventId]);
+      if (prior) return prior.outcome_json;
+      const payload = event.payload;
+      const nullableTag = (value) => value === null || typeof value === "string";
+      let outcome;
+      if (!payload || typeof payload.username !== "string" || !payload.username.trim()
+        || typeof payload.updatedByUsername !== "string" || !payload.updatedByUsername.trim()
+        || typeof payload.eventId !== "string" || payload.eventId !== event.eventId
+        || !nullableTag(payload.previousRfidTag) || !nullableTag(payload.rfidTag)) {
+        outcome = { accepted: false, code: "malformed_member_rfid_update", reason: "RFID updates require a member, actor and valid expected and requested tags." };
+      } else {
+        const tag = normalizeRfidTag(payload.rfidTag);
+        if (tag) await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`archery:rfid:${tag.toLowerCase()}`]);
+        const member = await querySingleValue(client,
+          "SELECT username, rfid_tag FROM users WHERE LOWER(username) = LOWER($1) FOR UPDATE", [payload.username.trim()]);
+        if (!member) outcome = { accepted: false, code: "member_not_found", reason: "The member no longer exists in cloud." };
+        else if (rfidTagsEqual(member.rfid_tag, tag)) outcome = { accepted: true };
+        else if (!rfidTagsEqual(member.rfid_tag, payload.previousRfidTag)) {
+          outcome = { accepted: false, code: "member_rfid_conflict",
+            reason: "The member RFID assignment changed in cloud and must be refreshed.",
+            authoritativeRfidTag: normalizeRfidTag(member.rfid_tag) };
+        } else {
+          const owner = tag ? await querySingleValue(client, `SELECT 1 FROM users
+            WHERE LOWER(BTRIM(rfid_tag)) = LOWER($1) AND LOWER(username) <> LOWER($2) LIMIT 1`, [tag, member.username]) : null;
+          if (owner) outcome = { accepted: false, code: "rfid_tag_in_use", reason: "That RFID tag is already assigned to another member." };
+          else {
+            await client.query("UPDATE users SET rfid_tag = $2 WHERE username = $1", [member.username, tag]);
+            outcome = { accepted: true };
+          }
+        }
+      }
+      await client.query(`INSERT INTO sync_received_commands (event_id, event_type, machine_id, outcome_json)
+        VALUES ($1, $2, $3, $4::jsonb)`, [event.eventId, event.eventType, machineId, JSON.stringify(outcome)]);
+      return outcome;
     },
     async processRangePresenceCommand({ client = pool, event, machineId }) {
       const prior = await querySingleValue(

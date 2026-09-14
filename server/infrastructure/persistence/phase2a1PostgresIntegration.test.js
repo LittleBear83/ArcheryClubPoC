@@ -19,6 +19,7 @@ import { buildInitialSchemaSql, runPostgresMigrations } from "./runPostgresMigra
 import { createMemberAuthGateway } from "./memberAuthGateway.js";
 import { createActivityReportingGateway } from "./activityReportingGateway.js";
 import { createSyncGateway } from "./syncGateway.js";
+import { createMemberProfileGateway } from "./memberProfileGateway.js";
 import { createSyncPublicationGateway } from "./syncPublicationGateway.js";
 import { registerSyncRoutes } from "../../presentation/http/registerSyncRoutes.js";
 import { beginPublication, assignPublications, publish, pullPublications, waitForDatabaseBlock } from "./syncPublicationPrototype.test-support.js";
@@ -1625,4 +1626,68 @@ test('local outbox INSERT wakes only on commit and remains durable after listene
     await barrier();
     assert.deepEqual(notifications, ['']);
   } finally { writer.release(true); listener.release(true); }
+});
+
+test('RFID assignments commit atomically, replicate through users, reject duplicates and serialize concurrency', { timeout: 30000 }, async () => {
+  const local = await createTemporaryPool('rfid_local');
+  const cloud = await createTemporaryPool('rfid_cloud');
+  disposablePools.push(local, cloud);
+  await seedUser(local, 1, 'Canonical');
+  await seedUser(cloud, 1, 'Canonical');
+  await seedUser(cloud, 2, 'Other');
+  await local.query("UPDATE users SET rfid_tag = 'OLD' WHERE username = 'Canonical'");
+  await cloud.query("UPDATE users SET rfid_tag = 'OLD' WHERE username = 'Canonical'");
+  const localSync = createSyncGateway({ pool: local });
+  const profile = createMemberProfileGateway({ databaseEngine: 'postgres', pool: local, syncGateway: localSync });
+  const input = { userPayload: { username: 'Canonical', firstName: 'Member', surname: 'Example', password: 'hash',
+    rfidTag: 'NEW', activeMember: 1, affiliateMember: 0, juniorMember: 0, coachingVolunteer: 0,
+    membershipStatus: 'member', programmeType: 'none', archeryGbMembershipNumber: '', emailAddress: '' },
+    userType: 'member', disciplines: [], loanBow: {}, rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } };
+  await profile.saveMemberProfile(input);
+  const pending = await localSync.listPendingOutboxEvents({ limit: 10 });
+  assert.equal(pending.length, 1);
+  assert.equal((await local.query("SELECT rfid_tag FROM users WHERE username = 'Canonical'")).rows[0].rfid_tag, 'NEW');
+  await assert.rejects(profile.saveMemberProfile({ ...input, userPayload: { ...input.userPayload, rfidTag: 'SECOND' } }), { code: 'rfid_update_pending' });
+  const cloudSync = createSyncGateway({ pool: cloud });
+  async function process(event) {
+    const client = await cloud.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await cloudSync.processMemberRfidUpdateCommand({ client, event, machineId: 'Pi' });
+      await client.query('COMMIT');
+      return result;
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
+  }
+  const event = pending[0];
+  assert.deepEqual(await process(event), { accepted: true });
+  const changes = await cloud.query("SELECT change_id FROM sync_change_log WHERE domain = 'users' AND record_key = 'Canonical'");
+  assert.deepEqual(await process(event), { accepted: true });
+  assert.equal((await cloud.query("SELECT change_id FROM sync_change_log WHERE domain = 'users' AND record_key = 'Canonical'")).rowCount, changes.rowCount);
+  await localSync.acknowledgeOutboxEvents({ eventIds: [event.eventId] });
+  const failingProfile = createMemberProfileGateway({ databaseEngine: 'postgres', pool: local,
+    syncGateway: { enqueueMemberRfidUpdateCommand: async () => { throw new Error('Forced enqueue failure'); } } });
+  await assert.rejects(failingProfile.saveMemberProfile({ ...input, userPayload: { ...input.userPayload, rfidTag: 'FAIL' } }), /Forced enqueue failure/);
+  assert.equal((await local.query("SELECT rfid_tag FROM users WHERE username = 'Canonical'")).rows[0].rfid_tag, 'NEW');
+  assert.equal(await localSync.countPendingOutboxEvents(), 0);
+  const command = (username, previousRfidTag, rfidTag) => {
+    const eventId = randomUUID();
+    return { eventId, eventType: 'member_rfid_updated', payload: { eventId, username, previousRfidTag, rfidTag, updatedByUsername: 'Admin' } };
+  };
+  assert.equal((await process(command('Other', null, 'new'))).code, 'rfid_tag_in_use');
+  const conflict = await process(command('Canonical', 'OLD', 'PI'));
+  assert.equal(conflict.code, 'member_rfid_conflict');
+  assert.equal(conflict.authoritativeRfidTag, 'NEW');
+  assert.deepEqual(await process(command('Canonical', 'new', null)), { accepted: true });
+  const races = await Promise.all([process(command('Canonical', null, 'shared')), process(command('Other', null, 'SHARED'))]);
+  assert.equal(races.filter((result) => result.accepted).length, 1);
+  assert.equal(races.find((result) => !result.accepted).code, 'rfid_tag_in_use');
+  await profile.saveMemberProfile({ ...input, userPayload: { ...input.userPayload, rfidTag: 'PI' } });
+  const optimistic = (await localSync.listPendingOutboxEvents({ limit: 10 }))[0];
+  await cloud.query("UPDATE users SET rfid_tag = 'CLOUD' WHERE username = 'Canonical'");
+  const rejected = await process(optimistic);
+  assert.equal(rejected.code, 'member_rfid_conflict');
+  await localSync.rejectOutboxEvents({ rejections: [{ eventId: optimistic.eventId, ...rejected }] });
+  assert.equal((await local.query("SELECT rfid_tag FROM users WHERE username = 'Canonical'")).rows[0].rfid_tag, 'CLOUD');
+  assert.equal(await localSync.countPendingOutboxEvents(), 0);
 });

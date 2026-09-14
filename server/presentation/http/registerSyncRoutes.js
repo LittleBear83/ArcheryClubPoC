@@ -251,6 +251,7 @@ export function registerSyncRoutes({
             "event_booking_withdrawn",
             "coaching_booking_created",
             "coaching_booking_withdrawn",
+            "member_rfid_updated",
           ].includes(event?.eventType) ||
           typeof event?.eventId !== "string"
         ) {
@@ -309,6 +310,11 @@ export function registerSyncRoutes({
             surname: event.payload.surname,
           });
           acceptedEventIds.push(event.eventId);
+        } else if (event.eventType === "member_rfid_updated") {
+          const outcome = await syncGateway.processMemberRfidUpdateCommand({ client, event, machineId: req.syncMachine.machineId });
+          if (outcome.accepted) acceptedEventIds.push(event.eventId);
+          else rejectedEvents.push({ eventId: event.eventId, code: outcome.code, reason: outcome.reason,
+            ...(Object.hasOwn(outcome, "authoritativeRfidTag") ? { authoritativeRfidTag: outcome.authoritativeRfidTag } : {}) });
         } else if (event.eventType === "range_presence_extension_upsert") {
           const outcome = await syncGateway.processRangePresenceCommand({
             client,

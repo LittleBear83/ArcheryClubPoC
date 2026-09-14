@@ -1117,3 +1117,68 @@ test("reporting attendance route rejects authenticated members without report pe
     server.close();
   }
 });
+
+function adminRfidHarness({ nodeMode = 'local-pi', manager = true, pending = false } = {}) {
+  const handlers = new Map();
+  const calls = [];
+  const events = [];
+  const member = { username: 'Canonical', first_name: 'Member', surname: 'Example', rfid_tag: 'OLD', user_type: 'member' };
+  const actor = { username: manager ? 'Admin' : 'Canonical', permissions: manager ? ['manage_members'] : [] };
+  registerAdminMemberRoutes({
+    syncNodeMode: nodeMode,
+    app: { get() {}, delete() {}, post(path, fn) { handlers.set(`POST ${path}`, fn); }, put(path, fn) { handlers.set(`PUT ${path}`, fn); } },
+    PERMISSIONS: { MANAGE_MEMBERS: 'manage_members' }, actorHasPermission: (user, permission) => user.permissions.includes(permission),
+    getActorUser: () => actor, getUtcTimestampParts: () => ['2026-09-14', '12:00:00'],
+    buildEditableMemberProfile: () => ({}), buildLoanBowRecord: () => ({}),
+    memberDirectoryGateway: { findUserByUsername: async () => member, findDisciplinesByUsername: async () => [], findLoanBowByUsername: async () => null },
+    memberDistanceSignOffRepository: { listByDiscipline: async () => [] },
+    saveMemberProfile: async (input) => {
+      calls.push(input);
+      return pending ? { success: false, status: 409, code: 'rfid_update_pending', message: 'An RFID update for this member is already waiting to sync.' }
+        : { success: true, editableProfile: { disciplines: [] } };
+    },
+    serverEventBus: { broadcastToAnyPermission: (...args) => events.push(args), broadcastToUsers: (...args) => events.push(args) },
+  });
+  return { calls, events, async run(path, rfidTag = 'NEW') {
+    let status = 200;
+    let body;
+    await handlers.get(path)({ params: { username: 'canonical' }, body: { firstName: 'Member', surname: 'Example', rfidTag } },
+      { status(value) { status = value; return this; }, json(value) { body = value; } });
+    return { status, body };
+  } };
+}
+
+for (const nodeMode of ['local-pi', 'cloud-server']) {
+  for (const path of ['PUT /api/user-profiles/:username', 'POST /api/user-profiles/:username/assign-rfid']) {
+    test(`admin RFID route ${path} passes canonical member and ${nodeMode} context without RFID in SSE`, async () => {
+      const h = adminRfidHarness({ nodeMode });
+      assert.equal((await h.run(path)).status, 200);
+      assert.deepEqual(h.calls[0].syncContext, { nodeMode, canManageMembers: true, actorUsername: 'Admin' });
+      assert.equal(h.calls[0].username, 'Canonical');
+      assert.doesNotMatch(JSON.stringify(h.events), /NEW|OLD|rfidTag|rfid_tag/);
+    });
+  }
+}
+
+test('admin RFID pending command is returned as 409 without invalidation', async () => {
+  const h = adminRfidHarness({ pending: true });
+  const result = await h.run('PUT /api/user-profiles/:username');
+  assert.equal(result.status, 409);
+  assert.equal(result.body.code, 'rfid_update_pending');
+  assert.equal(h.events.length, 0);
+});
+
+test('self profile route preserves RFID; non-manager cannot issue cards', async () => {
+  const h = adminRfidHarness({ manager: false });
+  assert.equal((await h.run('PUT /api/user-profiles/:username')).status, 200);
+  assert.equal(h.calls[0].rfidTag, 'OLD');
+  assert.equal(h.calls[0].syncContext.canManageMembers, false);
+  assert.equal((await h.run('POST /api/user-profiles/:username/assign-rfid')).status, 403);
+  assert.equal(h.calls.length, 1);
+});
+
+test('unchanged RFID route passes ordinary persistence values', async () => {
+  const h = adminRfidHarness();
+  assert.equal((await h.run('PUT /api/user-profiles/:username', 'OLD')).status, 200);
+  assert.equal(h.calls[0].rfidTag, 'OLD');
+});

@@ -154,6 +154,7 @@ await import(
   ),
 );
 await import("../server/domain/services/localSyncBrowserEvents.test.js");
+await import("../server/infrastructure/persistence/memberProfileGateway.test.js");
 await import(
   pathToFileURL(path.join(root, "server/domain/services/tournamentEngine.test.js"))
 );

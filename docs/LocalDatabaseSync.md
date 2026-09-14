@@ -374,3 +374,26 @@ Trigger immediately for a manual service run:
 systemctl start selby-db-sync.service
 journalctl -u selby-db-sync.service -n 100 --no-pager
 ```
+
+## Pi RFID assignment commands
+
+Pi administrators with `MANAGE_MEMBERS` can assign, change or clear RFID for an existing member. The profile gateway locks the member and saves the profile plus one durable `member_rfid_updated` outbox command in the same PostgreSQL transaction. An unresolved command prevents a second RFID change with HTTP 409 / `rfid_update_pending`. Unchanged values, self-edits, cloud saves and new Pi-only member creation do not enqueue commands. Automatic membership-expiry deactivation keeps its existing behavior and is not synchronised by this command.
+
+The aggregate key is the lower-case canonical username. The payload contains a single generated `eventId`, canonical `username`, nullable trimmed `previousRfidTag` and `rfidTag`, and `updatedByUsername`. Comparisons and ownership checks are case-insensitive; existing stored RFID formats are not migrated. Cloud validates that the member exists and remains authoritative for users; this command never creates a cloud member or sends general profile edits upstream.
+
+PR #50 wakes the existing sync worker after the outbox commit. The existing authenticated `/api/sync/v1/push` handler delegates to the gateway, which stores every terminal outcome in `sync_received_commands`. Replays return that outcome. If cloud already matches the requested tag, the command succeeds even when its previous value differs. Otherwise a stale previous value returns `member_rfid_conflict` with `authoritativeRfidTag` to the machine client only. A tag owned by another member returns `rfid_tag_in_use`. Namespaced transaction-scoped advisory locks serialize same-tag assignment before ownership checks; the existing unique constraint remains intact.
+
+Accepted updates use the normal users sync-change trigger, PR #50 browser invalidation with empty event data, and ordinary cloud-to-Pi replication. RFID values are never included in the new browser events or application logs. Terminal rejection marking and compensation share a transaction. Compensation requires no newer RFID command for the aggregate and a current local tag that still equals the rejected request. Duplicate, missing-member and malformed-command failures restore the previous value; conflicts reconcile to the cloud value. If the intended rollback or authoritative tag is already owned by another local member, compensation fails closed by setting the target RFID to NULL, subject to the same newer-command and current-value guards. It emits only the existing users-domain invalidation. Timeouts, connection failures, 429s and 5xx responses retain the optimistic tag and pending command for the existing retries.
+
+### Deployment and manual verification
+
+Deploy **cloud first, Pi second**. Restart the normal application and Pi watcher services as part of deployment. No migration, rebaseline, cursor reset or outbox deletion is required. Do not manually start `selby-db-sync.service` for these checks:
+
+1. **Assignment:** change an existing cloud-known member's RFID on Pi. Confirm one `member_rfid_updated` command, automatic acknowledgement within seconds and matching cloud RFID. Confirm the open cloud member page updates and normal pull confirms the assignment.
+2. **Clear:** clear RFID through the member profile editor. Confirm the command payload has `rfidTag = null`, cloud stores NULL and the command is acknowledged.
+3. **Duplicate:** choose a tag already owned by another member in cloud but absent locally. Confirm `rfid_tag_in_use`, unchanged cloud ownership and restoration of the previous Pi value without revealing the owner's identity.
+4. **Stale conflict:** with Pi at OLD and cloud at CLOUD, request PI on the Pi. Confirm `member_rfid_conflict`, cloud stays CLOUD, and Pi reconciles to CLOUD. Inspect authoritative tag metadata only via restricted machine/database diagnostics, never browser SSE or logs.
+5. **Offline retry:** block cloud access, change RFID on Pi and confirm the optimistic value and pending command remain. Restore access and confirm the existing watcher retries automatically, acknowledges the command and cloud matches.
+6. **Pending protection:** while a command is unresolved, attempt a second different assignment. Confirm HTTP 409 / `rfid_update_pending` and no local RFID change or additional command.
+
+The guarded PostgreSQL integration suite includes atomic commit, forced enqueue rollback, normal users change-log generation, duplicate ownership rejection, replay idempotency and same-tag concurrency. Run it only with the repository's safe disposable database environment configured.

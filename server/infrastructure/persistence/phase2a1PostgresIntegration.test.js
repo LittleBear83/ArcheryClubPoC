@@ -1642,7 +1642,7 @@ test('RFID assignments commit atomically, replicate through users, reject duplic
   const input = { userPayload: { username: 'Canonical', firstName: 'Member', surname: 'Example', password: 'hash',
     rfidTag: 'NEW', activeMember: 1, affiliateMember: 0, juniorMember: 0, coachingVolunteer: 0,
     membershipStatus: 'member', programmeType: 'none', archeryGbMembershipNumber: '', emailAddress: '' },
-    userType: 'member', disciplines: [], loanBow: {}, rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } };
+    userType: 'member', disciplines: [], loanBow: { hasLoanBow: false, arrowCount: 0 }, rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } };
   await profile.saveMemberProfile(input);
   const pending = await localSync.listPendingOutboxEvents({ limit: 10 });
   assert.equal(pending.length, 1);
@@ -1705,7 +1705,7 @@ test('chained pending RFID assignments clear rejected credentials when rollback 
     await profile.saveMemberProfile({ userPayload: { username, firstName: 'Member', surname: 'Example', password: 'hash',
       rfidTag, activeMember: 1, affiliateMember: 0, juniorMember: 0, coachingVolunteer: 0,
       membershipStatus: 'member', programmeType: 'none', archeryGbMembershipNumber: '', emailAddress: '' },
-      userType: 'member', disciplines: [], loanBow: {}, rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } });
+      userType: 'member', disciplines: [], loanBow: { hasLoanBow: false, arrowCount: 0 }, rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } });
   }
   const events = await gateway.listPendingOutboxEvents({ limit: 10 });
   assert.equal(events.length, 3);

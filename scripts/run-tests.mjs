@@ -101,6 +101,14 @@ await import(
   pathToFileURL(
     path.join(
       root,
+      "server/infrastructure/persistence/postgresMigrations/014_tournament_sync.test.js",
+    ),
+  ),
+);
+await import(
+  pathToFileURL(
+    path.join(
+      root,
       "server/infrastructure/persistence/postgresMigrations/011_committee_minutes_sync.test.js",
     ),
   ),
@@ -144,6 +152,9 @@ await import(
 );
 await import(
   pathToFileURL(path.join(root, "server/domain/services/localDatabaseSyncService.test.js"))
+);
+await import(
+  pathToFileURL(path.join(root, "server/domain/services/tournamentSync.test.js"))
 );
 await import(
   pathToFileURL(

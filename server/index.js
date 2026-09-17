@@ -7173,6 +7173,7 @@ registerTournamentRoutes({
   getActorUser,
   getUtcTimestampParts,
   handicapTableGateway,
+  isLocalPiNode: serverRuntime.sync.isLocalPiNode,
   memberDirectoryGateway,
   path,
   PERMISSIONS,

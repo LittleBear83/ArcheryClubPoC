@@ -24,6 +24,23 @@ import {
   serializeTournamentTemplateDefinition,
 } from "../../domain/services/tournamentTemplateService.js";
 
+export function isBlockedLocalPiTournamentMutation(method, requestPath) {
+  const normalizedMethod = String(method ?? "").toUpperCase();
+  const normalizedPath = String(requestPath ?? "").split("?")[0];
+  const rules = [
+    ["POST", /^\/api\/tournament-templates\/?$/],
+    ["POST", /^\/api\/tournaments\/?$/],
+    ["PUT", /^\/api\/tournaments\/[^/]+\/?$/],
+    ["DELETE", /^\/api\/tournaments\/[^/]+\/?$/],
+    ["POST", /^\/api\/tournaments\/[^/]+\/(redraw|register|score)\/?$/],
+    ["DELETE", /^\/api\/tournaments\/[^/]+\/register\/?$/],
+    ["PUT", /^\/api\/tournaments\/[^/]+\/rounds\/[^/]+\/pairings\/?$/],
+    ["POST", /^\/api\/tournament-matches\/[^/]+\/(result|confirm|dispute|override)\/?$/],
+  ];
+  return rules.some(([ruleMethod, pattern]) =>
+    normalizedMethod === ruleMethod && pattern.test(normalizedPath));
+}
+
 export function registerTournamentRoutes({
   actorHasPermission,
   app,
@@ -36,6 +53,7 @@ export function registerTournamentRoutes({
   getUtcTimestampParts,
   handicapTableGateway,
   memberDirectoryGateway,
+  isLocalPiNode = false,
   path,
   PERMISSIONS,
   sanitizeFileNameSegment,
@@ -47,6 +65,16 @@ export function registerTournamentRoutes({
   writeFileSync,
   chooseRandomIndex = randomInt,
 }) {
+  app.use?.((req, res, next) => {
+    if (isLocalPiNode && isBlockedLocalPiTournamentMutation(req.method, req.originalUrl ?? req.path)) {
+      res.status(503).json({
+        success: false,
+        message: "Tournament administration is Cloud-authoritative while local tournament sync is operating in read-only mode.",
+      });
+      return;
+    }
+    next();
+  });
   app.use?.(["/api/tournaments", "/api/tournament-matches"], createTournamentWorkflowLock(tournamentGateway));
 
   const broadcastTournamentsUpdated = (scope = "tournaments") => {
@@ -952,18 +980,20 @@ export function registerTournamentRoutes({
           actor?.username ?? null,
         );
 
-        const randomizedDrawSnapshot = await maybeFreezeRandomizedDraw(
-          tournament,
-          registrations,
-          matches,
-          actor?.username ?? null,
-        );
+        const randomizedDrawSnapshot = isLocalPiNode
+          ? null
+          : await maybeFreezeRandomizedDraw(
+              tournament,
+              registrations,
+              matches,
+              actor?.username ?? null,
+            );
 
         if (randomizedDrawSnapshot) {
           return randomizedDrawSnapshot.builtTournament;
         }
 
-        if (tournamentNeedsCaptainsSwordMatchBackfill(tournament, matches) || parseTournamentRoundPlan(tournament.round_schedule_json).draw?.randomiseEveryRound) {
+        if (!isLocalPiNode && (tournamentNeedsCaptainsSwordMatchBackfill(tournament, matches) || parseTournamentRoundPlan(tournament.round_schedule_json).draw?.randomiseEveryRound)) {
           const { builtTournament } = await syncTournamentMatches(
             tournament,
             actor?.username ?? null,

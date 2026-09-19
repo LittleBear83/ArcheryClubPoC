@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { normalizeMembershipClassification } from "../../../utils/memberClassification";
 import { hasPermission } from "../../../utils/userProfile";
+import { subscribeToRfidScans } from "../../../utils/rfidScanHub";
 import type { LoanBowReturnPayload } from "../../../domain/entities/MemberProfile";
 import { useProfilePageDataState } from "./useProfilePageDataState";
 import {
@@ -11,6 +12,10 @@ import {
   type OutdoorAchievementDateFieldKey,
   type Outdoor252SignOffFieldKey,
 } from "./outdoorTableProfileUtils";
+import {
+  canStartRfidAgentInstall,
+  startRfidAgentInstallerDownload,
+} from "./rfidAgentInstall";
 
 export function useProfilePageState({
   currentUserProfile,
@@ -21,6 +26,12 @@ export function useProfilePageState({
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [returnError, setReturnError] = useState("");
   const [isSavingReturn, setIsSavingReturn] = useState(false);
+  const [rfidAgentStatus, setRfidAgentStatus] = useState<any>(null);
+  const [isRfidInstallModalOpen, setIsRfidInstallModalOpen] = useState(false);
+  const [isRfidReaderConnectedConfirmed, setIsRfidReaderConnectedConfirmed] =
+    useState(false);
+  const [isRfidInstallerDownloaded, setIsRfidInstallerDownloaded] =
+    useState(false);
 
   const canManageMembers = hasPermission(
     currentUserProfile,
@@ -36,6 +47,18 @@ export function useProfilePageState({
   const canSelectMembers = canManageMembers || canSignOffDistances;
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const isGuest = currentUserProfile?.accountType === "guest";
+
+  useEffect(() => {
+    if (!canManageMembers) {
+      setRfidAgentStatus(null);
+      return undefined;
+    }
+
+    return subscribeToRfidScans(() => {}, {
+      onStatus: setRfidAgentStatus,
+    });
+  }, [canManageMembers]);
+
   const profileDataState = useProfilePageDataState({
     actorUsername,
     canSelectMembers,
@@ -289,6 +312,40 @@ export function useProfilePageState({
     }
   };
 
+  const handleOpenRfidInstallModal = () => {
+    if (!canManageMembers) {
+      return;
+    }
+
+    setIsRfidReaderConnectedConfirmed(false);
+    setIsRfidInstallerDownloaded(false);
+    setIsRfidInstallModalOpen(true);
+  };
+
+  const handleCloseRfidInstallModal = () => {
+    setIsRfidInstallModalOpen(false);
+    setIsRfidReaderConnectedConfirmed(false);
+    setIsRfidInstallerDownloaded(false);
+  };
+
+  const handleRfidReaderConnectedConfirmationChange = (event) => {
+    setIsRfidReaderConnectedConfirmed(event.target.checked);
+  };
+
+  const handleInstallRfidAgent = () => {
+    if (
+      !canStartRfidAgentInstall({
+        canManageMembers,
+        readerConnectedConfirmed: isRfidReaderConnectedConfirmed,
+      })
+    ) {
+      return;
+    }
+
+    startRfidAgentInstallerDownload();
+    setIsRfidInstallerDownloaded(true);
+  };
+
   return {
     canEditCurrentProfile,
     canManageMemberDisciplines,
@@ -300,7 +357,8 @@ export function useProfilePageState({
     cardIssueError: memberActionsState.cardIssueError,
     cardIssueStatus: memberActionsState.cardIssueStatus,
     cardIssueSuccess: memberActionsState.cardIssueSuccess,
-    rfidReaderStatus: memberActionsState.rfidReaderStatus,
+    rfidReaderStatus:
+      rfidAgentStatus ?? memberActionsState.rfidReaderStatus,
     deleteConfirmationUsername: memberActionsState.deleteConfirmationUsername,
     deleteError: memberActionsState.deleteError,
     currentUserProfile,
@@ -334,6 +392,7 @@ export function useProfilePageState({
     handleCloseGoldenRecordsMatchModal:
       outdoorTableState.handleCloseGoldenRecordsMatchModal,
     handleCloseReturnModal,
+    handleCloseRfidInstallModal,
     handleDeleteConfirmationUsernameChange:
       memberActionsState.handleDeleteConfirmationUsernameChange,
     handleDeleteMember: memberActionsState.handleDeleteMember,
@@ -348,6 +407,7 @@ export function useProfilePageState({
       memberActionsState.handleOpenDistanceSignOffModal,
     handleOpenGoldenRecordsMatchModal:
       outdoorTableState.handleOpenGoldenRecordsMatchModal,
+    handleOpenRfidInstallModal,
     handleOutdoorTableAward252SignOffDateChange:
       outdoorTableState.handleOutdoorTableAward252SignOffDateChange,
     handleOutdoorTableAchievementDateChange:
@@ -357,6 +417,8 @@ export function useProfilePageState({
     handleRefreshGoldenRecordsHandicap:
       outdoorTableState.handleRefreshGoldenRecordsHandicap,
     handleReturnLoanBow,
+    handleInstallRfidAgent,
+    handleRfidReaderConnectedConfirmationChange,
     handleSave,
     handleSaveOutdoorTableEntry: outdoorTableState.handleSaveOutdoorTableEntry,
     handleSelectMember,
@@ -375,6 +437,9 @@ export function useProfilePageState({
       outdoorTableState.isRefreshingGoldenRecordsHandicap,
     isRefreshingProfile,
     isReturnModalOpen,
+    isRfidInstallModalOpen,
+    isRfidInstallerDownloaded,
+    isRfidReaderConnectedConfirmed,
     isSaving,
     isSavingDistanceSignOff: memberActionsState.isSavingDistanceSignOff,
     isSavingGoldenRecordsMatch: outdoorTableState.isSavingGoldenRecordsMatch,

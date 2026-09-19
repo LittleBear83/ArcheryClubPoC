@@ -10,6 +10,7 @@ import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { MobileSectionHeader } from "../../components/mobile/MobileSectionHeader";
 import { formatDate, formatDateTime } from "../../../utils/dateTime";
 import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
+import { RfidAgentInstallControl } from "./RfidAgentInstallControl";
 import { formatMemberDisplayName, formatMemberDisplayUsername } from "../../../utils/userProfile";
 import type { useProfilePageState } from "./useProfilePageState";
 
@@ -54,6 +55,7 @@ export function ProfileMobileView({
   handleOpenDeleteModal,
   handleOpenDistanceSignOffModal,
   handleOpenGoldenRecordsMatchModal,
+  handleOpenRfidInstallModal,
   handleOutdoorTableAward252SignOffDateChange,
   handleOutdoorTableAchievementDateChange,
   handleRefreshGoldenRecordsHandicap,
@@ -78,6 +80,7 @@ export function ProfileMobileView({
   selectedUsername,
   submitLabel,
   toggleDiscipline,
+  rfidReaderStatus,
 }: ProfilePageState) {
   const hasUnsignedDistances = editableProfile?.distanceSignOffs?.some(
     (disciplineGroup) =>
@@ -87,6 +90,13 @@ export function ProfileMobileView({
   return (
     <div className="profile-page profile-page--mobile">
       <p>Manage your member profile and account details.</p>
+
+      <RfidAgentInstallControl
+        canManageMembers={canManageMembers}
+        fullWidth
+        onInstall={handleOpenRfidInstallModal}
+        rfidReaderStatus={rfidReaderStatus}
+      />
 
       {canSelectMembers ? (
         <SectionPanel className="profile-admin-panel" title="Member Selection">

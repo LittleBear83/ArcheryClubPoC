@@ -32,6 +32,86 @@ export function ProfilePage({
         <ProfileDesktopView {...profilePageState} />
       )}
 
+      {profilePageState.canManageMembers ? (
+        <Modal
+          open={profilePageState.isRfidInstallModalOpen}
+          onClose={profilePageState.handleCloseRfidInstallModal}
+          title="Install RFID reader"
+        >
+          <div className="profile-card-issue-modal">
+            {profilePageState.isRfidInstallerDownloaded ? (
+              <>
+                <h4 className="profile-rfid-install-heading">
+                  Installer downloaded
+                </h4>
+                <p>
+                  Open the downloaded installer and follow the Windows prompts
+                  to install the Selby RFID Agent.
+                </p>
+                <p className="profile-card-issue-note">
+                  The Selby RFID Agent starts automatically after installation.
+                  Keep the ACR122 reader connected while using the portal.
+                </p>
+                <div className="profile-card-issue-actions profile-rfid-install-actions">
+                  <Button
+                    type="button"
+                    onClick={profilePageState.handleCloseRfidInstallModal}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p>
+                  This installs the Selby RFID Agent on this computer. It does
+                  not change the selected member profile.
+                </p>
+                <p>
+                  Connect the ACR122 RFID reader to a USB port before starting
+                  the installation.
+                </p>
+                <p className="profile-card-issue-note">
+                  Windows PC/SC supports the reader. This installer installs the
+                  Selby RFID Agent and does not install an ACR122 driver.
+                </p>
+                <label className="profile-rfid-install-confirmation">
+                  <input
+                    type="checkbox"
+                    checked={profilePageState.isRfidReaderConnectedConfirmed}
+                    onChange={
+                      profilePageState.handleRfidReaderConnectedConfirmationChange
+                    }
+                    required
+                  />
+                  <span>
+                    I confirm the RFID reader is connected to this computer
+                  </span>
+                </label>
+                <div className="profile-card-issue-actions profile-rfid-install-actions">
+                  <Button
+                    type="button"
+                    onClick={profilePageState.handleCloseRfidInstallModal}
+                    variant="secondary"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={profilePageState.handleInstallRfidAgent}
+                    disabled={
+                      !profilePageState.isRfidReaderConnectedConfirmed
+                    }
+                  >
+                    Install RFID reader
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </Modal>
+      ) : null}
+
       {profilePageState.editableProfile ? (
         <Modal
           open={profilePageState.isGoldenRecordsMatchModalOpen}

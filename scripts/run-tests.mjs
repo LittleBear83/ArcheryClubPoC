@@ -6,6 +6,8 @@ import ts from "typescript";
 const root = process.cwd();
 const outDir = path.join(root, ".test-dist");
 const files = [
+  "src/presentation/pages/roles/rolePermissionsUtils.ts",
+  "src/presentation/pages/roles/rolePermissionsUtils.test.ts",
   "src/api/client.ts",
   "src/api/client.test.ts",
   "src/api/memberProfileApi.ts",
@@ -60,6 +62,7 @@ for (const file of files) {
 }
 
 await import(pathToFileURL(path.join(outDir, "src/api/client.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/rolePermissionsUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));
 await import(
   pathToFileURL(

@@ -2138,7 +2138,9 @@ async function buildBeginnersCourseCalendarLessons(courseType = null) {
       const title =
         normalizedCourseType === "have-a-go"
           ? "Have a Go session"
-          : "Beginners course";
+          : normalizedCourseType === "taster-session"
+            ? "Taster session"
+            : "Beginners course";
 
       return (lessonsByCourseId.get(course.id) ?? []).map((lesson) => ({
         id: `${normalizedCourseType}-course-${course.id}-lesson-${lesson.id}`,

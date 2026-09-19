@@ -41,6 +41,7 @@ function getPermissionGroup(permissionKey: string): PermissionGroupKey {
     case "assign_equipment":
     case "return_equipment":
     case "update_equipment_storage":
+    case "manage_equipment_storage_locations":
       return "equipment-committee";
     case "add_events":
     case "approve_events":
@@ -56,7 +57,6 @@ function getPermissionGroup(permissionKey: string): PermissionGroupKey {
       return "events-coaching";
     case "manage_roles_permissions":
     case "delete_roles":
-    case "manage_equipment_storage_locations":
     case "view_reports":
     case "send_email":
       return "system-admin";

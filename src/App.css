@@ -1833,6 +1833,33 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.profile-rfid-install-actions {
+  gap: 12px;
+}
+
+.profile-rfid-agent-control {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.profile-rfid-agent-control p,
+.profile-rfid-install-heading {
+  margin: 0;
+}
+
+.profile-rfid-install-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.profile-rfid-install-confirmation input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+
 .profile-mobile-stack {
   display: grid;
   gap: 12px;

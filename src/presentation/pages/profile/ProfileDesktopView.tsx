@@ -5,6 +5,7 @@ import { DeleteMemberModal } from "./DeleteMemberModal";
 import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
+import { RfidAgentInstallControl } from "./RfidAgentInstallControl";
 import { formatDate, formatDateTime } from "../../../utils/dateTime";
 import { formatMemberDisplayName, formatMemberDisplayUsername } from "../../../utils/userProfile";
 import type { useProfilePageState } from "./useProfilePageState";
@@ -41,6 +42,7 @@ export function ProfileDesktopView({
   handleOpenDeleteModal,
   handleOpenDistanceSignOffModal,
   handleOpenGoldenRecordsMatchModal,
+  handleOpenRfidInstallModal,
   handleOutdoorTableAward252SignOffDateChange,
   handleOutdoorTableAchievementDateChange,
   handleRefreshGoldenRecordsHandicap,
@@ -65,6 +67,7 @@ export function ProfileDesktopView({
   selectedUsername,
   submitLabel,
   toggleDiscipline,
+  rfidReaderStatus,
 }: ProfilePageState) {
   const hasUnsignedDistances = editableProfile?.distanceSignOffs?.some(
     (disciplineGroup) =>
@@ -74,6 +77,12 @@ export function ProfileDesktopView({
   return (
     <div className="profile-page">
       <p>Manage your member profile and account details.</p>
+
+      <RfidAgentInstallControl
+        canManageMembers={canManageMembers}
+        onInstall={handleOpenRfidInstallModal}
+        rfidReaderStatus={rfidReaderStatus}
+      />
 
       {canSelectMembers ? (
         <SectionPanel className="profile-admin-panel" title="Member Selection">

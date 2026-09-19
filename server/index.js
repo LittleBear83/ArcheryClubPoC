@@ -1143,7 +1143,7 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        connectSrc: ["'self'"],
+        connectSrc: ["'self'", "http://127.0.0.1:8765"],
         fontSrc: ["'self'"],
         frameAncestors: ["'none'"],
         imgSrc: ["'self'", "data:"],
@@ -2614,6 +2614,36 @@ while ($true) {
     rfidReaderStatus.detected = false;
     console.error("RFID reader monitor failed.", error);
   });
+}
+
+function startConfiguredRfidReaderMonitor() {
+  const enabled =
+    String(process.env.RFID_READER_MONITOR_ENABLED ?? "")
+      .trim()
+      .toLowerCase() === "true";
+
+  rfidReaderStatus.checked = true;
+  rfidReaderStatus.detected = false;
+
+  if (!enabled) {
+    console.log(
+      "Legacy RFID reader monitor disabled; local RFID Reader Bridge is the preferred hardware path.",
+    );
+    return;
+  }
+
+  if (process.platform !== "win32") {
+    console.warn(
+      "RFID_READER_MONITOR_ENABLED=true was ignored because the legacy RFID monitor requires Windows.",
+    );
+    return;
+  }
+
+  console.warn(
+    "Starting legacy Windows RFID reader monitor because RFID_READER_MONITOR_ENABLED=true.",
+  );
+
+  startRfidReaderMonitor();
 }
 
 function buildClubEvent(event, bookings = [], actor = null) {
@@ -7208,7 +7238,7 @@ const httpServer = startServer({
   distDirectory,
   headersTimeoutMs: serverRuntime.headersTimeoutMs,
   keepAliveTimeoutMs: serverRuntime.keepAliveTimeoutMs,
-  onBeforeListen: startRfidReaderMonitor,
+  onBeforeListen: startConfiguredRfidReaderMonitor,
   port,
   requestTimeoutMs: serverRuntime.requestTimeoutMs,
 });

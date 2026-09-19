@@ -400,10 +400,10 @@ export function AnnouncementsPage({ currentUserProfile }: AnnouncementsPageProps
             </label>
 
             <div className="radio-group announcements-radio-group">
-              <span className="announcements-radio-label">
+              <span id="announcement-escalation-label" className="announcements-radio-label">
                 Increase severity as the active till date gets closer
               </span>
-              <div className="radio-options">
+              <div className="radio-options" role="radiogroup" aria-labelledby="announcement-escalation-label">
                 <label>
                   <input
                     type="radio"

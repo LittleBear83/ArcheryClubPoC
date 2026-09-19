@@ -1152,6 +1152,21 @@ button:disabled {
   align-items: start;
 }
 
+.suggestion-form-layout > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 900px) {
+  .suggestion-form-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .suggestion-form-layout .utility-form-card {
+    max-width: none;
+  }
+}
+
 .utility-form-card {
   max-width: 760px;
 }
@@ -3820,6 +3835,10 @@ button:disabled {
 
 .announcements-radio-label {
   color: var(--text-soft);
+}
+
+.left-align-form .announcements-radio-group .radio-options label {
+  width: auto;
 }
 
 .announcements-character-count {
@@ -6559,10 +6578,6 @@ button:disabled {
 
   .profile-distance-signoff-header p {
     max-width: none;
-  }
-
-  .suggestion-form-layout {
-    grid-template-columns: 1fr;
   }
 
   .profile-distance-signoff-table th,

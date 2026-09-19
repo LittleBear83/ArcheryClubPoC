@@ -1040,6 +1040,7 @@ export function EventCalendarPage({
           ? `${getVenueLabel(item.venue)} | Coach: ${item.coach.fullName}`
           : `Coordinator: ${item.coordinatorName}`,
     actionLabel: item.kind === "beginners" ? "View selected day" : "Open details",
+    opensDay: item.kind === "beginners",
     actionVariant: (item.kind === "beginners" ? "secondary" : "primary") as
       | "primary"
       | "secondary",

@@ -4,7 +4,10 @@ import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Button } from "../components/Button";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { getCurrentMobileInstallContext } from "../../utils/mobileInstall";
-import { subscribeToLocalRfidBridgeScans } from "../../utils/localRfidBridge";
+import {
+  getLocalRfidStatusMessage,
+  subscribeToLocalRfidBridgeScans,
+} from "../../utils/localRfidBridge";
 import {
   connectPublicServerEvents,
   disconnectPublicServerEvents,
@@ -18,6 +21,12 @@ const ENABLE_RFID_SIMULATOR =
 type LocalRfidReaderStatus = {
   bridgeAvailable: boolean;
   available: boolean;
+  connectionState:
+    | "connected"
+    | "reader-not-connected"
+    | "agent-unavailable"
+    | "local-access-blocked";
+  localAccessBlocked: boolean;
   pcscAvailable: boolean;
   readerCount: number;
   readers: string[];
@@ -312,34 +321,20 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
             </form>
           </section>
 
-          {ENABLE_RFID_SIMULATOR || rfidReaderStatus?.bridgeAvailable ? (
+          {ENABLE_RFID_SIMULATOR || rfidReaderStatus ? (
             <section className="rfid-panel" aria-label="RFID sign in">
               <p className="section-title">RFID Access</p>
-
+              <p className="rfid-copy" role="status">
+                {getLocalRfidStatusMessage(rfidReaderStatus)}
+                {rfidReaderStatus?.available
+                  ? ". Tap your club card or fob to sign in."
+                  : "."}
+              </p>
               {rfidReaderStatus?.available ? (
-                <>
-                  <p className="rfid-copy">
-                    RFID reader connected. Tap your club card or fob to sign in.
-                  </p>
-                  <p className="rfid-copy">
-                    Reader: {rfidReaderStatus.readers.join(", ")}
-                  </p>
-                </>
-              ) : rfidReaderStatus?.bridgeAvailable &&
-                !rfidReaderStatus.pcscAvailable ? (
                 <p className="rfid-copy">
-                  RFID Reader Bridge is running, but the reader driver is
-                  unavailable.
+                  Reader: {rfidReaderStatus.readers.join(", ")}
                 </p>
-              ) : rfidReaderStatus?.bridgeAvailable ? (
-                <p className="rfid-copy">
-                  RFID Reader Bridge is running, but no RFID reader is connected.
-                </p>
-              ) : (
-                <p className="rfid-copy">
-                  Use the simulator below to test RFID sign-in.
-                </p>
-              )}
+              ) : null}
 
               {ENABLE_RFID_SIMULATOR ? (
                 <Button

@@ -10,6 +10,11 @@ function normaliseBridgeStatus(status = {}) {
   return {
     bridgeAvailable: true,
     available: pcscAvailable && readerCount > 0,
+    connectionState:
+      pcscAvailable && readerCount > 0
+        ? "connected"
+        : "reader-not-connected",
+    localAccessBlocked: false,
     pcscAvailable,
     readerCount,
     readers,
@@ -18,6 +23,63 @@ function normaliseBridgeStatus(status = {}) {
     version: status.version ?? "",
     lastError: status.lastError ?? null,
   };
+}
+
+async function isLocalAccessPermissionBlocked() {
+  if (typeof navigator === "undefined" || !navigator.permissions?.query) {
+    return false;
+  }
+
+  for (const permissionName of ["local-network-access", "local-network"]) {
+    try {
+      const permission = await navigator.permissions.query({
+        name: permissionName,
+      });
+
+      if (permission.state === "denied") {
+        return true;
+      }
+    } catch {
+      // Unsupported permission names throw in browsers without this API.
+    }
+  }
+
+  return false;
+}
+
+async function unavailableBridgeStatus(error) {
+  const localAccessBlocked = await isLocalAccessPermissionBlocked();
+
+  return {
+    bridgeAvailable: false,
+    available: false,
+    connectionState: localAccessBlocked
+      ? "local-access-blocked"
+      : "agent-unavailable",
+    localAccessBlocked,
+    pcscAvailable: false,
+    readerCount: 0,
+    readers: [],
+    lastError:
+      error instanceof Error
+        ? error.message
+        : "Local RFID Agent is unavailable.",
+  };
+}
+
+export function getLocalRfidStatusMessage(status) {
+  switch (status?.connectionState) {
+    case "connected":
+      return "RFID reader connected";
+    case "reader-not-connected":
+      return "RFID reader not connected";
+    case "local-access-blocked":
+      return "Browser access to the local RFID agent is blocked";
+    case "agent-unavailable":
+      return "RFID agent unavailable";
+    default:
+      return "Checking RFID reader...";
+  }
 }
 
 export async function getLocalRfidBridgeStatus({
@@ -79,18 +141,8 @@ export function subscribeToLocalRfidBridgeScans(
     }, RETRY_DELAY_MS);
   };
 
-  const reportUnavailable = (error) => {
-    onStatus?.({
-      bridgeAvailable: false,
-      available: false,
-      pcscAvailable: false,
-      readerCount: 0,
-      readers: [],
-      lastError:
-        error instanceof Error
-          ? error.message
-          : "Local RFID Reader Bridge is unavailable.",
-    });
+  const reportUnavailable = async (error) => {
+    onStatus?.(await unavailableBridgeStatus(error));
   };
 
   const connect = async () => {
@@ -113,7 +165,7 @@ export function subscribeToLocalRfidBridgeScans(
       }
     } catch (error) {
       if (!closed) {
-        reportUnavailable(error);
+        await reportUnavailable(error);
         scheduleRetry();
       }
       return;
@@ -157,7 +209,7 @@ export function subscribeToLocalRfidBridgeScans(
       closeEventSource();
 
       if (!closed) {
-        reportUnavailable(
+        void reportUnavailable(
           new Error("Connection to the local RFID Reader Bridge was lost."),
         );
         scheduleRetry();

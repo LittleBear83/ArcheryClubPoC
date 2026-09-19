@@ -40,6 +40,40 @@ Then enable it with:
     sudo systemctl daemon-reload
     sudo systemctl enable --now selby-rfid-bridge.service
 
+## Windows installation
+
+Run `Selby-RFID-Agent-Setup.exe` once as the Windows user who will use the
+portal. The installer is per-user, does not require administrator access, and
+does not install an RFID driver. Windows PC/SC supplies the ACR122 reader
+support.
+
+The agent starts at the end of installation and at each user login. It has no
+console window. After installation the normal workflow is simply:
+
+1. Plug in the ACR122.
+2. Open the portal.
+3. Tap a club card or fob.
+
+The agent log is stored at:
+
+    %LOCALAPPDATA%\Selby Archery Club\RFID Agent\logs\rfid-agent.log
+
+Uninstall **Selby RFID Agent** from Windows Installed Apps. The uninstaller
+stops the running agent and removes its login startup entry. Reader drivers are
+left untouched.
+
+## Building the Windows installer
+
+Install Python 3 and Inno Setup 6 on the build PC, then run:
+
+    powershell -ExecutionPolicy Bypass -File .\build-windows.ps1
+
+The build uses PyInstaller to create a windowless, self-contained executable.
+Python is not required on the target PC. Outputs are written to:
+
+    dist\windows-agent\SelbyRfidAgent.exe
+    dist\installer\Selby-RFID-Agent-Setup.exe
+
 ## Windows development
 
 Use a Python virtual environment:

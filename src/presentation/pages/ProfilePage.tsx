@@ -6,6 +6,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { ProfileDesktopView } from "./profile/ProfileDesktopView";
 import { ProfileMobileView } from "./profile/ProfileMobileView";
 import { useProfilePageState } from "./profile/useProfilePageState";
+import { getLocalRfidStatusMessage } from "../../utils/localRfidBridge";
 
 export function ProfilePage({
   currentUserProfile,
@@ -292,13 +293,10 @@ export function ProfilePage({
 
             {profilePageState.rfidReaderStatus ? (
               <p className="profile-card-issue-status" role="status">
-                {!profilePageState.rfidReaderStatus.bridgeAvailable
-                  ? "⚠ RFID Reader Bridge not available"
-                  : !profilePageState.rfidReaderStatus.pcscAvailable
-                    ? "⚠ RFID reader driver unavailable"
-                    : profilePageState.rfidReaderStatus.readerCount === 0
-                      ? "○ No RFID reader connected"
-                      : `● Reader connected — ${profilePageState.rfidReaderStatus.readers.join(", ")}`}
+                {getLocalRfidStatusMessage(profilePageState.rfidReaderStatus)}
+                {profilePageState.rfidReaderStatus.available
+                  ? ` — ${profilePageState.rfidReaderStatus.readers.join(", ")}`
+                  : ""}
               </p>
             ) : (
               <p className="profile-card-issue-status" role="status">

@@ -97,6 +97,9 @@ await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/phase2a1PostgresIntegrationGuards.test.js"))
 );
 await import(
+  pathToFileURL(path.join(root, "server/infrastructure/rfidAgentDistribution.test.js"))
+);
+await import(
   pathToFileURL(
     path.join(
       root,
@@ -149,4 +152,9 @@ await import(
 );
 await import(
   pathToFileURL(path.join(root, "server/presentation/http/registerScheduleRoutes.test.js"))
+);
+await import(
+  pathToFileURL(
+    path.join(root, "server/presentation/http/registerRfidAgentDistributionRoutes.test.js"),
+  )
 );

@@ -124,9 +124,12 @@ import { registerSyncRoutes } from "./presentation/http/registerSyncRoutes.js";
 import { registerPublicationSyncRoutes } from "./presentation/http/registerPublicationSyncRoutes.js";
 import { createSyncPublicationGateway } from "./infrastructure/persistence/syncPublicationGateway.js";
 import { createMachineSyncAuth } from "./security/machineAuth.js";
+import { createRfidAgentDistribution } from "./infrastructure/rfidAgentDistribution.js";
+import { registerRfidAgentDistributionRoutes } from "./presentation/http/registerRfidAgentDistributionRoutes.js";
 
 const { databasePath, distDirectory, port } = serverRuntime;
 const db = createDatabase(serverRuntime);
+const rfidAgentDistribution = createRfidAgentDistribution();
 const SESSION_COOKIE_NAME = "archeryclubpoc_session";
 const SESSION_MAX_AGE_SECONDS = 8 * 60 * 60;
 const SESSION_SECRET =
@@ -4933,6 +4936,14 @@ registerAdminMemberRoutes({
   serverEventBus,
   TOURNAMENT_TYPE_OPTIONS,
   verifyPassword,
+});
+
+registerRfidAgentDistributionRoutes({
+  actorHasPermission,
+  app,
+  distribution: rfidAgentDistribution,
+  getActorUser,
+  PERMISSIONS,
 });
 
 if (serverRuntime.sync.isLocalPiNode) {

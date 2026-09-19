@@ -89,6 +89,7 @@ function createEmptyTemplateForm(templateOptions: TournamentTemplateOption[] = [
         ? String(defaultBaseTemplate?.defaults?.handicapAllowancePercent ?? "")
         : "",
     defaultRoundNames: (defaultBaseTemplate?.defaults?.defaultRoundNames ?? []).join(", "),
+    randomiseEveryRound: defaultBaseTemplate?.capabilities?.randomiseEveryRound ?? false,
     supportsRandomizedDraw:
       defaultBaseTemplate?.capabilities?.supportsRandomizedDraw ?? false,
     supportsHighestLoserProgression:
@@ -1014,6 +1015,7 @@ export function TournamentsPage({
   const [isEditingTournament, setIsEditingTournament] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isEditingTemplate, setIsEditingTemplate] = useState(false);
   const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
   const [isTournamentLineUpOpen, setIsTournamentLineUpOpen] = useState(false);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
@@ -1485,7 +1487,7 @@ export function TournamentsPage({
     setCreateSetupStepIndex(0);
   };
 
-  const resetTemplateForm = (baseTemplateKey?: string) => {
+  const resetTemplateForm = (baseTemplateKey?: string, editing = false) => {
     const nextForm = createEmptyTemplateForm(tournamentTemplates);
 
     if (!baseTemplateKey) {
@@ -1503,6 +1505,8 @@ export function TournamentsPage({
     setTemplateForm({
       ...nextForm,
       baseTemplateKey: baseTemplate.key,
+      label: editing ? baseTemplate.label : "",
+      randomiseEveryRound: baseTemplate.capabilities?.randomiseEveryRound ?? false,
       description: baseTemplate.description ?? "",
       resultWorkflow: baseTemplate.defaults?.resultWorkflow ?? "single-submit",
       handicapAllowancePercent:
@@ -1538,10 +1542,11 @@ export function TournamentsPage({
     setIsCreateModalOpen(true);
   };
 
-  const openTemplateModal = (baseTemplateKey?: string) => {
+  const openTemplateModal = (baseTemplateKey?: string, editing = false) => {
     setError("");
     setMessage("");
-    resetTemplateForm(baseTemplateKey);
+    setIsEditingTemplate(editing);
+    resetTemplateForm(baseTemplateKey || getDefaultTournamentTemplate(tournamentTemplates)?.key, editing);
     setIsTemplateModalOpen(true);
   };
 
@@ -1588,7 +1593,7 @@ export function TournamentsPage({
     try {
       const result = await tournamentCrud.createTournamentUseCase.execute({
         actorUsername,
-        form: createForm,
+        form: { ...createForm, randomiseEveryRound: selectedCreateTemplate?.capabilities?.randomiseEveryRound ?? false },
       });
 
       updateTournamentInState(result.tournament);
@@ -1618,8 +1623,12 @@ export function TournamentsPage({
         .split(",")
         .map((entry) => entry.trim())
         .filter(Boolean);
-      const result = await tournamentCrud.createTournamentTemplateUseCase.execute({
+      const saveTemplate = isEditingTemplate
+        ? tournamentCrud.updateTournamentTemplateUseCase
+        : tournamentCrud.createTournamentTemplateUseCase;
+      const result = await saveTemplate.execute({
         actorUsername,
+        templateKey: templateForm.baseTemplateKey,
         form: {
           label: templateForm.label,
           description: templateForm.description,
@@ -1635,6 +1644,7 @@ export function TournamentsPage({
           capabilities: {
             ...selectedBaseTemplate.capabilities,
             supportsRandomizedDraw: templateForm.supportsRandomizedDraw,
+            randomiseEveryRound: templateForm.randomiseEveryRound,
             supportsHighestLoserProgression:
               templateForm.supportsHighestLoserProgression,
             supportsRoundDeadlines: templateForm.supportsRoundDeadlines,
@@ -1661,7 +1671,7 @@ export function TournamentsPage({
       const nextTemplates = result.tournamentTemplates ?? tournamentTemplates;
       const createdTemplateKey = result.tournamentTemplate?.key ?? "";
       setTournamentTemplates(nextTemplates);
-      if (createdTemplateKey) {
+      if (createdTemplateKey && !isEditingTemplate) {
         setForm((current) => ({ ...current, templateKey: createdTemplateKey }));
         setCreateForm((current) => ({ ...current, templateKey: createdTemplateKey }));
       }
@@ -3008,7 +3018,6 @@ export function TournamentsPage({
 
               {currentEditStep.key === "basics" ? (
                 <div className="profile-form-grid tournament-basics-grid">
-                      <label><input type="checkbox" checked={form.randomiseEveryRound} onChange={(event) => setForm((current) => ({ ...current, randomiseEveryRound: event.target.checked }))} /> Randomise every round</label>
                   <label className="tournament-basics-field tournament-basics-field--full">
                     Tournament name
                     <input
@@ -3253,6 +3262,15 @@ export function TournamentsPage({
                 >
                   Create template
                 </Button>
+              <Button
+                type="button"
+                className="tournament-setup-button tournament-template-trigger"
+                onClick={() => openTemplateModal(form.templateKey, true)}
+                disabled={isSaving || tournamentTemplates.length === 0}
+                variant="secondary"
+              >
+                Edit template
+              </Button>
                 <Button
                   type="button"
                   className="tournament-setup-button event-cancel-button"
@@ -3282,6 +3300,15 @@ export function TournamentsPage({
                 variant="secondary"
               >
                 Create template
+              </Button>
+              <Button
+                type="button"
+                className="tournament-setup-button tournament-template-trigger"
+                onClick={() => openTemplateModal(form.templateKey, true)}
+                disabled={isSaving || tournamentTemplates.length === 0}
+                variant="secondary"
+              >
+                Edit template
               </Button>
             </div>
           )}
@@ -3319,7 +3346,6 @@ export function TournamentsPage({
 
               {currentCreateStep.key === "basics" ? (
                 <div className="profile-form-grid tournament-basics-grid">
-                      <label><input type="checkbox" checked={createForm.randomiseEveryRound} onChange={(event) => setCreateForm((current) => ({ ...current, randomiseEveryRound: event.target.checked }))} /> Randomise every round</label>
                   <label className="tournament-basics-field tournament-basics-field--full">
                     Tournament name
                     <input
@@ -3505,7 +3531,7 @@ export function TournamentsPage({
 
               {currentCreateStep.key === "review" ? (
                 <TournamentSetupReview
-                  form={createForm}
+                  form={{ ...createForm, randomiseEveryRound: selectedCreateTemplate?.capabilities?.randomiseEveryRound ?? false }}
                   selectedTemplate={selectedCreateTemplate}
                 />
               ) : null}
@@ -3700,12 +3726,14 @@ export function TournamentsPage({
       <Modal
         open={isTemplateModalOpen}
         onClose={closeTemplateModal}
-        title="Create Tournament Template"
+        title={isEditingTemplate ? "Edit Tournament Template" : "Create Tournament Template"}
         contentClassName="modal-content--wide tournament-template-modal"
       >
         <div className="guest-member-modal">
           <p className="guest-member-modal-copy">
-            Save a reusable tournament template from the current setup flow.
+            {isEditingTemplate
+              ? "Changes apply to new tournaments. Existing tournament settings stay unchanged."
+              : "Save a reusable tournament template from the current setup flow."}
           </p>
           {error ? <p className="profile-error">{error}</p> : null}
           {message ? <p className="profile-success">{message}</p> : null}
@@ -3725,10 +3753,10 @@ export function TournamentsPage({
               />
             </label>
             <label>
-              Based on
+              {isEditingTemplate ? "Template" : "Based on"}
               <select
                 value={templateForm.baseTemplateKey}
-                onChange={(event) => resetTemplateForm(event.target.value)}
+                onChange={(event) => resetTemplateForm(event.target.value, isEditingTemplate)}
                 disabled={isSavingTemplate}
               >
                 {tournamentTemplates.map((template: TournamentTemplateOption) => (
@@ -3800,6 +3828,19 @@ export function TournamentsPage({
             </label>
             <div className="tournament-template-field--full tournament-template-option-group">
               <strong>Capabilities</strong>
+              <label className="tournament-template-checkbox">
+                <input
+                  type="checkbox"
+                  checked={templateForm.randomiseEveryRound}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({
+                      ...current,
+                      randomiseEveryRound: event.target.checked,
+                    }))
+                  }
+                />
+                <span>Randomise every round</span>
+              </label>
               <label className="tournament-template-checkbox">
                 <input
                   type="checkbox"

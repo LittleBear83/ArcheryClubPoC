@@ -315,6 +315,11 @@ export function createSqliteScheduleTournamentStatements(db) {
     WHERE template_key = ?
   `);
 
+  const updateTournamentTemplateByKey = db.prepare(`
+    UPDATE tournament_templates
+    SET label = ?, description = ?, defaults_json = ?, capabilities_json = ?, eligibility_rules_json = ?
+    WHERE template_key = ?
+  `);
   const insertTournamentTemplate = db.prepare(`
     INSERT INTO tournament_templates (
       template_key,
@@ -834,6 +839,7 @@ export function createSqliteScheduleTournamentStatements(db) {
     insertEventBooking,
     insertTournament,
     insertTournamentTemplate,
+    updateTournamentTemplateByKey,
     insertTournamentRegistration,
     insertTournamentMatch,
     insertTournamentRound,

@@ -42,7 +42,7 @@ export function ProfilePage({
             {profilePageState.isRfidInstallerDownloaded ? (
               <>
                 <h4 className="profile-rfid-install-heading">
-                  Installer downloaded
+                  Installer download started
                 </h4>
                 <p>
                   Open the downloaded installer and follow the Windows prompts

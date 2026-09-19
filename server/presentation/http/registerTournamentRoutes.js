@@ -819,13 +819,13 @@ export function registerTournamentRoutes({
     });
   });
 
-  app.post("/api/tournament-templates", async (req, res) => {
+  const saveTournamentTemplate = async (req, res, editing = false) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
       res.status(403).json({
         success: false,
-        message: "You do not have permission to create tournament templates.",
+        message: "You do not have permission to manage tournament templates.",
       });
       return;
     }
@@ -840,7 +840,10 @@ export function registerTournamentRoutes({
     } = req.body ?? {};
 
     const templateLabel = String(label ?? "").trim();
-    const baseTemplate = await findTemplateByKey(baseTemplateKey);
+    const baseTemplate = await findTemplateByKey(editing ? req.params.key : baseTemplateKey);
+    if (editing && !baseTemplate) {
+      return res.status(404).json({ success: false, message: "Tournament template not found." });
+    }
 
     if (!templateLabel || !baseTemplate) {
       res.status(400).json({
@@ -850,7 +853,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const templateKey = buildTemplateKey(templateLabel);
+    const templateKey = editing ? baseTemplate.key : buildTemplateKey(templateLabel);
 
     if (!templateKey) {
       res.status(400).json({
@@ -862,7 +865,7 @@ export function registerTournamentRoutes({
 
     const existingTemplate = await findTemplateByKey(templateKey);
 
-    if (existingTemplate) {
+    if (existingTemplate && !editing) {
       res.status(409).json({
         success: false,
         message: "A tournament template with that name already exists.",
@@ -903,7 +906,13 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const createdTemplateRow = await tournamentGateway.createTournamentTemplate({
+    const storedTemplate = editing
+      ? await tournamentGateway.findTournamentTemplateByKey(templateKey)
+      : null;
+    const saveTemplate = storedTemplate
+      ? tournamentGateway.updateTournamentTemplate.bind(tournamentGateway)
+      : tournamentGateway.createTournamentTemplate.bind(tournamentGateway);
+    const createdTemplateRow = await saveTemplate({
       templateKey: mergedTemplate.key,
       label: mergedTemplate.label,
       description: mergedTemplate.description ?? "",
@@ -921,14 +930,17 @@ export function registerTournamentRoutes({
     const createdTemplate =
       normalizeStoredTournamentTemplateRow(createdTemplateRow) ?? mergedTemplate;
 
-    broadcastTournamentsUpdated("tournament-templates.create");
+    broadcastTournamentsUpdated(editing ? "tournament-templates.update" : "tournament-templates.create");
 
-    res.status(201).json({
+    res.status(editing ? 200 : 201).json({
       success: true,
       tournamentTemplate: createdTemplate,
       tournamentTemplates: await loadTournamentTemplates(),
     });
-  });
+  };
+
+  app.post("/api/tournament-templates", (req, res) => saveTournamentTemplate(req, res));
+  app.put("/api/tournament-templates/:key", (req, res) => saveTournamentTemplate(req, res, true));
 
   app.get("/api/tournaments", async (req, res) => {
     const actor = getActorUser(req);
@@ -1078,7 +1090,6 @@ export function registerTournamentRoutes({
       roundOneStartDate,
       roundWindowDays,
       roundRestDays,
-      randomiseEveryRound = false,
       registrationStartDate,
       registrationEndDate,
     } = req.body ?? {};
@@ -1146,7 +1157,7 @@ export function registerTournamentRoutes({
       registrationStartDate,
       roundScheduleJson: buildTournamentRoundPlanJson({
         automaticConfig: automaticRoundPlan,
-        draw: { randomiseEveryRound: randomiseEveryRound === true },
+        draw: { randomiseEveryRound: selectedTemplate?.capabilities?.randomiseEveryRound === true },
       }),
       scoreSubmissionEndDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
       scoreSubmissionStartDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
@@ -1217,7 +1228,6 @@ export function registerTournamentRoutes({
       roundOneStartDate,
       roundWindowDays,
       roundRestDays,
-      randomiseEveryRound = false,
       registrationStartDate,
       registrationEndDate,
     } = req.body ?? {};
@@ -1290,7 +1300,7 @@ export function registerTournamentRoutes({
       registrationStartDate,
       roundScheduleJson: buildTournamentRoundPlanJson({
         automaticConfig: automaticRoundPlan,
-        draw: { randomiseEveryRound: randomiseEveryRound === true },
+        draw: existingPlan.draw,
       }),
       scoreSubmissionEndDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
       scoreSubmissionStartDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,

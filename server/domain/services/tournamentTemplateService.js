@@ -59,7 +59,10 @@ export function normalizeTournamentTemplateDefinition(template, options = {}) {
     roundType: normalizedRoundType,
     description: String(template.description ?? "").trim(),
     defaults,
-    capabilities: normalizeTemplateBooleanMap(template.capabilities),
+    capabilities: {
+      ...normalizeTemplateBooleanMap(template.capabilities),
+      randomiseEveryRound: template.capabilities?.randomiseEveryRound === true,
+    },
     eligibilityRules,
     isCustom: options.isCustom === true,
   };

@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const root = process.cwd();
+await import("../server/presentation/http/tournamentTemplateCapability.test.js");
 const outDir = path.join(root, ".test-dist");
 const files = [
   "src/api/client.ts",

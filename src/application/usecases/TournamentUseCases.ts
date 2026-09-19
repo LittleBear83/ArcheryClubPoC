@@ -62,6 +62,24 @@ export class CreateTournamentTemplateUseCase {
   }
 }
 
+export class UpdateTournamentTemplateUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
+  constructor({ tournamentRepository }) {
+    this.tournamentRepository = tournamentRepository;
+  }
+
+  async execute({ actorUsername, templateKey, form }) {
+    if (!actorUsername?.trim()) {
+      throw new Error("An authenticated member is required.");
+    }
+    if (!templateKey?.trim() || !form?.label?.trim()) {
+      throw new Error("A template and template name are required.");
+    }
+    return this.tournamentRepository.updateTournamentTemplate(actorUsername, templateKey, form);
+  }
+}
+
 export class UpdateTournamentUseCase {
   private readonly tournamentRepository: TournamentRepository;
 

@@ -1,3 +1,5 @@
+import { deriveGoldenRecordsAchievements } from "./goldenRecordsAchievements.js";
+
 function mapGoldenRecordsBowClassToOutdoorBowType(bowClass) {
   switch (String(bowClass ?? "").trim().toLowerCase()) {
     case "recurve":
@@ -357,14 +359,17 @@ function applyGoldenRecordsAchievementsToEntry(entry, achievements = []) {
       continue;
     }
 
-    const nextDates = normalizeGoldenRecordsSignOffDates(dates);
+    const sequenced = normalized252Achievements.filter((row) => row.awardKey === awardKey && row.sequenceNumber);
+    const nextDates = sequenced.some((row) => row.sourceLabel.includes("/"))
+      ? [1, 2, 3].map((level) => sequenced.find((row) => row.sequenceNumber === level)?.achievedDate ?? "")
+      : normalizeGoldenRecordsSignOffDates(dates);
     const paddedDates = [...nextDates];
 
     while (paddedDates.length < 3) {
       paddedDates.push("");
     }
 
-    const nextAwardComplete = nextDates.length >= 3;
+    const nextAwardComplete = nextDates.filter(Boolean).length >= 3;
     const signOffDatesChanged =
       JSON.stringify(nextEntry[signOffKey] ?? []) !== JSON.stringify(paddedDates);
 
@@ -466,21 +471,23 @@ export function createGoldenRecordsMemberSyncService({
     });
   }
 
-  async function buildLiveSnapshotForUser(user) {
+  async function buildLiveSnapshotForUser(user, clubData) {
     if (!goldenRecordsCurrentHandicapService?.isEnabled || !user) {
       return createDefaultSnapshot(false);
     }
 
     const snapshot = await goldenRecordsCurrentHandicapService.getSnapshotForMember({
+      clubData,
+      email: user.email ?? user.email_address ?? "",
       archeryGbMembershipNumber: user.archery_gb_membership_number ?? "",
       firstName: user.first_name,
-      goldenRecordsId: user.gr_id ?? "",
+      goldenRecordsId: user.golden_records_member_id ?? user.gr_id ?? "",
       surname: user.surname,
       username: user.username,
     });
 
     if (
-      !String(user.gr_id ?? "").trim() &&
+      String(user.golden_records_member_id ?? user.gr_id ?? "").trim() !== String(snapshot?.matchedMemberId ?? "").trim() &&
       String(snapshot?.matchedMemberId ?? "").trim() &&
       typeof memberDirectoryGateway.updateGoldenRecordsId === "function"
     ) {
@@ -493,10 +500,15 @@ export function createGoldenRecordsMemberSyncService({
           matchedMemberId: snapshot.matchedMemberId,
           username: user.username,
         });
+        throw error;
       }
     }
 
-    return snapshot;
+    return {
+      ...snapshot,
+      rawAchievements: snapshot.rawAchievements ?? snapshot.achievements ?? [],
+      achievements: deriveGoldenRecordsAchievements(snapshot.achievements),
+    };
   }
 
   async function syncOutdoorTableFromGoldenRecords({ disciplines, goldenRecordsSnapshot, updatedByUsername, user }) {
@@ -616,29 +628,23 @@ export function createGoldenRecordsMemberSyncService({
 
       if (existingEntry) {
         let nextEntry = buildGoldenRecordsManagedOutdoorFieldReset(existingEntry);
-        let hasChanges =
-          JSON.stringify(buildGoldenRecordsManagedOutdoorFieldReset(existingEntry)) !==
-          JSON.stringify(existingEntry);
 
         if (nextEntry.handicap !== (handicapEntry?.handicap ?? nextEntry.handicap)) {
           nextEntry = {
             ...nextEntry,
             handicap: handicapEntry?.handicap ?? nextEntry.handicap,
           };
-          hasChanges = true;
         }
 
         const achievementResult = applyGoldenRecordsAchievementsToEntry(nextEntry, achievementEntries);
         nextEntry = achievementResult.entry;
-        hasChanges = hasChanges || achievementResult.hasChanges;
 
         const classificationResult = applyGoldenRecordsClassificationsToEntry(
           nextEntry,
           classificationEntries,
         );
         nextEntry = classificationResult.entry;
-        hasChanges = hasChanges || classificationResult.hasChanges;
-
+        const hasChanges = JSON.stringify(nextEntry) !== JSON.stringify(existingEntry);
         if (!hasChanges) {
           continue;
         }
@@ -746,7 +752,7 @@ export function createGoldenRecordsMemberSyncService({
     };
   }
 
-  async function syncMember(user, { updatedByUsername } = {}) {
+  async function syncMember(user, { updatedByUsername, clubData } = {}) {
     if (!user) {
       throw new Error("A member is required before Golden Records can be synced.");
     }
@@ -756,7 +762,7 @@ export function createGoldenRecordsMemberSyncService({
     const disciplines = (await memberDirectoryGateway.findDisciplinesByUsername(user.username)).map(
       (discipline) => discipline.discipline,
     );
-    const snapshot = await buildLiveSnapshotForUser(user);
+    const snapshot = await buildLiveSnapshotForUser(user, clubData);
 
     await persistSnapshot(user, snapshot, safeUpdatedByUsername);
 
@@ -818,8 +824,14 @@ export function createGoldenRecordsMemberSyncService({
   }
 
   async function syncAllMembers({ updatedByUsername } = {}) {
+    const clubData = goldenRecordsCurrentHandicapService?.isEnabled && goldenRecordsCurrentHandicapService.fetchClubData
+      ? await goldenRecordsCurrentHandicapService.fetchClubData() : undefined;
     const users = await memberDirectoryGateway.listAllUsers();
+    if (clubData) clubData.portalMembers = users;
     const summary = {
+      matchedCount: 0,
+      unmatchedCount: 0,
+      achievementCount: 0,
       attemptedCount: 0,
       syncedCount: 0,
       errorCount: 0,
@@ -830,8 +842,15 @@ export function createGoldenRecordsMemberSyncService({
       summary.attemptedCount += 1;
 
       try {
-        await syncMember(user, { updatedByUsername });
-        summary.syncedCount += 1;
+        const result = await syncMember(user, { updatedByUsername, clubData });
+        if (result.goldenRecords.error) throw new Error(result.goldenRecords.error);
+        if (result.goldenRecords.matchedMemberId) {
+          summary.matchedCount += 1;
+          summary.syncedCount += 1;
+          summary.achievementCount += result.goldenRecords.achievements.length;
+        } else {
+          summary.unmatchedCount += 1;
+        }
       } catch (error) {
         summary.errorCount += 1;
         summary.errors.push({
@@ -845,6 +864,7 @@ export function createGoldenRecordsMemberSyncService({
       }
     }
 
+    logger.info?.("Golden Records club sync complete", summary);
     return summary;
   }
 

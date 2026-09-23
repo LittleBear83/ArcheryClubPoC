@@ -103,6 +103,20 @@ npm run dev:full
 
 3. Open the Vite development URL shown in the terminal.
 
+To use Golden Records locally, create `.env.local` in the project root with
+your API token (keep this file private):
+
+```dotenv
+GOLDEN_RECORDS_AUTH_MODE=api-key
+GOLDEN_RECORDS_API_KEY=<your token>
+```
+
+The backend sends `Authorization: Basic <your token>` to
+`https://api2.archery-records.net`. Restart `npm run dev:full` after changing
+`.env.local`, then run the connection test in Golden Records Admin. If you use
+member credentials instead, set `GOLDEN_RECORDS_AUTH_MODE=member-credentials`,
+`GOLDEN_RECORDS_USERNAME`, and `GOLDEN_RECORDS_PASSWORD`.
+
 Useful alternatives:
 
 - `npm run dev`

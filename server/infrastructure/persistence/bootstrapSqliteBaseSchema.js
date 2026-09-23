@@ -343,84 +343,6 @@ export function bootstrapSqliteBaseSchema({
     )
   `);
 
-  const tournamentMatchColumns = db.prepare(`PRAGMA table_info(tournament_matches)`).all();
-
-  if (!tournamentMatchColumns.some((column) => column.name === "handicap_allowance_percent")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN handicap_allowance_percent INTEGER`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_value")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_value INTEGER`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_type")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_type TEXT`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_bow_class")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_bow_class TEXT`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_discipline")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_discipline TEXT`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "left_reference_score")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_reference_score INTEGER`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "left_allowance_points")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_allowance_points INTEGER`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "left_adjusted_score")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_adjusted_score INTEGER`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_table_key")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_table_key TEXT`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_table_title")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_table_title TEXT`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_value")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_value INTEGER`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_type")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_type TEXT`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_bow_class")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_bow_class TEXT`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_discipline")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_discipline TEXT`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "right_reference_score")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_reference_score INTEGER`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "right_allowance_points")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_allowance_points INTEGER`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "right_adjusted_score")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_adjusted_score INTEGER`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_table_key")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_table_key TEXT`);
-  }
-
-  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_table_title")) {
-    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_table_title TEXT`);
-  }
-
   db.exec(LOGIN_EVENTS_TABLE_SQL);
 
   db.exec(`
@@ -1036,6 +958,84 @@ export function bootstrapSqliteBaseSchema({
   db.exec(TOURNAMENTS_TABLE_SQL);
   db.exec(TOURNAMENT_ROUNDS_TABLE_SQL);
   db.exec(TOURNAMENT_MATCHES_TABLE_SQL);
+
+  const tournamentMatchColumns = db.prepare(`PRAGMA table_info(tournament_matches)`).all();
+
+  if (!tournamentMatchColumns.some((column) => column.name === "handicap_allowance_percent")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN handicap_allowance_percent INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_value")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_value INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_type")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_type TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_bow_class")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_bow_class TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_discipline")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_discipline TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_reference_score")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_reference_score INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_allowance_points")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_allowance_points INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_adjusted_score")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_adjusted_score INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_table_key")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_table_key TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "left_handicap_table_title")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN left_handicap_table_title TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_value")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_value INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_type")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_type TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_bow_class")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_bow_class TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_discipline")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_discipline TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_reference_score")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_reference_score INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_allowance_points")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_allowance_points INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_adjusted_score")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_adjusted_score INTEGER`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_table_key")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_table_key TEXT`);
+  }
+
+  if (!tournamentMatchColumns.some((column) => column.name === "right_handicap_table_title")) {
+    db.exec(`ALTER TABLE tournament_matches ADD COLUMN right_handicap_table_title TEXT`);
+  }
   db.exec(TOURNAMENT_HANDICAP_TABLES_SQL);
   db.exec(TOURNAMENT_HANDICAP_TABLE_ROWS_SQL);
   db.exec(TOURNAMENT_REGISTRATIONS_TABLE_SQL);

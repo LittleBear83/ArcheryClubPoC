@@ -1825,18 +1825,12 @@ export function registerAdminMemberRoutes({
       success: true,
       attemptedCount: syncSummary.attemptedCount,
       syncedCount: syncSummary.syncedCount,
+      matchedCount: syncSummary.matchedCount,
+      unmatchedCount: syncSummary.unmatchedCount,
+      achievementCount: syncSummary.achievementCount,
       errorCount: syncSummary.errorCount,
       errors: syncSummary.errors,
-      message:
-        syncSummary.errorCount > 0
-          ? `Golden Records sync finished. ${syncSummary.syncedCount} member ${
-              syncSummary.syncedCount === 1 ? "was" : "were"
-            } processed successfully and ${syncSummary.errorCount} ${
-              syncSummary.errorCount === 1 ? "member failed" : "members failed"
-            }.`
-          : `Golden Records sync finished successfully for ${syncSummary.syncedCount} member ${
-              syncSummary.syncedCount === 1 ? "record" : "records"
-            }.`,
+      message: `Golden Records member sync finished: ${syncSummary.matchedCount} matched, ${syncSummary.unmatchedCount} unmatched, ${syncSummary.achievementCount} achievements, ${syncSummary.errorCount} errors.`,
     });
   });
 
@@ -1893,7 +1887,7 @@ export function registerAdminMemberRoutes({
       health,
       message: health.ok
         ? "Golden Records connection test succeeded."
-        : "Golden Records connection test failed.",
+        : health.summary ?? "Golden Records connection test failed.",
     });
   });
 

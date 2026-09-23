@@ -21,6 +21,7 @@ export type GoldenRecordsHealthSummary = {
   };
   enabled: boolean;
   ok: boolean;
+  summary?: string;
   testedAt: string;
 };
 

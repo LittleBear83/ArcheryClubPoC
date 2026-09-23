@@ -115,6 +115,9 @@ export function triggerGoldenRecordsOutdoorTableSync(actor: unknown) {
     success: true;
     attemptedCount: number;
     syncedCount: number;
+    matchedCount: number;
+    unmatchedCount: number;
+    achievementCount: number;
     errorCount: number;
     errors?: Array<{ username: string; message: string }>;
     message: string;

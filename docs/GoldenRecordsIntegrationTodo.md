@@ -266,8 +266,8 @@ Primary match:
 
 Fallback:
 
-- exact username if club policy supports it
-- exact name match only as a suggestion, never auto-link
+- unique exact full-name match after member ID, AGB number, and email
+- non-unique names remain suggestions for manual review
 
 Rules:
 

@@ -5,6 +5,7 @@ import {
   syncGoldenRecordsLookups,
   testGoldenRecordsHealth,
 } from "../../api/goldenRecordsApi";
+import { triggerGoldenRecordsOutdoorTableSync } from "../../api/outdoorTableApi";
 import { formatDateTime } from "../../utils/dateTime";
 import { Button } from "../components/Button";
 import { SectionPanel } from "../components/SectionPanel";
@@ -94,6 +95,23 @@ export function GoldenRecordsAdminPage({
     },
   });
 
+  const memberSyncMutation = useMutation({
+    mutationFn: () => triggerGoldenRecordsOutdoorTableSync(currentUserProfile),
+    onMutate: () => {
+      setActionError("");
+      setActionSuccess("");
+    },
+    onSuccess: async (result) => {
+      setActionSuccess(result.message);
+      await Promise.all([
+        refreshSummary(),
+        queryClient.invalidateQueries({ queryKey: ["outdoor-table"] }),
+        queryClient.invalidateQueries({ queryKey: ["member-profiles"] }),
+      ]);
+    },
+    onError: (error: Error) => setActionError(error.message),
+  });
+
   if (!canManageGoldenRecords) {
     return <p>You do not have permission to view Golden Records settings.</p>;
   }
@@ -106,16 +124,18 @@ export function GoldenRecordsAdminPage({
     <div className="profile-page range-rules-page">
       <SectionPanel className="profile-form" title="Golden Records Admin">
         <p>
-          Manage the read-only Golden Records integration, run a safe connection
-          test, and refresh cached reference data used by future sync phases.
+          Test the Golden Records connection, sync existing portal members and
+          achievements, and refresh cached reference data.
         </p>
 
         <StatusMessagePanel
           error={actionError}
-          loading={isLoading || connectionTestMutation.isPending || lookupSyncMutation.isPending}
+          loading={isLoading || connectionTestMutation.isPending || lookupSyncMutation.isPending || memberSyncMutation.isPending}
           loadingLabel={
             connectionTestMutation.isPending
               ? "Testing Golden Records connection..."
+              : memberSyncMutation.isPending
+                ? "Syncing Golden Records members and achievements..."
               : lookupSyncMutation.isPending
                 ? "Syncing Golden Records lookup data..."
                 : "Loading Golden Records settings..."
@@ -185,6 +205,21 @@ export function GoldenRecordsAdminPage({
             </div>
           </section>
         </div>
+
+        <section className="golden-records-admin-card">
+          <h3>Member and Achievement Sync</h3>
+          <p>
+            Sync existing portal members using their Golden Records ID, AGB number, email,
+            or a unique exact full-name match. Ambiguous names remain unmatched; add an
+            AGB number or email to their portal profile, then rerun the sync.
+          </p>
+          <Button
+            onClick={() => memberSyncMutation.mutate()}
+            disabled={memberSyncMutation.isPending || connectionTestMutation.isPending || lookupSyncMutation.isPending}
+          >
+            {memberSyncMutation.isPending ? "Syncing Members..." : "Sync Members and Achievements"}
+          </Button>
+        </section>
 
         <section className="golden-records-admin-card">
           <h3>Cached Lookup Collections</h3>

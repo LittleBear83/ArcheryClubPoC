@@ -3,7 +3,6 @@ import { createGoldenRecordsHttpClient } from "./goldenRecordsHttpClient.js";
 const DEFAULT_CACHE_TTL_MS = 60_000;
 const DEFAULT_MEMBER_LIST_CACHE_TTL_MS = 10 * 60_000;
 const DEFAULT_PAGE_SIZE = 1000;
-const DEFAULT_MAX_PAGES = 100;
 const MIN_REQUEST_GAP_MS = 1_100;
 
 function mapGoldenRecordsBowClassToDiscipline(bowClass) {
@@ -44,17 +43,9 @@ function normalizeNamePart(value) {
 }
 
 function buildCandidateNames({ firstName, surname }) {
-  const normalizedFirstName = normalizeNamePart(firstName);
-  const normalizedSurname = normalizeNamePart(surname);
-
-  if (!normalizedFirstName || !normalizedSurname) {
-    return [];
-  }
-
-  return [
-    `${normalizedSurname} ${normalizedFirstName}`,
-    `${normalizedFirstName} ${normalizedSurname}`,
-  ];
+  const first = normalizeNamePart(firstName);
+  const last = normalizeNamePart(surname);
+  return first && last ? [`${first} ${last}`, `${last} ${first}`] : [];
 }
 
 function normalizeHandicapRow(row) {
@@ -77,6 +68,8 @@ function normalizeAchievementRow(row) {
   const bowClass = row?.bow_class ?? "";
 
   return {
+    raw: row,
+    derived: false,
     achieved: row?.achieved ?? "",
     achievement: row?.achievement ?? "",
     achievementId: row?.achievement_id ?? "",
@@ -108,7 +101,8 @@ function normalizeClassificationRow(row) {
 
 function normalizeMemberRow(row) {
   return {
-    memberArchived: Boolean(row?.member_archived),
+    memberArchived: [true, 1, "true", "1"].includes(row?.member_archived),
+    email: String(row?.email ?? row?.email_address ?? "").trim().toLowerCase(),
     memberId: row?.member_id ?? "",
     membershipId: String(row?.membership_id ?? "").trim(),
     name: row?.name ?? "",
@@ -232,6 +226,7 @@ export function createGoldenRecordsCurrentHandicapService({
   ttlMs = DEFAULT_CACHE_TTL_MS,
   userAgent,
   username,
+  logger = console,
 } = {}) {
   const trimmedBaseUrl = String(baseUrl ?? "").trim();
   const trimmedAuthMode = String(authMode ?? "").trim().toLowerCase();
@@ -278,79 +273,17 @@ export function createGoldenRecordsCurrentHandicapService({
     lastRequestAt = Date.now();
   }
 
-  function buildGoldenRecordsErrorMessage(prefix, result) {
-    const bodyPreview =
-      typeof result?.body === "string"
-        ? result.body.trim().slice(0, 300)
-        : result?.body
-          ? JSON.stringify(result.body).slice(0, 300)
-          : "";
-
-    return bodyPreview
-      ? `${prefix} Response body: ${bodyPreview}`
-      : prefix;
-  }
-
-  async function listMembersWithPageSize(pageSize) {
-    if (membersCache.rows.length > 0 && membersCache.expiresAt > Date.now()) {
-      return membersCache.rows;
-    }
-
-    const rows = [];
-
-    try {
-      for (let pageNumber = 1; pageNumber <= DEFAULT_MAX_PAGES; pageNumber += 1) {
-        await waitForQuotaWindow();
-        const result = await client.getJson("/api/members", {
-          pageNumber,
-          pageSize,
-        });
-
-        if (!result.ok) {
-          throw new Error(
-            buildGoldenRecordsErrorMessage(
-              `Golden Records returned ${result.status} while loading members with page size ${pageSize}.`,
-              result,
-            ),
-          );
-        }
-
-        const pageRows = Array.isArray(result.body) ? result.body : [];
-
-        if (pageRows.length === 0) {
-          break;
-        }
-
-        rows.push(...pageRows);
-
-        if (pageRows.length < pageSize) {
-          break;
-        }
-      }
-
-      membersCache = {
-        expiresAt: Date.now() + DEFAULT_MEMBER_LIST_CACHE_TTL_MS,
-        rows,
-      };
-
-      return rows;
-    } catch (error) {
-      if (membersCache.rows.length > 0) {
-        return membersCache.rows;
-      }
-
-      throw error;
-    }
-  }
-
   async function listMembers() {
-    return listMembersWithPageSize(DEFAULT_PAGE_SIZE);
+    if (membersCache.expiresAt > Date.now()) return membersCache.rows;
+    const rows = await listPagedRows("/api/members", {}, (status) => "Golden Records returned " + status + " while loading members.");
+    membersCache = { expiresAt: Date.now() + DEFAULT_MEMBER_LIST_CACHE_TTL_MS, rows };
+    return rows;
   }
 
   async function listPagedRows(path, query, buildErrorMessage) {
     const rows = [];
 
-    for (let pageNumber = 1; pageNumber <= DEFAULT_MAX_PAGES; pageNumber += 1) {
+    for (let pageNumber = 1; ; pageNumber += 1) {
       await waitForQuotaWindow();
       const result = await client.getJson(path, {
         ...query,
@@ -362,7 +295,8 @@ export function createGoldenRecordsCurrentHandicapService({
         throw new Error(buildErrorMessage(result.status));
       }
 
-      const pageRows = Array.isArray(result.body) ? result.body : [];
+      if (!Array.isArray(result.body)) throw new Error("Invalid Golden Records page response.");
+      const pageRows = result.body;
 
       if (pageRows.length === 0) {
         break;
@@ -399,7 +333,7 @@ export function createGoldenRecordsCurrentHandicapService({
 
     return achievementRows
       .map(normalizeAchievementRow)
-      .filter((entry) => entry.memberId === memberId)
+      .filter((entry) => String(entry.memberId) === String(memberId))
       .sort((left, right) => right.achieved.localeCompare(left.achieved));
   }
 
@@ -413,7 +347,7 @@ export function createGoldenRecordsCurrentHandicapService({
 
     return rows
       .map(normalizeClassificationRow)
-      .filter((entry) => entry.memberId === memberId)
+      .filter((entry) => String(entry.memberId) === String(memberId))
       .sort((left, right) => right.achieved.localeCompare(left.achieved));
   }
 
@@ -421,10 +355,12 @@ export function createGoldenRecordsCurrentHandicapService({
     fallbackName,
     matchSource,
     memberId,
+    clubData,
   }) {
     const fetchedAt = new Date().toISOString();
     const handicapRows = await getCurrentHandicapsByMemberId(memberId);
-    const achievementRows = await getAchievementsByMemberId(memberId);
+    const rawAchievements = clubData?.achievementsByMember.get(String(memberId)) ?? (clubData ? [] : undefined);
+    const achievementRows = rawAchievements ? rawAchievements.map(normalizeAchievementRow) : await getAchievementsByMemberId(memberId);
     const classificationRows = await getCurrentClassificationsByMemberId(memberId);
     const handicaps = handicapRows.sort((left, right) => {
       const byType = left.type.localeCompare(right.type);
@@ -442,6 +378,7 @@ export function createGoldenRecordsCurrentHandicapService({
       fallbackName;
 
     return {
+      rawAchievements: rawAchievements ?? achievementRows.map((row) => row.raw),
       achievements: achievementRows,
       candidateMatches: [],
       classifications: classificationRows,
@@ -456,12 +393,15 @@ export function createGoldenRecordsCurrentHandicapService({
 
   async function getSnapshotForMember({
     archeryGbMembershipNumber,
+    email,
+    clubData,
     firstName,
     goldenRecordsId,
     surname,
     username,
   }) {
     const cacheKey = JSON.stringify({
+      email: String(email ?? "").trim().toLowerCase(),
       archeryGbMembershipNumber: String(archeryGbMembershipNumber ?? "").trim(),
       firstName: String(firstName ?? "").trim().toLowerCase(),
       goldenRecordsId: String(goldenRecordsId ?? "").trim(),
@@ -470,47 +410,30 @@ export function createGoldenRecordsCurrentHandicapService({
     });
     const cachedSnapshot = cache.get(cacheKey);
 
-    if (cachedSnapshot && cachedSnapshot.expiresAt > Date.now()) {
+    if (!clubData && cachedSnapshot && cachedSnapshot.expiresAt > Date.now()) {
       return cachedSnapshot.value;
-    }
-
-    const candidateNames = buildCandidateNames({ firstName, surname });
-
-    if (candidateNames.length === 0) {
-      return createDisabledSnapshot();
     }
 
     try {
       const trimmedGoldenRecordsId = String(goldenRecordsId ?? "").trim();
       const trimmedMembershipNumber = String(archeryGbMembershipNumber ?? "").trim();
 
-      if (trimmedGoldenRecordsId) {
-        const snapshot = await buildSnapshotFromMemberId({
-          fallbackName: `${String(firstName ?? "").trim()} ${String(surname ?? "").trim()}`.trim(),
-          matchSource: "gr-id",
-          memberId: trimmedGoldenRecordsId,
-        });
-
-        cache.set(cacheKey, {
-          expiresAt: Date.now() + ttlMs,
-          value: snapshot,
-        });
-
-        return snapshot;
-      }
-
-      const allMembers = (await listMembers()).map(normalizeMemberRow);
-      const nameMatches = allMembers.filter((row) =>
-        candidateNames.includes(normalizeNamePart(row.name)),
-      );
-      const membershipMatches = trimmedMembershipNumber
-        ? allMembers.filter((row) => row.membershipId === trimmedMembershipNumber)
+      const allMembers = (clubData?.members ?? (await listMembers()).map(normalizeMemberRow)).filter((row) => !row.memberArchived);
+      const idMatches = trimmedGoldenRecordsId ? allMembers.filter((row) => String(row.memberId) === trimmedGoldenRecordsId) : [];
+      const membershipMatches = trimmedMembershipNumber ? allMembers.filter((row) => row.membershipId === trimmedMembershipNumber) : [];
+      const normalizedEmail = String(email ?? "").trim().toLowerCase();
+      const emailMatches = normalizedEmail ? allMembers.filter((row) => row.email === normalizedEmail) : [];
+      const candidateNames = buildCandidateNames({ firstName, surname });
+      const nameMatches = candidateNames.length
+        ? allMembers.filter((row) => candidateNames.includes(normalizeNamePart(row.name)))
         : [];
-      const exactMatches =
-        membershipMatches.length > 0 ? membershipMatches : nameMatches.filter((row) => !row.memberArchived);
-      const fallbackMatches =
-        membershipMatches.length > 0 ? membershipMatches : nameMatches;
-      const matchedMembers = exactMatches.length > 0 ? exactMatches : fallbackMatches;
+      const matchedMembers = trimmedGoldenRecordsId
+        ? idMatches
+        : membershipMatches.length
+          ? membershipMatches
+          : emailMatches.length
+            ? emailMatches
+            : nameMatches;
       const candidateMatches = buildCandidateMatches(allMembers, {
         archeryGbMembershipNumber,
         firstName,
@@ -529,16 +452,40 @@ export function createGoldenRecordsCurrentHandicapService({
         matchSource: "not-found",
       };
 
+      if (matchedMembers.length === 1 && clubData?.portalMembers) {
+        const member = matchedMembers[0];
+        const rank = idMatches.length ? 4 : membershipMatches.length ? 3 : emailMatches.length ? 2 : 1;
+        const conflict = clubData.portalMembers.some((user) => {
+          if (user.username === username) return false;
+          const id = String(user.golden_records_member_id ?? user.gr_id ?? "").trim();
+          const agb = String(user.archery_gb_membership_number ?? "").trim();
+          const otherEmail = String(user.email ?? user.email_address ?? "").trim().toLowerCase();
+          const otherNames = buildCandidateNames({ firstName: user.first_name, surname: user.surname });
+          const otherRank = id === String(member.memberId)
+            ? 4
+            : agb && agb === member.membershipId
+              ? 3
+              : otherEmail && otherEmail === member.email
+                ? 2
+                : otherNames.includes(normalizeNamePart(member.name))
+                  ? 1
+                  : 0;
+          return otherRank >= rank;
+        });
+        if (conflict) return { ...snapshot, matchSource: "ambiguous" };
+      }
       if (matchedMembers.length === 1) {
         const matchedMember = matchedMembers[0];
         snapshot = await buildSnapshotFromMemberId({
           fallbackName: matchedMember.name,
-          matchSource:
-            membershipMatches.length > 0
+          matchSource: idMatches.length
+            ? "gr-id"
+            : membershipMatches.length
               ? "membership-id"
-              : trimmedMembershipNumber
-                ? "name-fallback"
+              : emailMatches.length
+                ? "email"
                 : "name",
+          clubData,
           memberId: matchedMember.memberId,
         });
       } else if (matchedMembers.length > 1) {
@@ -562,6 +509,7 @@ export function createGoldenRecordsCurrentHandicapService({
 
       return snapshot;
     } catch (error) {
+      logger.error?.("Golden Records API error", { error: error.message });
       const message =
         error instanceof Error ? error.message : "Golden Records could not be loaded.";
 
@@ -586,5 +534,23 @@ export function createGoldenRecordsCurrentHandicapService({
   return {
     isEnabled: true,
     getSnapshotForMember,
+    async fetchClubData() {
+      try {
+        const members = (await listPagedRows("/api/members", {}, (status) => "Golden Records members API returned " + status)).map(normalizeMemberRow);
+        const achievements = await listPagedRows("/api/Achievements", {}, (status) => "Golden Records achievements API returned " + status);
+        const achievementsByMember = new Map();
+        for (const row of achievements) {
+          const key = String(row.member_id ?? "");
+          const rows = achievementsByMember.get(key) ?? [];
+          rows.push(row);
+          achievementsByMember.set(key, rows);
+        }
+        logger.info?.("Golden Records club data fetched", { members: members.length, activeMembers: members.filter((row) => !row.memberArchived).length, achievements: achievements.length });
+        return { members, achievementsByMember };
+      } catch (error) {
+        logger.error?.("Golden Records club API error", { error: error.message });
+        throw error;
+      }
+    },
   };
 }

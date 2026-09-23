@@ -4,10 +4,13 @@ import { createGoldenRecordsMemberSyncService } from "./goldenRecordsMemberSyncS
 
 function buildTestService({
   disciplines = ["Recurve Bow"],
+  users = [],
+  currentHandicapService,
   existingEntries = [],
   snapshot,
   updateGoldenRecordsId = async () => {},
 } = {}) {
+  const storedSnapshots = new Map();
   const createdEntries = [];
   const updatedEntries = [];
   let outdoorEntries = [...existingEntries];
@@ -15,18 +18,18 @@ function buildTestService({
   const service = createGoldenRecordsMemberSyncService({
     distanceSignOffYards: [20, 30, 40, 50, 60, 80, 100],
     getUtcTimestampParts: () => ["2026-07-28", "12:00:00"],
-    goldenRecordsCurrentHandicapService: {
+    goldenRecordsCurrentHandicapService: currentHandicapService ?? {
       isEnabled: true,
       getSnapshotForMember: async () => snapshot,
     },
     goldenRecordsSyncGateway: {
       findByUsername: async () => null,
-      upsertSnapshot: async () => {},
+      upsertSnapshot: async ({username, snapshot}) => storedSnapshots.set(username, JSON.parse(JSON.stringify(snapshot))),
     },
     memberDirectoryGateway: {
       findDisciplinesByUsername: async () =>
         disciplines.map((discipline) => ({ discipline })),
-      listAllUsers: async () => [],
+      listAllUsers: async () => users,
       updateGoldenRecordsId,
     },
     memberDistanceSignOffRepository: {
@@ -55,6 +58,7 @@ function buildTestService({
   });
 
   return {
+    storedSnapshots,
     createdEntries,
     service,
     updatedEntries,
@@ -430,7 +434,7 @@ test("Golden Records sync normalizes mixed 252 aliases and numbered awards into 
 
   assert.equal(createdEntries.length, 1);
   assert.equal(createdEntries[0].award25220, true);
-  assert.equal(createdEntries[0].award25230, false);
+  assert.equal(createdEntries[0].award25230, true);
   assert.deepEqual(createdEntries[0].award25220SignOffDates, [
     "2025-04-23",
     "2025-06-25",
@@ -439,6 +443,78 @@ test("Golden Records sync normalizes mixed 252 aliases and numbered awards into 
   assert.deepEqual(createdEntries[0].award25230SignOffDates, [
     "2026-03-01",
     "2026-03-08",
-    "",
+    "2026-03-08",
   ]);
+});
+
+test("repeated sync preserves raw rows and does not duplicate or update outdoor awards", async () => {
+  const source = { achievement: "252@40YDS/3", achievementId: "third", achieved: "2026-06-01", memberId: "gr-123", bowClass: "Recurve" };
+  const snapshot = { enabled: true, matchedMemberId: "gr-123", achievements: [source, source], handicaps: [], classifications: [] };
+  const { service, createdEntries, updatedEntries, storedSnapshots } = buildTestService({ snapshot });
+  const user = { username: "robin", gr_id: "gr-123" };
+  const first = await service.syncMember(user);
+  const second = await service.syncMember(user);
+  assert.equal(createdEntries.length, 1);
+  assert.equal(updatedEntries.length, 0);
+  assert.equal(createdEntries[0].award25240, true);
+  assert.deepEqual(first.goldenRecords.rawAchievements, [source, source]);
+  assert.equal(first.goldenRecords.achievements.length, 3);
+  assert.deepEqual(second.goldenRecords, first.goldenRecords);
+  assert.equal(storedSnapshots.size, 1);
+  assert.deepEqual(storedSnapshots.get("robin").rawAchievements, [source, source]);
+  assert.equal(storedSnapshots.get("robin").achievements.filter((row) => row.derived).length, 2);
+});
+
+test("club sync fetches once, persists links, leaves archived/unmatched members intact and repeats safely", async () => {
+  const users = [{username: "matched", email_address: "member@example.com"}, {username: "archived", gr_id: "old"}, {username: "unmatched"}];
+  const persistedIds = [];
+  let fetchCount = 0;
+  const clubData = { members: [], achievementsByMember: new Map() };
+  const { service, createdEntries, updatedEntries } = buildTestService({
+    users,
+    updateGoldenRecordsId: async (...args) => persistedIds.push(args),
+    currentHandicapService: {
+      isEnabled: true,
+      fetchClubData: async () => { fetchCount += 1; return clubData; },
+      getSnapshotForMember: async (criteria) => {
+        assert.equal(criteria.clubData, clubData);
+        const matched = criteria.email === "member@example.com";
+        return { enabled: true, matchedMemberId: matched ? "new" : "", matchSource: matched ? "email" : "not-found", achievements: matched ? [{achievement: "252@20YDS/2", memberId: "new", bowClass: "Recurve", achieved: "2026-01-01"}] : [] };
+      },
+    },
+  });
+  for (let run = 0; run < 2; run += 1) {
+    const result = await service.syncAllMembers();
+    assert.equal(result.matchedCount, 1);
+    assert.equal(result.unmatchedCount, 2);
+    assert.equal(result.errorCount, 0);
+  }
+  assert.equal(fetchCount, 2);
+  assert.deepEqual(persistedIds, [["matched", "new"]]);
+  assert.equal(users.length, 3);
+  assert.equal(users[1].gr_id, "old");
+  assert.equal(createdEntries.length, 1);
+  assert.equal(updatedEntries.length, 0);
+  assert.deepEqual(createdEntries[0].award25220SignOffDates, ["2026-01-01", "2026-01-01", ""]);
+  assert.equal(createdEntries[0].award25220, false);
+});
+
+test("a unique name match persists its Golden Records ID", async () => {
+  const saved = [];
+  const { service } = buildTestService({
+    snapshot: {
+      enabled: true,
+      matchedMemberId: "gr-craig",
+      matchSource: "name",
+      achievements: [],
+      handicaps: [],
+      classifications: [],
+    },
+    updateGoldenRecordsId: async (...args) => saved.push(args),
+  });
+  const user = {username: "Cfleetham", first_name: "Craig", surname: "Fleetham"};
+  await service.syncMember(user);
+  await service.syncMember(user);
+  assert.deepEqual(saved, [["Cfleetham", "gr-craig"]]);
+  assert.equal(user.gr_id, "gr-craig");
 });

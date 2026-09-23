@@ -111,14 +111,18 @@ export function createGoldenRecordsIntegrationService(runtimeConfig, integration
         throw new Error("Golden Records integration is not enabled.");
       },
       async testConnection() {
+        const authMode = String(runtimeConfig?.authMode ?? "").trim() || "api-key";
         return {
-          authMode: String(runtimeConfig?.authMode ?? "").trim() || "api-key",
+          authMode,
           diagnostics: {
             configured: false,
             maskedBaseUrl: maskBaseUrl(runtimeConfig?.baseUrl),
           },
           enabled: false,
           ok: false,
+          summary: authMode === "member-credentials"
+            ? "Golden Records credentials are not configured. Set GOLDEN_RECORDS_USERNAME and GOLDEN_RECORDS_PASSWORD in .env.local."
+            : "Golden Records API token is not configured. Set GOLDEN_RECORDS_API_KEY in .env.local.",
           testedAt: new Date().toISOString(),
         };
       },
@@ -211,14 +215,15 @@ export function createGoldenRecordsIntegrationService(runtimeConfig, integration
       },
       enabled: true,
       ok: result.ok,
+      summary: result.ok
+        ? "Golden Records connection test succeeded."
+        : `Golden Records returned ${result.status} ${result.statusText}. Check the configured token, auth mode, and endpoint.`,
       testedAt,
     };
 
     await integrationGateway.upsertStatus(STATUS_KEYS.connection, {
       ...payload,
-      summary: result.ok
-        ? "Connection test succeeded."
-        : `Connection test failed with ${result.status} ${result.statusText}.`,
+      summary: payload.summary,
     });
 
     return payload;

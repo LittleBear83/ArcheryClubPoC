@@ -163,3 +163,7 @@ await import(
     path.join(root, "server/presentation/http/registerRfidAgentDistributionRoutes.test.js"),
   )
 );
+await import(new URL("../server/domain/services/goldenRecordsAchievements.test.js", import.meta.url));
+await import(new URL("../server/infrastructure/golden-records/goldenRecordsCurrentHandicapService.test.js", import.meta.url));
+await import(new URL("../server/infrastructure/persistence/bootstrapSqliteBaseSchema.test.js", import.meta.url));
+await import(new URL("../server/infrastructure/golden-records/goldenRecordsIntegrationService.test.js", import.meta.url));

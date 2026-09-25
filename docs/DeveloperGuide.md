@@ -177,8 +177,10 @@ Current event coverage includes:
 
 ### 1. Sign-in and kiosk/RFID flow
 
-Users can sign in with credentials or RFID. Once authenticated, later RFID scans
-can hand an idle kiosk session over to another member.
+Users can sign in with credentials or RFID. While someone is using the kiosk,
+a valid RFID scan records the scanned member's range visit without changing the
+current session. After 15 seconds without activity, a scan records the visit
+and hands the kiosk session over to that member.
 
 Relevant files:
 

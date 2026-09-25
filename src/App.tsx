@@ -21,6 +21,7 @@ import {
   loginWithCredentials,
   loginWithRfid,
   logoutSession,
+  recordRfidCheckIn,
 } from "./api/authApi";
 import type { UserProfile } from "./types/app";
 import type { AppDependencies } from "./bootstrap/createAppDependencies";
@@ -796,8 +797,8 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       return undefined;
     }
 
-    // RFID scans can hand the kiosk over to another member only after a short
-    // idle window, which avoids replacing an actively used session mid-action.
+    // Record every valid fob tap. An active session stays with its current
+    // member; after the idle window a tap also hands the kiosk over.
     let isActive = true;
     let isHandingOff = false;
 
@@ -813,11 +814,15 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       const idleForMs = Date.now() - lastActivityAtRef.current;
 
       if (idleForMs < RFID_SESSION_HANDOFF_IDLE_MS) {
+        try {
+          await recordRfidCheckIn(scan.rfidTag);
+        } catch (error) {
+          console.error("Unable to record RFID check-in", error);
+        }
         return;
       }
 
       isHandingOff = true;
-
       try {
         const loginResult = await handleRfidLogin(scan.rfidTag);
 

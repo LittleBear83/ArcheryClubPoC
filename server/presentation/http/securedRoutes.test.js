@@ -509,6 +509,104 @@ test("auth routes expose RFID reader detection status for the login page", async
   }
 });
 
+test("RFID check-in records the scanned member without replacing the signed-in session", async () => {
+  const app = express();
+  app.use(express.json());
+  const loginEvents = [];
+
+  registerAuthTestRoutes(app, () => "member-already-signed-in", {
+    memberAuthGateway: {
+      findUserByRfid: async (rfidTag) =>
+        rfidTag === "FOB-2"
+          ? { username: "scanned-member", first_name: "Scanned", surname: "Member", active_member: 1 }
+          : null,
+      recordLoginEvent: async (event) => loginEvents.push(event),
+    },
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/rfid/check-in", {
+      body: { rfidTag: "FOB-2" },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, { success: true, username: "scanned-member" });
+    assert.deepEqual(loginEvents, [{
+      method: "rfid",
+      timestampParts: ["2026-04-21", "10:00:00"],
+      username: "scanned-member",
+    }]);
+    assert.equal(response.headers["set-cookie"], undefined);
+  } finally {
+    server.close();
+  }
+});
+
+test("RFID check-in requires an existing session", async () => {
+  const app = express();
+  app.use(express.json());
+  let recorded = false;
+
+  registerAuthTestRoutes(app, () => null, {
+    memberAuthGateway: {
+      recordLoginEvent: async () => { recorded = true; },
+    },
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/rfid/check-in", {
+      body: { rfidTag: "FOB-2" },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(recorded, false);
+  } finally {
+    server.close();
+  }
+});
+
+test("RFID login still records a visit and creates a session when signed out", async () => {
+  const app = express();
+  app.use(express.json());
+  const loginEvents = [];
+
+  registerAuthTestRoutes(app, () => null, {
+    buildMemberUserProfile: (user) => ({ auth: { username: user.username } }),
+    memberAuthGateway: {
+      findUserByRfid: async () => ({
+        username: "scanned-member",
+        first_name: "Scanned",
+        surname: "Member",
+        active_member: 1,
+      }),
+      recordLoginEvent: async (event) => loginEvents.push(event),
+    },
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/rfid", {
+      body: { rfidTag: "FOB-2" },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.userProfile.auth.username, "scanned-member");
+    assert.equal(loginEvents.length, 1);
+    assert.equal(loginEvents[0].username, "scanned-member");
+    assert.equal(response.headers["set-cookie"]?.length, 2);
+  } finally {
+    server.close();
+  }
+});
+
 test("mobile password login is recorded without marking range presence as an RFID-style check-in", async () => {
   const app = express();
   app.use(express.json());

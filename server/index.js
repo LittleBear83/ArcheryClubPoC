@@ -171,6 +171,7 @@ const CSRF_EXCLUDED_PATHS = new Set([
 const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/rfid",
+  "/api/auth/rfid/check-in",
   "/api/auth/logout",
   "/api/auth/guest-login",
   "/api/range-rules",

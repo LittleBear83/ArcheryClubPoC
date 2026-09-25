@@ -214,16 +214,7 @@ type HomePageProps = {
     | "updateRoleUseCase"
     | "deleteRoleUseCase"
   >;
-  tournamentCrud: Pick<
-    AppDependencies,
-    | "listTournamentsUseCase"
-    | "createTournamentUseCase"
-    | "updateTournamentUseCase"
-    | "deleteTournamentUseCase"
-    | "registerForTournamentUseCase"
-    | "withdrawFromTournamentUseCase"
-    | "submitTournamentScoreUseCase"
-  >;
+  tournamentCrud: AppDependencies;
   equipmentCrud: Pick<
     AppDependencies,
     | "getEquipmentDashboardUseCase"

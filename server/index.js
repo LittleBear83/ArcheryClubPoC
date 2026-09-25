@@ -726,7 +726,6 @@ const {
   insertEventBooking,
   insertTournament,
   insertTournamentTemplate,
-  updateTournamentTemplateByKey,
   insertTournamentMatch,
   insertTournamentRegistration,
   insertTournamentRound,
@@ -750,6 +749,8 @@ const {
   rejectCoachingSessionById,
   updateTournamentMatchWorkflow,
   updateTournamentById,
+  updateTournamentTemplate,
+  updateTournamentTemplateSnapshot,
   upsertTournamentScore,
 } = sqliteScheduleTournamentStatements ?? {};
 
@@ -815,6 +816,7 @@ const {
 
 const tournamentGateway = createTournamentGateway({
   databaseEngine: serverRuntime.databaseEngine,
+  db: serverRuntime.databaseEngine === "sqlite" ? db : null,
   deleteTournamentById,
   deleteTournamentMatchesByTournamentId,
   deleteTournamentRegistration,
@@ -826,7 +828,6 @@ const tournamentGateway = createTournamentGateway({
   findTournamentTemplateByKey,
   insertTournament,
   insertTournamentTemplate,
-  updateTournamentTemplateByKey,
   insertTournamentMatch,
   insertTournamentRegistration,
   insertTournamentRound,
@@ -843,6 +844,8 @@ const tournamentGateway = createTournamentGateway({
   pool: db.pool,
   updateTournamentMatchWorkflow,
   updateTournamentById,
+  updateTournamentTemplate,
+  updateTournamentTemplateSnapshot,
   upsertTournamentScore,
 });
 
@@ -950,6 +953,7 @@ const {
   listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
+  listMemberRangeAttendance,
   memberLoginsByDateForUserInRange,
   memberLoginsByDateInRange,
   memberLoginsByHourForUserInRange,
@@ -975,6 +979,7 @@ const activityReportingGateway = createActivityReportingGateway({
   listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
+  listMemberRangeAttendance,
   memberLoginsByDateForUserInRange,
   memberLoginsByDateInRange,
   memberLoginsByHourForUserInRange,
@@ -1882,6 +1887,28 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
       assignedCaseId: participant.assigned_case_id ?? null,
       assignedCaseNumber: participant.assigned_case_number ?? "",
     }));
+    const historicalAttendees = normalizedCourseType === "taster-session"
+      ? allParticipants
+        .filter((participant) =>
+          Number(participant.origin_course_id) === Number(course.id) &&
+          Number(participant.course_id) !== Number(course.id))
+        .map((participant) => ({
+          id: participant.id,
+          username: participant.username,
+          fullName: `${participant.first_name} ${participant.surname}`.trim(),
+          sizeCategory: participant.beginner_size_category,
+          heightText: participant.height_text ?? "",
+          drawLength: participant.draw_length ?? "",
+          handedness: participant.handedness ?? "",
+          eyeDominance: participant.eye_dominance ?? "",
+          courseFeePaid: Boolean(participant.course_fee_paid),
+          attendanceDates: [...new Set(
+            loginDatesByCourseParticipant.get(`${participant.course_id}:${participant.username}`) ?? [],
+          )].filter((date) => lessons.some((lesson) => lesson.date === date)),
+          transferredToCourse: allCourses.find((entry) =>
+            Number(entry.id) === Number(participant.course_id))?.first_lesson_date ?? "",
+        }))
+      : [];
 
     return {
       id: course.id,
@@ -1906,6 +1933,7 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
         : "",
       lessons,
       beginners,
+      historicalAttendees,
       placesRemaining: Math.max(course.beginner_capacity - beginners.length, 0),
     };
   });
@@ -3239,6 +3267,7 @@ function buildTournament(
     {
       frozenDrawOrderUsernames: roundPlan.draw?.orderUsernames ?? [],
       roundPairings: roundPlan.draw?.roundPairings ?? {},
+      randomizeEachRound: template?.capabilities?.randomizeEachRound ?? false,
       supportsHighestLoserProgression:
         template?.capabilities?.supportsHighestLoserProgression ?? false,
     },
@@ -6538,6 +6567,7 @@ app.post("/api/beginners-course-participants/:id/transfer-to-beginners-course", 
   await beginnersCourseWriteGateway.transferParticipantToCourse({
     courseId: targetCourse.id,
     participantId: participant.id,
+    originCourseId: sourceCourse.id,
   });
 
   const transferredParticipant = await findBeginnersParticipantAuditSnapshot(
@@ -6579,7 +6609,7 @@ app.post("/api/beginners-course-participants/:id/transfer-to-beginners-course", 
 app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
+  if (!actor) {
     res.status(403).json({
       success: false,
       message: "You do not have permission to convert beginners into members.",
@@ -6603,6 +6633,25 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     res.status(404).json({
       success: false,
       message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  if (normalizeCourseType(course.course_type) !== "beginners") {
+    res.status(400).json({
+      success: false,
+      message: "Only beginners course participants can be converted to members.",
+    });
+    return;
+  }
+
+  const canConvert = actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS) ||
+    (actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES) &&
+      String(course.coordinator_username).toLowerCase() === String(actor.username).toLowerCase());
+  if (!canConvert) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to convert beginners into members.",
     });
     return;
   }

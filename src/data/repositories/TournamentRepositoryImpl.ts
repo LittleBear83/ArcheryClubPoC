@@ -5,6 +5,7 @@ type TournamentDataSource = {
   createTournament(actorUsername: string, form: unknown): Promise<unknown>;
   createTournamentTemplate(actorUsername: string, form: unknown): Promise<unknown>;
   updateTournamentTemplate(actorUsername: string, templateKey: string, form: unknown): Promise<unknown>;
+  listLiveTournamentsForTemplate(actorUsername: string, templateKey: string): Promise<unknown>;
   updateTournament(
     actorUsername: string,
     tournamentId: string | number,
@@ -75,6 +76,10 @@ export class TournamentRepositoryImpl extends TournamentRepository {
 
   async updateTournamentTemplate(actorUsername, templateKey, form) {
     return this.dataSource.updateTournamentTemplate(actorUsername, templateKey, form);
+  }
+
+  async listLiveTournamentsForTemplate(actorUsername, templateKey) {
+    return this.dataSource.listLiveTournamentsForTemplate(actorUsername, templateKey);
   }
 
   async updateTournament(actorUsername, tournamentId, form) {

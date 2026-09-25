@@ -1,4 +1,4 @@
-import { hasCourseFinished, isCourseClosed, selectCourseDetails } from "./beginnersCourseWorkflow.js";
+import { hasCourseFinished, isCourseClosed } from "./beginnersCourseWorkflow.js";
 import { cancelCourseDates } from "../../api/beginnersCoursesApi";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -109,6 +109,20 @@ type CourseLesson = {
   coaches: Array<{ username: string; fullName: string }>;
 };
 
+type HistoricalAttendee = {
+  id: number;
+  username: string;
+  fullName: string;
+  sizeCategory: string;
+  heightText: string;
+  drawLength: string;
+  handedness: string;
+  eyeDominance: string;
+  courseFeePaid: boolean;
+  attendanceDates: string[];
+  transferredToCourse: string;
+};
+
 type CourseRecord = {
   id: number;
   coordinatorUsername: string;
@@ -128,6 +142,7 @@ type CourseRecord = {
   approvedAt: string;
   lessons: CourseLesson[];
   beginners: CourseBeginner[];
+  historicalAttendees: HistoricalAttendee[];
   placesRemaining: number;
 };
 
@@ -342,7 +357,7 @@ const BEGINNERS_COPY = {
   cancelledTitle: "Closed courses",
   hideCancelledLabel: "Collapse",
   showCancelledLabel: "Expand",
-  noCancelledText: "No cancelled beginners courses yet.",
+  noCancelledText: "No closed beginners courses yet.",
   rejectPrompt: "Add a short reason for rejecting this course.",
   cancelPrompt: "Add a short reason for cancelling this course.",
   equipmentUpdated: "Course equipment updated.",
@@ -399,7 +414,7 @@ const HAVE_A_GO_COPY = {
   cancelledTitle: "Closed sessions",
   hideCancelledLabel: "Collapse",
   showCancelledLabel: "Expand",
-  noCancelledText: "No cancelled Have a Go sessions yet.",
+  noCancelledText: "No closed Have a Go sessions yet.",
   rejectPrompt: "Add a short reason for rejecting this session.",
   cancelPrompt: "Add a short reason for cancelling this session.",
   equipmentUpdated: "Session equipment updated.",
@@ -456,7 +471,7 @@ const TASTER_SESSION_COPY = {
   cancelledTitle: "Closed sessions",
   hideCancelledLabel: "Collapse",
   showCancelledLabel: "Expand",
-  noCancelledText: "No cancelled Taster Sessions yet.",
+  noCancelledText: "No closed Taster Sessions yet.",
   rejectPrompt: "Add a short reason for rejecting this session.",
   cancelPrompt: "Add a short reason for cancelling this session.",
   equipmentUpdated: "Session equipment updated.",
@@ -511,7 +526,6 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const [temporaryPasswords, setTemporaryPasswords] = useState<Record<string, string>>({});
   const [collapsedCourseIds, setCollapsedCourseIds] = useState<Record<number, boolean>>({});
   const [showCancelledCourses, setShowCancelledCourses] = useState(false);
-  const [closedDetailId, setClosedDetailId] = useState<number | null>(null);
   const [cancellationCourse, setCancellationCourse] = useState<CourseRecord | null>(null);
   const [cancellationLessonIds, setCancellationLessonIds] = useState<number[]>([]);
   const [rescheduleSelection, setRescheduleSelection] = useState<RescheduleSelection | null>(
@@ -545,33 +559,9 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       ),
     [courses, localCancelledCourses],
   );
-  const cancelledCourses = useMemo<CancelledCourseSummary[]>(
-    () => {
-      const backendCancelledCourses = courses
-        .filter(
-          (course) =>
-            course.isCancelled ||
-            course.approvalStatus === "rejected" ||
-            isCourseClosed(course),
-        )
-        .map((course) => ({
-          id: course.id,
-          firstLessonDate: course.firstLessonDate,
-          startTime: course.startTime,
-          endTime: course.endTime,
-          coordinatorName: course.coordinatorName,
-          archiveReason:
-            course.cancellationReason ||
-            course.rejectionReason ||
-            (course.lessons.length > 0 && course.lessons.every((lesson) => lesson.isCancelled) ? "All session dates cancelled" : `${copy.itemLabel} finished`),
-        }));
-
-      return [...backendCancelledCourses, ...localCancelledCourses].filter(
-        (course, index, allCourses) =>
-          allCourses.findIndex((entry) => entry.id === course.id) === index,
-      );
-    },
-    [copy.itemLabel, courses, localCancelledCourses],
+  const closedCourseRecords = useMemo(
+    () => courses.filter((course) => !activeCourses.some((active) => active.id === course.id)),
+    [activeCourses, courses],
   );
   const permissions = dashboard?.permissions ?? {
     canManageBeginnersCourses: false,
@@ -987,140 +977,23 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     );
   }
 
-  if (
-    !permissions.canManageBeginnersCourses &&
-    !permissions.canApproveBeginnersCourses &&
-    !permissions.canReallocateBeginnerCourseBooking
-  ) {
-    return <p>{copy.noPermission}</p>;
-  }
-
-  return (
-    <div className="beginners-course-page">
-      <p>
-        {copy.pageDescription}
-      </p>
-
-      <StatusMessagePanel
-        error={error || dashboardError}
-        loading={dashboardQuery.isLoading}
-        loadingLabel={copy.loading}
-        success={message}
-      />
-
-      {permissions.canManageBeginnersCourses ? (
-        <section className="equipment-action-card beginners-course-panel">
-          <h3>{copy.submitTitle}</h3>
-          <form className="beginners-course-form" onSubmit={submitCourse}>
-            <div className="beginners-course-form-grid">
-              <label>
-                {copy.coordinatorLabel}
-                <select
-                  value={selectedCoordinatorUsername}
-                  onChange={(event) =>
-                    setCourseForm((current) => ({
-                      ...current,
-                      coordinatorUsername: event.target.value,
-                    }))
-                  }
-                >
-                  {coordinators.map((coordinator) => (
-                    <option key={coordinator.username} value={coordinator.username}>
-                      {coordinator.fullName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {copy.firstDateLabel}
-                <DatePicker
-                  value={courseForm.firstLessonDate}
-                  onChange={(value) =>
-                    setCourseForm((current) => ({
-                      ...current,
-                      firstLessonDate: value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                Start time
-                <input
-                  type="time"
-                  value={courseForm.startTime}
-                  onChange={(event) =>
-                    setCourseForm((current) => ({
-                      ...current,
-                      startTime: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                End time
-                <input
-                  type="time"
-                  value={courseForm.endTime}
-                  onChange={(event) =>
-                    setCourseForm((current) => ({
-                      ...current,
-                      endTime: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                {copy.countLabel}
-                <input
-                  type="number"
-                  min={1}
-                  max={24}
-                  inputMode="numeric"
-                  value={courseForm.lessonCount}
-                  onChange={(event) =>
-                    setCourseForm((current) => ({
-                      ...current,
-                      lessonCount: Number.parseInt(event.target.value, 10) || 1,
-                    }))
-                  }
-                />
-              </label>
-              <label>
-                {copy.capacityLabel}
-                <input
-                  type="number"
-                  min={1}
-                  max={48}
-                  inputMode="numeric"
-                  value={courseForm.beginnerCapacity}
-                  onChange={(event) =>
-                    setCourseForm((current) => ({
-                      ...current,
-                      beginnerCapacity: Number.parseInt(event.target.value, 10) || 1,
-                    }))
-                  }
-                />
-              </label>
-            </div>
-            <div className="beginners-course-actions">
-              <Button type="submit">{copy.submitButton}</Button>
-            </div>
-          </form>
-        </section>
-      ) : null}
-
-      <div className="beginners-course-list">
-        {selectCourseDetails(activeCourses, courses, closedDetailId).map((course) => {
-          const isClosed = isCourseClosed(course);
+  const renderCoursePanel = (course: CourseRecord) => {
+          const isClosedCourse = closedCourseRecords.some((closed) => closed.id === course.id);
+          const canConvertMembers = hasPermission(currentUserProfile, "manage_members") ||
+            (permissions.canManageBeginnersCourses &&
+              course.coordinatorUsername.toLowerCase() === actorUsername.toLowerCase());
           const beginnerForm = {
             ...EMPTY_BEGINNER_FORM,
             ...beginnerForms[course.id],
           };
           const canCancelCourse =
-            !isClosed && (permissions.canApproveBeginnersCourses ||
-            permissions.canManageBeginnersCourses || course.coordinatorUsername === actorUsername);
+            !isClosedCourse &&
+            (permissions.canApproveBeginnersCourses ||
+              permissions.canManageBeginnersCourses ||
+              course.coordinatorUsername === actorUsername);
           const canRescheduleCourse =
-            !isClosed && permissions.canManageBeginnersCourses &&
+            !isClosedCourse &&
+            permissions.canManageBeginnersCourses &&
             copy.courseType !== "have-a-go" &&
             !hasCourseStarted(course);
           const isCollapsed = collapsedCourseIds[course.id] ?? true;
@@ -1130,7 +1003,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
               <div className="beginners-course-header">
                 <div>
                   <h3>
-                    {copy.itemLabel} from {formatDate(course.firstLessonDate)}{isClosed ? " - Closed" : ""}
+                    {copy.itemLabel} from {formatDate(course.firstLessonDate)}{isClosedCourse ? " - Closed" : ""}
                   </h3>
                   <p className="equipment-meta-copy">
                     Time: {formatCourseTimeRange(course.startTime, course.endTime)} | Coordinator: {course.coordinatorName} | {copy.countMetaLabel}: {course.lessonCount} | {copy.capacityMetaLabel}:
@@ -1143,6 +1016,14 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                   </p>
                   {course.rejectionReason ? (
                     <p className="profile-error">Rejected: {course.rejectionReason}</p>
+                  ) : null}
+                  {isClosedCourse ? (
+                    <p className="equipment-meta-copy">
+                      {course.cancellationReason || course.rejectionReason ||
+                        (course.lessons.length > 0 && course.lessons.every((lesson) => lesson.isCancelled)
+                          ? "All session dates cancelled"
+                          : `${copy.itemLabel} completed.`)}
+                    </p>
                   ) : null}
                 </div>
                 <div className="beginners-course-actions">
@@ -1188,7 +1069,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
               {isCollapsed ? null : (
                 <>
-                  {permissions.canManageBeginnersCourses && !isClosed ? (
+                  {permissions.canManageBeginnersCourses && !course.isCancelled && course.approvalStatus === "approved" ? (
                     <section className="beginners-course-subpanel">
                       <h4>{copy.addParticipantTitle}</h4>
                       {course.approvalStatus !== "approved" ? (
@@ -1247,6 +1128,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                               : "Convert to member";
                             const convertButtonTitle = beginner.convertedToMember
                               ? `${formatMemberDisplayName(beginner)} is already a full member.`
+                              : !canConvertMembers
+                                ? "Only the course coordinator or a member manager can convert beginners."
                               : canConvertBeginner
                                 ? `Convert ${formatMemberDisplayName(beginner)} to a full member.`
                                 : `This button becomes available once the ${copy.itemLowerLabel} has completed.`;
@@ -1369,7 +1252,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                         size="sm"
                                         variant="info"
                                         disabled={
-                                          beginner.convertedToMember || !canConvertBeginner
+                                          beginner.convertedToMember || !canConvertBeginner || !canConvertMembers
                                         }
                                         title={convertButtonTitle}
                                         onClick={() => void convertBeginnerToMember(beginner)}
@@ -1552,6 +1435,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                               : "Convert to member";
                                             const convertButtonTitle = beginner.convertedToMember
                                               ? `${formatMemberDisplayName(beginner)} is already a full member.`
+                                              : !canConvertMembers
+                                                ? "Only the course coordinator or a member manager can convert beginners."
                                               : canConvertBeginner
                                                 ? `Convert ${formatMemberDisplayName(beginner)} to a full member.`
                                                 : `This button becomes available once the ${copy.itemLowerLabel} has completed.`;
@@ -1569,7 +1454,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                                   className="beginners-course-row-action-button beginners-course-row-action-button--convert"
                                                   size="sm"
                                                   variant="info"
-                                                  disabled={beginner.convertedToMember || !canConvertBeginner}
+                                                  disabled={beginner.convertedToMember || !canConvertBeginner || !canConvertMembers}
                                                   title={convertButtonTitle}
                                                   onClick={() => void convertBeginnerToMember(beginner)}
                                                 >
@@ -1631,6 +1516,35 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                       </div>
                     )}
                   </section>
+
+                  {course.historicalAttendees?.length ? (
+                    <section className="beginners-course-subpanel">
+                      <h4>Attendees moved to beginners courses</h4>
+                      <p className="equipment-meta-copy">
+                        These attendees came from this Taster Session. Manage their current booking in the beginners course.
+                      </p>
+                      <MobileCardList className="beginners-course-mobile-card-list">
+                        {course.historicalAttendees.map((attendee) => (
+                          <article key={attendee.id} className="beginners-course-mobile-card">
+                            <h5>{attendee.fullName}</h5>
+                            <MobileKeyValueList items={[
+                              { label: "Username", value: attendee.username },
+                              { label: "Type", value: attendee.sizeCategory === "junior" ? "Junior" : "Senior" },
+                              { label: "Height", value: attendee.heightText || "Not recorded" },
+                              { label: "Draw length", value: attendee.drawLength || "Not recorded" },
+                              { label: "Handedness", value: attendee.handedness || "Not recorded" },
+                              { label: "Eye dominance", value: attendee.eyeDominance || "Not recorded" },
+                              { label: "Current booking fee paid", value: attendee.courseFeePaid ? "Yes" : "No" },
+                              { label: "Taster dates attended", value: attendee.attendanceDates.length
+                                ? attendee.attendanceDates.map(formatDate).join(", ") : "None recorded" },
+                              { label: "Moved to course", value: attendee.transferredToCourse
+                                ? formatDate(attendee.transferredToCourse) : "Beginners course" },
+                            ]} />
+                          </article>
+                        ))}
+                      </MobileCardList>
+                    </section>
+                  ) : null}
 
                   <section className="beginners-course-subpanel">
                     <h4>Attendance Register</h4>
@@ -1859,12 +1773,137 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
               )}
             </section>
           );
-        })}
+  };
+
+  if (
+    !permissions.canManageBeginnersCourses &&
+    !permissions.canApproveBeginnersCourses &&
+    !permissions.canReallocateBeginnerCourseBooking
+  ) {
+    return <p>{copy.noPermission}</p>;
+  }
+
+  return (
+    <div className="beginners-course-page">
+      <p>
+        {copy.pageDescription}
+      </p>
+
+      <StatusMessagePanel
+        error={error || dashboardError}
+        loading={dashboardQuery.isLoading}
+        loadingLabel={copy.loading}
+        success={message}
+      />
+
+      {permissions.canManageBeginnersCourses ? (
+        <section className="equipment-action-card beginners-course-panel">
+          <h3>{copy.submitTitle}</h3>
+          <form className="beginners-course-form" onSubmit={submitCourse}>
+            <div className="beginners-course-form-grid">
+              <label>
+                {copy.coordinatorLabel}
+                <select
+                  value={selectedCoordinatorUsername}
+                  onChange={(event) =>
+                    setCourseForm((current) => ({
+                      ...current,
+                      coordinatorUsername: event.target.value,
+                    }))
+                  }
+                >
+                  {coordinators.map((coordinator) => (
+                    <option key={coordinator.username} value={coordinator.username}>
+                      {coordinator.fullName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                {copy.firstDateLabel}
+                <DatePicker
+                  value={courseForm.firstLessonDate}
+                  onChange={(value) =>
+                    setCourseForm((current) => ({
+                      ...current,
+                      firstLessonDate: value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                Start time
+                <input
+                  type="time"
+                  value={courseForm.startTime}
+                  onChange={(event) =>
+                    setCourseForm((current) => ({
+                      ...current,
+                      startTime: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                End time
+                <input
+                  type="time"
+                  value={courseForm.endTime}
+                  onChange={(event) =>
+                    setCourseForm((current) => ({
+                      ...current,
+                      endTime: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {copy.countLabel}
+                <input
+                  type="number"
+                  min={1}
+                  max={24}
+                  inputMode="numeric"
+                  value={courseForm.lessonCount}
+                  onChange={(event) =>
+                    setCourseForm((current) => ({
+                      ...current,
+                      lessonCount: Number.parseInt(event.target.value, 10) || 1,
+                    }))
+                  }
+                />
+              </label>
+              <label>
+                {copy.capacityLabel}
+                <input
+                  type="number"
+                  min={1}
+                  max={48}
+                  inputMode="numeric"
+                  value={courseForm.beginnerCapacity}
+                  onChange={(event) =>
+                    setCourseForm((current) => ({
+                      ...current,
+                      beginnerCapacity: Number.parseInt(event.target.value, 10) || 1,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="beginners-course-actions">
+              <Button type="submit">{copy.submitButton}</Button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
+      <div className="beginners-course-list">
+        {activeCourses.map(renderCoursePanel)}
       </div>
 
       <section className="equipment-action-card beginners-course-panel">
         <div className="beginners-course-cancelled-header">
-          <h3>{copy.cancelledTitle} ({cancelledCourses.length})</h3>
+          <h3>{copy.cancelledTitle} ({closedCourseRecords.length})</h3>
           <Button
             type="button"
             variant="unstyled"
@@ -1874,26 +1913,13 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
             {showCancelledCourses ? copy.hideCancelledLabel : copy.showCancelledLabel}
           </Button>
         </div>
-              {showCancelledCourses ? (
-          cancelledCourses.length > 0 ? (
-            <div className="beginners-course-cancelled-list">
-              {cancelledCourses.map((course) => (
-                <div
-                  key={course.id}
-                  className="beginners-course-cancelled-item"
-                >
-                  <strong>{formatDate(course.firstLessonDate)}</strong>
-                  <span>Time: {formatCourseTimeRange(course.startTime, course.endTime)}</span>
-                  <span>Coordinator: {course.coordinatorName}</span>
-                  <span>Reason: {course.archiveReason || "No reason recorded."}</span>
-                  <Button variant="secondary" onClick={() => { setClosedDetailId(course.id); setCollapsedCourseIds((current) => ({ ...current, [course.id]: false })); window.requestAnimationFrame(() => document.getElementById(`course-details-${course.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })); }}>View details</Button>
-                </div>
-              ))}
+        {showCancelledCourses ? (
+          closedCourseRecords.length > 0 ? (
+            <div className="beginners-course-list">
+              {closedCourseRecords.map(renderCoursePanel)}
             </div>
           ) : (
-            <p className="equipment-meta-copy">
-              {copy.noCancelledText}
-            </p>
+            <p className="equipment-meta-copy">{copy.noCancelledText}</p>
           )
         ) : null}
       </section>

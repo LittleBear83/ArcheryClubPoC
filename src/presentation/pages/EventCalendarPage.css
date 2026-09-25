@@ -99,9 +99,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff7f7;
-  background: linear-gradient(135deg, #d94b5f 0%, #d94b5f 48%, #3f6fd8 52%, #3f6fd8 100%);
-  border: 2px solid color-mix(in srgb, #d94b5f 45%, #3f6fd8 55%);
+  color: var(--coaching-badge-text);
+  background: var(--coaching-badge-bg);
+  border: 2px solid var(--coaching-badge-border);
 }
 
 .coaching-key-icon-wrap {

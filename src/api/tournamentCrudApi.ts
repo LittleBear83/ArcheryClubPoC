@@ -26,12 +26,8 @@ export class TournamentCrudApi {
     });
   }
 
-  async updateTournament(
-    actorUsername: string,
-    tournamentId: string | number,
-    form: unknown,
-  ) {
-    return fetchApi(`/api/tournaments/${tournamentId}`, {
+  async updateTournamentTemplate(actorUsername: string, templateKey: string, form: unknown) {
+    return fetchApi(`/api/tournament-templates/${encodeURIComponent(templateKey)}`, {
       method: "PUT",
       headers: buildActorHeaders(actorUsername, true),
       cache: "no-store",
@@ -39,12 +35,19 @@ export class TournamentCrudApi {
     });
   }
 
-  async updateTournamentTemplate(
+  async listLiveTournamentsForTemplate(actorUsername: string, templateKey: string) {
+    return fetchApi(`/api/tournament-templates/${encodeURIComponent(templateKey)}/live-tournaments`, {
+      headers: buildActorHeaders(actorUsername),
+      cache: "no-store",
+    });
+  }
+
+  async updateTournament(
     actorUsername: string,
-    templateKey: string,
+    tournamentId: string | number,
     form: unknown,
   ) {
-    return fetchApi(`/api/tournament-templates/${encodeURIComponent(templateKey)}`, {
+    return fetchApi(`/api/tournaments/${tournamentId}`, {
       method: "PUT",
       headers: buildActorHeaders(actorUsername, true),
       cache: "no-store",

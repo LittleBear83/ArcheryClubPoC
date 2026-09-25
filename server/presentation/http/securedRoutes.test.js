@@ -107,7 +107,7 @@ function registerAuthTestRoutes(app, getSessionUsername, overrides = {}) {
   });
 }
 
-function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission) {
+function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission, overrides = {}) {
   const addUtcDays = (date, days) => {
     const next = new Date(date);
     next.setUTCDate(next.getUTCDate() + days);
@@ -129,6 +129,7 @@ function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission)
       guestLoginsByWeekdayInRange: async () => [],
       listAllUserDisciplines: async () => [],
       listMemberJourneyParticipants: async () => [],
+      listMemberRangeAttendance: overrides.listMemberRangeAttendance ?? (async () => []),
       listReportingGuestLogins: async () => [],
       listReportingMemberLogins: async () => [],
       memberLoginsByDateForUserInRange: async () => [],
@@ -1181,4 +1182,54 @@ test('unchanged RFID route passes ordinary persistence values', async () => {
   const h = adminRfidHarness();
   assert.equal((await h.run('PUT /api/user-profiles/:username', 'OLD')).status, 200);
   assert.equal(h.calls[0].rfidTag, 'OLD');
+});
+
+test("member range attendance is limited to admins and developers with report permission", async () => {
+  let actor = { id: 1, username: "member", user_type: "member" };
+  const calls = [];
+  const app = express();
+  registerMemberActivityTestRoutes(
+    app,
+    () => actor,
+    (_actor, permission) => permission === "view_reports",
+    {
+      listMemberRangeAttendance: async (start, end) => {
+        calls.push({ start, end });
+        return [
+          { username: "no-visit", first_name: "No", surname: "Visit", email_address: "no@example.org", visit_days_in_range: 0, total_visit_days: 0, last_visit_at: null },
+          { username: "attended", first_name: "Range", surname: "Visitor", email_address: "yes@example.org", visit_days_in_range: 2, total_visit_days: 5, last_visit_at: `${end}T09:00:00` },
+        ];
+      },
+    },
+  );
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const memberResponse = await requestJson(baseUrl, "/api/reporting/member-range-attendance?days=30");
+    assert.equal(memberResponse.status, 403);
+    assert.equal(calls.length, 0);
+
+    actor = { id: 2, username: "admin", user_type: "admin" };
+    const adminResponse = await requestJson(baseUrl, "/api/reporting/member-range-attendance?days=30");
+    assert.equal(adminResponse.status, 200);
+    assert.equal(adminResponse.body.report.totalMembers, 2);
+    assert.equal(adminResponse.body.report.attended, 1);
+    assert.equal(adminResponse.body.report.noRecordedVisit, 1);
+    assert.equal(adminResponse.body.report.neverRecorded, 1);
+    assert.equal(adminResponse.body.report.rows[0].username, "no-visit");
+    assert.equal(adminResponse.body.report.rows[0].emailAddress, "no@example.org");
+    assert.equal(adminResponse.body.report.rows[1].totalVisitDays, 5);
+    assert.equal(calls.length, 1);
+
+    actor = { id: 3, username: "developer", user_type: "developer" };
+    const developerResponse = await requestJson(baseUrl, "/api/reporting/member-range-attendance?days=30");
+    assert.equal(developerResponse.status, 200);
+    assert.equal(calls.length, 2);
+
+    const invalidResponse = await requestJson(baseUrl, "/api/reporting/member-range-attendance?days=500");
+    assert.equal(invalidResponse.status, 400);
+    assert.equal(calls.length, 2);
+  } finally {
+    server.close();
+  }
 });

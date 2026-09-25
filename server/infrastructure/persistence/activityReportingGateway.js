@@ -115,6 +115,7 @@ function createSqliteActivityReportingGateway({
   listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
+  listMemberRangeAttendance,
   memberLoginsByDateForUserInRange,
   memberLoginsByDateInRange,
   memberLoginsByHourForUserInRange,
@@ -173,6 +174,12 @@ function createSqliteActivityReportingGateway({
       return normalizeReportingMemberRows(
         listReportingMemberLogins.all(startIso, endIsoExclusive),
       );
+    },
+    async listMemberRangeAttendance(startDate, endDate) {
+      return listMemberRangeAttendance.all(startDate, endDate).map((row) => ({
+        ...row,
+        visit_days_in_range: Number(row.visit_days_in_range ?? 0),
+      }));
     },
     async memberLoginsByDateForUserInRange(username, startIso, endIsoExclusive) {
       return normalizeRowsWithCount(
@@ -444,6 +451,36 @@ function createPostgresActivityReportingGateway({ pool }) {
         [startIso, endIsoExclusive],
       );
       return normalizeReportingMemberRows(result.rows);
+    },
+    async listMemberRangeAttendance(startDate, endDate) {
+      const result = await pool.query(
+        `SELECT users.username, users.first_name, users.surname, users.email_address,
+                users.membership_status, user_types.user_type,
+                COUNT(DISTINCT CASE
+                  WHEN login_events.logged_in_date::text >= $1
+                   AND login_events.logged_in_date::text <= $2
+                    THEN login_events.logged_in_date::text
+                  ELSE NULL
+                END) AS visit_days_in_range,
+                COUNT(DISTINCT login_events.logged_in_date::text) AS total_visit_days,
+                MAX(login_events.logged_in_date::text || 'T' || login_events.logged_in_time::text) AS last_visit_at
+         FROM users
+         INNER JOIN user_types ON user_types.user_id = users.id
+         LEFT JOIN login_events ON login_events.username = users.username
+           AND login_events.login_method IN ('rfid', 'mobile-app')
+         WHERE users.active_member = 1
+           AND users.membership_status = 'member'
+           AND COALESCE(users.programme_type, 'none') = 'none'
+         GROUP BY users.id, users.username, users.first_name, users.surname,
+                  users.email_address, users.membership_status, user_types.user_type
+         ORDER BY users.surname ASC, users.first_name ASC`,
+        [startDate, endDate],
+      );
+      return result.rows.map((row) => ({
+        ...row,
+        visit_days_in_range: Number(row.visit_days_in_range ?? 0),
+        total_visit_days: Number(row.total_visit_days ?? 0),
+      }));
     },
     async memberLoginsByDateForUserInRange(username, startIso, endIsoExclusive) {
       const result = await pool.query(

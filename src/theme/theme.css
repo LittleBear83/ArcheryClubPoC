@@ -58,6 +58,20 @@
   --brand-danger: #8f1f1f;
   --brand-danger-hover: #aa2a2a;
   --brand-danger-border: rgba(255, 109, 109, 0.65);
+  --info-button-bg: #2c7be5;
+  --info-button-hover: #2067c0;
+  --info-button-text: #f7fbff;
+  --announcement-green-bg: #1d6f42;
+  --announcement-green-text: #f3fff7;
+  --announcement-yellow-bg: #e0ac00;
+  --announcement-yellow-text: #2e2200;
+  --announcement-red-bg: #b3322f;
+  --announcement-red-text: #fff6f5;
+  --lost-arrow-ticker-bg: linear-gradient(90deg, #062f45 0%, #0a5373 48%, #062f45 100%);
+  --lost-arrow-ticker-text: #e8f8ff;
+  --success-toast-bg: linear-gradient(135deg, rgb(33 94 24 / 0.98), rgb(87 154 56 / 0.95));
+  --success-toast-text: #f7fff2;
+  --success-toast-heading: #d8ffaf;
   --banner-bg: #101010;
   --banner-shadow: 0 0 8px rgba(0, 0, 0, 0.75);
   --banner-title-color: #fffdf7;
@@ -285,6 +299,12 @@
 
 :root[data-theme="dawn"] {
   color-scheme: light;
+}
+
+select option,
+select optgroup {
+  background: var(--input-option-bg);
+  color: var(--input-option-text);
 }
 
 html,

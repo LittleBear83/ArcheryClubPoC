@@ -141,6 +141,7 @@ Useful alternatives:
 - `npm run migrate:postgres`
 - `npm run seed:live-showcase`
 - `npm run seed:runtime-showcase`
+- `npm run seed:local`
 - `npm test`
 
 ## Database And Runtime Notes
@@ -158,6 +159,13 @@ SQLite notes:
 - non-live mode defaults to `server/data/auth.sqlite`
 - you can override the path with `DATABASE_PATH`
 - live/production mode no longer permits SQLite startup
+
+To add sample records to your local development database, start the server once,
+then run `npm run seed:local`. It adds examples across courses, taster and Have a
+Go sessions, events, coaching, tournaments, announcements, attendance, feedback,
+equipment and lost arrows. Existing records are left in place, repeated runs do
+not duplicate the samples, and a timestamped SQLite backup is made first. The
+command honours `DATABASE_PATH` and refuses live or PostgreSQL runtimes.
 
 PostgreSQL notes:
 

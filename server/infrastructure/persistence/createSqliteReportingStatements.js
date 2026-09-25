@@ -252,6 +252,34 @@ export function createSqliteReportingStatements(db) {
     ORDER BY login_events.logged_in_date ASC, login_events.logged_in_time ASC, users.surname ASC, users.first_name ASC
   `);
 
+  const listMemberRangeAttendance = db.prepare(`
+    SELECT
+      users.username,
+      users.first_name,
+      users.surname,
+      users.email_address,
+      users.membership_status,
+      user_types.user_type,
+      COUNT(DISTINCT CASE
+        WHEN login_events.logged_in_date >= ? AND login_events.logged_in_date <= ?
+          THEN login_events.logged_in_date
+        ELSE NULL
+      END) AS visit_days_in_range,
+      COUNT(DISTINCT login_events.logged_in_date) AS total_visit_days,
+      MAX(login_events.logged_in_date || 'T' || login_events.logged_in_time) AS last_visit_at
+    FROM users
+    INNER JOIN user_types ON user_types.user_id = users.id
+    LEFT JOIN login_events
+      ON login_events.username = users.username
+      AND login_events.login_method IN ('rfid', 'mobile-app')
+    WHERE users.active_member = 1
+      AND users.membership_status = 'member'
+      AND COALESCE(users.programme_type, 'none') = 'none'
+    GROUP BY users.id, users.username, users.first_name, users.surname,
+      users.email_address, users.membership_status, user_types.user_type
+    ORDER BY users.surname ASC, users.first_name ASC
+  `);
+
   const listReportingGuestLogins = db.prepare(`
     SELECT
       id,
@@ -315,6 +343,7 @@ export function createSqliteReportingStatements(db) {
     listMemberJourneyParticipants,
     listReportingGuestLogins,
     listReportingMemberLogins,
+    listMemberRangeAttendance,
     memberLoginsByDateForUserInRange,
     memberLoginsByDateInRange,
     memberLoginsByHourForUserInRange,

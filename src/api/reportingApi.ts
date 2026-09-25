@@ -37,6 +37,29 @@ export type AttendanceReport = {
   rows: AttendanceReportRow[];
 };
 
+export type MemberRangeAttendanceRow = {
+  username: string;
+  name: string;
+  emailAddress: string;
+  membershipStatus: string;
+  role: string;
+  visitDays: number;
+  totalVisitDays: number;
+  lastVisitAt: string | null;
+  hasRecordedVisit: boolean;
+};
+
+export type MemberRangeAttendanceReport = {
+  days: number;
+  startDate: string;
+  endDate: string;
+  totalMembers: number;
+  attended: number;
+  noRecordedVisit: number;
+  neverRecorded: number;
+  rows: MemberRangeAttendanceRow[];
+};
+
 export type MemberJourneyReportRow = {
   id: string;
   username: string;
@@ -100,6 +123,13 @@ export async function getAttendanceReport(
     headers: buildActorHeaders(actorUsername),
     cache: "no-store",
   });
+}
+
+export async function getMemberRangeAttendanceReport(actorUsername: string, days: number) {
+  return fetchApi<{ success: true; report: MemberRangeAttendanceReport }>(
+    `/api/reporting/member-range-attendance?days=${days}`,
+    { headers: buildActorHeaders(actorUsername), cache: "no-store" },
+  );
 }
 
 export async function getMemberJourneyReport(

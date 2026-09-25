@@ -104,6 +104,15 @@ function fillHighestLoserSlots(nextRoundParticipants, matches = []) {
   });
 }
 
+function drawRank(value) {
+  let hash = 2166136261;
+  for (const character of value) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
 function buildTournamentBracket(
   registrations,
   scoresByRound,
@@ -111,6 +120,7 @@ function buildTournamentBracket(
   {
     frozenDrawOrderUsernames = [],
     roundPairings = {},
+    randomizeEachRound = false,
     supportsHighestLoserProgression = false,
   } = {},
 ) {
@@ -309,9 +319,35 @@ function buildTournamentBracket(
     });
 
     const nextRoundParticipants = matches.map((match) => match.winner);
-    currentParticipants = supportsHighestLoserProgression
+    const progressedParticipants = supportsHighestLoserProgression
       ? fillHighestLoserSlots(nextRoundParticipants, matches)
       : nextRoundParticipants;
+    if (randomizeEachRound && progressedParticipants.every(Boolean)) {
+      const nextRoundNumber = roundIndex + 1;
+      const savedMatches = Array.from({ length: progressedParticipants.length / 2 }, (_, index) =>
+        persistedMatchesByKey.get(`${nextRoundNumber}:${index + 1}`));
+      const hasStartedNextRound = savedMatches.some((match) => match && (
+        Number.isInteger(match.leftScore) || Number.isInteger(match.rightScore) ||
+        Boolean(match.submittedByUsername) || Boolean(match.confirmedByUsername) ||
+        isTournamentMatchResolvedStatus(match.status)
+      ));
+      const savedOrder = savedMatches.flatMap((match) =>
+        [match?.leftMemberUsername, match?.rightMemberUsername]);
+      const participantByUsername = new Map(progressedParticipants.map((participant) =>
+        [participant.username, participant]));
+      if (hasStartedNextRound && savedOrder.length === progressedParticipants.length &&
+          new Set(savedOrder).size === progressedParticipants.length &&
+          savedOrder.every((username) => participantByUsername.has(username))) {
+        currentParticipants = savedOrder.map((username) => participantByUsername.get(username));
+      } else {
+        currentParticipants = [...progressedParticipants].sort((left, right) =>
+          drawRank(`${frozenDrawOrderUsernames.join("|")}:${nextRoundNumber}:${left.username}`) -
+          drawRank(`${frozenDrawOrderUsernames.join("|")}:${nextRoundNumber}:${right.username}`) ||
+          left.username.localeCompare(right.username));
+      }
+    } else {
+      currentParticipants = progressedParticipants;
+    }
   }
 
   return {

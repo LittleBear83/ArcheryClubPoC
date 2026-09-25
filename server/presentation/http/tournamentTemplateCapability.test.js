@@ -25,7 +25,7 @@ async function fixture(t) {
     hashPassword: (password) => password, isPasswordHash: () => true,
   });
   const gateway = createTournamentGateway({
-    databaseEngine: "sqlite", ...createSqliteScheduleTournamentStatements(db),
+    databaseEngine: "sqlite", db, ...createSqliteScheduleTournamentStatements(db),
   });
   const handlers = new Map();
   const app = { use() {} };
@@ -91,7 +91,7 @@ test("new tournaments inherit true/false from templates, ignoring a conflicting 
   const { call, gateway } = await fixture(t);
   for (const value of [false, true]) {
     await call("put", "/api/tournament-templates/:key", {
-      label: oldTemplate.label, capabilities: { randomiseEveryRound: value },
+      label: oldTemplate.label, capabilities: { randomiseEveryRound: value }, applyToLiveTournaments: false,
     }, { key: oldTemplate.key });
     const result = await call("post", "/api/tournaments", {
       ...tournamentPayload(oldTemplate.key), randomiseEveryRound: !value,
@@ -107,13 +107,13 @@ test("template edits and ordinary tournament edits retain existing tournament va
   const { call, gateway } = await fixture(t);
   for (const value of [true, false]) {
     await call("put", "/api/tournament-templates/:key", {
-      label: oldTemplate.label, capabilities: { randomiseEveryRound: value },
+      label: oldTemplate.label, capabilities: { randomiseEveryRound: value }, applyToLiveTournaments: false,
     }, { key: oldTemplate.key });
     const created = await call("post", "/api/tournaments", tournamentPayload(oldTemplate.key));
     const id = created.body.tournament.id;
     const original = await gateway.findTournamentById(id);
     await call("put", "/api/tournament-templates/:key", {
-      label: oldTemplate.label, capabilities: { randomiseEveryRound: !value },
+      label: oldTemplate.label, capabilities: { randomiseEveryRound: !value }, applyToLiveTournaments: false,
     }, { key: oldTemplate.key });
     assert.deepEqual(await gateway.findTournamentById(id), original, "template update must not write tournament rows");
     const next = await call("post", "/api/tournaments", {

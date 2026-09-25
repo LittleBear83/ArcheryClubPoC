@@ -5,6 +5,9 @@ import ts from "typescript";
 
 const root = process.cwd();
 await import("../server/presentation/http/tournamentTemplateCapability.test.js");
+await import("../server/presentation/http/registerTournamentRoutes.templateUpdate.test.js");
+await import("../server/infrastructure/persistence/tournamentTemplateUpdate.test.js");
+await import("../server/infrastructure/persistence/createSqliteBeginnersCourseStatements.test.js");
 const outDir = path.join(root, ".test-dist");
 const files = [
   "src/presentation/pages/roles/rolePermissionsUtils.ts",

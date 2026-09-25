@@ -1982,7 +1982,8 @@ async function upsertBeginnersCourseParticipants(client, participants = []) {
           created_at_date,
           created_at_time,
           created_by_username,
-          created_by_user_id
+          created_by_user_id,
+          origin_course_id
         )
         VALUES (
           $1,
@@ -2013,7 +2014,8 @@ async function upsertBeginnersCourseParticipants(client, participants = []) {
           $23,
           $24,
           $25,
-          (SELECT id FROM users WHERE LOWER(username) = LOWER($25) LIMIT 1)
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($25) LIMIT 1),
+          (SELECT id FROM beginners_courses WHERE sync_id = $26 LIMIT 1)
         )
         ON CONFLICT (sync_id) DO UPDATE SET
           course_id = EXCLUDED.course_id,
@@ -2043,7 +2045,8 @@ async function upsertBeginnersCourseParticipants(client, participants = []) {
           created_at_date = EXCLUDED.created_at_date,
           created_at_time = EXCLUDED.created_at_time,
           created_by_username = EXCLUDED.created_by_username,
-          created_by_user_id = EXCLUDED.created_by_user_id
+          created_by_user_id = EXCLUDED.created_by_user_id,
+          origin_course_id = EXCLUDED.origin_course_id
       `,
       [
         participant.sync_id,
@@ -2071,6 +2074,7 @@ async function upsertBeginnersCourseParticipants(client, participants = []) {
         participant.created_at_date,
         participant.created_at_time,
         participant.created_by_username,
+        participant.origin_course_sync_id ?? null,
       ],
     );
   }

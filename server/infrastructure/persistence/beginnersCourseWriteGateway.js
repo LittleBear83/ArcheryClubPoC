@@ -142,8 +142,8 @@ function createSqliteBeginnersCourseWriteGateway({
         participantId,
       );
     },
-    async transferParticipantToCourse({ courseId, participantId }) {
-      transferBeginnersCourseParticipant.run(courseId, participantId);
+    async transferParticipantToCourse({ courseId, participantId, originCourseId = null }) {
+      transferBeginnersCourseParticipant.run(originCourseId, courseId, participantId);
     },
     async replaceLessonCoaches({
       actorUsername,
@@ -500,11 +500,12 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
         [convertedAtDate, convertedAtTime, actorUsername, participantId],
       );
     },
-    async transferParticipantToCourse({ courseId, participantId }) {
+    async transferParticipantToCourse({ courseId, participantId, originCourseId = null }) {
       await pool.query(
         `
           UPDATE beginners_course_participants
           SET
+            origin_course_id = COALESCE(origin_course_id, $3),
             course_id = $1,
             assigned_case_id = NULL,
             assigned_case_by_username = NULL,
@@ -520,7 +521,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
             converted_by_username = NULL
           WHERE id = $2
         `,
-        [courseId, participantId],
+        [courseId, participantId, originCourseId],
       );
     },
     async replaceLessonCoaches({

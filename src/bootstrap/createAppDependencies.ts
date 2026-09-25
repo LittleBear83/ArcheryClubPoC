@@ -30,6 +30,7 @@ import {
   CreateTournamentUseCase,
   CreateTournamentTemplateUseCase,
   UpdateTournamentTemplateUseCase,
+  ListLiveTournamentsForTemplateUseCase,
   DeleteTournamentUseCase,
   DisputeTournamentMatchResultUseCase,
   ListTournamentsUseCase,
@@ -129,6 +130,9 @@ export function createAppDependencies() {
       tournamentRepository,
     }),
     updateTournamentTemplateUseCase: new UpdateTournamentTemplateUseCase({
+      tournamentRepository,
+    }),
+    listLiveTournamentsForTemplateUseCase: new ListLiveTournamentsForTemplateUseCase({
       tournamentRepository,
     }),
     updateTournamentUseCase: new UpdateTournamentUseCase({

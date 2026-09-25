@@ -264,6 +264,7 @@ export function createSqliteBeginnersCourseStatements(db) {
   const transferBeginnersCourseParticipant = db.prepare(`
     UPDATE beginners_course_participants
     SET
+      origin_course_id = COALESCE(origin_course_id, ?),
       course_id = ?,
       assigned_case_id = NULL,
       assigned_case_by_username = NULL,

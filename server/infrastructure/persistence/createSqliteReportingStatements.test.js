@@ -10,6 +10,7 @@ function seedBaseSchema(db) {
       username TEXT NOT NULL,
       first_name TEXT NOT NULL,
       surname TEXT NOT NULL,
+      email_address TEXT,
       password TEXT NOT NULL,
       rfid_tag TEXT,
       active_member INTEGER NOT NULL,
@@ -136,6 +137,38 @@ test("recent range members only include RFID and mobile app check-ins", () => {
 
     assert.equal(mobileCheckInRows.length, 1);
     assert.equal(mobileCheckInRows[0].username, "member-one");
+  } finally {
+    db.close();
+  }
+});
+
+test("member range attendance includes current members with no recorded visits", () => {
+  const db = new Database(":memory:");
+  try {
+    seedBaseSchema(db);
+    insertMember(db, 1, "present");
+    insertMember(db, 2, "no-check-in");
+    insertMember(db, 3, "former");
+    db.prepare("UPDATE users SET active_member = 0 WHERE username = 'former'").run();
+    db.prepare("UPDATE users SET email_address = ? WHERE username = ?")
+      .run("member@example.org", "no-check-in");
+    const insertLogin = createInsertLogin(db);
+    insertLogin.run(1, "present", "password", "2026-08-01", "09:00:00");
+    insertLogin.run(1, "present", "rfid", "2026-08-02", "09:00:00");
+    insertLogin.run(1, "present", "rfid", "2026-08-02", "10:00:00");
+    insertLogin.run(2, "no-check-in", "password-mobile", "2026-08-03", "09:00:00");
+    insertLogin.run(2, "no-check-in", "rfid", "2026-05-01", "09:00:00");
+    insertLogin.run(2, "no-check-in", "mobile-app", "2026-06-01", "09:00:00");
+
+    const rows = createSqliteReportingStatements(db)
+      .listMemberRangeAttendance.all("2026-08-01", "2026-08-31");
+    assert.equal(rows.length, 2);
+    assert.equal(rows.find((row) => row.username === "present")?.visit_days_in_range, 1);
+    assert.equal(rows.find((row) => row.username === "present")?.total_visit_days, 1);
+    assert.equal(rows.find((row) => row.username === "no-check-in")?.visit_days_in_range, 0);
+    assert.equal(rows.find((row) => row.username === "no-check-in")?.total_visit_days, 2);
+    assert.equal(rows.find((row) => row.username === "no-check-in")?.last_visit_at, "2026-06-01T09:00:00");
+    assert.equal(rows.find((row) => row.username === "no-check-in")?.email_address, "member@example.org");
   } finally {
     db.close();
   }

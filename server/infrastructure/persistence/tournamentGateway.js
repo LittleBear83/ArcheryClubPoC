@@ -114,6 +114,7 @@ function normalizePersistedHandicapValues(existingMatch, nextMatch) {
 }
 
 function createSqliteTournamentGateway({
+  db,
   deleteTournamentById,
   deleteTournamentMatchesByTournamentId,
   deleteTournamentRegistration,
@@ -125,7 +126,8 @@ function createSqliteTournamentGateway({
   findTournamentTemplateByKey,
   insertTournament,
   insertTournamentTemplate,
-  updateTournamentTemplateByKey,
+  updateTournamentTemplate,
+  updateTournamentTemplateSnapshot,
   insertTournamentMatch,
   insertTournamentRegistration,
   insertTournamentRound,
@@ -213,13 +215,6 @@ function createSqliteTournamentGateway({
     async listTournaments() {
       return listTournaments.all();
     },
-    async updateTournamentTemplate(args) {
-      updateTournamentTemplateByKey.run(
-        args.label, args.description ?? "", args.defaultsJson ?? "{}",
-        args.capabilitiesJson ?? "{}", args.eligibilityRulesJson ?? null, args.templateKey,
-      );
-      return findTournamentTemplateByKey.get(args.templateKey);
-    },
     async createTournamentTemplate(args) {
       insertTournamentTemplate.run(
         args.templateKey,
@@ -236,6 +231,42 @@ function createSqliteTournamentGateway({
       );
 
       return findTournamentTemplateByKey.get(args.templateKey);
+    },
+    async updateTournamentTemplate(args) {
+      updateTournamentTemplate.run(
+        args.label,
+        args.description ?? "",
+        args.defaultsJson ?? "{}",
+        args.capabilitiesJson ?? "{}",
+        args.eligibilityRulesJson ?? null,
+        args.templateKey,
+      );
+      return findTournamentTemplateByKey.get(args.templateKey);
+    },
+    async saveTournamentTemplateUpdate({ templateValues, storedTemplateExists, tournamentIds, snapshotJson, createdByUsername, timestampParts }) {
+      if (!db?.transaction || !updateTournamentTemplate?.run || !updateTournamentTemplateSnapshot?.run) {
+        throw new Error("SQLite tournament template update statements are not configured.");
+      }
+      return db.transaction(() => {
+        if (storedTemplateExists) {
+          updateTournamentTemplate.run(
+            templateValues.label, templateValues.description ?? "",
+            templateValues.defaultsJson ?? "{}", templateValues.capabilitiesJson ?? "{}",
+            templateValues.eligibilityRulesJson ?? null, templateValues.templateKey,
+          );
+        } else {
+          insertTournamentTemplate.run(
+            templateValues.templateKey, templateValues.label, templateValues.description ?? "",
+            templateValues.tournamentType, templateValues.format, templateValues.roundType,
+            templateValues.defaultsJson ?? "{}", templateValues.capabilitiesJson ?? "{}",
+            templateValues.eligibilityRulesJson ?? null, createdByUsername, ...timestampParts,
+          );
+        }
+        for (const tournamentId of tournamentIds) {
+          updateTournamentTemplateSnapshot.run(snapshotJson, tournamentId, templateValues.templateKey);
+        }
+        return findTournamentTemplateByKey.get(templateValues.templateKey);
+      })();
     },
     async registerForTournament({ bowCode = null, tournamentId, username, timestampParts }) {
       insertTournamentRegistration.run(tournamentId, username, bowCode, ...timestampParts);
@@ -919,12 +950,53 @@ function createPostgresTournamentGateway({ pool }) {
     async updateTournamentTemplate(args) {
       await pool.query(
         `UPDATE tournament_templates
-         SET label = $1, description = $2, defaults_json = $3, capabilities_json = $4, eligibility_rules_json = $5
+         SET label = $1, description = $2, defaults_json = $3,
+             capabilities_json = $4, eligibility_rules_json = $5
          WHERE template_key = $6`,
         [args.label, args.description ?? "", args.defaultsJson ?? "{}",
           args.capabilitiesJson ?? "{}", args.eligibilityRulesJson ?? null, args.templateKey],
       );
       return this.findTournamentTemplateByKey(args.templateKey);
+    },
+    async saveTournamentTemplateUpdate({ templateValues, storedTemplateExists, tournamentIds, snapshotJson, createdByUsername, timestampParts }) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        if (storedTemplateExists) {
+          await client.query(
+            `UPDATE tournament_templates SET label = $1, description = $2, defaults_json = $3,
+             capabilities_json = $4, eligibility_rules_json = $5 WHERE template_key = $6`,
+            [templateValues.label, templateValues.description ?? "", templateValues.defaultsJson ?? "{}",
+              templateValues.capabilitiesJson ?? "{}", templateValues.eligibilityRulesJson ?? null,
+              templateValues.templateKey],
+          );
+        } else {
+          await client.query(
+            `INSERT INTO tournament_templates (template_key, label, description, tournament_type, format,
+             round_type, defaults_json, capabilities_json, eligibility_rules_json, created_by,
+             created_at_date, created_at_time)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+            [templateValues.templateKey, templateValues.label, templateValues.description ?? "",
+              templateValues.tournamentType, templateValues.format, templateValues.roundType,
+              templateValues.defaultsJson ?? "{}", templateValues.capabilitiesJson ?? "{}",
+              templateValues.eligibilityRulesJson ?? null, createdByUsername, ...timestampParts],
+          );
+        }
+        if (tournamentIds.length > 0) {
+          await client.query(
+            `UPDATE tournaments SET template_definition_json = $1
+             WHERE template_key = $2 AND id = ANY($3::bigint[])`,
+            [snapshotJson, templateValues.templateKey, tournamentIds],
+          );
+        }
+        await client.query("COMMIT");
+        return this.findTournamentTemplateByKey(templateValues.templateKey);
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     },
     async registerForTournament({ bowCode = null, tournamentId, username, timestampParts }) {
       await pool.query(

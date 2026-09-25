@@ -8,4 +8,3 @@ export function validateRoundPairings(pairings, eligibleSlots) {
 export function hasPairingResults(matches) {
   return matches.some((match) => match.leftScore != null || match.rightScore != null || match.score?.competitorA != null || match.score?.competitorB != null || match.submittedByUsername || match.confirmedByUsername || match.disputedByUsername || match.workflow?.submittedByUsername || match.workflow?.confirmedByUsername || match.workflow?.disputedByUsername || ["completed", "finalised", "progressed", "walkover", "disqualified", "retired_both", "awaiting_opponent_confirmation", "disputed"].includes(match.status));
 }
-

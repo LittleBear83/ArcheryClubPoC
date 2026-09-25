@@ -3,6 +3,7 @@ import type {
   AttendanceReport,
   AttendanceReportDailyRow,
   AttendanceReportRow,
+  MemberRangeAttendanceRow,
 } from "../../../api/reportingApi";
 
 export function getUtcDateString(date: Date) {
@@ -69,6 +70,20 @@ export function buildCsv(report: AttendanceReport) {
       .join(","),
   );
 
+  return [headers.map(escapeCsvValue).join(","), ...lines].join("\r\n");
+}
+
+export function buildMemberRangeAttendanceCsv(rows: MemberRangeAttendanceRow[]) {
+  const headers = ["Name", "Username", "Email", "Recorded visit days in window", "Total days", "Last recorded range visit", "Status"];
+  const lines = rows.map((row) => [
+    row.name,
+    row.username,
+    row.emailAddress,
+    row.visitDays,
+    row.totalVisitDays,
+    row.lastVisitAt ? formatDate(row.lastVisitAt.slice(0, 10)) : "Never recorded",
+    row.hasRecordedVisit ? "Recorded visit" : "No recorded visit",
+  ].map(escapeCsvValue).join(","));
   return [headers.map(escapeCsvValue).join(","), ...lines].join("\r\n");
 }
 

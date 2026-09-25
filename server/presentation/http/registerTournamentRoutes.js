@@ -12,6 +12,7 @@ import {
   evaluateTournamentRegistrationEligibility,
 } from "../../domain/services/tournamentEligibilityService.js";
 import { randomInt } from "node:crypto";
+import { isTournamentMatchResolvedStatus } from "../../domain/services/tournamentEngine.js";
 import {
   buildTournamentRoundPlanJson,
   parseTournamentRoundPlan,
@@ -29,6 +30,7 @@ export function isBlockedLocalPiTournamentMutation(method, requestPath) {
   const normalizedPath = String(requestPath ?? "").split("?")[0];
   const rules = [
     ["POST", /^\/api\/tournament-templates\/?$/],
+    ["PUT", /^\/api\/tournament-templates\/[^/]+\/?$/],
     ["POST", /^\/api\/tournaments\/?$/],
     ["PUT", /^\/api\/tournaments\/[^/]+\/?$/],
     ["DELETE", /^\/api\/tournaments\/[^/]+\/?$/],
@@ -112,6 +114,22 @@ export function registerTournamentRoutes({
       storedTemplateRows: await loadStoredTournamentTemplates(),
       templateKey: normalizedTemplateKey,
     });
+  };
+
+  const listLiveTournamentsForTemplate = async (templateKey) => {
+    const tournaments = (await tournamentGateway.listTournaments())
+      .filter((tournament) => tournament.template_key === templateKey);
+    const checked = await Promise.all(tournaments.map(async (tournament) => {
+      const matches = await tournamentGateway.listTournamentMatchesByTournamentId(tournament.id);
+      const lastRound = Math.max(0, ...matches.map((match) =>
+        Number(match.round_number ?? match.roundNumber ?? 0)));
+      const finalMatches = matches.filter((match) =>
+        Number(match.round_number ?? match.roundNumber ?? 0) === lastRound);
+      const finished = lastRound > 0 && finalMatches.length > 0 &&
+        finalMatches.every((match) => isTournamentMatchResolvedStatus(match.status));
+      return finished ? null : { id: tournament.id, name: tournament.name };
+    }));
+    return checked.filter(Boolean);
   };
 
   const getTournamentTemplateDefinition = (tournament) =>
@@ -463,7 +481,8 @@ export function registerTournamentRoutes({
   };
   const tournamentSupportsRandomizedDraw = (tournament) =>
     Boolean(
-      getTournamentTemplateDefinition(tournament)?.capabilities?.supportsRandomizedDraw,
+      getTournamentTemplateDefinition(tournament)?.capabilities?.supportsRandomizedDraw ||
+      getTournamentTemplateDefinition(tournament)?.capabilities?.randomizeEachRound,
     );
   const hasTournamentDrawActivity = (matches = []) =>
     matches.some((match) => {
@@ -847,6 +866,20 @@ export function registerTournamentRoutes({
     });
   });
 
+  app.get("/api/tournament-templates/:key/live-tournaments", async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
+      res.status(403).json({ success: false, message: "You do not have permission to manage tournament templates." });
+      return;
+    }
+    const template = await findTemplateByKey(req.params.key);
+    if (!template) {
+      res.status(404).json({ success: false, message: "Tournament template not found." });
+      return;
+    }
+    res.json({ success: true, tournaments: await listLiveTournamentsForTemplate(template.key) });
+  });
+
   const saveTournamentTemplate = async (req, res, editing = false) => {
     const actor = getActorUser(req);
 
@@ -968,7 +1001,84 @@ export function registerTournamentRoutes({
   };
 
   app.post("/api/tournament-templates", (req, res) => saveTournamentTemplate(req, res));
-  app.put("/api/tournament-templates/:key", (req, res) => saveTournamentTemplate(req, res, true));
+
+  app.put("/api/tournament-templates/:key", async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
+      res.status(403).json({ success: false, message: "You do not have permission to update tournament templates." });
+      return;
+    }
+
+    const currentTemplate = await findTemplateByKey(req.params.key);
+    if (!currentTemplate) {
+      res.status(404).json({ success: false, message: "Tournament template not found." });
+      return;
+    }
+
+    const storedTemplate = await tournamentGateway.findTournamentTemplateByKey(currentTemplate.key);
+    const { label, description, defaults, capabilities, eligibilityRules, applyToLiveTournaments } = req.body ?? {};
+    const templateLabel = String(label ?? "").trim();
+    if (!templateLabel || (defaults !== undefined && (!defaults || typeof defaults !== "object")) ||
+        (capabilities !== undefined && (!capabilities || typeof capabilities !== "object"))) {
+      res.status(400).json({ success: false, message: "A template name and valid settings are required." });
+      return;
+    }
+
+    const updatedTemplate = normalizeTournamentTemplateDefinition({
+      ...currentTemplate,
+      label: templateLabel,
+      description: String(description ?? "").trim(),
+      defaults: { ...currentTemplate.defaults, ...defaults },
+      capabilities: { ...currentTemplate.capabilities, ...capabilities },
+      eligibilityRules: eligibilityRules && typeof eligibilityRules === "object"
+        ? { ...(currentTemplate.eligibilityRules ?? {}), ...eligibilityRules }
+        : null,
+    }, { isCustom: true });
+    if (!updatedTemplate) {
+      res.status(400).json({ success: false, message: "The tournament template could not be updated." });
+      return;
+    }
+
+    const liveTournaments = await listLiveTournamentsForTemplate(currentTemplate.key);
+    if (liveTournaments.length > 0 && typeof applyToLiveTournaments !== "boolean") {
+      res.status(409).json({
+        success: false,
+        message: "Choose whether to apply this update to live tournaments.",
+        liveTournaments,
+      });
+      return;
+    }
+
+    const templateValues = {
+      templateKey: currentTemplate.key,
+      label: updatedTemplate.label,
+      description: updatedTemplate.description,
+      tournamentType: updatedTemplate.tournamentType,
+      format: updatedTemplate.format,
+      roundType: updatedTemplate.roundType,
+      defaultsJson: JSON.stringify(updatedTemplate.defaults),
+      capabilitiesJson: JSON.stringify(updatedTemplate.capabilities),
+      eligibilityRulesJson: updatedTemplate.eligibilityRules
+        ? JSON.stringify(updatedTemplate.eligibilityRules) : null,
+    };
+    const affectedTournamentIds = applyToLiveTournaments === true
+      ? liveTournaments.map((tournament) => tournament.id) : [];
+    const updatedRow = await tournamentGateway.saveTournamentTemplateUpdate({
+      templateValues,
+      storedTemplateExists: Boolean(storedTemplate),
+      tournamentIds: affectedTournamentIds,
+      snapshotJson: serializeTournamentTemplateDefinition(updatedTemplate),
+      createdByUsername: actor.username,
+      timestampParts: getUtcTimestampParts(),
+    });
+    broadcastTournamentsUpdated("tournament-templates.update");
+    res.json({
+      success: true,
+      tournamentTemplate: normalizeStoredTournamentTemplateRow(updatedRow),
+      tournamentTemplates: await loadTournamentTemplates(),
+      updatedLiveTournamentCount: affectedTournamentIds.length,
+    });
+  });
 
   app.get("/api/tournaments", async (req, res) => {
     const actor = getActorUser(req);

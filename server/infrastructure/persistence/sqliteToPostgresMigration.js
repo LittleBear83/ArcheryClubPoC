@@ -457,6 +457,7 @@ const orderedTableCopies = [
     columns: [
       "id",
       "course_id",
+      "origin_course_id",
       "username",
       "first_name",
       "surname",

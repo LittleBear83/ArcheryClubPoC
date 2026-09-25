@@ -8,6 +8,7 @@ import { MobileSectionHeader } from "../../components/mobile/MobileSectionHeader
 import { formatClockTime, formatDate } from "../../../utils/dateTime";
 import type { MemberJourneyReportRow } from "../../../api/reportingApi";
 import { ReportingGraph } from "./ReportingGraph";
+import { MemberRangeAttendanceSection } from "./MemberRangeAttendanceSection";
 import type { useReportingPageState } from "./useReportingPageState";
 
 type ReportingPageState = ReturnType<typeof useReportingPageState>;
@@ -52,6 +53,7 @@ export function ReportingMobileView({
   isLoadingMemberJourneys,
   memberJourneyData,
   memberJourneyError,
+  memberRangeAttendance,
   rangeLabel,
   setEndDate,
   setIncludeGuests,
@@ -137,6 +139,8 @@ export function ReportingMobileView({
             : "Unable to load member journey reporting."}
         </p>
       ) : null}
+
+      <MemberRangeAttendanceSection attendance={memberRangeAttendance} mobile />
 
       {data ? (
         <>

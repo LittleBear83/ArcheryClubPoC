@@ -167,26 +167,26 @@ export function MemberAutocomplete({
           "& .MuiOutlinedInput-root": {
             minHeight: "3rem",
             padding: "0 2.6rem 0 0.9rem",
-            backgroundColor: "#24211c",
+            backgroundColor: "var(--input-bg)",
             borderRadius: "1rem",
             alignItems: "center",
           },
           "& .MuiInputBase-root": {
-            backgroundColor: "#24211c",
+            backgroundColor: "var(--input-bg)",
             borderRadius: "1rem",
-            color: "#f8f3e7",
+            color: "var(--input-text)",
             minHeight: "3rem",
             paddingTop: "0",
             paddingBottom: "0",
           },
           "& .MuiInputBase-input": {
-            color: "#f8f3e7",
+            color: "var(--input-text)",
             padding: "0 !important",
             lineHeight: "1.2",
             fontSize: "0.95rem",
           },
           "& .MuiOutlinedInput-notchedOutline": {
-            borderColor: "rgba(225, 193, 7, 0.4)",
+            borderColor: "var(--input-border)",
           },
           "& .MuiAutocomplete-inputRoot": {
             padding: "0 2.6rem 0 0.9rem !important",
@@ -203,35 +203,35 @@ export function MemberAutocomplete({
             padding: "0",
           },
           "& .MuiSvgIcon-root": {
-            color: "#f8f3e7",
+            color: "var(--input-text)",
             fontSize: "1rem",
           },
         }}
         slotProps={{
           paper: {
             sx: {
-              backgroundColor: "#161512",
-              border: "1px solid rgba(225, 193, 7, 0.4)",
-              color: "#f8f3e7",
+              backgroundColor: "var(--input-option-bg)",
+              border: "1px solid var(--input-border)",
+              color: "var(--input-option-text)",
             },
           },
           listbox: {
             sx: {
-              backgroundColor: "#161512",
-              color: "#f8f3e7",
+              backgroundColor: "var(--input-option-bg)",
+              color: "var(--input-option-text)",
               "& .MuiAutocomplete-option": {
                 alignItems: "flex-start",
-                backgroundColor: "#161512",
-                color: "#f8f3e7",
+                backgroundColor: "var(--input-option-bg)",
+                color: "var(--input-option-text)",
                 minHeight: "2rem",
                 paddingTop: "0.25rem",
                 paddingBottom: "0.25rem",
               },
               "& .MuiAutocomplete-option[aria-selected='true']": {
-                backgroundColor: "rgba(225, 193, 7, 0.22)",
+                backgroundColor: "var(--surface-selected-strong)",
               },
               "& .MuiAutocomplete-option.Mui-focused": {
-                backgroundColor: "rgba(225, 193, 7, 0.14)",
+                backgroundColor: "var(--surface-hover)",
               },
             },
           },

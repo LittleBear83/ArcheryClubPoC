@@ -26,6 +26,8 @@ export const LOCAL_SYNC_EVENT_GROUPS = {
   golden_records_lookup_cache: ["golden-records.updated"],
   outdoor_table_entries: ["outdoor-table.updated"],
   committee_meeting_minutes: ["committee-minutes.updated"],
+  member_questions: ["member-questions.updated", "member-questions.inbox-updated"],
+  suggestions: ["suggestions.updated"],
   tournament_templates: ["tournaments.updated"],
   tournaments: ["tournaments.updated"],
   tournament_registrations: ["tournaments.updated"],

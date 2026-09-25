@@ -20,6 +20,7 @@ import { bootstrapSqliteUserCompatibility } from "../infrastructure/persistence/
 import { bootstrapSqliteUserData } from "../infrastructure/persistence/bootstrapSqliteUserData.js";
 import { getSeedUsers } from "../infrastructure/persistence/seedUsers.js";
 import { runPostgresMigrations } from "../infrastructure/persistence/runPostgresMigrations.js";
+import { enqueueLegacyFeedbackRows } from "../infrastructure/persistence/feedbackSyncLegacyOutbox.js";
 
 export async function bootstrapPersistence({
   committeeRoleSeed,
@@ -46,6 +47,10 @@ export async function bootstrapPersistence({
       seedUsers,
       systemRoleDefinitions,
     });
+
+    if (runtime.sync.isLocalPiNode && runtime.sync.machineId) {
+      await enqueueLegacyFeedbackRows({ pool: db.pool, machineId: runtime.sync.machineId });
+    }
 
     return null;
   }

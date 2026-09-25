@@ -1,4 +1,5 @@
 import { normalizeMemberStatusWithFees } from "./memberPersistenceService.js";
+import { applyFeedbackChange, reconcileFeedbackSnapshot } from "./feedbackSyncApply.js";
 import {
   isValidPublicationCursor,
   PUBLICATION_FEED_VERSION,
@@ -22,6 +23,8 @@ export const REPLICATED_DOMAINS = [
   "member_distance_sign_offs",
   "committee_roles",
   "committee_meeting_minutes",
+  "member_questions",
+  "suggestions",
   "tournament_templates",
   "tournament_handicap_tables",
   "tournament_handicap_table_rows",
@@ -111,6 +114,8 @@ function collapseChanges(changes = []) {
     ["committee_roles", 25],
     ["member_distance_sign_offs", 26],
     ["committee_meeting_minutes", 27],
+    ["member_questions", 27],
+    ["suggestions", 27],
     ["tournament_templates", 28],
     ["tournament_handicap_tables", 29],
     ["tournament_handicap_table_rows", 30],
@@ -145,6 +150,8 @@ function collapseChanges(changes = []) {
     ["member_distance_sign_offs", 22],
     ["committee_roles", 23],
     ["committee_meeting_minutes", 24],
+    ["member_questions", 24],
+    ["suggestions", 24],
     ["tournament_matches", 1],
     ["tournament_scores", 2],
     ["tournament_rounds", 3],
@@ -2223,6 +2230,13 @@ async function applyOperationalSnapshot({
     "beginnersCourseParticipants",
   ].every((property) => Object.hasOwn(snapshot, property));
 
+  if (Object.hasOwn(snapshot, "memberQuestions")) {
+    await reconcileFeedbackSnapshot(client, "member_questions", snapshot.memberQuestions);
+  }
+  if (Object.hasOwn(snapshot, "suggestions")) {
+    await reconcileFeedbackSnapshot(client, "suggestions", snapshot.suggestions);
+  }
+
   if (Object.hasOwn(snapshot, "equipmentStorageLocations")) {
     await upsertEquipmentStorageLocations(client, snapshot.equipmentStorageLocations);
     await deleteMissingSnapshotRows({
@@ -2338,6 +2352,13 @@ async function applyOperationalSnapshot({
 
 async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, snapshot }) {
   await upsertUsers(client, snapshot.users, deactivatedRfidSuffix);
+
+  if (Object.hasOwn(snapshot, "memberQuestions")) {
+    await reconcileFeedbackSnapshot(client, "member_questions", snapshot.memberQuestions);
+  }
+  if (Object.hasOwn(snapshot, "suggestions")) {
+    await reconcileFeedbackSnapshot(client, "suggestions", snapshot.suggestions);
+  }
 
   for (const role of snapshot.roles) {
     await client.query(`
@@ -2915,6 +2936,11 @@ async function applyCollapsedChange({
         return;
       }
       await upsertCommitteeMeetingMinuteRows(client, [change.payload]);
+      return;
+
+    case "member_questions":
+    case "suggestions":
+      await applyFeedbackChange(client, change);
       return;
 
     case "committee_roles":

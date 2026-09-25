@@ -1,3 +1,6 @@
+import { createFeedbackRecord } from "./feedbackSyncCreate.js";
+import { updateFeedbackWithOutbox } from "./feedbackSyncUpdate.js";
+
 const ALLOWED_SUGGESTION_STATUSES = new Set([
   "new",
   "reviewing",
@@ -138,10 +141,15 @@ function createSqliteSuggestionGateway(db) {
   };
 }
 
-function createPostgresSuggestionGateway({ pool }) {
+function createPostgresSuggestionGateway({ pool, isLocalPiNode = false, syncMachineId = null }) {
   return {
     async createSuggestion(payload) {
-      const result = await pool.query(
+      const id = await createFeedbackRecord({
+        eventType: "suggestion_created",
+        isLocalPiNode,
+        pool,
+        syncMachineId,
+        query:
         `
           INSERT INTO suggestions (
             submitted_by_username,
@@ -153,12 +161,17 @@ function createPostgresSuggestionGateway({ pool }) {
             status,
             resolution_note,
             created_at_date,
-            created_at_time
+            created_at_time,
+            sync_id,
+            sync_source_machine_id,
+            sync_origin_event_id,
+            submitted_by_user_id
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-          RETURNING id
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+            (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1))
+          RETURNING *
         `,
-        [
+        values: [
           payload.submittedByUsername,
           payload.submittedByName,
           payload.isAnonymous,
@@ -170,9 +183,9 @@ function createPostgresSuggestionGateway({ pool }) {
           payload.createdAtDate,
           payload.createdAtTime,
         ],
-      );
+      });
 
-      return this.findSuggestionById(result.rows[0]?.id);
+      return this.findSuggestionById(id);
     },
     async findSuggestionById(id) {
       const result = await pool.query(
@@ -250,8 +263,14 @@ function createPostgresSuggestionGateway({ pool }) {
       return result.rows.map(normalizeSuggestionRow);
     },
     async updateSuggestionStatus(id, payload) {
-      await pool.query(
-        `
+      await updateFeedbackWithOutbox({
+        eventType: "suggestion_status_updated",
+        id,
+        isLocalPiNode,
+        payload,
+        pool,
+        table: "suggestions",
+        updateQuery: `
           UPDATE suggestions
           SET
             status = $1,
@@ -261,7 +280,7 @@ function createPostgresSuggestionGateway({ pool }) {
             updated_by_username = $5
           WHERE id = $6
         `,
-        [
+        updateValues: [
           ALLOWED_SUGGESTION_STATUSES.has(payload.status) ? payload.status : "new",
           payload.resolutionNote ?? "",
           payload.updatedAtDate,
@@ -269,7 +288,7 @@ function createPostgresSuggestionGateway({ pool }) {
           payload.updatedByUsername,
           id,
         ],
-      );
+      });
 
       return this.findSuggestionById(id);
     },

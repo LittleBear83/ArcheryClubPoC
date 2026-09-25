@@ -56,6 +56,24 @@ export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
     ],
   },
   {
+    event: "member-questions.updated",
+    queryKeys: [
+      (actorUsername) => ["member-questions", "mine", actorUsername],
+      (actorUsername) => ["member-questions", "inbox", actorUsername],
+    ],
+  },
+  {
+    event: "member-questions.inbox-updated",
+    queryKeys: [(actorUsername) => ["member-questions", "inbox", actorUsername]],
+  },
+  {
+    event: "suggestions.updated",
+    queryKeys: [
+      (actorUsername) => ["suggestions", "mine", actorUsername],
+      (actorUsername) => ["suggestions", actorUsername],
+    ],
+  },
+  {
     event: "members.updated",
     queryKeys: [
       (actorUsername) => ["profile-options", actorUsername],
@@ -174,6 +192,24 @@ export function useServerEvents({
         event: "committee-minutes.updated",
         invalidate: () =>
           invalidateQueries([["committee-minutes", actorUsername]]),
+      },
+      {
+        event: "member-questions.updated",
+        invalidate: () => invalidateQueries([
+          ["member-questions", "mine", actorUsername],
+          ["member-questions", "inbox", actorUsername],
+        ]),
+      },
+      {
+        event: "member-questions.inbox-updated",
+        invalidate: () => invalidateQueries([["member-questions", "inbox", actorUsername]]),
+      },
+      {
+        event: "suggestions.updated",
+        invalidate: () => invalidateQueries([
+          ["suggestions", "mine", actorUsername],
+          ["suggestions", actorUsername],
+        ]),
       },
       {
         event: "members.updated",

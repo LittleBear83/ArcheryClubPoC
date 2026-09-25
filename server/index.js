@@ -575,11 +575,15 @@ const suggestionGateway = createSuggestionGateway({
   databaseEngine: serverRuntime.databaseEngine,
   db,
   pool: db.pool,
+  isLocalPiNode: serverRuntime.sync.isLocalPiNode,
+  syncMachineId: serverRuntime.sync.machineId,
 });
 const memberQuestionGateway = createMemberQuestionGateway({
   databaseEngine: serverRuntime.databaseEngine,
   db,
   pool: db.pool,
+  isLocalPiNode: serverRuntime.sync.isLocalPiNode,
+  syncMachineId: serverRuntime.sync.machineId,
 });
 const committeeMinutesGateway = createCommitteeMinutesGateway({
   databaseEngine: serverRuntime.databaseEngine,

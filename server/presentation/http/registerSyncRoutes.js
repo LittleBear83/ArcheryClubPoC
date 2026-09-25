@@ -252,6 +252,11 @@ export function registerSyncRoutes({
             "coaching_booking_created",
             "coaching_booking_withdrawn",
             "member_rfid_updated",
+            "member_question_created",
+            "suggestion_created",
+            "member_question_response_updated",
+            "member_question_seen",
+            "suggestion_status_updated",
           ].includes(event?.eventType) ||
           typeof event?.eventId !== "string"
         ) {
@@ -310,6 +315,14 @@ export function registerSyncRoutes({
             surname: event.payload.surname,
           });
           acceptedEventIds.push(event.eventId);
+        } else if (event.eventType === "member_question_created" || event.eventType === "suggestion_created") {
+          const outcome = await syncGateway.processFeedbackCreateCommand({ client, event, machineId: req.syncMachine.machineId });
+          if (outcome.accepted) acceptedEventIds.push(event.eventId);
+          else rejectedEvents.push({ eventId: event.eventId, code: outcome.code, reason: outcome.reason });
+        } else if (["member_question_response_updated", "member_question_seen", "suggestion_status_updated"].includes(event.eventType)) {
+          const outcome = await syncGateway.processFeedbackUpdateCommand({ client, event, machineId: req.syncMachine.machineId });
+          if (outcome.accepted) acceptedEventIds.push(event.eventId);
+          else rejectedEvents.push({ eventId: event.eventId, code: outcome.code, reason: outcome.reason });
         } else if (event.eventType === "member_rfid_updated") {
           const outcome = await syncGateway.processMemberRfidUpdateCommand({ client, event, machineId: req.syncMachine.machineId });
           if (outcome.accepted) acceptedEventIds.push(event.eventId);

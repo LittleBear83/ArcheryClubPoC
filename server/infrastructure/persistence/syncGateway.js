@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { processFeedbackCreateCommand, processFeedbackUpdateCommand } from "./feedbackSyncCommand.js";
 import { normalizeRfidTag, rfidTagsEqual } from "../../domain/services/memberPersistenceService.js";
 import { notifyLocalSyncApplied } from "./localSyncBrowserBridge.js";
 import {
@@ -34,6 +35,8 @@ const SYNCED_DOMAINS = new Set([
   "member_distance_sign_offs",
   "committee_roles",
   "committee_meeting_minutes",
+  "member_questions",
+  "suggestions",
   "tournament_templates",
   "tournaments",
   "tournament_registrations",
@@ -242,6 +245,12 @@ async function insertCoachingBookingAtomically({
 export function createSyncGateway({ pool }) {
   return {
     pool,
+    processFeedbackCreateCommand({ client = pool, event, machineId }) {
+      return processFeedbackCreateCommand({ client, event, machineId });
+    },
+    processFeedbackUpdateCommand({ client = pool, event, machineId }) {
+      return processFeedbackUpdateCommand({ client, event, machineId });
+    },
     async acquireSyncLock(client, lockId = 81420731) {
       const result = await client.query(
         `SELECT pg_try_advisory_lock($1) AS acquired`,
@@ -686,6 +695,22 @@ export function createSyncGateway({ pool }) {
           ORDER BY meeting_date DESC, sync_id ASC
         `,
       );
+      const memberQuestions = await snapshotClient.query(`
+        SELECT sync_id, sync_version, sync_source_machine_id, sync_origin_event_id,
+          submitted_by_username, question_title, question_body, status,
+          response_text, member_seen_response, created_at_date, created_at_time,
+          responded_at_date, responded_at_time, responded_by_username,
+          updated_at_date, updated_at_time
+        FROM member_questions ORDER BY sync_id ASC
+      `);
+      const suggestions = await snapshotClient.query(`
+        SELECT sync_id, sync_version, sync_source_machine_id, sync_origin_event_id,
+          submitted_by_username, submitted_by_name, is_anonymous,
+          suggestion_title, improvement_text, suggestion_details, status,
+          resolution_note, created_at_date, created_at_time,
+          updated_at_date, updated_at_time, updated_by_username
+        FROM suggestions ORDER BY sync_id ASC
+      `);
 
       const committeeRoles = await snapshotClient.query(
         `
@@ -934,6 +959,8 @@ export function createSyncGateway({ pool }) {
           announcements: announcements.rows,
           committeeRoles: committeeRoles.rows,
           committeeMeetingMinutes: committeeMeetingMinutes.rows,
+          memberQuestions: memberQuestions.rows,
+          suggestions: suggestions.rows,
           memberDistanceSignOffs: memberDistanceSignOffs.rows,
           clubEvents: clubEvents.rows,
           coachingSessionBookings: coachingSessionBookings.rows,
@@ -1120,6 +1147,20 @@ export function createSyncGateway({ pool }) {
         );
 
         if (!updatedRow) {
+          continue;
+        }
+
+        if (["member_question_created", "suggestion_created"].includes(updatedRow.event_type)) {
+          const domain = updatedRow.event_type === "member_question_created"
+            ? "member_questions" : "suggestions";
+          const syncId = updatedRow.payload_json?.sync_id;
+          if (typeof syncId === "string" && syncId) {
+            const removed = await client.query(
+              `DELETE FROM ${domain} WHERE sync_id = $1 AND sync_origin_event_id = $2`,
+              [syncId, rejection.eventId],
+            );
+            if (removed.rowCount > 0) await notifyLocalSyncApplied(client, [domain]);
+          }
           continue;
         }
 

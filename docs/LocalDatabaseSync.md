@@ -20,6 +20,7 @@ Implemented up to Phase 2A1:
 - cloud-to-Pi historical and incremental `guest_login_events` for local range reporting
 - cloud-to-Pi `range_presence_extensions` state with versioned stale-command rejection
 - cloud-to-Pi read-only `beginners_courses` and `beginners_course_participants` needed by reporting
+- bidirectional `member_questions` and `suggestions` creation, with cloud-authoritative review fields
 - local reporting/range-usage calculation from replicated source rows instead of synchronized aggregates
 
 Still out of scope after Phase 2A1:
@@ -29,13 +30,43 @@ Still out of scope after Phase 2A1:
 - member profile editing
 - full beginners/taster/have-a-go workflow mutation
 - audit log parity
-- questions, suggestions, lost-and-found sync
+- lost-and-found sync
 - committee/minutes sync
 - Golden Records cache sync
 - outdoor table sync
 - broader operational/admin domains
 
 Those tables may still exist locally for other reasons, but they are not yet synchronized with domain-specific conflict rules.
+
+## Questions and suggestions
+
+Migration `015_feedback_sync` adds an opaque `sync_id`, a server-managed
+`sync_version`, origin metadata, and change-log triggers to both tables. The
+numeric `id` remains local to each database. Cloud snapshots include both
+arrays; an empty array removes stale local rows, while a missing property from
+an older cloud leaves local rows untouched. Pending Pi creations are retained
+until their outbox command receives a final outcome.
+Existing Pi-only rows are queued for creation before the first new sync pass;
+rows pulled from cloud are marked as cloud-managed and never re-queued.
+
+Pi submissions and review actions write their local row and outbox command in
+one transaction. Cloud records accepted command outcomes by event ID so retries
+do not create duplicate rows. Original submitter content and identity are fixed
+after creation. Cloud review changes use its own timestamps and advance
+`sync_version`; Pi review commands carry `expectedVersion`. A stale or
+unauthorized command is rejected permanently in the outbox, and the next pull
+applies cloud review state. Pulls suppress change-log triggers.
+Rejected creations remove their optimistic Pi row; the durable outbox retains
+the rejected command and reason for diagnosis.
+
+Pause the Pi sync timer during rollout. Deploy the cloud application and
+migration first, then deploy the Pi application and migration. Once both are
+updated, run `npm run sync:local:initial` for the
+v1 feed or `npm run sync:local -- --v2 --rebaseline` for the v2 publication
+feed. An authoritative snapshot is required to copy feedback that existed in
+cloud before migration 015 installed change-log triggers. The cloud must
+understand the new outbox event types before the Pi begins sending them. Resume
+the Pi sync timer after the snapshot succeeds.
 
 Synced operational masters use opaque `sync_id` values. Existing numeric IDs remain
 local database implementation details and are never used as cross-database identities.

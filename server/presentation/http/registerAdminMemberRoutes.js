@@ -1286,7 +1286,15 @@ export function registerAdminMemberRoutes({
 
     res.json({
       success: true,
-      roles: committeeRoles.map(buildCommitteeRole),
+      roles: committeeRoles
+        .map(buildCommitteeRole)
+        .sort(
+          (left, right) =>
+            left.title.localeCompare(right.title, "en-GB", {
+              numeric: true,
+              sensitivity: "base",
+            }) || left.id - right.id,
+        ),
       members: actorHasPermission(actor, PERMISSIONS.MANAGE_COMMITTEE_ROLES)
         ? (await memberDirectoryGateway.listAllUsers()).map((user) => ({
             username: user.username,

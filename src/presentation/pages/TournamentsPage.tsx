@@ -3283,6 +3283,7 @@ export function TournamentsPage({
                     className="tournament-setup-button secondary-button"
                     onClick={() => moveToPreviousSetupStep(setEditSetupStepIndex)}
                     disabled={isSaving}
+                    title="Return to the previous tournament setup step."
                     variant="secondary"
                   >
                     Back
@@ -3302,6 +3303,7 @@ export function TournamentsPage({
                       })
                     }
                     disabled={isSaving}
+                    title="Continue to the next tournament setup step."
                     variant="ghost"
                   >
                     Next
@@ -3314,6 +3316,7 @@ export function TournamentsPage({
                       void handleUpdateTournament();
                     }}
                     disabled={isSaving}
+                    title="Save changes to this tournament."
                     variant="ghost"
                   >
                     {isSaving ? "Saving changes..." : "Save changes"}
@@ -3324,6 +3327,7 @@ export function TournamentsPage({
                   className="tournament-setup-button tournament-setup-button-create"
                   onClick={openCreateModal}
                   disabled={isSaving}
+                  title="Create a new tournament from a template."
                 >
                   Create tournament
                 </Button>
@@ -3332,24 +3336,27 @@ export function TournamentsPage({
                   className="tournament-setup-button tournament-template-trigger"
                   onClick={() => openTemplateModal(form.templateKey)}
                   disabled={isSaving}
+                  title="Create a reusable tournament template, optionally based on an existing one."
                   variant="secondary"
                 >
-                  Manage templates
+                  Create templates
                 </Button>
-              <Button
-                type="button"
-                className="tournament-setup-button tournament-template-trigger"
-                onClick={() => openTemplateModal(form.templateKey, true)}
-                disabled={isSaving || tournamentTemplates.length === 0}
-                variant="secondary"
-              >
-                Edit template
-              </Button>
+                <Button
+                  type="button"
+                  className="tournament-setup-button tournament-template-trigger"
+                  onClick={() => openTemplateModal(form.templateKey, true)}
+                  disabled={isSaving || tournamentTemplates.length === 0}
+                  title="Update an existing tournament template."
+                  variant="secondary"
+                >
+                  Edit template
+                </Button>
                 <Button
                   type="button"
                   className="tournament-setup-button event-cancel-button"
                   onClick={handleDeleteTournament}
                   disabled={isSaving}
+                  title="Delete this tournament."
                   variant="danger"
                 >
                   Delete tournament
@@ -3363,6 +3370,7 @@ export function TournamentsPage({
                 className="tournament-setup-button tournament-setup-button-create"
                 onClick={openCreateModal}
                 disabled={isSaving}
+                title="Create a new tournament from a template."
               >
                 Create tournament
               </Button>
@@ -3371,15 +3379,17 @@ export function TournamentsPage({
                 className="tournament-setup-button tournament-template-trigger"
                 onClick={() => openTemplateModal(form.templateKey)}
                 disabled={isSaving}
+                title="Create a reusable tournament template, optionally based on an existing one."
                 variant="secondary"
               >
-                Manage templates
+                Create templates
               </Button>
               <Button
                 type="button"
                 className="tournament-setup-button tournament-template-trigger"
                 onClick={() => openTemplateModal(form.templateKey, true)}
                 disabled={isSaving || tournamentTemplates.length === 0}
+                title="Update an existing tournament template."
                 variant="secondary"
               >
                 Edit template

@@ -81,8 +81,7 @@ export function MemberRangeAttendanceSection({
                   <p className="reporting-mobile-row-title">{row.name}</p>
                   <MobileKeyValueList items={[
                     { label: "Status", value: row.hasRecordedVisit ? "Recorded visit" : "No recorded visit" },
-                    { label: "Days in period", value: String(row.visitDays) },
-                    { label: "Total days", value: String(row.totalVisitDays) },
+                    { label: "Total days", value: String(row.visitDays) },
                     { label: "Last visit", value: lastVisitLabel(row.lastVisitAt) },
                     { label: "Email", value: row.emailAddress || "No email on file" },
                   ]} />
@@ -93,14 +92,13 @@ export function MemberRangeAttendanceSection({
           ) : (
             <div className="reporting-table-wrap">
               <table className="committee-roles-table reporting-table">
-                <thead><tr><th>Name</th><th>Status</th><th>Days in period</th><th>Total days</th><th>Last recorded visit</th><th>Email</th></tr></thead>
+                <thead><tr><th>Name</th><th>Status</th><th>Total days</th><th>Last recorded visit</th><th>Email</th></tr></thead>
                 <tbody>
                   {attendance.rows.map((row) => (
                     <tr key={row.username}>
                       <td>{row.name}</td>
                       <td>{row.hasRecordedVisit ? "Recorded visit" : "No recorded visit"}</td>
                       <td>{row.visitDays}</td>
-                      <td>{row.totalVisitDays}</td>
                       <td>{lastVisitLabel(row.lastVisitAt)}</td>
                       <td>{contactLink(row.emailAddress)}</td>
                     </tr>

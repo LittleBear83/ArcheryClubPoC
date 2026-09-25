@@ -1354,6 +1354,39 @@ button:disabled {
   background: var(--surface);
 }
 
+.profile-admin-panel--selection {
+  display: flex;
+  align-items: center;
+  gap: 16px 24px;
+  flex-wrap: wrap;
+}
+
+.profile-admin-panel--selection .profile-section-title {
+  margin: 0;
+}
+
+.profile-member-selection-input {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 28rem;
+  min-width: 0;
+  max-width: 42rem;
+}
+
+.profile-member-selection-input > span {
+  white-space: nowrap;
+}
+
+.profile-member-selection-input > .MuiAutocomplete-root {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.profile-admin-panel--selection .profile-admin-actions {
+  margin-top: 0;
+}
+
 .profile-section-title {
   margin: 0 0 14px;
 }
@@ -1508,6 +1541,20 @@ button:disabled {
   gap: 16px;
 }
 
+.member-profile-fields {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.member-profile-fields > label {
+  min-width: 0;
+}
+
+@media (max-width: 1100px) {
+  .member-profile-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .equipment-storage-management-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1597,6 +1644,20 @@ button:disabled {
   border: 1px solid var(--panel-border);
   border-radius: 16px;
   background: var(--surface-strong);
+}
+
+.profile-classification-panel--access {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.profile-classification-panel--access .profile-classification-copy {
+  flex-basis: 100%;
 }
 
 .profile-classification-title {
@@ -6544,24 +6605,6 @@ button:disabled {
     gap: 12px;
   }
 
-  .beginners-course-row-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .beginners-course-row-action-button--edit,
-  .beginners-course-row-action-button--save,
-  .beginners-course-row-action-button--reset,
-  .beginners-course-row-action-button--convert {
-    grid-column: auto;
-    grid-row: auto;
-  }
-
-  .beginners-course-actions-heading,
-  .beginners-course-actions-cell {
-    width: 240px;
-    min-width: 240px;
-  }
-
   .beginners-course-attendance-table {
     min-width: 680px;
   }
@@ -7032,12 +7075,6 @@ button:disabled {
     min-width: 210px;
   }
 
-  .beginners-course-actions-heading,
-  .beginners-course-actions-cell {
-    width: 220px;
-    min-width: 220px;
-  }
-
   .beginners-course-attendance-table {
     min-width: 640px;
   }
@@ -7460,7 +7497,26 @@ button:disabled {
 
 .beginners-journey-reporting-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--section-gap);
+}
+
+.beginners-journey-reporting-page .beginners-course-panel {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.beginners-journey-reporting-page .screen-report-only {
+  min-width: 0;
+}
+
+.usage-cards.reporting-summary-cards {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+}
+
+.reporting-summary-cards .reporting-summary-card,
+.reporting-summary-cards .usage-card-stats > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .beginners-journey-reporting-filters {
@@ -7622,19 +7678,12 @@ button:disabled {
 
 .beginners-course-actions-heading,
 .beginners-course-actions-cell {
-  width: 340px;
-  min-width: 340px;
+  width: 120px;
+  min-width: 120px;
 }
 
 .beginners-course-actions-cell {
   vertical-align: middle;
-}
-
-.beginners-course-row-actions {
-  display: grid;
-  grid-template-columns: minmax(132px, 1fr) minmax(132px, 1fr);
-  align-items: center;
-  gap: 8px;
 }
 
 .beginners-course-row-action-button {
@@ -7645,38 +7694,25 @@ button:disabled {
   line-height: 1.2;
 }
 
-.beginners-course-row-action-button--edit {
-  grid-column: 1;
-  grid-row: 1;
-  min-width: 56px;
+.beginners-course-participant-actions {
+  display: grid;
+  gap: 12px;
 }
 
-.beginners-course-row-action-button--save {
-  grid-column: 2;
-  grid-row: 1;
+.beginners-course-participant-actions select {
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 12px 14px;
+  border: 1px solid var(--input-border);
+  border-radius: 12px;
+  background: var(--input-bg);
+  color: var(--input-text);
 }
 
-.beginners-course-row-action-button--reset {
-  grid-column: 2;
-  grid-row: 2;
-  min-width: 0;
-  padding-inline: 8px;
-  border-color: var(--brand-danger-border);
-  background: var(--brand-danger);
-  color: var(--text-on-strong);
-  font-size: 0.82rem;
-}
-
-.beginners-course-row-action-button--reset:hover {
-  background: var(--brand-danger-hover);
-}
-
-.beginners-course-row-action-button--convert {
-  grid-column: 1;
-  grid-row: 2;
-  min-width: 0;
-  padding-inline: 8px;
-  font-size: 0.82rem;
+.beginners-course-participant-actions-buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 10px;
 }
 
 .beginners-course-attendance-table {
@@ -9366,24 +9402,10 @@ button:disabled {
   }
 }
 
-.outdoor-table-toolbar-panel,
 .outdoor-table-form-panel,
 .outdoor-table-sheet-panel {
   width: 100%;
   min-width: 0;
-}
-
-.outdoor-table-toolbar {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.outdoor-table-toolbar-actions {
-  display: flex;
-  gap: 0.75rem;
 }
 
 .outdoor-table-sync-panel {
@@ -9802,12 +9824,16 @@ button:disabled {
   color: var(--announcement-yellow-text);
 }
 
-.outdoor-table-head--distance {
+.outdoor-table-matrix .outdoor-table-head--distance {
   min-width: 48px;
+  background: #fff;
+  color: #1d1811;
+  border-color: #aaa;
 }
 
 .outdoor-table-row {
-  background: var(--surface);
+  background: #fff;
+  color: #1d1811;
 }
 
 .outdoor-table-row:hover td {
@@ -9843,10 +9869,11 @@ button:disabled {
 
 .outdoor-table-row td {
   cursor: default;
+  border-color: #aaa;
 }
 
 .outdoor-table-mark {
-  background: var(--surface-raised);
+  background: #fff;
 }
 
 .outdoor-table-mark.is-active {

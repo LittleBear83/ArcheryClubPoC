@@ -78,13 +78,12 @@ export function MemberProfileForm({
   return (
     <form onSubmit={onSubmit} className="left-align-form profile-form">
       {isAdmin ? (
-        <div className="profile-classification-panel">
+        <div className="profile-classification-panel profile-classification-panel--access">
           <p className="profile-classification-title">Access and status</p>
-          <p className="profile-classification-copy">
-            Role controls portal permissions. Membership status reflects whether
-            the person is actually a club member.
-          </p>
           <p className="profile-classification-summary">{membershipSummary}</p>
+          <p className="profile-classification-copy">
+            Role sets portal permissions; membership status records club membership.
+          </p>
         </div>
       ) : null}
 
@@ -113,7 +112,7 @@ export function MemberProfileForm({
         </div>
       ) : null}
 
-      <div className="profile-form-grid">
+      <div className="profile-form-grid member-profile-fields">
         <label>
           Username
           <input

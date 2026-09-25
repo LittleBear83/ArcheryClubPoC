@@ -737,6 +737,34 @@ test("mutating admin routes require both a session cookie and a valid CSRF token
   }
 });
 
+test("committee positions are listed in alphanumeric title order", async () => {
+  const { app, csrf } = createAdminRoleTestApp();
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    for (const title of ["Role 10", "role 2", "Role 1"]) {
+      const response = await requestJson(baseUrl, "/api/committee-roles", {
+        body: { title, summary: "Committee position" },
+        headers: createCsrfHeaders(csrf),
+        method: "POST",
+      });
+      assert.equal(response.status, 201);
+    }
+
+    const response = await requestJson(baseUrl, "/api/committee-roles", {
+      headers: createCsrfHeaders(csrf),
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      response.body.roles.map((role) => role.title),
+      ["Role 1", "role 2", "Role 10"],
+    );
+  } finally {
+    server.close();
+  }
+});
+
 test("assigned committee members can update only their own personal blurb", async () => {
   const { app, csrf } = createAdminRoleTestApp();
   const { baseUrl, server } = await startTestServer(app);

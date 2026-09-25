@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { SectionPanel } from "../components/SectionPanel";
@@ -67,7 +67,6 @@ export function OutdoorTablePage({
     "admin",
     "developer",
   ].includes(actorRole);
-  const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
   const [syncSuccessMessage, setSyncSuccessMessage] = useState("");
   const [syncErrorMessage, setSyncErrorMessage] = useState("");
   const [sortConfig, setSortConfig] = useState<{
@@ -79,8 +78,8 @@ export function OutdoorTablePage({
   });
 
   const dashboardQuery = useQuery({
-    queryKey: ["outdoor-table", selectedYear, actorUsername],
-    queryFn: () => listOutdoorTableDashboard(currentUserProfile, selectedYear),
+    queryKey: ["outdoor-table", CURRENT_YEAR, actorUsername],
+    queryFn: () => listOutdoorTableDashboard(currentUserProfile, CURRENT_YEAR),
     enabled: Boolean(actorUsername),
   });
   const goldenRecordsSyncMutation = useMutation({
@@ -152,12 +151,6 @@ export function OutdoorTablePage({
       });
     });
   }, [dashboardQuery.data?.rows, sortConfig]);
-  const availableYears = useMemo(() => {
-    const years = dashboardQuery.data?.availableYears ?? [];
-    return Array.from(new Set([CURRENT_YEAR, selectedYear, ...years])).sort(
-      (left, right) => right - left,
-    );
-  }, [dashboardQuery.data?.availableYears, selectedYear]);
   const goldenRecordsSyncInfo = useMemo(() => {
     const fetchedAt = dashboardQuery.data?.goldenRecordsFetchedAt ?? "";
 
@@ -167,14 +160,6 @@ export function OutdoorTablePage({
 
     return `Golden Records data last synced on ${formatDateTime(fetchedAt)}.`;
   }, [dashboardQuery.data?.goldenRecordsFetchedAt]);
-
-  const handleYearChange = (event: ChangeEvent<HTMLSelectElement>) => {
-    const nextYear = Number.parseInt(event.target.value, 10);
-
-    if (Number.isInteger(nextYear)) {
-      setSelectedYear(nextYear);
-    }
-  };
 
   const toggleSort = (column: OutdoorTableSortColumn) => {
     setSortConfig((current) => ({
@@ -217,24 +202,6 @@ export function OutdoorTablePage({
         success=""
       />
 
-      <SectionPanel
-        className="outdoor-table-toolbar-panel"
-        title={`Selby Outdoor Table ${selectedYear}`}
-      >
-        <div className="outdoor-table-toolbar">
-          <label>
-            Viewing Season
-            <select value={selectedYear} onChange={handleYearChange}>
-              {availableYears.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </SectionPanel>
-
       <SectionPanel className="outdoor-table-sheet-panel" title="Outdoor Table">
         <div className="outdoor-table-sheet-copy">
           <p>
@@ -245,7 +212,7 @@ export function OutdoorTablePage({
         </div>
 
         {rows.length === 0 ? (
-          <p>No outdoor table rows have been added for {selectedYear} yet.</p>
+          <p>No outdoor table rows have been added for {CURRENT_YEAR} yet.</p>
         ) : (
           <>
             <p className="outdoor-table-scroll-hint">
@@ -256,7 +223,7 @@ export function OutdoorTablePage({
               <thead>
                 <tr>
                   <th className="outdoor-table-title-cell" colSpan={3}>
-                    Outdoor Table {selectedYear}
+                    Outdoor Table {CURRENT_YEAR}
                   </th>
                   <th
                     className="outdoor-table-legend-cell"

@@ -225,3 +225,55 @@ test("saveMemberProfile clears unsupported programme types from guest accounts",
   assert.equal(capturedPayload.userPayload.programmeType, "none");
   assert.equal(result.success, true);
 });
+
+function rfidPersistenceHarness() {
+  const saved = [];
+  const service = createMemberPersistenceService({
+    buildEditableMemberProfile: () => ({}), buildMemberUserProfile: () => ({}),
+    deactivatedRfidSuffix: '-deactivated', hashPassword: (value) => value,
+    memberAuthGateway: { findUserByUsername: async () => ({ username: 'Canonical' }) },
+    memberProfileGateway: { roleExists: async () => true, findLoanBowByUsername: async () => null,
+      saveMemberProfile: async (payload) => saved.push(payload) },
+    sanitizeDisciplines: () => [], sanitizeLoanBow: () => ({}),
+  });
+  const input = { username: 'canonical', firstName: 'Member', surname: 'Example',
+    userType: 'member', existingUser: { username: 'Canonical', password: 'hash', rfid_tag: 'OLD' },
+    syncContext: { nodeMode: 'local-pi', canManageMembers: true, actorUsername: 'Admin' },
+    rfidTag: ' NEW ' };
+  return { service, saved, input };
+}
+
+for (const [name, rfidTag, context, existing, expected] of [
+  ['unchanged', ' old ', 'local-pi', true, undefined],
+  ['changed Pi', ' NEW ', 'local-pi', true, 'NEW'],
+  ['clear', ' ', 'local-pi', true, null],
+  ['cloud', 'NEW', 'cloud-server', true, 'NEW'],
+  ['new Pi member', 'NEW', 'local-pi', false, undefined],
+]) {
+  test(`RFID persistence ${name} supplies only eligible sync context`, async () => {
+    const { service, saved, input } = rfidPersistenceHarness();
+    input.rfidTag = rfidTag;
+    input.syncContext.nodeMode = context;
+    if (!existing) { input.existingUser = null; input.password = 'new-password'; }
+    assert.equal((await service.saveMemberProfile(input)).success, true);
+    if (!existing) assert.equal(saved[0].rfidSync, undefined);
+    else {
+      if (expected !== undefined) assert.equal(saved[0].userPayload.rfidTag, expected);
+      assert.deepEqual(saved[0].rfidSync, { sourceNodeMode: context, updatedByUsername: 'Admin', requestedRfidTag: rfidTag.trim() || null });
+    }
+  });
+}
+
+test('self edit cannot alter RFID or enqueue and pending failure returns 409', async () => {
+  const { service, saved, input } = rfidPersistenceHarness();
+  input.syncContext.canManageMembers = false;
+  assert.equal((await service.saveMemberProfile(input)).success, true);
+  assert.equal(saved[0].userPayload.rfidTag, 'OLD');
+  assert.equal(saved[0].rfidSync, undefined);
+  const pending = rfidPersistenceHarness();
+  // Exercise the service error mapping with a transaction failure adapter.
+  pending.saved.push = () => { const error = new Error('pending'); error.code = 'rfid_update_pending'; throw error; };
+  const result = await pending.service.saveMemberProfile(pending.input);
+  assert.equal(result.status, 409);
+  assert.equal(result.code, 'rfid_update_pending');
+});

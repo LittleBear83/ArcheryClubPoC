@@ -1,3 +1,4 @@
+import { validateRoundPairings } from "./tournamentPairings.js";
 const RESOLVED_TOURNAMENT_MATCH_STATUSES = new Set([
   "completed",
   "finalised",
@@ -109,6 +110,7 @@ function buildTournamentBracket(
   persistedMatchesByKey = new Map(),
   {
     frozenDrawOrderUsernames = [],
+    roundPairings = {},
     supportsHighestLoserProgression = false,
   } = {},
 ) {
@@ -162,6 +164,11 @@ function buildTournamentBracket(
     const roundIndex = rounds.length + 1;
     const roundScores = scoresByRound.get(roundIndex) ?? new Map();
     const matches = [];
+    const savedPairings = roundPairings[roundIndex];
+    if (validateRoundPairings(savedPairings, currentParticipants.map((participant) => participant?.username ?? null))) {
+      const participantLookup = new Map(currentParticipants.filter(Boolean).map((participant) => [participant.username, participant]));
+      currentParticipants = savedPairings.flat().map((username) => username === null ? null : participantLookup.get(username));
+    }
 
     for (let index = 0; index < currentParticipants.length; index += 2) {
       const matchNumber = index / 2 + 1;
@@ -186,14 +193,14 @@ function buildTournamentBracket(
           (rightParticipant?.username ?? null);
 
       if (leftParticipant && !rightParticipant) {
-        if (roundIndex === 1) {
+        if (roundIndex === 1 || (savedPairings && rounds.every((round) => round.matches.every((match) => isTournamentMatchResolvedStatus(match.status) || match.status === "empty")))) {
           winner = leftParticipant;
           status = "bye";
         } else {
           status = "pending";
         }
       } else if (!leftParticipant && rightParticipant) {
-        if (roundIndex === 1) {
+        if (roundIndex === 1 || (savedPairings && rounds.every((round) => round.matches.every((match) => isTournamentMatchResolvedStatus(match.status) || match.status === "empty")))) {
           winner = rightParticipant;
           status = "bye";
         } else {

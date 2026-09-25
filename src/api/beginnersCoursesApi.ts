@@ -4,6 +4,15 @@ import {
   getDashboardPathForCourseType,
 } from "./beginnersCourseTypeSupport.js";
 
+export async function cancelCourseDates(actor: ActorIdentity | string, courseId: number, lessonIds: number[], courseType: string) {
+  return fetchApi<{ success: true }>(`/api/beginners-courses/${courseId}/cancel-dates`, {
+    method: "POST",
+    headers: buildActorHeaders(actor, true),
+    body: JSON.stringify({ lessonIds, courseType }),
+    cache: "no-store",
+  });
+}
+
 export async function getBeginnersCoursesDashboard(actor: ActorIdentity | string) {
   return fetchApi<{ success: true } & Record<string, unknown>>(
     getDashboardPathForCourseType("beginners"),

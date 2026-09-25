@@ -1,3 +1,6 @@
+import { randomUUID } from "node:crypto";
+import { normalizeRfidTag, rfidTagsEqual } from "../../domain/services/memberPersistenceService.js";
+
 function normalizeLoanBowRow(row) {
   if (!row) {
     return null;
@@ -107,6 +110,7 @@ function createSqliteMemberProfileGateway({
 
 function createPostgresMemberProfileGateway({
   pool,
+  syncGateway,
 }) {
   async function saveLoanBowWithClient(client, username, loanBow) {
     const payload = buildLoanBowSqlPayload(username, loanBow);
@@ -260,11 +264,45 @@ function createPostgresMemberProfileGateway({
     async saveLoanBowRecord(username, loanBow) {
       await saveLoanBowWithClient(pool, username, loanBow);
     },
-    async saveMemberProfile({ disciplines, loanBow, userPayload, userType }) {
+    async saveMemberProfile({ disciplines, loanBow, userPayload, userType, rfidSync }) {
       const client = await pool.connect();
 
       try {
         await client.query("BEGIN");
+        let rfidCommand;
+        if (rfidSync) {
+          const tag = normalizeRfidTag(userPayload.rfidTag);
+          if (tag) await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`archery:rfid:${tag.toLowerCase()}`]);
+          const current = (await client.query(
+            "SELECT username, rfid_tag FROM users WHERE LOWER(username) = LOWER($1) FOR UPDATE",
+            [userPayload.username],
+          )).rows[0];
+          if (!current) throw new Error("Existing member no longer exists.");
+          userPayload = { ...userPayload, username: current.username };
+          // Compare the explicit input, so automatic fee-expiry deactivation
+          // keeps its existing behavior without creating an RFID command.
+          const requestedTag = Object.hasOwn(rfidSync, "requestedRfidTag") ? rfidSync.requestedRfidTag : tag;
+          if (!rfidTagsEqual(current.rfid_tag, requestedTag)) {
+            if (rfidSync.sourceNodeMode === "local-pi") {
+              const pending = await client.query(`SELECT 1 FROM sync_local_outbox
+                WHERE event_type = 'member_rfid_updated' AND aggregate_key = LOWER($1)
+                  AND acknowledged_at IS NULL AND rejected_at IS NULL LIMIT 1`, [current.username]);
+              if (pending.rowCount) {
+                const error = new Error("An RFID update for this member is already waiting to sync.");
+                error.code = "rfid_update_pending";
+                throw error;
+              }
+              rfidCommand = { eventId: randomUUID(), username: current.username,
+                previousRfidTag: normalizeRfidTag(current.rfid_tag), rfidTag: tag,
+                updatedByUsername: rfidSync.updatedByUsername };
+            }
+            if (tag) {
+              const owner = await client.query(`SELECT 1 FROM users
+                WHERE LOWER(BTRIM(rfid_tag)) = LOWER($1) AND LOWER(username) <> LOWER($2) LIMIT 1`, [tag, current.username]);
+              if (owner.rowCount) throw new Error("UNIQUE constraint failed: users.rfid_tag");
+            }
+          }
+        }
         await client.query(
           `
             INSERT INTO users (
@@ -345,6 +383,7 @@ function createPostgresMemberProfileGateway({
         }
 
         await saveLoanBowWithClient(client, userPayload.username, loanBow);
+        if (rfidCommand) await syncGateway.enqueueMemberRfidUpdateCommand({ client, payload: rfidCommand });
         await client.query("COMMIT");
       } catch (error) {
         await client.query("ROLLBACK");

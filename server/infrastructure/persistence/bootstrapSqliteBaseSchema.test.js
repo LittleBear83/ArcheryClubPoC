@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import Database from "better-sqlite3";
 import { bootstrapSqliteBaseSchema } from "./bootstrapSqliteBaseSchema.js";
+import { bootstrapPersistence } from "../../bootstrap/bootstrapPersistence.js";
+import { getSeedUsers } from "./seedUsers.js";
 
 for (const legacy of [false, true]) {
   test(`SQLite bootstrap supports ${legacy ? "legacy" : "fresh"} databases and repeated startup`, () => {
@@ -54,4 +56,15 @@ test("fresh SQLite development seeding accepts missing optional AGB numbers", as
   } finally {
     db.close();
   }
+});
+
+test("full development SQLite bootstrap seeds users with optional membership numbers", async () => {
+  const db = new Database(":memory:");
+  try {
+    const hashPassword = (password) => `hashed:${password}`;
+    const systemRoleDefinitions = [...new Set(getSeedUsers({ hashPassword, isLive: false }).map((user) => user.userType))].map((roleKey) => ({ roleKey, title: roleKey, permissions: [] }));
+    await bootstrapPersistence({ db, defaultEquipmentCupboardLabel: "Test cupboard", committeeRoleSeed: [], currentPermissionKeys: [], currentPermissionSqlPlaceholders: "", permissionDefinitions: [], systemRoleDefinitions, runtime: { databaseEngine: "sqlite", isLive: false }, hashPassword, isPasswordHash: (password) => password.startsWith("hashed:") });
+    assert.ok(db.prepare("SELECT COUNT(*) AS count FROM users").get().count > 0);
+    assert.equal(db.prepare("SELECT archery_gb_membership_number FROM users WHERE username = 'Cfleetham'").get().archery_gb_membership_number, null);
+  } finally { db.close(); }
 });

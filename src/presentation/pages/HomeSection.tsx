@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { filterHomeActivityCurrentOrUpcoming } from "./home/homeActivityFilters";
 import { Button } from "../components/Button";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
 import {
@@ -187,7 +189,12 @@ function buildClubEventItems(events, coachAssignments) {
 }
 
 function SignedUpEventsList({ events, coachAssignments }) {
-  const clubEventItems = buildClubEventItems(events, coachAssignments);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const clubEventItems = buildClubEventItems(filterHomeActivityCurrentOrUpcoming(events, now), filterHomeActivityCurrentOrUpcoming(coachAssignments, now));
 
   return (
     <section className="home-panel">

@@ -6,6 +6,12 @@ import { migration as phase2a1ReportingSyncMigration } from "./006_phase_2a1_rep
 import { migration as syncChangeNotificationsMigration } from "./007_sync_change_notifications.js";
 import { migration as syncPublicationMigration } from "./008_sync_publication.js";
 import { migration as extendedSseDomainsMigration } from "./009_extended_sse_domains.js";
+import { migration as memberSignoffCommitteeSyncMigration } from "./010_member_signoff_committee_sync.js";
+import { migration as committeeMinutesSyncMigration } from "./011_committee_minutes_sync.js";
+
+import { migration as lessonCancellationMigration } from "./012_lesson_cancellation.js";
+
+import { migration as localOutboxNotificationsMigration } from "./013_local_outbox_notifications.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -16,4 +22,8 @@ export const postgresMigrations = [
   syncChangeNotificationsMigration,
   syncPublicationMigration,
   extendedSseDomainsMigration,
+  memberSignoffCommitteeSyncMigration,
+  committeeMinutesSyncMigration,
+  lessonCancellationMigration,
+  localOutboxNotificationsMigration,
 ];

@@ -1,3 +1,4 @@
+import { hasPairingResults, validateRoundPairings } from "../../../shared/tournamentPairingRules.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import {
@@ -88,6 +89,7 @@ function createEmptyTemplateForm(templateOptions: TournamentTemplateOption[] = [
         ? String(defaultBaseTemplate?.defaults?.handicapAllowancePercent ?? "")
         : "",
     defaultRoundNames: (defaultBaseTemplate?.defaults?.defaultRoundNames ?? []).join(", "),
+    randomiseEveryRound: defaultBaseTemplate?.capabilities?.randomiseEveryRound ?? false,
     supportsRandomizedDraw:
       defaultBaseTemplate?.capabilities?.supportsRandomizedDraw ?? false,
     supportsHighestLoserProgression:
@@ -122,6 +124,7 @@ function createEmptyTournamentForm(
     tournamentType: defaultTournamentType,
     roundOneStartDate: today,
     roundWindowDays: 14,
+    randomiseEveryRound: false,
     roundRestDays: 0,
     registrationStartDate: today,
     registrationEndDate: today,
@@ -616,7 +619,7 @@ function TournamentBracketMatchCard({
 function TournamentBracketGraphic({ tournament }) {
   const { matches, roundTitles } = useMemo(
     () => buildTournamentBracketMatches(tournament),
-    [tournament.bracket.rounds],
+    [tournament],
   );
 
   return (
@@ -755,6 +758,9 @@ function TournamentSetupReview({ form, selectedTemplate, registrationCount = nul
         </p>
         <p>
           <strong>Tournament type:</strong> {form.tournamentType}
+        </p>
+        <p>
+          <strong>Randomise every round:</strong> {form.randomiseEveryRound ? "Yes" : "No"}
         </p>
         <p>
           <strong>Registration:</strong> {formatDate(form.registrationStartDate)} to{" "}
@@ -960,6 +966,9 @@ export function TournamentsPage({
 }) {
   const isMobile = useIsMobile();
   const today = new Date().toISOString().slice(0, 10);
+  const [pairingRoundNumber, setPairingRoundNumber] = useState<number | null>(null);
+  const [manualPairings, setManualPairings] = useState<(string | null)[][]>([]);
+  const [pairingCandidates, setPairingCandidates] = useState<{ username: string; fullName: string }[]>([]);
   const [tournaments, setTournaments] = useState([]);
   const [tournamentTypes, setTournamentTypes] = useState([]);
   const [tournamentTemplates, setTournamentTemplates] = useState<
@@ -1006,6 +1015,7 @@ export function TournamentsPage({
   const [isEditingTournament, setIsEditingTournament] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [isEditingTemplate, setIsEditingTemplate] = useState(false);
   const [isArchiveExpanded, setIsArchiveExpanded] = useState(false);
   const [isTournamentLineUpOpen, setIsTournamentLineUpOpen] = useState(false);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
@@ -1397,6 +1407,7 @@ export function TournamentsPage({
           selectedTournament.roundSchedule?.[0]?.publishDate ??
           today,
         roundWindowDays: Number(selectedTournament.roundWindowDays ?? 14),
+        randomiseEveryRound: selectedTournament.randomiseEveryRound ?? false,
         roundRestDays: Number(selectedTournament.roundRestDays ?? 0),
         registrationStartDate: selectedTournament.registrationWindow.startDate,
         registrationEndDate: selectedTournament.registrationWindow.endDate,
@@ -1476,7 +1487,7 @@ export function TournamentsPage({
     setCreateSetupStepIndex(0);
   };
 
-  const resetTemplateForm = (baseTemplateKey?: string) => {
+  const resetTemplateForm = (baseTemplateKey?: string, editing = false) => {
     const nextForm = createEmptyTemplateForm(tournamentTemplates);
 
     if (!baseTemplateKey) {
@@ -1494,6 +1505,8 @@ export function TournamentsPage({
     setTemplateForm({
       ...nextForm,
       baseTemplateKey: baseTemplate.key,
+      label: editing ? baseTemplate.label : "",
+      randomiseEveryRound: baseTemplate.capabilities?.randomiseEveryRound ?? false,
       description: baseTemplate.description ?? "",
       resultWorkflow: baseTemplate.defaults?.resultWorkflow ?? "single-submit",
       handicapAllowancePercent:
@@ -1529,10 +1542,11 @@ export function TournamentsPage({
     setIsCreateModalOpen(true);
   };
 
-  const openTemplateModal = (baseTemplateKey?: string) => {
+  const openTemplateModal = (baseTemplateKey?: string, editing = false) => {
     setError("");
     setMessage("");
-    resetTemplateForm(baseTemplateKey);
+    setIsEditingTemplate(editing);
+    resetTemplateForm(baseTemplateKey || getDefaultTournamentTemplate(tournamentTemplates)?.key, editing);
     setIsTemplateModalOpen(true);
   };
 
@@ -1579,7 +1593,7 @@ export function TournamentsPage({
     try {
       const result = await tournamentCrud.createTournamentUseCase.execute({
         actorUsername,
-        form: createForm,
+        form: { ...createForm, randomiseEveryRound: selectedCreateTemplate?.capabilities?.randomiseEveryRound ?? false },
       });
 
       updateTournamentInState(result.tournament);
@@ -1609,8 +1623,12 @@ export function TournamentsPage({
         .split(",")
         .map((entry) => entry.trim())
         .filter(Boolean);
-      const result = await tournamentCrud.createTournamentTemplateUseCase.execute({
+      const saveTemplate = isEditingTemplate
+        ? tournamentCrud.updateTournamentTemplateUseCase
+        : tournamentCrud.createTournamentTemplateUseCase;
+      const result = await saveTemplate.execute({
         actorUsername,
+        templateKey: templateForm.baseTemplateKey,
         form: {
           label: templateForm.label,
           description: templateForm.description,
@@ -1626,6 +1644,7 @@ export function TournamentsPage({
           capabilities: {
             ...selectedBaseTemplate.capabilities,
             supportsRandomizedDraw: templateForm.supportsRandomizedDraw,
+            randomiseEveryRound: templateForm.randomiseEveryRound,
             supportsHighestLoserProgression:
               templateForm.supportsHighestLoserProgression,
             supportsRoundDeadlines: templateForm.supportsRoundDeadlines,
@@ -1652,7 +1671,7 @@ export function TournamentsPage({
       const nextTemplates = result.tournamentTemplates ?? tournamentTemplates;
       const createdTemplateKey = result.tournamentTemplate?.key ?? "";
       setTournamentTemplates(nextTemplates);
-      if (createdTemplateKey) {
+      if (createdTemplateKey && !isEditingTemplate) {
         setForm((current) => ({ ...current, templateKey: createdTemplateKey }));
         setCreateForm((current) => ({ ...current, templateKey: createdTemplateKey }));
       }
@@ -2262,7 +2281,18 @@ export function TournamentsPage({
       )
     : [];
 
-  const captainOperationsContent =
+  const editableRound = selectedTournament?.bracket?.rounds?.find((round) => round.roundNumber === selectedTournament.currentRoundNumber);
+  const canEditPairings = canManageTournaments && selectedTournament?.registrationWindow?.isClosed && editableRound && !hasPairingResults(editableRound.matches);
+  const pairingControls = canEditPairings ? (
+    <Button variant="secondary" disabled={isSaving} onClick={() => {
+      setError("");
+      setPairingRoundNumber(editableRound.roundNumber);
+      setManualPairings(editableRound.matches.map((match) => [match.leftParticipant?.username ?? null, match.rightParticipant?.username ?? null]));
+      setPairingCandidates(editableRound.matches.flatMap((match) => [match.leftParticipant, match.rightParticipant]).filter((participant) => Boolean(participant?.username)).map((participant) => ({ username: participant.username, fullName: participant.fullName })));
+    }}>Edit pairings</Button>
+  ) : null;
+
+  const matchCaptainOperationsContent =
     canManageTournaments && captainOperationMatches.length > 0 ? (
       <div className="tournament-registrations-card">
         <details className="tournament-captain-operations-details">
@@ -2948,7 +2978,7 @@ export function TournamentsPage({
         </form>
       ) : null}
 
-      {captainOperationsContent}
+      {pairingControls}{matchCaptainOperationsContent}
     </>
   ) : (
     <p>Select a tournament to view the registration list and bracket.</p>
@@ -3232,6 +3262,15 @@ export function TournamentsPage({
                 >
                   Create template
                 </Button>
+              <Button
+                type="button"
+                className="tournament-setup-button tournament-template-trigger"
+                onClick={() => openTemplateModal(form.templateKey, true)}
+                disabled={isSaving || tournamentTemplates.length === 0}
+                variant="secondary"
+              >
+                Edit template
+              </Button>
                 <Button
                   type="button"
                   className="tournament-setup-button event-cancel-button"
@@ -3261,6 +3300,15 @@ export function TournamentsPage({
                 variant="secondary"
               >
                 Create template
+              </Button>
+              <Button
+                type="button"
+                className="tournament-setup-button tournament-template-trigger"
+                onClick={() => openTemplateModal(form.templateKey, true)}
+                disabled={isSaving || tournamentTemplates.length === 0}
+                variant="secondary"
+              >
+                Edit template
               </Button>
             </div>
           )}
@@ -3483,7 +3531,7 @@ export function TournamentsPage({
 
               {currentCreateStep.key === "review" ? (
                 <TournamentSetupReview
-                  form={createForm}
+                  form={{ ...createForm, randomiseEveryRound: selectedCreateTemplate?.capabilities?.randomiseEveryRound ?? false }}
                   selectedTemplate={selectedCreateTemplate}
                 />
               ) : null}
@@ -3579,7 +3627,7 @@ export function TournamentsPage({
             matchCompetitorARetired={matchCompetitorARetired}
             matchCompetitorBRetired={matchCompetitorBRetired}
             matchDisputeReason={matchDisputeReason}
-            captainOperationsContent={captainOperationsContent}
+            captainOperationsContent={<>{pairingControls}{matchCaptainOperationsContent}</>}
             isArchiveExpanded={isArchiveExpanded}
             registrationBowOptions={registrationBowOptions}
             requireRegistrationBowSelection={
@@ -3645,15 +3693,47 @@ export function TournamentsPage({
           />
         )
       ) : null}
+      <Modal open={pairingRoundNumber !== null} onClose={() => setPairingRoundNumber(null)} title={`Edit round ${pairingRoundNumber ?? ""} pairings`}>
+        {error ? <p className="profile-error" role="alert">{error}</p> : null}
+        <p>Assign each eligible archer once. Keep any bye slots. Pairings remain as saved until the round is played.</p>
+        {manualPairings.map((pair, index) => (
+          <div key={index} className="tournament-score-card">
+            <strong>Match {index + 1}</strong>
+            {pair.map((username, side) => (
+              <label key={side}>Archer {side + 1}
+                <select value={username ?? ""} onChange={(event) => setManualPairings((current) => current.map((entry, entryIndex) => entryIndex === index ? entry.map((value, valueSide) => valueSide === side ? event.target.value || null : value) : entry))}>
+                  <option value="">Bye</option>
+                  {pairingCandidates.map((candidate) => <option key={candidate.username} value={candidate.username}>{candidate.fullName}</option>)}
+                </select>
+              </label>
+            ))}
+          </div>
+        ))}
+        <Button disabled={isSaving} onClick={() => {
+          if (!selectedTournament || pairingRoundNumber === null) return;
+          const eligibleSlots = [...pairingCandidates.map((candidate) => candidate.username), ...Array(manualPairings.length * 2 - pairingCandidates.length).fill(null)];
+          if (!validateRoundPairings(manualPairings, eligibleSlots)) { setError("Include every eligible archer exactly once and preserve the bye slots."); return; }
+          setIsSaving(true);
+          setError("");
+          void fetchApi<{ success: true; tournament: TournamentRecord }>(`/api/tournaments/${selectedTournament.id}/rounds/${pairingRoundNumber}/pairings`, { method: "PUT", headers: buildActorHeaders(actorUsername, true), body: JSON.stringify({ pairings: manualPairings }), cache: "no-store" }).then((result) => {
+            setTournaments((current) => current.map((tournament) => tournament.id === result.tournament.id ? result.tournament : tournament));
+            setPairingRoundNumber(null);
+            setMessage("Round pairings saved.");
+          }).catch((error) => setError(error.message)).finally(() => setIsSaving(false));
+        }}>Save pairings</Button>
+      </Modal>
+
       <Modal
         open={isTemplateModalOpen}
         onClose={closeTemplateModal}
-        title="Create Tournament Template"
+        title={isEditingTemplate ? "Edit Tournament Template" : "Create Tournament Template"}
         contentClassName="modal-content--wide tournament-template-modal"
       >
         <div className="guest-member-modal">
           <p className="guest-member-modal-copy">
-            Save a reusable tournament template from the current setup flow.
+            {isEditingTemplate
+              ? "Changes apply to new tournaments. Existing tournament settings stay unchanged."
+              : "Save a reusable tournament template from the current setup flow."}
           </p>
           {error ? <p className="profile-error">{error}</p> : null}
           {message ? <p className="profile-success">{message}</p> : null}
@@ -3673,10 +3753,10 @@ export function TournamentsPage({
               />
             </label>
             <label>
-              Based on
+              {isEditingTemplate ? "Template" : "Based on"}
               <select
                 value={templateForm.baseTemplateKey}
-                onChange={(event) => resetTemplateForm(event.target.value)}
+                onChange={(event) => resetTemplateForm(event.target.value, isEditingTemplate)}
                 disabled={isSavingTemplate}
               >
                 {tournamentTemplates.map((template: TournamentTemplateOption) => (
@@ -3751,6 +3831,19 @@ export function TournamentsPage({
               <label className="tournament-template-checkbox">
                 <input
                   type="checkbox"
+                  checked={templateForm.randomiseEveryRound}
+                  onChange={(event) =>
+                    setTemplateForm((current) => ({
+                      ...current,
+                      randomiseEveryRound: event.target.checked,
+                    }))
+                  }
+                />
+                <span>Randomise every round</span>
+              </label>
+              <label className="tournament-template-checkbox">
+                <input
+                  type="checkbox"
                   checked={templateForm.supportsRandomizedDraw}
                   onChange={(event) =>
                     setTemplateForm((current) => ({
@@ -3759,7 +3852,7 @@ export function TournamentsPage({
                     }))
                   }
                 />
-                <span>Randomized draw</span>
+                <span>Randomised draw</span>
               </label>
               <label className="tournament-template-checkbox">
                 <input

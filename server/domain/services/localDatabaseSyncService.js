@@ -19,6 +19,9 @@ export const REPLICATED_DOMAINS = [
   "golden_records_integration_status",
   "golden_records_lookup_cache",
   "outdoor_table_entries",
+  "member_distance_sign_offs",
+  "committee_roles",
+  "committee_meeting_minutes",
 ];
 const PUBLICATION_SNAPSHOT_PROPERTIES = [
   "users", "userTypes", "userDisciplines", "roles", "permissions",
@@ -94,6 +97,9 @@ function collapseChanges(changes = []) {
     ["guest_login_events", 22],
     ["event_bookings", 23],
     ["coaching_session_bookings", 24],
+    ["committee_roles", 25],
+    ["member_distance_sign_offs", 26],
+    ["committee_meeting_minutes", 27],
   ]);
   const deleteOrder = new Map([
     ["coaching_session_bookings", 1],
@@ -117,6 +123,9 @@ function collapseChanges(changes = []) {
     ["users", 19],
     ["roles", 20],
     ["permissions", 21],
+    ["member_distance_sign_offs", 22],
+    ["committee_roles", 23],
+    ["committee_meeting_minutes", 24],
   ]);
 
   return [...latestByKey.values()].sort((left, right) => {
@@ -1354,6 +1363,189 @@ async function reconcileLegacyHistorySnapshot(client, kind, cloudRows) {
   }
 }
 
+function memberDistanceSignOffKey(row) {
+  return [
+    String(row.username ?? "").trim().toLowerCase(),
+    String(row.discipline ?? "").trim().toLowerCase(),
+    Number(row.distance_yards ?? 0),
+  ].join("\u0001");
+}
+
+async function upsertMemberDistanceSignOffRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO member_distance_sign_offs (
+          username,
+          discipline,
+          distance_yards,
+          signed_off_by_username,
+          source,
+          signed_off_at_date,
+          signed_off_at_time,
+          user_id,
+          signed_off_by_user_id
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1),
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1)
+        )
+        ON CONFLICT (username, discipline, distance_yards) DO UPDATE SET
+          signed_off_by_username = EXCLUDED.signed_off_by_username,
+          source = EXCLUDED.source,
+          signed_off_at_date = EXCLUDED.signed_off_at_date,
+          signed_off_at_time = EXCLUDED.signed_off_at_time,
+          user_id = EXCLUDED.user_id,
+          signed_off_by_user_id = EXCLUDED.signed_off_by_user_id
+      `,
+      [
+        row.username,
+        row.discipline,
+        Number(row.distance_yards),
+        row.signed_off_by_username,
+        row.source ?? "manual",
+        row.signed_off_at_date,
+        row.signed_off_at_time,
+      ],
+    );
+  }
+}
+
+async function deleteMissingMemberDistanceSignOffRows(client, rows = []) {
+  const incomingKeys = new Set(rows.map(memberDistanceSignOffKey));
+  const currentRows = await queryRows(
+    client,
+    `
+      SELECT username, discipline, distance_yards
+      FROM member_distance_sign_offs
+    `,
+  );
+
+  for (const row of currentRows) {
+    if (incomingKeys.has(memberDistanceSignOffKey(row))) {
+      continue;
+    }
+
+    await client.query(
+      `
+        DELETE FROM member_distance_sign_offs
+        WHERE LOWER(username) = LOWER($1)
+          AND LOWER(discipline) = LOWER($2)
+          AND distance_yards = $3
+      `,
+      [row.username, row.discipline, Number(row.distance_yards)],
+    );
+  }
+}
+
+async function upsertCommitteeRoleRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO committee_roles (
+          role_key,
+          title,
+          summary,
+          responsibilities,
+          personal_blurb,
+          photo_data_url,
+          display_order,
+          assigned_username
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (role_key) DO UPDATE SET
+          title = EXCLUDED.title,
+          summary = EXCLUDED.summary,
+          responsibilities = EXCLUDED.responsibilities,
+          personal_blurb = EXCLUDED.personal_blurb,
+          photo_data_url = EXCLUDED.photo_data_url,
+          display_order = EXCLUDED.display_order,
+          assigned_username = EXCLUDED.assigned_username
+      `,
+      [
+        row.role_key,
+        row.title,
+        row.summary,
+        row.responsibilities,
+        row.personal_blurb,
+        row.photo_data_url,
+        Number(row.display_order ?? 0),
+        row.assigned_username ?? null,
+      ],
+    );
+  }
+}
+
+async function upsertCommitteeMeetingMinuteRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO committee_meeting_minutes (
+          sync_id,
+          meeting_date,
+          title,
+          sections_json,
+          actions_json,
+          created_at_date,
+          created_at_time,
+          updated_at_date,
+          updated_at_time,
+          updated_by_username,
+          updated_by_user_id
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4::jsonb,
+          $5::jsonb,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          (
+            SELECT id
+            FROM users
+            WHERE LOWER(username) = LOWER($10)
+            LIMIT 1
+          )
+        )
+        ON CONFLICT (sync_id) DO UPDATE SET
+          meeting_date = EXCLUDED.meeting_date,
+          title = EXCLUDED.title,
+          sections_json = EXCLUDED.sections_json,
+          actions_json = EXCLUDED.actions_json,
+          created_at_date = EXCLUDED.created_at_date,
+          created_at_time = EXCLUDED.created_at_time,
+          updated_at_date = EXCLUDED.updated_at_date,
+          updated_at_time = EXCLUDED.updated_at_time,
+          updated_by_username = EXCLUDED.updated_by_username,
+          updated_by_user_id = EXCLUDED.updated_by_user_id
+      `,
+      [
+        row.sync_id,
+        row.meeting_date,
+        row.title,
+        JSON.stringify(row.sections_json ?? []),
+        JSON.stringify(row.actions_json ?? []),
+        row.created_at_date,
+        row.created_at_time,
+        row.updated_at_date,
+        row.updated_at_time,
+        row.updated_by_username ?? null,
+      ],
+    );
+  }
+}
+
 async function upsertBeginnersCourses(client, courses = []) {
   for (const course of courses) {
     await client.query(
@@ -1597,21 +1789,22 @@ async function upsertBeginnersCourseLessons(client, lessons = []) {
     await client.query(
       `
         INSERT INTO beginners_course_lessons (
-          sync_id, course_id, lesson_number, lesson_date, start_time, end_time
+          sync_id, course_id, lesson_number, lesson_date, start_time, end_time, is_cancelled
         )
         VALUES (
           $1,
           (SELECT id FROM beginners_courses WHERE sync_id = $2 LIMIT 1),
-          $3, $4, $5, $6
+          $3, $4, $5, $6, $7
         )
         ON CONFLICT (sync_id) DO UPDATE SET
           course_id = EXCLUDED.course_id,
           lesson_number = EXCLUDED.lesson_number,
           lesson_date = EXCLUDED.lesson_date,
           start_time = EXCLUDED.start_time,
-          end_time = EXCLUDED.end_time
+          end_time = EXCLUDED.end_time,
+          is_cancelled = EXCLUDED.is_cancelled
       `,
-      [lesson.sync_id, lesson.course_sync_id, lesson.lesson_number, lesson.lesson_date, lesson.start_time, lesson.end_time],
+      [lesson.sync_id, lesson.course_sync_id, lesson.lesson_number, lesson.lesson_date, lesson.start_time, lesson.end_time, lesson.is_cancelled ?? 0],
     );
   }
 }
@@ -1812,6 +2005,38 @@ async function applyOperationalSnapshot({
     await reconcileLegacyHistorySnapshot(client, "guest", snapshot.guestLoginEvents);
   }
 
+  if (Object.hasOwn(snapshot, "committeeRoles")) {
+    await upsertCommitteeRoleRows(client, snapshot.committeeRoles);
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.committeeRoles.map((row) => row.role_key),
+      keyColumn: "role_key",
+      tableName: "committee_roles",
+    });
+  }
+
+  if (Object.hasOwn(snapshot, "committeeMeetingMinutes")) {
+    await upsertCommitteeMeetingMinuteRows(
+      client,
+      snapshot.committeeMeetingMinutes,
+    );
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.committeeMeetingMinutes.map(
+        (row) => row.sync_id,
+      ),
+      tableName: "committee_meeting_minutes",
+    });
+  }
+
+  if (Object.hasOwn(snapshot, "memberDistanceSignOffs")) {
+    await upsertMemberDistanceSignOffRows(client, snapshot.memberDistanceSignOffs);
+    await deleteMissingMemberDistanceSignOffRows(
+      client,
+      snapshot.memberDistanceSignOffs,
+    );
+  }
+
   await reapplyPendingBookingOverlay(client, syncGateway);
 }
 
@@ -1875,6 +2100,24 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
     );
   }
 
+  if (Object.hasOwn(snapshot, "committeeRoles")) {
+    await upsertCommitteeRoleRows(client, snapshot.committeeRoles);
+  }
+
+  if (Object.hasOwn(snapshot, "committeeMeetingMinutes")) {
+    await upsertCommitteeMeetingMinuteRows(
+      client,
+      snapshot.committeeMeetingMinutes,
+    );
+  }
+
+  if (Object.hasOwn(snapshot, "memberDistanceSignOffs")) {
+    await upsertMemberDistanceSignOffRows(
+      client,
+      snapshot.memberDistanceSignOffs,
+    );
+  }
+
   // Dependents first. Histories and local-only tables are deliberately never
   // truncated; referenced replicated parents are retained where deletion is unsafe.
   await deleteMissingBookingSnapshotRows(client, "event", snapshot.eventBookings);
@@ -1930,6 +2173,32 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
 
   if (Object.hasOwn(snapshot, "outdoorTableEntries")) {
     await deleteMissingOutdoorTableRows(client, snapshot.outdoorTableEntries);
+  }
+
+  if (Object.hasOwn(snapshot, "memberDistanceSignOffs")) {
+    await deleteMissingMemberDistanceSignOffRows(
+      client,
+      snapshot.memberDistanceSignOffs,
+    );
+  }
+
+  if (Object.hasOwn(snapshot, "committeeRoles")) {
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.committeeRoles.map((row) => row.role_key),
+      keyColumn: "role_key",
+      tableName: "committee_roles",
+    });
+  }
+
+  if (Object.hasOwn(snapshot, "committeeMeetingMinutes")) {
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.committeeMeetingMinutes.map(
+        (row) => row.sync_id,
+      ),
+      tableName: "committee_meeting_minutes",
+    });
   }
 
   const announcementKeys = snapshot.announcements.map((row) => row.sync_id);
@@ -2246,6 +2515,48 @@ async function applyCollapsedChange({
         return;
       }
       await upsertOutdoorTableRows(client, [change.payload]);
+      return;
+
+    case "committee_meeting_minutes":
+      if (change.operation === "delete") {
+        await client.query(
+          `DELETE FROM committee_meeting_minutes WHERE sync_id = $1`,
+          [change.payload.sync_id],
+        );
+        return;
+      }
+      await upsertCommitteeMeetingMinuteRows(client, [change.payload]);
+      return;
+
+    case "committee_roles":
+      if (change.operation === "delete") {
+        await client.query(
+          `DELETE FROM committee_roles WHERE role_key = $1`,
+          [change.payload.role_key],
+        );
+        return;
+      }
+      await upsertCommitteeRoleRows(client, [change.payload]);
+      return;
+
+    case "member_distance_sign_offs":
+      if (change.operation === "delete") {
+        await client.query(
+          `
+            DELETE FROM member_distance_sign_offs
+            WHERE LOWER(username) = LOWER($1)
+              AND LOWER(discipline) = LOWER($2)
+              AND distance_yards = $3
+          `,
+          [
+            change.payload.username,
+            change.payload.discipline,
+            Number(change.payload.distance_yards),
+          ],
+        );
+        return;
+      }
+      await upsertMemberDistanceSignOffRows(client, [change.payload]);
       return;
 
     case "range_presence_extensions":

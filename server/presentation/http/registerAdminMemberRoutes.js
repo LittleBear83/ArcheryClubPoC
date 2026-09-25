@@ -1,4 +1,5 @@
 export function registerAdminMemberRoutes({
+  syncNodeMode = "cloud-server",
   actorHasPermission,
   ALLOWED_DISCIPLINES,
   app,
@@ -2209,6 +2210,7 @@ export function registerAdminMemberRoutes({
       emailAddress,
       password,
       rfidTag: canManageMembers ? rfidTag : existingUser.rfid_tag,
+      syncContext: { nodeMode: syncNodeMode, canManageMembers, actorUsername: actor.username },
       activeMember: canManageMembers ? activeMember : existingUser.active_member,
       affiliateMember: canManageMembers
         ? affiliateMember
@@ -2570,6 +2572,7 @@ export function registerAdminMemberRoutes({
       archeryGbMembershipNumber: existingUser.archery_gb_membership_number,
       password: existingUser.password,
       rfidTag,
+      syncContext: { nodeMode: syncNodeMode, canManageMembers: true, actorUsername: actor.username },
       activeMember: existingUser.active_member,
       affiliateMember: existingUser.affiliate_member,
       juniorMember: existingUser.junior_member,

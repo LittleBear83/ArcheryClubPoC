@@ -1,3 +1,4 @@
+import { createBeginnersCourseWriteGateway } from "./beginnersCourseWriteGateway.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import process from "node:process";
@@ -18,6 +19,7 @@ import { buildInitialSchemaSql, runPostgresMigrations } from "./runPostgresMigra
 import { createMemberAuthGateway } from "./memberAuthGateway.js";
 import { createActivityReportingGateway } from "./activityReportingGateway.js";
 import { createSyncGateway } from "./syncGateway.js";
+import { createMemberProfileGateway } from "./memberProfileGateway.js";
 import { createSyncPublicationGateway } from "./syncPublicationGateway.js";
 import { registerSyncRoutes } from "../../presentation/http/registerSyncRoutes.js";
 import { beginPublication, assignPublications, publish, pullPublications, waitForDatabaseBlock } from "./syncPublicationPrototype.test-support.js";
@@ -1511,4 +1513,209 @@ test("PostgreSQL v2 rebaseline preserves local-only/history/outbox data, prunes 
   }
   assert.equal((await local.query("SELECT title FROM roles WHERE role_key = 'member'")).rows[0].title, "Updated Member");
   assert.equal((await localGateway.readLocalState(PUBLICATION_SYNC_STATE_KEY)).state.publicationCheckpoint, nextCursor);
+});
+
+
+async function createPre012Pool() {
+  const databaseName = `${TEST_DATABASE_PREFIX}pre012_${randomUUID().replaceAll("-", "")}`;
+  assertSafeTemporaryDatabaseName(databaseName);
+  await adminPool.query(`CREATE DATABASE ${quoteIdentifier(databaseName)}`);
+  databaseNames.push(databaseName);
+  const pool = new Pool({ database: databaseName, host: process.env.PGHOST, password: process.env.PGPASSWORD, port: Number(process.env.PGPORT ?? 5432), user: process.env.PGUSER });
+  await pool.query(buildInitialSchemaSql());
+  for (const migration of postgresMigrations) {
+    if (migration.version === "012_lesson_cancellation") break;
+    for (const statement of migration.statements) await pool.query(statement);
+  }
+  return pool;
+}
+
+test("lesson cancellation persists, rolls back mixed selections and replicates snapshot/incremental v2 without echoes", async () => {
+  const cloud = await createPre012Pool();
+  const local = await createTemporaryPool("lesson_cancel_pi");
+  disposablePools.push(cloud, local);
+  await seedUser(cloud, 5);
+  await seedUser(local, 87);
+  const write = createBeginnersCourseWriteGateway({ databaseEngine: "postgres", pool: cloud });
+  const courseId = await write.createCourseWithLessons({ actorUsername: "robin", courseType: "taster-session", coordinatorUsername: "robin", firstLessonDate: "2026-10-01", startTime: "18:00:00", endTime: "20:00:00", lessonCount: 3, beginnerCapacity: 12, lessonDates: [1,2,3].map((number) => ({ lessonNumber: number, lessonDate: `2026-10-0${number}` })), createdAtDate: "2026-09-01", createdAtTime: "09:00:00" });
+  const beforeMigration = (await cloud.query("SELECT id, sync_id FROM beginners_course_lessons WHERE course_id = $1 ORDER BY lesson_number", [courseId])).rows;
+  for (const statement of postgresMigrations.find((migration) => migration.version === "012_lesson_cancellation").statements) await cloud.query(statement);
+  const lessons = (await cloud.query("SELECT id, sync_id, is_cancelled FROM beginners_course_lessons WHERE course_id = $1 ORDER BY lesson_number", [courseId])).rows;
+  assert.deepEqual(lessons.map(({ id, sync_id }) => ({ id, sync_id })), beforeMigration);
+  assert.deepEqual(lessons.map((lesson) => lesson.is_cancelled), [0,0,0]);
+  await write.cancelLessonDates({ courseId, lessonIds: [Number(lessons[0].id)] });
+  await assert.rejects(write.cancelLessonDates({ courseId, lessonIds: [Number(lessons[0].id), Number(lessons[1].id)] }));
+  assert.equal((await cloud.query("SELECT is_cancelled FROM beginners_course_lessons WHERE id = $1", [lessons[1].id])).rows[0].is_cancelled, 0);
+  const publication = createSyncPublicationGateway({ pool: cloud });
+  const snapshot = await publication.createSnapshot();
+  assert.equal(snapshot.snapshot.beginnersCourseLessons.find((lesson) => lesson.sync_id === lessons[0].sync_id).is_cancelled, 1);
+  const localGateway = createSyncGateway({ pool: local });
+  const client = await local.connect();
+  const applySnapshot = (response) => applyPublicationSnapshot({ client, deactivatedRfidSuffix: "-deactivated", snapshotResponse: { ...response, feedVersion: "sync-publication-v2", mode: "snapshot" }, syncGateway: localGateway });
+  try {
+    await applySnapshot(snapshot);
+    assert.equal((await local.query("SELECT is_cancelled FROM beginners_course_lessons WHERE sync_id = $1", [lessons[0].sync_id])).rows[0].is_cancelled, 1);
+    const ids = (await local.query("SELECT id FROM beginners_course_lessons ORDER BY lesson_number")).rows;
+    const changesBefore = (await local.query("SELECT COUNT(*)::int AS n FROM sync_change_log")).rows[0].n;
+    await write.cancelLessonDates({ courseId, lessonIds: lessons.slice(1).map((lesson) => Number(lesson.id)) });
+    await publication.publishBatch();
+    const changes = await publication.listPublishedChanges({ checkpoint: snapshot.checkpoint, limit: 500 });
+    assert.equal(changes.filter((change) => change.domain === "beginners_course_lessons" && change.payload.is_cancelled === 1).length, 2);
+    const response = { feedVersion: "sync-publication-v2", mode: "incremental", checkpoint: changes.at(-1).publicationCursor, changes };
+    await applyPulledPublicationResponse({ client, deactivatedRfidSuffix: "-deactivated", pullResponse: response, syncGateway: localGateway });
+    await applyPulledPublicationResponse({ client, deactivatedRfidSuffix: "-deactivated", pullResponse: response, syncGateway: localGateway });
+    assert.deepEqual((await local.query("SELECT is_cancelled FROM beginners_course_lessons ORDER BY lesson_number")).rows.map((lesson) => lesson.is_cancelled), [1,1,1]);
+    assert.equal((await cloud.query("SELECT is_cancelled FROM beginners_courses WHERE id = $1", [courseId])).rows[0].is_cancelled, 0);
+    assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM sync_change_log")).rows[0].n, changesBefore);
+    assert.deepEqual((await local.query("SELECT id FROM beginners_course_lessons ORDER BY lesson_number")).rows, ids);
+    await write.cancelCourse({ courseId, actorUsername: "robin", cancelledAtDate: "2026-09-02", cancelledAtTime: "12:00:00", reason: "Whole course cancelled" });
+    assert.equal((await cloud.query("SELECT is_cancelled FROM beginners_courses WHERE id = $1", [courseId])).rows[0].is_cancelled, 1);
+    assert.equal((await cloud.query("SELECT COUNT(*)::int AS n FROM beginners_course_lessons WHERE course_id = $1", [courseId])).rows[0].n, 3);
+  } finally { client.release(); }
+});
+
+test('local outbox INSERT wakes only on commit and remains durable after listener restart', { timeout: 30000 }, async () => {
+  const pool = await createTemporaryPool('outbox_notify');
+  disposablePools.push(pool);
+  const listener = await pool.connect();
+  const writer = await pool.connect();
+  const notifications = [];
+  listener.on('notification', (message) => {
+    if (message.channel === 'archery_local_sync_outbox') notifications.push(message.payload);
+  });
+  async function barrier() {
+    const token = randomUUID();
+    let receive;
+    const delivered = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Notification barrier timed out')), 5000);
+      receive = (message) => {
+        if (message.channel === 'archery_outbox_test_barrier' && message.payload === token) {
+          clearTimeout(timer);
+          resolve();
+        }
+      };
+      listener.on('notification', receive);
+    });
+    try {
+      await pool.query("SELECT pg_notify('archery_outbox_test_barrier', $1)", [token]);
+      await delivered;
+    } finally { listener.off('notification', receive); }
+  }
+  const insert = (id) => writer.query(`INSERT INTO sync_local_outbox
+    (event_id, event_type, aggregate_key, payload_json)
+    VALUES ($1, 'login_event', 'private-key', '{"username":"private"}'::jsonb)`, [id]);
+  try {
+    await listener.query('LISTEN archery_local_sync_outbox');
+    await listener.query('LISTEN archery_outbox_test_barrier');
+    await writer.query('BEGIN');
+    await insert('committed');
+    await barrier();
+    assert.deepEqual(notifications, []);
+    await writer.query('COMMIT');
+    await barrier();
+    assert.deepEqual(notifications, ['']);
+    await writer.query('BEGIN');
+    await insert('rolled-back');
+    await writer.query('ROLLBACK');
+    await barrier();
+    assert.deepEqual(notifications, ['']);
+    await listener.query('UNLISTEN archery_local_sync_outbox');
+    await insert('missed-wake');
+    await listener.query('LISTEN archery_local_sync_outbox');
+    assert.equal(await createSyncGateway({ pool }).countPendingOutboxEvents(listener), 2);
+    await barrier();
+    assert.deepEqual(notifications, ['']);
+  } finally { writer.release(true); listener.release(true); }
+});
+
+test('RFID assignments commit atomically, replicate through users, reject duplicates and serialize concurrency', { timeout: 30000 }, async () => {
+  const local = await createTemporaryPool('rfid_local');
+  const cloud = await createTemporaryPool('rfid_cloud');
+  disposablePools.push(local, cloud);
+  await seedUser(local, 1, 'Canonical');
+  await seedUser(cloud, 1, 'Canonical');
+  await seedUser(cloud, 2, 'Other');
+  await local.query("UPDATE users SET rfid_tag = 'OLD' WHERE username = 'Canonical'");
+  await cloud.query("UPDATE users SET rfid_tag = 'OLD' WHERE username = 'Canonical'");
+  const localSync = createSyncGateway({ pool: local });
+  const profile = createMemberProfileGateway({ databaseEngine: 'postgres', pool: local, syncGateway: localSync });
+  const input = { userPayload: { username: 'Canonical', firstName: 'Member', surname: 'Example', password: 'hash',
+    rfidTag: 'NEW', activeMember: 1, affiliateMember: 0, juniorMember: 0, coachingVolunteer: 0,
+    membershipStatus: 'member', programmeType: 'none', archeryGbMembershipNumber: '', emailAddress: '' },
+    userType: 'member', disciplines: [], loanBow: { hasLoanBow: false, arrowCount: 0 }, rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } };
+  await profile.saveMemberProfile(input);
+  const pending = await localSync.listPendingOutboxEvents({ limit: 10 });
+  assert.equal(pending.length, 1);
+  assert.equal((await local.query("SELECT rfid_tag FROM users WHERE username = 'Canonical'")).rows[0].rfid_tag, 'NEW');
+  await assert.rejects(profile.saveMemberProfile({ ...input, userPayload: { ...input.userPayload, rfidTag: 'SECOND' } }), { code: 'rfid_update_pending' });
+  const cloudSync = createSyncGateway({ pool: cloud });
+  async function process(event) {
+    const client = await cloud.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await cloudSync.processMemberRfidUpdateCommand({ client, event, machineId: 'Pi' });
+      await client.query('COMMIT');
+      return result;
+    } catch (error) { await client.query('ROLLBACK'); throw error; }
+    finally { client.release(); }
+  }
+  const event = pending[0];
+  assert.deepEqual(await process(event), { accepted: true });
+  const changes = await cloud.query("SELECT change_id FROM sync_change_log WHERE domain = 'users' AND record_key = 'Canonical'");
+  assert.deepEqual(await process(event), { accepted: true });
+  assert.equal((await cloud.query("SELECT change_id FROM sync_change_log WHERE domain = 'users' AND record_key = 'Canonical'")).rowCount, changes.rowCount);
+  await localSync.acknowledgeOutboxEvents({ eventIds: [event.eventId] });
+  const failingProfile = createMemberProfileGateway({ databaseEngine: 'postgres', pool: local,
+    syncGateway: { enqueueMemberRfidUpdateCommand: async () => { throw new Error('Forced enqueue failure'); } } });
+  await assert.rejects(failingProfile.saveMemberProfile({ ...input, userPayload: { ...input.userPayload, rfidTag: 'FAIL' } }), /Forced enqueue failure/);
+  assert.equal((await local.query("SELECT rfid_tag FROM users WHERE username = 'Canonical'")).rows[0].rfid_tag, 'NEW');
+  assert.equal(await localSync.countPendingOutboxEvents(), 0);
+  const command = (username, previousRfidTag, rfidTag) => {
+    const eventId = randomUUID();
+    return { eventId, eventType: 'member_rfid_updated', payload: { eventId, username, previousRfidTag, rfidTag, updatedByUsername: 'Admin' } };
+  };
+  assert.equal((await process(command('Other', null, 'new'))).code, 'rfid_tag_in_use');
+  const conflict = await process(command('Canonical', 'OLD', 'PI'));
+  assert.equal(conflict.code, 'member_rfid_conflict');
+  assert.equal(conflict.authoritativeRfidTag, 'NEW');
+  assert.deepEqual(await process(command('Canonical', 'new', null)), { accepted: true });
+  const races = await Promise.all([process(command('Canonical', null, 'shared')), process(command('Other', null, 'SHARED'))]);
+  assert.equal(races.filter((result) => result.accepted).length, 1);
+  assert.equal(races.find((result) => !result.accepted).code, 'rfid_tag_in_use');
+  await profile.saveMemberProfile({ ...input, userPayload: { ...input.userPayload, rfidTag: 'PI' } });
+  const optimistic = (await localSync.listPendingOutboxEvents({ limit: 10 }))[0];
+  await cloud.query("UPDATE users SET rfid_tag = 'CLOUD' WHERE username = 'Canonical'");
+  const rejected = await process(optimistic);
+  assert.equal(rejected.code, 'member_rfid_conflict');
+  await localSync.rejectOutboxEvents({ rejections: [{ eventId: optimistic.eventId, ...rejected }] });
+  assert.equal((await local.query("SELECT rfid_tag FROM users WHERE username = 'Canonical'")).rows[0].rfid_tag, 'CLOUD');
+  assert.equal(await localSync.countPendingOutboxEvents(), 0);
+});
+
+test('chained pending RFID assignments clear rejected credentials when rollback tags are locally owned', { timeout: 30000 }, async () => {
+  const pool = await createTemporaryPool('rfid_rejection_chain');
+  disposablePools.push(pool);
+  const gateway = createSyncGateway({ pool });
+  const profile = createMemberProfileGateway({ databaseEngine: 'postgres', pool, syncGateway: gateway });
+  for (const [id, username, tag] of [[1, 'A', 'RED'], [2, 'B', 'BLUE'], [3, 'C', 'GREEN']]) {
+    await seedUser(pool, id, username);
+    await pool.query('UPDATE users SET rfid_tag = $2 WHERE username = $1', [username, tag]);
+  }
+  for (const [username, rfidTag] of [['A', 'REJECTED'], ['B', 'red'], ['C', 'blue']]) {
+    await profile.saveMemberProfile({ userPayload: { username, firstName: 'Member', surname: 'Example', password: 'hash',
+      rfidTag, activeMember: 1, affiliateMember: 0, juniorMember: 0, coachingVolunteer: 0,
+      membershipStatus: 'member', programmeType: 'none', archeryGbMembershipNumber: '', emailAddress: '' },
+      userType: 'member', disciplines: [], loanBow: { hasLoanBow: false, arrowCount: 0 }, rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } });
+  }
+  const events = await gateway.listPendingOutboxEvents({ limit: 10 });
+  assert.equal(events.length, 3);
+  await gateway.rejectOutboxEvents({ rejections: [{ eventId: events[0].eventId, code: 'member_rfid_conflict', authoritativeRfidTag: 'RED' }] });
+  assert.equal((await pool.query("SELECT rfid_tag FROM users WHERE username = 'A'")).rows[0].rfid_tag, null);
+  await gateway.rejectOutboxEvents({ rejections: [{ eventId: events[1].eventId, code: 'rfid_tag_in_use' }] });
+  assert.equal((await pool.query("SELECT rfid_tag FROM users WHERE username = 'B'")).rows[0].rfid_tag, null);
+  await gateway.rejectOutboxEvents({ rejections: [{ eventId: events[2].eventId, code: 'malformed_member_rfid_update' }] });
+  assert.deepEqual((await pool.query('SELECT username, rfid_tag FROM users ORDER BY username')).rows,
+    [{ username: 'A', rfid_tag: null }, { username: 'B', rfid_tag: null }, { username: 'C', rfid_tag: 'GREEN' }]);
+  assert.equal(await gateway.countPendingOutboxEvents(), 0);
+  assert.equal(await gateway.countRejectedOutboxEvents(), 3);
 });

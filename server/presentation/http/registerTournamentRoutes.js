@@ -1,3 +1,6 @@
+import { createTournamentWorkflowLock } from "./tournamentWorkflowLock.js";
+import { registerTournamentPairingRoutes } from "./registerTournamentPairingRoutes.js";
+import { ensureRandomisedRoundDraw } from "../../domain/services/tournamentPairings.js";
 import {
   buildMatchHandicapSnapshot,
   buildParticipantHandicapSnapshot,
@@ -42,7 +45,10 @@ export function registerTournamentRoutes({
   TOURNAMENT_TEMPLATE_OPTIONS,
   TOURNAMENT_TYPE_OPTIONS,
   writeFileSync,
+  chooseRandomIndex = randomInt,
 }) {
+  app.use?.(["/api/tournaments", "/api/tournament-matches"], createTournamentWorkflowLock(tournamentGateway));
+
   const broadcastTournamentsUpdated = (scope = "tournaments") => {
     serverEventBus?.broadcastToAll("tournaments.updated", {
       changedAt: new Date().toISOString(),
@@ -464,7 +470,7 @@ export function registerTournamentRoutes({
     const shuffled = [...usernames];
 
     for (let index = shuffled.length - 1; index > 0; index -= 1) {
-      const swapIndex = randomInt(index + 1);
+      const swapIndex = chooseRandomIndex(index + 1);
       const currentValue = shuffled[index];
       shuffled[index] = shuffled[swapIndex];
       shuffled[swapIndex] = currentValue;
@@ -507,6 +513,8 @@ export function registerTournamentRoutes({
       roundScheduleJson: buildTournamentRoundPlanJson({
         automaticConfig: existingRoundPlan.automaticConfig,
         draw: {
+          ...existingRoundPlan.draw,
+          roundPairings: {},
           generatedAt: new Date().toISOString(),
           orderUsernames: drawOrderUsernames,
         },
@@ -515,6 +523,7 @@ export function registerTournamentRoutes({
       scoreSubmissionEndDate: tournament.score_submission_end_date,
       scoreSubmissionStartDate: tournament.score_submission_start_date,
       templateKey: tournament.template_key ?? null,
+      templateDefinitionJson: tournament.template_definition_json ?? null,
       tournamentType: tournament.tournament_type,
     });
   const maybeFreezeRandomizedDraw = async (
@@ -539,6 +548,7 @@ export function registerTournamentRoutes({
 
     const roundPlan = parseTournamentRoundPlan(tournament.round_schedule_json);
     const storedDrawOrder = roundPlan.draw?.orderUsernames ?? [];
+    if (roundPlan.draw?.roundPairings?.[1]) return null;
 
     if (isStoredDrawOrderCompatible(storedDrawOrder, registrations)) {
       return null;
@@ -755,9 +765,28 @@ export function registerTournamentRoutes({
     );
   };
 
+  const persistRoundPairings = async (tournament, roundNumber, pairings) => {
+    const plan = parseTournamentRoundPlan(tournament.round_schedule_json);
+    return tournamentGateway.updateTournament({
+      id: tournament.id, name: tournament.name, tournamentType: tournament.tournament_type,
+      templateKey: tournament.template_key ?? null, templateDefinitionJson: tournament.template_definition_json ?? null,
+      registrationStartDate: tournament.registration_start_date, registrationEndDate: tournament.registration_end_date,
+      drawDate: tournament.draw_date, scoreSubmissionStartDate: tournament.score_submission_start_date, scoreSubmissionEndDate: tournament.score_submission_end_date,
+      roundScheduleJson: buildTournamentRoundPlanJson({ ...plan, draw: { ...plan.draw, roundPairings: { ...plan.draw?.roundPairings, [roundNumber]: pairings } } }),
+    });
+  };
+
   const syncTournamentMatches = async (tournament, actorUsername = null) => {
-    const { registrations, rounds, scores, matches, builtTournament } =
-      await loadTournamentSnapshot(tournament, actorUsername);
+    let { registrations, builtTournament } = await loadTournamentSnapshot(tournament, actorUsername);
+    const plan = parseTournamentRoundPlan(tournament.round_schedule_json);
+    const roundNumber = builtTournament.currentRoundNumber;
+    const round = builtTournament.bracket?.rounds?.find((entry) => entry.roundNumber === roundNumber);
+    const previousRoundsReady = (builtTournament.bracket?.rounds ?? []).filter((entry) => entry.roundNumber < roundNumber).every((entry) => entry.matches.every((match) => ["completed", "finalised", "progressed", "walkover", "disqualified", "bye", "retired_both", "empty"].includes(match.status)));
+    const drawnTournament = await ensureRandomisedRoundDraw({ plan, round, chooseIndex: chooseRandomIndex, previousRoundsReady, registrationClosed: toUtcDateString(new Date()) > tournament.registration_end_date, persist: (number, pairings) => persistRoundPairings(tournament, number, pairings) });
+    if (drawnTournament) {
+      tournament = drawnTournament;
+      ({ registrations, builtTournament } = await loadTournamentSnapshot(tournament, actorUsername));
+    }
     await tournamentGateway.replaceTournamentRounds({
       tournamentId: tournament.id,
       rounds: (builtTournament.roundSchedule ?? []).map((round) => ({
@@ -781,6 +810,8 @@ export function registerTournamentRoutes({
     return loadTournamentSnapshot(tournament, actorUsername);
   };
 
+  registerTournamentPairingRoutes({ app, getActorUser, actorHasPermission, PERMISSIONS, tournamentGateway, loadTournamentSnapshot, persistRoundPairings, syncTournamentMatches, auditChangeLogger, getUtcTimestampParts, broadcastTournamentsUpdated, toUtcDateString });
+
   app.get("/api/tournament-templates", async (_req, res) => {
     res.json({
       success: true,
@@ -788,13 +819,13 @@ export function registerTournamentRoutes({
     });
   });
 
-  app.post("/api/tournament-templates", async (req, res) => {
+  const saveTournamentTemplate = async (req, res, editing = false) => {
     const actor = getActorUser(req);
 
     if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS)) {
       res.status(403).json({
         success: false,
-        message: "You do not have permission to create tournament templates.",
+        message: "You do not have permission to manage tournament templates.",
       });
       return;
     }
@@ -809,7 +840,10 @@ export function registerTournamentRoutes({
     } = req.body ?? {};
 
     const templateLabel = String(label ?? "").trim();
-    const baseTemplate = await findTemplateByKey(baseTemplateKey);
+    const baseTemplate = await findTemplateByKey(editing ? req.params.key : baseTemplateKey);
+    if (editing && !baseTemplate) {
+      return res.status(404).json({ success: false, message: "Tournament template not found." });
+    }
 
     if (!templateLabel || !baseTemplate) {
       res.status(400).json({
@@ -819,7 +853,7 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const templateKey = buildTemplateKey(templateLabel);
+    const templateKey = editing ? baseTemplate.key : buildTemplateKey(templateLabel);
 
     if (!templateKey) {
       res.status(400).json({
@@ -831,7 +865,7 @@ export function registerTournamentRoutes({
 
     const existingTemplate = await findTemplateByKey(templateKey);
 
-    if (existingTemplate) {
+    if (existingTemplate && !editing) {
       res.status(409).json({
         success: false,
         message: "A tournament template with that name already exists.",
@@ -872,7 +906,13 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const createdTemplateRow = await tournamentGateway.createTournamentTemplate({
+    const storedTemplate = editing
+      ? await tournamentGateway.findTournamentTemplateByKey(templateKey)
+      : null;
+    const saveTemplate = storedTemplate
+      ? tournamentGateway.updateTournamentTemplate.bind(tournamentGateway)
+      : tournamentGateway.createTournamentTemplate.bind(tournamentGateway);
+    const createdTemplateRow = await saveTemplate({
       templateKey: mergedTemplate.key,
       label: mergedTemplate.label,
       description: mergedTemplate.description ?? "",
@@ -890,14 +930,17 @@ export function registerTournamentRoutes({
     const createdTemplate =
       normalizeStoredTournamentTemplateRow(createdTemplateRow) ?? mergedTemplate;
 
-    broadcastTournamentsUpdated("tournament-templates.create");
+    broadcastTournamentsUpdated(editing ? "tournament-templates.update" : "tournament-templates.create");
 
-    res.status(201).json({
+    res.status(editing ? 200 : 201).json({
       success: true,
       tournamentTemplate: createdTemplate,
       tournamentTemplates: await loadTournamentTemplates(),
     });
-  });
+  };
+
+  app.post("/api/tournament-templates", (req, res) => saveTournamentTemplate(req, res));
+  app.put("/api/tournament-templates/:key", (req, res) => saveTournamentTemplate(req, res, true));
 
   app.get("/api/tournaments", async (req, res) => {
     const actor = getActorUser(req);
@@ -932,7 +975,7 @@ export function registerTournamentRoutes({
           return randomizedDrawSnapshot.builtTournament;
         }
 
-        if (tournamentNeedsCaptainsSwordMatchBackfill(tournament, matches)) {
+        if (tournamentNeedsCaptainsSwordMatchBackfill(tournament, matches) || parseTournamentRoundPlan(tournament.round_schedule_json).draw?.randomiseEveryRound) {
           const { builtTournament } = await syncTournamentMatches(
             tournament,
             actor?.username ?? null,
@@ -1114,6 +1157,7 @@ export function registerTournamentRoutes({
       registrationStartDate,
       roundScheduleJson: buildTournamentRoundPlanJson({
         automaticConfig: automaticRoundPlan,
+        draw: { randomiseEveryRound: selectedTemplate?.capabilities?.randomiseEveryRound === true },
       }),
       scoreSubmissionEndDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
       scoreSubmissionStartDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
@@ -1243,6 +1287,11 @@ export function registerTournamentRoutes({
       return;
     }
 
+    const existingSnapshot = await loadTournamentSnapshot(tournament, actor.username);
+    const existingPlan = parseTournamentRoundPlan(tournament.round_schedule_json);
+    if (hasTournamentDrawActivity(existingSnapshot.matches) || Object.keys(existingPlan.draw?.roundPairings ?? {}).length) {
+      return res.status(409).json({ success: false, message: "Tournament setup cannot be changed after pairings have been saved or match activity has started." });
+    }
     const updatedTournament = await tournamentGateway.updateTournament({
       drawDate: automaticRoundPlan?.firstRoundStartDate || null,
       id: tournament.id,
@@ -1251,6 +1300,7 @@ export function registerTournamentRoutes({
       registrationStartDate,
       roundScheduleJson: buildTournamentRoundPlanJson({
         automaticConfig: automaticRoundPlan,
+        draw: existingPlan.draw,
       }),
       scoreSubmissionEndDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,
       scoreSubmissionStartDate: automaticRoundPlan?.firstRoundStartDate ?? registrationEndDate,

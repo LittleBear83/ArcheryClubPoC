@@ -49,6 +49,20 @@ test("beginners course write gateway receives participant deletion support", asy
   );
 });
 
+test("local Pi blocks cloud-authoritative committee minute writes", async () => {
+  const source = await readFile(path.join(__dirname, "index.js"), "utf8");
+
+  assert.match(
+    source,
+    /app\.use\("\/api\/committee-minutes",/,
+  );
+
+  assert.match(
+    source,
+    /Committee minutes are cloud-authoritative and unavailable for editing on the Pi\./,
+  );
+});
+
 test("schedule route wiring passes the local Pi flag only to schedule routes", async () => {
   const source = await readFile(path.join(__dirname, "index.js"), "utf8");
   const memberQuestionCall = source.slice(
@@ -68,6 +82,11 @@ test("schedule route wiring passes the local Pi flag only to schedule routes", a
     memberQuestionCall,
     /isLocalPiNode: serverRuntime\.sync\.isLocalPiNode,/,
   );
+});
+
+test("course date cancellation receives the runtime local Pi flag", async () => {
+  const source = await readFile(path.join(__dirname, "index.js"), "utf8");
+  assert.match(source, /registerCourseDateCancellationRoutes\(\{ app, isLocalPiNode: serverRuntime\.sync\.isLocalPiNode,/);
 });
 
 test("the rebaseline maintenance gate encloses outbox drain and snapshot application", async () => {

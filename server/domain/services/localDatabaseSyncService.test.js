@@ -1100,3 +1100,168 @@ test("extended SSE domains respect user dependency ordering", async () => {
   assert.ok(userTombstone > goldenDelete);
   assert.ok(userTombstone > outdoorDelete);
 });
+
+
+test("extended sync applies committee roles and bow sign-offs", async () => {
+  const { client, queries } = createClientDouble();
+
+  await applyAuthChanges({
+    changes: [
+      {
+        domain: "member_distance_sign_offs",
+        operation: "upsert",
+        payload: {
+          username: "robin",
+          discipline: "Recurve",
+          distance_yards: 40,
+          signed_off_by_username: "coach",
+          source: "manual",
+          signed_off_at_date: "2026-09-12",
+          signed_off_at_time: "16:00:00",
+        },
+        recordKey: "robin:recurve:40",
+      },
+      {
+        domain: "committee_roles",
+        operation: "upsert",
+        payload: {
+          role_key: "chairman",
+          title: "Chairman",
+          summary: "Club chairman",
+          responsibilities: "Lead the committee",
+          personal_blurb: "",
+          photo_data_url: null,
+          display_order: 1,
+          assigned_username: "robin",
+        },
+        recordKey: "chairman",
+      },
+    ],
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+  });
+
+  const committeeRoleIndex = queries.findIndex((entry) =>
+    entry.sql.startsWith("INSERT INTO committee_roles"),
+  );
+  const signOffIndex = queries.findIndex((entry) =>
+    entry.sql.startsWith("INSERT INTO member_distance_sign_offs"),
+  );
+
+  assert.ok(committeeRoleIndex > -1);
+  assert.ok(signOffIndex > -1);
+  assert.ok(committeeRoleIndex < signOffIndex);
+
+  const committeeQuery = queries[committeeRoleIndex];
+  assert.equal(committeeQuery.values[0], "chairman");
+  assert.equal(committeeQuery.values[7], "robin");
+
+  const signOffQuery = queries[signOffIndex];
+  assert.equal(signOffQuery.values[0], "robin");
+  assert.equal(signOffQuery.values[1], "Recurve");
+  assert.equal(signOffQuery.values[2], 40);
+  assert.equal(signOffQuery.values[3], "coach");
+});
+
+test("extended sync deletes committee roles and bow sign-offs by stable identity", async () => {
+  const { client, queries } = createClientDouble();
+
+  await applyAuthChanges({
+    changes: [
+      {
+        domain: "member_distance_sign_offs",
+        operation: "delete",
+        payload: {
+          username: "robin",
+          discipline: "Recurve",
+          distance_yards: 40,
+        },
+        recordKey: "robin:recurve:40",
+      },
+      {
+        domain: "committee_roles",
+        operation: "delete",
+        payload: {
+          role_key: "chairman",
+        },
+        recordKey: "chairman",
+      },
+    ],
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+  });
+
+  const signOffDelete = queries.find((entry) =>
+    entry.sql.includes("DELETE FROM member_distance_sign_offs"),
+  );
+  const committeeDelete = queries.find((entry) =>
+    entry.sql.includes("DELETE FROM committee_roles WHERE role_key = $1"),
+  );
+
+  assert.ok(signOffDelete);
+  assert.deepEqual(signOffDelete.values, ["robin", "Recurve", 40]);
+
+  assert.ok(committeeDelete);
+  assert.deepEqual(committeeDelete.values, ["chairman"]);
+});
+
+test("extended sync snapshot applies committee roles and bow sign-offs when supplied", async () => {
+  const { client, queries } = createClientDouble();
+
+  await applyAuthSnapshot({
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+    snapshot: {
+      ...emptyPublicationSnapshot(),
+      committeeRoles: [
+        {
+          role_key: "chairman",
+          title: "Chairman",
+          summary: "Club chairman",
+          responsibilities: "Lead the committee",
+          personal_blurb: "",
+          photo_data_url: null,
+          display_order: 1,
+          assigned_username: "robin",
+        },
+      ],
+      memberDistanceSignOffs: [
+        {
+          username: "robin",
+          discipline: "Recurve",
+          distance_yards: 40,
+          signed_off_by_username: "coach",
+          source: "manual",
+          signed_off_at_date: "2026-09-12",
+          signed_off_at_time: "16:00:00",
+        },
+      ],
+    },
+  });
+
+  assert.ok(
+    queries.some((entry) =>
+      entry.sql.startsWith("INSERT INTO committee_roles"),
+    ),
+  );
+
+  assert.ok(
+    queries.some((entry) =>
+      entry.sql.startsWith("INSERT INTO member_distance_sign_offs"),
+    ),
+  );
+
+  assert.ok(
+    queries.some((entry) =>
+      entry.sql.includes("DELETE FROM committee_roles")
+      && entry.sql.includes("role_key <> ALL"),
+    ),
+  );
+
+  assert.ok(
+    queries.some((entry) =>
+      entry.sql.startsWith("SELECT username, discipline, distance_yards")
+      && entry.sql.includes("FROM member_distance_sign_offs"),
+    ),
+  );
+});

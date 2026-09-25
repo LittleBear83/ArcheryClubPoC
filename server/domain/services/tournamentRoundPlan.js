@@ -70,6 +70,8 @@ function normalizeDrawMetadata(draw) {
         ? draw.generatedAt.trim()
         : null,
     orderUsernames,
+    randomiseEveryRound: draw.randomiseEveryRound === true,
+    roundPairings: draw.roundPairings && typeof draw.roundPairings === "object" ? draw.roundPairings : {},
   };
 }
 

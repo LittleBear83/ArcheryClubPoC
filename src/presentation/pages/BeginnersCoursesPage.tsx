@@ -1,3 +1,5 @@
+import { hasCourseFinished, isCourseClosed, selectCourseDetails } from "./beginnersCourseWorkflow.js";
+import { cancelCourseDates } from "../../api/beginnersCoursesApi";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/Button";
@@ -98,6 +100,7 @@ type CourseBeginner = {
 };
 
 type CourseLesson = {
+  isCancelled: boolean;
   id: number;
   lessonNumber: number;
   date: string;
@@ -169,36 +172,6 @@ type RescheduleSelection = {
   startTime: string;
   endTime: string;
 };
-
-function hasCourseFinished(course: CourseRecord) {
-  if (!course.lessons?.length) {
-    return false;
-  }
-
-  const lastLesson = [...course.lessons].sort((left, right) => {
-    const byDate = left.date.localeCompare(right.date);
-    if (byDate !== 0) {
-      return byDate;
-    }
-
-    return left.endTime.localeCompare(right.endTime);
-  })[course.lessons.length - 1];
-
-  if (!lastLesson?.date || !lastLesson?.endTime) {
-    return false;
-  }
-
-  const normalizedEndTime = /^\d{2}:\d{2}$/.test(lastLesson.endTime)
-    ? `${lastLesson.endTime}:00`
-    : lastLesson.endTime;
-  const lessonEnd = new Date(`${lastLesson.date}T${normalizedEndTime}`);
-
-  if (Number.isNaN(lessonEnd.getTime())) {
-    return false;
-  }
-
-  return lessonEnd.getTime() < Date.now();
-}
 
 function hasCourseStarted(course: CourseRecord) {
   if (!course?.firstLessonDate || !course?.startTime) {
@@ -538,6 +511,9 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const [temporaryPasswords, setTemporaryPasswords] = useState<Record<string, string>>({});
   const [collapsedCourseIds, setCollapsedCourseIds] = useState<Record<number, boolean>>({});
   const [showCancelledCourses, setShowCancelledCourses] = useState(false);
+  const [closedDetailId, setClosedDetailId] = useState<number | null>(null);
+  const [cancellationCourse, setCancellationCourse] = useState<CourseRecord | null>(null);
+  const [cancellationLessonIds, setCancellationLessonIds] = useState<number[]>([]);
   const [rescheduleSelection, setRescheduleSelection] = useState<RescheduleSelection | null>(
     null,
   );
@@ -564,7 +540,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
         (course) =>
           !course.isCancelled &&
           course.approvalStatus !== "rejected" &&
-          !hasCourseFinished(course) &&
+          !isCourseClosed(course) &&
           !localCancelledCourses.some((cancelledCourse) => cancelledCourse.id === course.id),
       ),
     [courses, localCancelledCourses],
@@ -576,7 +552,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
           (course) =>
             course.isCancelled ||
             course.approvalStatus === "rejected" ||
-            hasCourseFinished(course),
+            isCourseClosed(course),
         )
         .map((course) => ({
           id: course.id,
@@ -587,7 +563,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
           archiveReason:
             course.cancellationReason ||
             course.rejectionReason ||
-            `${copy.itemLabel} finished`,
+            (course.lessons.length > 0 && course.lessons.every((lesson) => lesson.isCancelled) ? "All session dates cancelled" : `${copy.itemLabel} finished`),
         }));
 
       return [...backendCancelledCourses, ...localCancelledCourses].filter(
@@ -836,10 +812,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const openBulkCoachModal = (course: CourseRecord) => {
     setBulkCoachCourse({
       id: course.id,
-      lessons: course.lessons,
+      lessons: course.lessons.filter((lesson) => !lesson.isCancelled),
     });
     setBulkCoachAssignments(
-      course.lessons.reduce<Record<number, string[]>>((accumulator, lesson) => {
+      course.lessons.filter((lesson) => !lesson.isCancelled).reduce<Record<number, string[]>>((accumulator, lesson) => {
         accumulator[lesson.id] = lesson.coaches.map((coach) => coach.username);
         return accumulator;
       }, {}),
@@ -1134,26 +1110,27 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       ) : null}
 
       <div className="beginners-course-list">
-        {activeCourses.map((course) => {
+        {selectCourseDetails(activeCourses, courses, closedDetailId).map((course) => {
+          const isClosed = isCourseClosed(course);
           const beginnerForm = {
             ...EMPTY_BEGINNER_FORM,
             ...beginnerForms[course.id],
           };
           const canCancelCourse =
-            permissions.canApproveBeginnersCourses ||
-            course.coordinatorUsername === actorUsername;
+            !isClosed && (permissions.canApproveBeginnersCourses ||
+            permissions.canManageBeginnersCourses || course.coordinatorUsername === actorUsername);
           const canRescheduleCourse =
-            permissions.canManageBeginnersCourses &&
+            !isClosed && permissions.canManageBeginnersCourses &&
             copy.courseType !== "have-a-go" &&
             !hasCourseStarted(course);
           const isCollapsed = collapsedCourseIds[course.id] ?? true;
 
           return (
-            <section key={course.id} className="equipment-action-card beginners-course-panel">
+            <section id={`course-details-${course.id}`} key={course.id} className="equipment-action-card beginners-course-panel">
               <div className="beginners-course-header">
                 <div>
                   <h3>
-                    {copy.itemLabel} from {formatDate(course.firstLessonDate)}
+                    {copy.itemLabel} from {formatDate(course.firstLessonDate)}{isClosed ? " - Closed" : ""}
                   </h3>
                   <p className="equipment-meta-copy">
                     Time: {formatCourseTimeRange(course.startTime, course.endTime)} | Coordinator: {course.coordinatorName} | {copy.countMetaLabel}: {course.lessonCount} | {copy.capacityMetaLabel}:
@@ -1169,6 +1146,9 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                   ) : null}
                 </div>
                 <div className="beginners-course-actions">
+                  {canCancelCourse && course.lessons.some((lesson) => !lesson.isCancelled) ? (
+                    <Button size="sm" variant="danger" onClick={() => { setError(""); setCancellationCourse(course); setCancellationLessonIds([]); }}>Cancel session date(s)</Button>
+                  ) : null}
                   {canRescheduleCourse ? (
                     <Button
                       type="button"
@@ -1208,7 +1188,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
               {isCollapsed ? null : (
                 <>
-                  {permissions.canManageBeginnersCourses ? (
+                  {permissions.canManageBeginnersCourses && !isClosed ? (
                     <section className="beginners-course-subpanel">
                       <h4>{copy.addParticipantTitle}</h4>
                       {course.approvalStatus !== "approved" ? (
@@ -1241,7 +1221,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                       course.beginners.length > 0 ? (
                         <MobileCardList className="beginners-course-mobile-card-list">
                           {course.beginners.map((beginner) => {
-                            const canConvertBeginner = usesEquipmentAssignment
+                            const canConvertBeginner = permissions.canManageBeginnersCourses && usesEquipmentAssignment
                               ? hasCourseFinished(course)
                               : false;
                             const canTransferToBeginners =
@@ -1566,7 +1546,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                       ) : null}
                                       {usesEquipmentAssignment
                                         ? (() => {
-                                            const canConvertBeginner = hasCourseFinished(course);
+                                            const canConvertBeginner = permissions.canManageBeginnersCourses && hasCourseFinished(course);
                                             const convertButtonLabel = beginner.convertedToMember
                                               ? "Converted"
                                               : "Convert to member";
@@ -1681,7 +1661,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                       key={`${beginner.id}-${lesson.id}`}
                                       className="beginners-course-mobile-attendance-item"
                                     >
-                                      <span>{formatDate(lesson.date)}</span>
+                                      <span>{formatDate(lesson.date)}{lesson.isCancelled ? " - Cancelled" : ""}</span>
                                       <span
                                         className={
                                           attended
@@ -1715,7 +1695,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                               <th>{copy.participantLabel}</th>
                               {course.lessons.map((lesson) => (
                                 <th key={lesson.id}>
-                                  {formatDate(lesson.date)}
+                                  {formatDate(lesson.date)}{lesson.isCancelled ? " - Cancelled" : ""}
                                 </th>
                               ))}
                             </tr>
@@ -1800,7 +1780,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                               items={[
                                 {
                                   label: "Date",
-                                  value: formatDate(lesson.date),
+                                  value: `${formatDate(lesson.date)}${lesson.isCancelled ? " - Cancelled" : ""}`,
                                 },
                                 {
                                   label: "Time",
@@ -1820,6 +1800,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                 <Button
                                   size="sm"
                                   variant="secondary"
+                                  disabled={lesson.isCancelled}
                                   onClick={() => openCoachModal(lesson)}
                                 >
                                   {copy.assignCoachesButton}
@@ -1845,7 +1826,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                             {course.lessons.map((lesson) => (
                               <tr key={lesson.id}>
                                 <td>{lesson.lessonNumber}</td>
-                                <td>{formatDate(lesson.date)}</td>
+                                <td>{formatDate(lesson.date)}{lesson.isCancelled ? " - Cancelled" : ""}</td>
                                 <td>
                                   {formatClockTime(lesson.startTime)} to {formatClockTime(lesson.endTime)}
                                 </td>
@@ -1859,7 +1840,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                     <Button
                                       size="sm"
                                       variant="secondary"
-                                      onClick={() => openCoachModal(lesson)}
+                                      disabled={lesson.isCancelled}
+                                  onClick={() => openCoachModal(lesson)}
                                     >
                                       {copy.assignCoachesButton}
                                     </Button>
@@ -1904,6 +1886,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                   <span>Time: {formatCourseTimeRange(course.startTime, course.endTime)}</span>
                   <span>Coordinator: {course.coordinatorName}</span>
                   <span>Reason: {course.archiveReason || "No reason recorded."}</span>
+                  <Button variant="secondary" onClick={() => { setClosedDetailId(course.id); setCollapsedCourseIds((current) => ({ ...current, [course.id]: false })); window.requestAnimationFrame(() => document.getElementById(`course-details-${course.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })); }}>View details</Button>
                 </div>
               ))}
             </div>
@@ -1914,6 +1897,21 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
           )
         ) : null}
       </section>
+
+      <Modal open={Boolean(cancellationCourse)} onClose={() => setCancellationCourse(null)} title="Cancel session date(s)">
+        {error ? <p className="profile-error" role="alert">{error}</p> : null}
+        <p>Select the dates to cancel. Attendees and attendance history will be preserved.</p>
+        {cancellationCourse?.lessons.map((lesson) => (
+          <label key={lesson.id} className="beginners-course-checkbox">
+            <input type="checkbox" disabled={lesson.isCancelled} checked={cancellationLessonIds.includes(lesson.id)} onChange={(event) => setCancellationLessonIds((current) => event.target.checked ? [...current, lesson.id] : current.filter((id) => id !== lesson.id))} />
+            {formatDate(lesson.date)} {formatCourseTimeRange(lesson.startTime, lesson.endTime)}{lesson.isCancelled ? " - Cancelled" : ""}
+          </label>
+        ))}
+        <Button variant="danger" disabled={!cancellationLessonIds.length || mutation.isPending} onClick={() => {
+          if (!cancellationCourse || !window.confirm(`Cancel ${cancellationLessonIds.length} selected session date(s)? This cannot be undone here.`)) return;
+          void mutation.mutateAsync(() => cancelCourseDates(currentUserProfile, cancellationCourse.id, cancellationLessonIds, copy.courseType)).then(async () => { await refreshDashboard(); setCancellationCourse(null); setMessage("Selected session dates cancelled."); }).catch(() => {});
+        }}>Confirm cancellation</Button>
+      </Modal>
 
       <Modal
         open={Boolean(coachLesson)}
@@ -1983,7 +1981,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                     <tr>
                       <th>Coach</th>
                       {bulkCoachCourse.lessons.map((lesson) => (
-                        <th key={lesson.id}>{formatDate(lesson.date)}</th>
+                        <th key={lesson.id}>{formatDate(lesson.date)}{lesson.isCancelled ? " - Cancelled" : ""}</th>
                       ))}
                     </tr>
                   </thead>

@@ -125,6 +125,7 @@ function createSqliteTournamentGateway({
   findTournamentTemplateByKey,
   insertTournament,
   insertTournamentTemplate,
+  updateTournamentTemplateByKey,
   insertTournamentMatch,
   insertTournamentRegistration,
   insertTournamentRound,
@@ -211,6 +212,13 @@ function createSqliteTournamentGateway({
     },
     async listTournaments() {
       return listTournaments.all();
+    },
+    async updateTournamentTemplate(args) {
+      updateTournamentTemplateByKey.run(
+        args.label, args.description ?? "", args.defaultsJson ?? "{}",
+        args.capabilitiesJson ?? "{}", args.eligibilityRulesJson ?? null, args.templateKey,
+      );
+      return findTournamentTemplateByKey.get(args.templateKey);
     },
     async createTournamentTemplate(args) {
       insertTournamentTemplate.run(
@@ -414,6 +422,21 @@ function createSqliteTournamentGateway({
 
 function createPostgresTournamentGateway({ pool }) {
   return {
+    async acquireWorkflowLock() {
+      const client = await pool.connect();
+      try {
+        await client.query("SELECT pg_advisory_lock(18401, 5)");
+      } catch (error) {
+        client.release();
+        throw error;
+      }
+      return async () => {
+        let discard = false;
+        try { await client.query("SELECT pg_advisory_unlock(18401, 5)"); }
+        catch (error) { discard = true; throw error; }
+        finally { client.release(discard); }
+      };
+    },
     async createTournament(args) {
       const result = await pool.query(
         `
@@ -891,6 +914,16 @@ function createPostgresTournamentGateway({ pool }) {
         ],
       );
 
+      return this.findTournamentTemplateByKey(args.templateKey);
+    },
+    async updateTournamentTemplate(args) {
+      await pool.query(
+        `UPDATE tournament_templates
+         SET label = $1, description = $2, defaults_json = $3, capabilities_json = $4, eligibility_rules_json = $5
+         WHERE template_key = $6`,
+        [args.label, args.description ?? "", args.defaultsJson ?? "{}",
+          args.capabilitiesJson ?? "{}", args.eligibilityRulesJson ?? null, args.templateKey],
+      );
       return this.findTournamentTemplateByKey(args.templateKey);
     },
     async registerForTournament({ bowCode = null, tournamentId, username, timestampParts }) {

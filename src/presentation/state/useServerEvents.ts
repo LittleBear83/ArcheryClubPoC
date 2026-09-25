@@ -50,6 +50,12 @@ export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
     queryKeys: [(actorUsername) => ["committee-roles", actorUsername]],
   },
   {
+    event: "committee-minutes.updated",
+    queryKeys: [
+      (actorUsername) => ["committee-minutes", actorUsername],
+    ],
+  },
+  {
     event: "members.updated",
     queryKeys: [
       (actorUsername) => ["profile-options", actorUsername],
@@ -163,6 +169,11 @@ export function useServerEvents({
       {
         event: "committee.updated",
         invalidate: () => invalidateQueries([["committee-roles", actorUsername]]),
+      },
+      {
+        event: "committee-minutes.updated",
+        invalidate: () =>
+          invalidateQueries([["committee-minutes", actorUsername]]),
       },
       {
         event: "members.updated",

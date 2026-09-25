@@ -482,3 +482,26 @@ test("009 runs after 008, records its version, and skips once applied", async ()
     }
   }
 });
+
+// Keep this additive migration in the normal runner regression suite.
+test('013 local outbox notification is additive, commit-delivered and installed once', async () => {
+  const { migration } = await import('./postgresMigrations/013_local_outbox_notifications.js');
+  assert.match(migration.statements[0], /pg_notify\('archery_local_sync_outbox', ''\)/);
+  assert.match(migration.statements[1], /AFTER INSERT ON sync_local_outbox/);
+  assert.doesNotMatch(migration.statements.join('\n'), /payload_json|DELETE|TRUNCATE/);
+  for (const installed of [false, true]) {
+    const { pool, queries } = createPoolDouble({ appliedVersions: [
+      ...NUMBERED_MIGRATION_VERSIONS, '010_member_signoff_committee_sync',
+      '011_committee_minutes_sync', '012_lesson_cancellation',
+      ...(installed ? [migration.version] : []),
+    ] });
+    await runPostgresMigrations({ committeeRoleSeed: [], defaultEquipmentCupboardLabel: 'Test', permissionDefinitions: [], pool, seedUsers: [], systemRoleDefinitions: [] });
+    const statements = queries.filter((entry) => /notify_local_sync_outbox/.test(entry.sql));
+    assert.equal(statements.length, installed ? 0 : 2);
+    if (!installed) {
+      const previous = queries.findIndex((entry) => entry.sql.includes('FROM schema_migrations') && entry.values[0] === '012_lesson_cancellation');
+      assert.ok(queries.indexOf(statements[0]) > previous);
+    }
+    assert.equal(queries.at(-1).sql, 'COMMIT');
+  }
+});

@@ -12,6 +12,7 @@ import { migration as committeeMinutesSyncMigration } from "./011_committee_minu
 import { migration as lessonCancellationMigration } from "./012_lesson_cancellation.js";
 
 import { migration as localOutboxNotificationsMigration } from "./013_local_outbox_notifications.js";
+import { migration as tournamentSyncMigration } from "./014_tournament_sync.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -26,4 +27,5 @@ export const postgresMigrations = [
   committeeMinutesSyncMigration,
   lessonCancellationMigration,
   localOutboxNotificationsMigration,
+  tournamentSyncMigration,
 ];

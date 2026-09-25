@@ -35,6 +35,14 @@ const emptyPublicationSnapshot = () => ({
   userDisciplines: [],
   userTypes: [],
   users: [],
+  tournamentTemplates: [],
+  tournamentHandicapTables: [],
+  tournamentHandicapTableRows: [],
+  tournaments: [],
+  tournamentRegistrations: [],
+  tournamentRounds: [],
+  tournamentScores: [],
+  tournamentMatches: [],
 });
 
 function createClientDouble() {

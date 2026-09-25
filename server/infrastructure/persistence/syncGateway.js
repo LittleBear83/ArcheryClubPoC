@@ -34,6 +34,14 @@ const SYNCED_DOMAINS = new Set([
   "member_distance_sign_offs",
   "committee_roles",
   "committee_meeting_minutes",
+  "tournament_templates",
+  "tournaments",
+  "tournament_registrations",
+  "tournament_rounds",
+  "tournament_matches",
+  "tournament_scores",
+  "tournament_handicap_tables",
+  "tournament_handicap_table_rows",
 ]);
 
 function hasScheduleEntryEnded(date, endTime) {
@@ -845,6 +853,72 @@ export function createSyncGateway({ pool }) {
           ORDER BY season_year ASC, archer_username ASC, bow_type ASC
         `,
       );
+      const tournamentTemplates = await snapshotClient.query(`
+        SELECT template_key, label, description, tournament_type, format, round_type,
+          defaults_json, capabilities_json, eligibility_rules_json, created_by,
+          created_at_date, created_at_time
+        FROM tournament_templates ORDER BY template_key ASC
+      `);
+      const tournamentHandicapTables = await snapshotClient.query(`
+        SELECT table_key, title, description, allowance_percent, is_editable,
+          updated_at_date, updated_at_time, updated_by_username
+        FROM tournament_handicap_tables ORDER BY table_key ASC
+      `);
+      const tournamentHandicapTableRows = await snapshotClient.query(`
+        SELECT tables.table_key, rows.handicap_value, rows.reference_score, rows.display_order
+        FROM tournament_handicap_table_rows AS rows
+        INNER JOIN tournament_handicap_tables AS tables ON tables.id = rows.table_id
+        ORDER BY tables.table_key ASC, rows.handicap_value ASC
+      `);
+      const tournaments = await snapshotClient.query(`
+        SELECT sync_id, name, tournament_type, template_key, template_definition_json,
+          draw_date, round_schedule_json, registration_start_date, registration_end_date,
+          score_submission_start_date, score_submission_end_date, created_by,
+          created_at_date, created_at_time
+        FROM tournaments ORDER BY sync_id ASC
+      `);
+      const tournamentRegistrations = await snapshotClient.query(`
+        SELECT tournaments.sync_id AS tournament_sync_id, registrations.member_username,
+          registrations.bow_code, registrations.registered_at_date, registrations.registered_at_time
+        FROM tournament_registrations AS registrations
+        INNER JOIN tournaments ON tournaments.id = registrations.tournament_id
+        ORDER BY tournaments.sync_id ASC, LOWER(registrations.member_username) ASC
+      `);
+      const tournamentRounds = await snapshotClient.query(`
+        SELECT tournaments.sync_id AS tournament_sync_id, rounds.round_number, rounds.title,
+          rounds.publish_date, rounds.submission_deadline, rounds.status
+        FROM tournament_rounds AS rounds
+        INNER JOIN tournaments ON tournaments.id = rounds.tournament_id
+        ORDER BY tournaments.sync_id ASC, rounds.round_number ASC
+      `);
+      const tournamentScores = await snapshotClient.query(`
+        SELECT tournaments.sync_id AS tournament_sync_id, scores.round_number,
+          scores.member_username, scores.score, scores.submitted_at_date, scores.submitted_at_time
+        FROM tournament_scores AS scores
+        INNER JOIN tournaments ON tournaments.id = scores.tournament_id
+        ORDER BY tournaments.sync_id ASC, scores.round_number ASC, LOWER(scores.member_username) ASC
+      `);
+      const tournamentMatches = await snapshotClient.query(`
+        SELECT tournaments.sync_id AS tournament_sync_id, matches.round_number,
+          matches.match_number, matches.left_member_username, matches.right_member_username,
+          matches.left_score, matches.right_score, matches.winner_username,
+          matches.submitted_by_username, matches.submitted_at_date, matches.submitted_at_time,
+          matches.confirmed_by_username, matches.confirmed_at_date, matches.confirmed_at_time,
+          matches.disputed_by_username, matches.disputed_at_date, matches.disputed_at_time,
+          matches.dispute_reason, matches.handicap_allowance_percent,
+          matches.left_handicap_value, matches.left_handicap_type,
+          matches.left_handicap_bow_class, matches.left_handicap_discipline,
+          matches.left_reference_score, matches.left_allowance_points,
+          matches.left_adjusted_score, matches.left_handicap_table_key,
+          matches.left_handicap_table_title, matches.right_handicap_value,
+          matches.right_handicap_type, matches.right_handicap_bow_class,
+          matches.right_handicap_discipline, matches.right_reference_score,
+          matches.right_allowance_points, matches.right_adjusted_score,
+          matches.right_handicap_table_key, matches.right_handicap_table_title, matches.status
+        FROM tournament_matches AS matches
+        INNER JOIN tournaments ON tournaments.id = matches.tournament_id
+        ORDER BY tournaments.sync_id ASC, matches.round_number ASC, matches.match_number ASC
+      `);
 
       const checkpointRow = await querySingleValue(
         snapshotClient,
@@ -881,6 +955,14 @@ export function createSyncGateway({ pool }) {
           userDisciplines: userDisciplines.rows,
           userTypes: userTypes.rows,
           users: users.rows,
+          tournamentTemplates: tournamentTemplates.rows,
+          tournamentHandicapTables: tournamentHandicapTables.rows,
+          tournamentHandicapTableRows: tournamentHandicapTableRows.rows,
+          tournaments: tournaments.rows,
+          tournamentRegistrations: tournamentRegistrations.rows,
+          tournamentRounds: tournamentRounds.rows,
+          tournamentScores: tournamentScores.rows,
+          tournamentMatches: tournamentMatches.rows,
         },
       };
     },

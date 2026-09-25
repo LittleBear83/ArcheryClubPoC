@@ -62,6 +62,35 @@ export class CreateTournamentTemplateUseCase {
   }
 }
 
+export class UpdateTournamentTemplateUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
+  constructor({ tournamentRepository }) {
+    this.tournamentRepository = tournamentRepository;
+  }
+
+  async execute({ actorUsername, templateKey, form }) {
+    if (!actorUsername?.trim()) throw new Error("An authenticated member is required.");
+    if (!templateKey?.trim()) throw new Error("A template key is required.");
+    if (!form?.label?.trim()) throw new Error("Template name is required.");
+    return this.tournamentRepository.updateTournamentTemplate(actorUsername, templateKey, form);
+  }
+}
+
+export class ListLiveTournamentsForTemplateUseCase {
+  private readonly tournamentRepository: TournamentRepository;
+
+  constructor({ tournamentRepository }) {
+    this.tournamentRepository = tournamentRepository;
+  }
+
+  async execute({ actorUsername, templateKey }) {
+    if (!actorUsername?.trim()) throw new Error("An authenticated member is required.");
+    if (!templateKey?.trim()) throw new Error("A template key is required.");
+    return this.tournamentRepository.listLiveTournamentsForTemplate(actorUsername, templateKey);
+  }
+}
+
 export class UpdateTournamentUseCase {
   private readonly tournamentRepository: TournamentRepository;
 
@@ -89,7 +118,7 @@ export class DeleteTournamentUseCase {
     this.tournamentRepository = tournamentRepository;
   }
 
-  async execute({ actorUsername, memberUsername, tournamentId }) {
+  async execute({ actorUsername, tournamentId }) {
     if (!actorUsername?.trim()) {
       throw new Error("An authenticated member is required.");
     }

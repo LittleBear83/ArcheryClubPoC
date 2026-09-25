@@ -214,16 +214,7 @@ type HomePageProps = {
     | "updateRoleUseCase"
     | "deleteRoleUseCase"
   >;
-  tournamentCrud: Pick<
-    AppDependencies,
-    | "listTournamentsUseCase"
-    | "createTournamentUseCase"
-    | "updateTournamentUseCase"
-    | "deleteTournamentUseCase"
-    | "registerForTournamentUseCase"
-    | "withdrawFromTournamentUseCase"
-    | "submitTournamentScoreUseCase"
-  >;
+  tournamentCrud: AppDependencies;
   equipmentCrud: Pick<
     AppDependencies,
     | "getEquipmentDashboardUseCase"
@@ -239,6 +230,8 @@ type HomeEvent = {
   date: string;
   title: string;
   startTime?: string;
+  endTime?: string;
+  isCancelled?: boolean;
 };
 type TournamentReminder = {
   id: string | number;

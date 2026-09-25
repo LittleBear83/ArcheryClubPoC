@@ -1,5 +1,6 @@
 export type TournamentForm = {
   name: string;
+  randomiseEveryRound?: boolean;
   templateKey?: string;
   tournamentType: string;
   roundOneStartDate: string;

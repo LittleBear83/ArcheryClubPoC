@@ -1,3 +1,4 @@
+import { registerCourseDateCancellationRoutes } from "./presentation/http/registerCourseDateCancellationRoutes.js";
 import express from "express";
 import helmet from "helmet";
 import { Buffer } from "node:buffer";
@@ -170,6 +171,7 @@ const CSRF_EXCLUDED_PATHS = new Set([
 const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/login",
   "/api/auth/rfid",
+  "/api/auth/rfid/check-in",
   "/api/auth/logout",
   "/api/auth/guest-login",
   "/api/range-rules",
@@ -748,6 +750,8 @@ const {
   rejectCoachingSessionById,
   updateTournamentMatchWorkflow,
   updateTournamentById,
+  updateTournamentTemplate,
+  updateTournamentTemplateSnapshot,
   upsertTournamentScore,
 } = sqliteScheduleTournamentStatements ?? {};
 
@@ -813,6 +817,7 @@ const {
 
 const tournamentGateway = createTournamentGateway({
   databaseEngine: serverRuntime.databaseEngine,
+  db: serverRuntime.databaseEngine === "sqlite" ? db : null,
   deleteTournamentById,
   deleteTournamentMatchesByTournamentId,
   deleteTournamentRegistration,
@@ -840,6 +845,8 @@ const tournamentGateway = createTournamentGateway({
   pool: db.pool,
   updateTournamentMatchWorkflow,
   updateTournamentById,
+  updateTournamentTemplate,
+  updateTournamentTemplateSnapshot,
   upsertTournamentScore,
 });
 
@@ -947,6 +954,7 @@ const {
   listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
+  listMemberRangeAttendance,
   memberLoginsByDateForUserInRange,
   memberLoginsByDateInRange,
   memberLoginsByHourForUserInRange,
@@ -972,6 +980,7 @@ const activityReportingGateway = createActivityReportingGateway({
   listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
+  listMemberRangeAttendance,
   memberLoginsByDateForUserInRange,
   memberLoginsByDateInRange,
   memberLoginsByHourForUserInRange,
@@ -1037,6 +1046,7 @@ const memberAuthGateway = createMemberAuthGateway({
 });
 
 const memberProfileGateway = createMemberProfileGateway({
+  syncGateway,
   databaseEngine: serverRuntime.databaseEngine,
   deleteUserDisciplines,
   findLoanBowByUsername,
@@ -1839,6 +1849,7 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
       date: lesson.lesson_date,
       startTime: lesson.start_time,
       endTime: lesson.end_time,
+      isCancelled: Boolean(lesson.is_cancelled),
       coaches: coachesByLessonId.get(lesson.id) ?? [],
     }));
     const beginners = (participantsByCourseId.get(course.id) ?? []).map((participant) => ({
@@ -1877,6 +1888,28 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
       assignedCaseId: participant.assigned_case_id ?? null,
       assignedCaseNumber: participant.assigned_case_number ?? "",
     }));
+    const historicalAttendees = normalizedCourseType === "taster-session"
+      ? allParticipants
+        .filter((participant) =>
+          Number(participant.origin_course_id) === Number(course.id) &&
+          Number(participant.course_id) !== Number(course.id))
+        .map((participant) => ({
+          id: participant.id,
+          username: participant.username,
+          fullName: `${participant.first_name} ${participant.surname}`.trim(),
+          sizeCategory: participant.beginner_size_category,
+          heightText: participant.height_text ?? "",
+          drawLength: participant.draw_length ?? "",
+          handedness: participant.handedness ?? "",
+          eyeDominance: participant.eye_dominance ?? "",
+          courseFeePaid: Boolean(participant.course_fee_paid),
+          attendanceDates: [...new Set(
+            loginDatesByCourseParticipant.get(`${participant.course_id}:${participant.username}`) ?? [],
+          )].filter((date) => lessons.some((lesson) => lesson.date === date)),
+          transferredToCourse: allCourses.find((entry) =>
+            Number(entry.id) === Number(participant.course_id))?.first_lesson_date ?? "",
+        }))
+      : [];
 
     return {
       id: course.id,
@@ -1901,6 +1934,7 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
         : "",
       lessons,
       beginners,
+      historicalAttendees,
       placesRemaining: Math.max(course.beginner_capacity - beginners.length, 0),
     };
   });
@@ -2062,7 +2096,9 @@ async function hasBeginnersCourseCompleted(course) {
     return false;
   }
 
-  const lessons = await beginnersCourseReadGateway.listLessonsByCourseId(course.id);
+  const allLessons = await beginnersCourseReadGateway.listLessonsByCourseId(course.id);
+  const activeLessons = allLessons.filter((lesson) => !lesson.is_cancelled);
+  const lessons = activeLessons.length ? activeLessons : allLessons;
 
   if (!lessons.length) {
     return false;
@@ -2166,7 +2202,7 @@ async function buildBeginnersCourseCalendarLessons(courseType = null) {
         beginnerCapacity: course.beginner_capacity,
         participantCapacity: course.beginner_capacity,
         placesRemaining: Math.max(course.beginner_capacity - participantCount, 0),
-        isCancelled: Boolean(course.is_cancelled),
+        isCancelled: Boolean(course.is_cancelled || lesson.is_cancelled),
         cancellationReason: course.cancellation_reason ?? "",
       }));
     })
@@ -3231,6 +3267,8 @@ function buildTournament(
     persistedMatchesByKey,
     {
       frozenDrawOrderUsernames: roundPlan.draw?.orderUsernames ?? [],
+      roundPairings: roundPlan.draw?.roundPairings ?? {},
+      randomizeEachRound: template?.capabilities?.randomizeEachRound ?? false,
       supportsHighestLoserProgression:
         template?.capabilities?.supportsHighestLoserProgression ?? false,
     },
@@ -3504,6 +3542,7 @@ function buildTournament(
     },
     bracketReady: registrationClosed && normalizedRegistrations.length > 1,
     currentRoundNumber,
+    randomiseEveryRound: roundPlan.draw?.randomiseEveryRound ?? false,
     isRegistered: Boolean(
       actorUsername && registrationLookup.has(actorUsername),
     ),
@@ -4904,6 +4943,7 @@ registerAuthRoutes({
 });
 
 registerAdminMemberRoutes({
+  syncNodeMode: serverRuntime.sync.nodeMode,
   actorHasPermission,
   ALLOWED_DISCIPLINES,
   app,
@@ -5731,6 +5771,8 @@ app.delete("/api/beginners-courses/:id", async (req, res) => {
   });
 });
 
+registerCourseDateCancellationRoutes({ app, isLocalPiNode: serverRuntime.sync.isLocalPiNode, getActorUser, actorHasPermission, getCourseTypePermissions, beginnersCourseReadGateway, beginnersCourseWriteGateway, auditChangeLogger, getUtcTimestampParts, broadcastBeginnersUpdated, broadcastCalendarUpdated });
+
 app.post("/api/beginners-courses/:id/beginners", async (req, res) => {
   const actor = getActorUser(req);
 
@@ -6526,6 +6568,7 @@ app.post("/api/beginners-course-participants/:id/transfer-to-beginners-course", 
   await beginnersCourseWriteGateway.transferParticipantToCourse({
     courseId: targetCourse.id,
     participantId: participant.id,
+    originCourseId: sourceCourse.id,
   });
 
   const transferredParticipant = await findBeginnersParticipantAuditSnapshot(
@@ -6567,7 +6610,7 @@ app.post("/api/beginners-course-participants/:id/transfer-to-beginners-course", 
 app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
   const actor = getActorUser(req);
 
-  if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
+  if (!actor) {
     res.status(403).json({
       success: false,
       message: "You do not have permission to convert beginners into members.",
@@ -6591,6 +6634,25 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     res.status(404).json({
       success: false,
       message: "Beginners course not found.",
+    });
+    return;
+  }
+
+  if (normalizeCourseType(course.course_type) !== "beginners") {
+    res.status(400).json({
+      success: false,
+      message: "Only beginners course participants can be converted to members.",
+    });
+    return;
+  }
+
+  const canConvert = actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS) ||
+    (actorHasPermission(actor, PERMISSIONS.MANAGE_BEGINNERS_COURSES) &&
+      String(course.coordinator_username).toLowerCase() === String(actor.username).toLowerCase());
+  if (!canConvert) {
+    res.status(403).json({
+      success: false,
+      message: "You do not have permission to convert beginners into members.",
     });
     return;
   }
@@ -6976,6 +7038,10 @@ app.post("/api/beginners-course-lessons/:id/coaches", async (req, res) => {
     return;
   }
 
+  if (lesson.is_cancelled || course?.is_cancelled) {
+    return res.status(409).json({ success: false, message: "Coaches cannot be assigned to a cancelled session date." });
+  }
+
   const coachUsernames = Array.isArray(req.body?.coachUsernames)
     ? [...new Set(req.body.coachUsernames.filter((value) => typeof value === "string"))]
     : [];
@@ -7071,7 +7137,7 @@ app.get("/api/my-beginner-dashboard", async (req, res) => {
   }
   const today = toUtcDateString(new Date());
   const lessons = await beginnersCourseReadGateway.listLessonsByCourseId(course.id);
-  const todayLesson = lessons.find((lesson) => lesson.lesson_date === today) ?? null;
+  const todayLesson = lessons.find((lesson) => !lesson.is_cancelled && lesson.lesson_date === today) ?? null;
   const coaches = todayLesson
     ? (await beginnersCourseReadGateway.listLessonCoachesByLessonId(todayLesson.id)).map((row) => ({
         username: row.coach_username,
@@ -7172,6 +7238,7 @@ registerTournamentRoutes({
   getActorUser,
   getUtcTimestampParts,
   handicapTableGateway,
+  isLocalPiNode: serverRuntime.sync.isLocalPiNode,
   memberDirectoryGateway,
   path,
   PERMISSIONS,
@@ -7191,6 +7258,19 @@ if (serverRuntime.sync.isLocalPiNode) {
       res.status(503).json({ success: false, message: "Schedule administration is cloud-authoritative and unavailable on the Pi." });
       return;
     }
+    next();
+  });
+
+  app.use("/api/committee-minutes", (req, res, next) => {
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
+      res.status(503).json({
+        success: false,
+        message:
+          "Committee minutes are cloud-authoritative and unavailable for editing on the Pi.",
+      });
+      return;
+    }
+
     next();
   });
 }
@@ -7257,6 +7337,7 @@ const stopLocalSyncBrowserBridge = startLocalSyncBrowserBridge({
   pool: db.pool,
   serverEventBus,
   isLocalPiNode: serverRuntime.sync.isLocalPiNode,
+  isCloudSyncServer: serverRuntime.sync.isCloudSyncServer,
   refreshRoleAccess: refreshRoleAccessSnapshot,
 });
 httpServer.once("close", stopLocalSyncBrowserBridge);

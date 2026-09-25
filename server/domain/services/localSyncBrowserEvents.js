@@ -25,6 +25,15 @@ export const LOCAL_SYNC_EVENT_GROUPS = {
   golden_records_integration_status: ["golden-records.updated"],
   golden_records_lookup_cache: ["golden-records.updated"],
   outdoor_table_entries: ["outdoor-table.updated"],
+  committee_meeting_minutes: ["committee-minutes.updated"],
+  tournament_templates: ["tournaments.updated"],
+  tournaments: ["tournaments.updated"],
+  tournament_registrations: ["tournaments.updated"],
+  tournament_rounds: ["tournaments.updated"],
+  tournament_matches: ["tournaments.updated"],
+  tournament_scores: ["tournaments.updated"],
+  tournament_handicap_tables: ["tournaments.updated"],
+  tournament_handicap_table_rows: ["tournaments.updated"],
 };
 
 export function localSyncBrowserEventNames(domains) {

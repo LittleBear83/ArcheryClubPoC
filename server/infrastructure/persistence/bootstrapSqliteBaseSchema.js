@@ -1270,6 +1270,7 @@ export function bootstrapSqliteBaseSchema({
       thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
       course_fee_paid INTEGER NOT NULL DEFAULT 0,
       origin_course_type TEXT NOT NULL DEFAULT 'beginners',
+      origin_course_id INTEGER REFERENCES beginners_courses(id),
       no_show_recorded INTEGER NOT NULL DEFAULT 0,
       no_show_recorded_at_date TEXT,
       no_show_recorded_at_time TEXT,
@@ -1303,6 +1304,10 @@ export function bootstrapSqliteBaseSchema({
     db.exec(
       `ALTER TABLE beginners_course_participants ADD COLUMN origin_course_type TEXT NOT NULL DEFAULT 'beginners'`,
     );
+  }
+
+  if (!beginnersParticipantColumns.some((column) => column.name === "origin_course_id")) {
+    db.exec(`ALTER TABLE beginners_course_participants ADD COLUMN origin_course_id INTEGER REFERENCES beginners_courses(id)`);
   }
 
   if (!beginnersParticipantColumns.some((column) => column.name === "no_show_recorded")) {

@@ -39,6 +39,7 @@ function migrateCombinedDateTimeColumn({
 }
 
 function rebuildBeginnersCourseLessonsTable(db) {
+  const cancellationColumn = db.prepare("PRAGMA table_info(beginners_course_lessons)").all().some((column) => column.name === "is_cancelled") ? "is_cancelled" : "0";
   db.exec(`
     PRAGMA foreign_keys = OFF;
     BEGIN TRANSACTION;
@@ -50,6 +51,7 @@ function rebuildBeginnersCourseLessonsTable(db) {
       lesson_date TEXT NOT NULL,
       start_time TEXT NOT NULL,
       end_time TEXT NOT NULL,
+      is_cancelled INTEGER NOT NULL DEFAULT 0 CHECK (is_cancelled IN (0, 1)),
       UNIQUE (course_id, lesson_number),
       FOREIGN KEY (course_id) REFERENCES beginners_courses(id)
     );
@@ -59,7 +61,8 @@ function rebuildBeginnersCourseLessonsTable(db) {
       lesson_number,
       lesson_date,
       start_time,
-      end_time
+      end_time,
+      is_cancelled
     )
     SELECT
       id,
@@ -67,7 +70,8 @@ function rebuildBeginnersCourseLessonsTable(db) {
       lesson_number,
       lesson_date,
       start_time,
-      end_time
+      end_time,
+      ${cancellationColumn}
     FROM beginners_course_lessons_old;
     DROP TABLE beginners_course_lessons_old;
     COMMIT;
@@ -96,6 +100,8 @@ function rebuildBeginnersCourseParticipantsTable(db) {
       initial_email_sent INTEGER NOT NULL DEFAULT 0,
       thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
       course_fee_paid INTEGER NOT NULL DEFAULT 0,
+      origin_course_type TEXT NOT NULL DEFAULT 'beginners',
+      origin_course_id INTEGER REFERENCES beginners_courses(id),
       no_show_recorded INTEGER NOT NULL DEFAULT 0,
       no_show_recorded_at_date TEXT,
       no_show_recorded_at_time TEXT,
@@ -131,6 +137,8 @@ function rebuildBeginnersCourseParticipantsTable(db) {
       initial_email_sent,
       thirty_day_reminder_sent,
       course_fee_paid,
+      origin_course_type,
+      origin_course_id,
       no_show_recorded,
       no_show_recorded_at_date,
       no_show_recorded_at_time,
@@ -161,6 +169,8 @@ function rebuildBeginnersCourseParticipantsTable(db) {
       initial_email_sent,
       thirty_day_reminder_sent,
       course_fee_paid,
+      origin_course_type,
+      origin_course_id,
       COALESCE(no_show_recorded, 0),
       no_show_recorded_at_date,
       no_show_recorded_at_time,
@@ -404,6 +414,10 @@ export function bootstrapSqliteCourseScheduleCompatibility({
 
   if (beginnersCourseLessonsTable?.sql?.includes("beginners_courses_old")) {
     rebuildBeginnersCourseLessonsTable(db);
+  }
+
+  if (!db.prepare("PRAGMA table_info(beginners_course_lessons)").all().some((column) => column.name === "is_cancelled")) {
+    db.exec("ALTER TABLE beginners_course_lessons ADD COLUMN is_cancelled INTEGER NOT NULL DEFAULT 0 CHECK (is_cancelled IN (0, 1))");
   }
 
   const beginnersCourseParticipantsTable = db

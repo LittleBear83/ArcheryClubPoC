@@ -1,4 +1,5 @@
 import process from "node:process";
+import { listenLocalOutbox } from "./lib/localOutboxListener.mjs";
 import pg from "pg";
 import { serverRuntime } from "../server/config/runtime.js";
 import {
@@ -24,7 +25,7 @@ async function main() {
       port: local.port,
       user: local.user,
     }),
-    max: 1,
+    max: 2,
     connectionTimeoutMillis: 10000,
     query_timeout: 10000,
     statement_timeout: 10000,
@@ -40,6 +41,11 @@ async function main() {
     await runLiveSyncWatcher({
       sync,
       signal: controller.signal,
+      countPendingOutbox: () => syncGateway.countPendingOutboxEvents(),
+      listenLocalOutbox: ({ signal, onWake }) => listenLocalOutbox({
+        pool, signal, onWake, log,
+        countPendingOutbox: (client) => syncGateway.countPendingOutboxEvents(client),
+      }),
       readCheckpoint: publicationSync
         ? async () => (await readPublicationSyncState({ syncGateway })).publicationCheckpoint
         : async () => (await readSyncStatus({ syncGateway })).currentCheckpoint,

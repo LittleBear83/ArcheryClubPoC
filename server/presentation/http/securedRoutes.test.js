@@ -107,7 +107,7 @@ function registerAuthTestRoutes(app, getSessionUsername, overrides = {}) {
   });
 }
 
-function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission) {
+function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission, overrides = {}) {
   const addUtcDays = (date, days) => {
     const next = new Date(date);
     next.setUTCDate(next.getUTCDate() + days);
@@ -129,6 +129,7 @@ function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission)
       guestLoginsByWeekdayInRange: async () => [],
       listAllUserDisciplines: async () => [],
       listMemberJourneyParticipants: async () => [],
+      listMemberRangeAttendance: overrides.listMemberRangeAttendance ?? (async () => []),
       listReportingGuestLogins: async () => [],
       listReportingMemberLogins: async () => [],
       memberLoginsByDateForUserInRange: async () => [],
@@ -508,6 +509,104 @@ test("auth routes expose RFID reader detection status for the login page", async
   }
 });
 
+test("RFID check-in records the scanned member without replacing the signed-in session", async () => {
+  const app = express();
+  app.use(express.json());
+  const loginEvents = [];
+
+  registerAuthTestRoutes(app, () => "member-already-signed-in", {
+    memberAuthGateway: {
+      findUserByRfid: async (rfidTag) =>
+        rfidTag === "FOB-2"
+          ? { username: "scanned-member", first_name: "Scanned", surname: "Member", active_member: 1 }
+          : null,
+      recordLoginEvent: async (event) => loginEvents.push(event),
+    },
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/rfid/check-in", {
+      body: { rfidTag: "FOB-2" },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body, { success: true, username: "scanned-member" });
+    assert.deepEqual(loginEvents, [{
+      method: "rfid",
+      timestampParts: ["2026-04-21", "10:00:00"],
+      username: "scanned-member",
+    }]);
+    assert.equal(response.headers["set-cookie"], undefined);
+  } finally {
+    server.close();
+  }
+});
+
+test("RFID check-in requires an existing session", async () => {
+  const app = express();
+  app.use(express.json());
+  let recorded = false;
+
+  registerAuthTestRoutes(app, () => null, {
+    memberAuthGateway: {
+      recordLoginEvent: async () => { recorded = true; },
+    },
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/rfid/check-in", {
+      body: { rfidTag: "FOB-2" },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 401);
+    assert.equal(recorded, false);
+  } finally {
+    server.close();
+  }
+});
+
+test("RFID login still records a visit and creates a session when signed out", async () => {
+  const app = express();
+  app.use(express.json());
+  const loginEvents = [];
+
+  registerAuthTestRoutes(app, () => null, {
+    buildMemberUserProfile: (user) => ({ auth: { username: user.username } }),
+    memberAuthGateway: {
+      findUserByRfid: async () => ({
+        username: "scanned-member",
+        first_name: "Scanned",
+        surname: "Member",
+        active_member: 1,
+      }),
+      recordLoginEvent: async (event) => loginEvents.push(event),
+    },
+  });
+
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/rfid", {
+      body: { rfidTag: "FOB-2" },
+      method: "POST",
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.userProfile.auth.username, "scanned-member");
+    assert.equal(loginEvents.length, 1);
+    assert.equal(loginEvents[0].username, "scanned-member");
+    assert.equal(response.headers["set-cookie"]?.length, 2);
+  } finally {
+    server.close();
+  }
+});
+
 test("mobile password login is recorded without marking range presence as an RFID-style check-in", async () => {
   const app = express();
   app.use(express.json());
@@ -731,6 +830,34 @@ test("mutating admin routes require both a session cookie and a valid CSRF token
       roleKey: "range_admin",
       title: "Range Admin",
     });
+  } finally {
+    server.close();
+  }
+});
+
+test("committee positions are listed in alphanumeric title order", async () => {
+  const { app, csrf } = createAdminRoleTestApp();
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    for (const title of ["Role 10", "role 2", "Role 1"]) {
+      const response = await requestJson(baseUrl, "/api/committee-roles", {
+        body: { title, summary: "Committee position" },
+        headers: createCsrfHeaders(csrf),
+        method: "POST",
+      });
+      assert.equal(response.status, 201);
+    }
+
+    const response = await requestJson(baseUrl, "/api/committee-roles", {
+      headers: createCsrfHeaders(csrf),
+    });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(
+      response.body.roles.map((role) => role.title),
+      ["Role 1", "role 2", "Role 10"],
+    );
   } finally {
     server.close();
   }
@@ -1113,6 +1240,121 @@ test("reporting attendance route rejects authenticated members without report pe
 
     assert.equal(response.status, 403);
     assert.equal(response.body.success, false);
+  } finally {
+    server.close();
+  }
+});
+
+function adminRfidHarness({ nodeMode = 'local-pi', manager = true, pending = false } = {}) {
+  const handlers = new Map();
+  const calls = [];
+  const events = [];
+  const member = { username: 'Canonical', first_name: 'Member', surname: 'Example', rfid_tag: 'OLD', user_type: 'member' };
+  const actor = { username: manager ? 'Admin' : 'Canonical', permissions: manager ? ['manage_members'] : [] };
+  registerAdminMemberRoutes({
+    syncNodeMode: nodeMode,
+    app: { get() {}, delete() {}, post(path, fn) { handlers.set(`POST ${path}`, fn); }, put(path, fn) { handlers.set(`PUT ${path}`, fn); } },
+    PERMISSIONS: { MANAGE_MEMBERS: 'manage_members' }, actorHasPermission: (user, permission) => user.permissions.includes(permission),
+    getActorUser: () => actor, getUtcTimestampParts: () => ['2026-09-14', '12:00:00'],
+    buildEditableMemberProfile: () => ({}), buildLoanBowRecord: () => ({}),
+    memberDirectoryGateway: { findUserByUsername: async () => member, findDisciplinesByUsername: async () => [], findLoanBowByUsername: async () => null },
+    memberDistanceSignOffRepository: { listByDiscipline: async () => [] },
+    saveMemberProfile: async (input) => {
+      calls.push(input);
+      return pending ? { success: false, status: 409, code: 'rfid_update_pending', message: 'An RFID update for this member is already waiting to sync.' }
+        : { success: true, editableProfile: { disciplines: [] } };
+    },
+    serverEventBus: { broadcastToAnyPermission: (...args) => events.push(args), broadcastToUsers: (...args) => events.push(args) },
+  });
+  return { calls, events, async run(path, rfidTag = 'NEW') {
+    let status = 200;
+    let body;
+    await handlers.get(path)({ params: { username: 'canonical' }, body: { firstName: 'Member', surname: 'Example', rfidTag } },
+      { status(value) { status = value; return this; }, json(value) { body = value; } });
+    return { status, body };
+  } };
+}
+
+for (const nodeMode of ['local-pi', 'cloud-server']) {
+  for (const path of ['PUT /api/user-profiles/:username', 'POST /api/user-profiles/:username/assign-rfid']) {
+    test(`admin RFID route ${path} passes canonical member and ${nodeMode} context without RFID in SSE`, async () => {
+      const h = adminRfidHarness({ nodeMode });
+      assert.equal((await h.run(path)).status, 200);
+      assert.deepEqual(h.calls[0].syncContext, { nodeMode, canManageMembers: true, actorUsername: 'Admin' });
+      assert.equal(h.calls[0].username, 'Canonical');
+      assert.doesNotMatch(JSON.stringify(h.events), /NEW|OLD|rfidTag|rfid_tag/);
+    });
+  }
+}
+
+test('admin RFID pending command is returned as 409 without invalidation', async () => {
+  const h = adminRfidHarness({ pending: true });
+  const result = await h.run('PUT /api/user-profiles/:username');
+  assert.equal(result.status, 409);
+  assert.equal(result.body.code, 'rfid_update_pending');
+  assert.equal(h.events.length, 0);
+});
+
+test('self profile route preserves RFID; non-manager cannot issue cards', async () => {
+  const h = adminRfidHarness({ manager: false });
+  assert.equal((await h.run('PUT /api/user-profiles/:username')).status, 200);
+  assert.equal(h.calls[0].rfidTag, 'OLD');
+  assert.equal(h.calls[0].syncContext.canManageMembers, false);
+  assert.equal((await h.run('POST /api/user-profiles/:username/assign-rfid')).status, 403);
+  assert.equal(h.calls.length, 1);
+});
+
+test('unchanged RFID route passes ordinary persistence values', async () => {
+  const h = adminRfidHarness();
+  assert.equal((await h.run('PUT /api/user-profiles/:username', 'OLD')).status, 200);
+  assert.equal(h.calls[0].rfidTag, 'OLD');
+});
+
+test("member range attendance is limited to admins and developers with report permission", async () => {
+  let actor = { id: 1, username: "member", user_type: "member" };
+  const calls = [];
+  const app = express();
+  registerMemberActivityTestRoutes(
+    app,
+    () => actor,
+    (_actor, permission) => permission === "view_reports",
+    {
+      listMemberRangeAttendance: async (start, end) => {
+        calls.push({ start, end });
+        return [
+          { username: "no-visit", first_name: "No", surname: "Visit", email_address: "no@example.org", visit_days_in_range: 0, total_visit_days: 0, last_visit_at: null },
+          { username: "attended", first_name: "Range", surname: "Visitor", email_address: "yes@example.org", visit_days_in_range: 2, total_visit_days: 5, last_visit_at: `${end}T09:00:00` },
+        ];
+      },
+    },
+  );
+  const { baseUrl, server } = await startTestServer(app);
+
+  try {
+    const memberResponse = await requestJson(baseUrl, "/api/reporting/member-range-attendance?days=30");
+    assert.equal(memberResponse.status, 403);
+    assert.equal(calls.length, 0);
+
+    actor = { id: 2, username: "admin", user_type: "admin" };
+    const adminResponse = await requestJson(baseUrl, "/api/reporting/member-range-attendance?days=30");
+    assert.equal(adminResponse.status, 200);
+    assert.equal(adminResponse.body.report.totalMembers, 2);
+    assert.equal(adminResponse.body.report.attended, 1);
+    assert.equal(adminResponse.body.report.noRecordedVisit, 1);
+    assert.equal(adminResponse.body.report.neverRecorded, 1);
+    assert.equal(adminResponse.body.report.rows[0].username, "no-visit");
+    assert.equal(adminResponse.body.report.rows[0].emailAddress, "no@example.org");
+    assert.equal(adminResponse.body.report.rows[1].totalVisitDays, 5);
+    assert.equal(calls.length, 1);
+
+    actor = { id: 3, username: "developer", user_type: "developer" };
+    const developerResponse = await requestJson(baseUrl, "/api/reporting/member-range-attendance?days=30");
+    assert.equal(developerResponse.status, 200);
+    assert.equal(calls.length, 2);
+
+    const invalidResponse = await requestJson(baseUrl, "/api/reporting/member-range-attendance?days=500");
+    assert.equal(invalidResponse.status, 400);
+    assert.equal(calls.length, 2);
   } finally {
     server.close();
   }

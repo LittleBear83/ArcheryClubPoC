@@ -27,7 +27,7 @@ function buildSwatchStyle(option?: ColourDropdownOption) {
   return {
     background:
       option.value === "Clear"
-        ? "linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04))"
+        ? "linear-gradient(135deg, var(--surface-raised), var(--surface))"
         : option.swatch,
     borderColor: option.borderColor ?? "transparent",
   };

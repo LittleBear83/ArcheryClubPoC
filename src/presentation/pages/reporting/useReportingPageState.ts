@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getAttendanceReport, getMemberJourneyReport } from "../../../api/reportingApi";
+import { getAttendanceReport, getMemberJourneyReport, getMemberRangeAttendanceReport } from "../../../api/reportingApi";
 import { hasPermission } from "../../../utils/userProfile";
 import type { UserProfile } from "../../../types/app";
 import {
   aggregateMonthDayRows,
   buildCsv,
+  buildMemberRangeAttendanceCsv,
   getMonthStartString,
   getRangeLabel,
   getTodayString,
@@ -19,8 +20,13 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
   const [includeMembers, setIncludeMembers] = useState(true);
   const [includeGuests, setIncludeGuests] = useState(true);
   const [exportError, setExportError] = useState("");
+  const [memberRangeDays, setMemberRangeDays] = useState(90);
+  const [memberRangeFilter, setMemberRangeFilter] = useState<"no-visit" | "attended" | "all">("no-visit");
+  const [memberRangeExportError, setMemberRangeExportError] = useState("");
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const canViewReports = hasPermission(currentUserProfile, "view_reports");
+  const canViewMemberRangeAttendance = canViewReports &&
+    ["admin", "developer"].includes(String(currentUserProfile?.membership?.role ?? "").toLowerCase());
   const hasDataSource = includeMembers || includeGuests;
 
   const queryResult = useQuery({
@@ -56,6 +62,18 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
     },
     enabled: canViewReports && Boolean(actorUsername),
   });
+  const memberRangeQuery = useQuery({
+    queryKey: ["member-range-attendance", actorUsername, memberRangeDays],
+    queryFn: async () => {
+      const result = await getMemberRangeAttendanceReport(actorUsername, memberRangeDays);
+      return result.report;
+    },
+    enabled: canViewMemberRangeAttendance && Boolean(actorUsername),
+  });
+  const memberRangeRows = useMemo(() => (memberRangeQuery.data?.rows ?? []).filter((row) =>
+    memberRangeFilter === "all" ||
+    (memberRangeFilter === "attended" ? row.hasRecordedVisit : !row.hasRecordedVisit)),
+  [memberRangeFilter, memberRangeQuery.data]);
 
   const rangeLabel = useMemo(
     () => getRangeLabel(startDate, endDate),
@@ -98,6 +116,20 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
     }
   };
 
+  const handleMemberRangeExport = async () => {
+    if (!memberRangeQuery.data) return;
+    setMemberRangeExportError("");
+    try {
+      await saveCsv(
+        `member-range-attendance-${memberRangeFilter}-${memberRangeDays}-days.csv`,
+        buildMemberRangeAttendanceCsv(memberRangeRows),
+      );
+    } catch (saveError) {
+      if (saveError instanceof DOMException && saveError.name === "AbortError") return;
+      setMemberRangeExportError(saveError instanceof Error ? saveError.message : "Unable to export member attendance.");
+    }
+  };
+
   return {
     actorUsername,
     aggregatedMonthRows,
@@ -116,6 +148,19 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
     isLoadingMemberJourneys: memberJourneyQuery.isFetching,
     memberJourneyData: memberJourneyQuery.data,
     memberJourneyError: memberJourneyQuery.error,
+    memberRangeAttendance: {
+      canView: canViewMemberRangeAttendance,
+      data: memberRangeQuery.data,
+      days: memberRangeDays,
+      error: memberRangeQuery.error,
+      exportError: memberRangeExportError,
+      filter: memberRangeFilter,
+      handleExport: handleMemberRangeExport,
+      isFetching: memberRangeQuery.isFetching,
+      rows: memberRangeRows,
+      setDays: setMemberRangeDays,
+      setFilter: setMemberRangeFilter,
+    },
     rangeLabel,
     setEndDate,
     setIncludeGuests,

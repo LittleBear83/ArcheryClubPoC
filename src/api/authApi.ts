@@ -33,6 +33,16 @@ export async function loginWithRfid(rfidTag: string) {
   });
 }
 
+export async function recordRfidCheckIn(rfidTag: string) {
+  return fetchApi<{ success: true; username: string }>("/api/auth/rfid/check-in", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ rfidTag }),
+  });
+}
+
 export async function getRfidReaderStatus() {
   return fetchApi<RfidReaderStatus>("/api/auth/rfid/status", {
     cache: "no-store",

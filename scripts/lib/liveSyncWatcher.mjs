@@ -75,13 +75,23 @@ export async function runLiveSyncWatcher({
   log = () => {},
   idleTimeoutMs = 75000,
   publicationSync = false,
+  listenLocalOutbox,
+  countPendingOutbox = async () => 0,
 }) {
   const url = validateWatcherConfig(sync, { publicationSync });
   let highestCheckpoint = publicationSync ? "0" : 0;
   let requested = false;
+  let localWakes = 0;
+  let handledLocalWakes = 0;
   let wake;
   const wakeWorker = () => wake?.();
   signal.addEventListener("abort", wakeWorker);
+  const requestLocalSync = () => {
+    if (signal.aborted) return;
+    localWakes += 1;
+    requested = true;
+    wakeWorker();
+  };
 
   async function pause(ms) {
     try { await wait(ms, signal); } catch {
@@ -131,13 +141,23 @@ export async function runLiveSyncWatcher({
         const before = await readCheckpoint();
         if (signal.aborted) break;
         if (!validLocalCheckpoint(before)) throw new Error("Invalid local checkpoint.");
-        if (atOrBeyond(before, highestCheckpoint)) { requested = false; retry = 0; continue; }
+        const localTarget = localWakes;
+        const localRequested = localTarget !== handledLocalWakes;
+        const pendingBefore = localRequested ? await countPendingOutbox() : 0;
+        if (signal.aborted) break;
+        if (!localRequested && atOrBeyond(before, highestCheckpoint)) { requested = false; retry = 0; continue; }
         await runSync(signal);
         if (signal.aborted) break;
         const after = await readCheckpoint();
         if (signal.aborted) break;
         if (!validLocalCheckpoint(after)) throw new Error("Invalid local checkpoint.");
-        if (atOrBeyond(after, highestCheckpoint)) { requested = false; retry = 0; continue; }
+        // Coalesce hints observed during the child, but keep any hint arriving
+        // during the durable-work query for a subsequent pass.
+        const localThrough = localWakes;
+        const pendingAfter = localRequested ? await countPendingOutbox() : 0;
+        if (localRequested && pendingAfter === 0) handledLocalWakes = localThrough;
+        if (atOrBeyond(after, highestCheckpoint) && localWakes === handledLocalWakes) { requested = false; retry = 0; continue; }
+        if (localRequested && (pendingAfter === 0 || pendingAfter < pendingBefore)) { retry = 0; continue; }
         if (advanced(after, before)) { retry = 0; continue; }
         // Lock contention or a failed/no-progress pass must not spin children.
         log("Sync has not advanced; retrying with backoff.");
@@ -207,7 +227,10 @@ export async function runLiveSyncWatcher({
     if (publicationSync && !validLocalCheckpoint(await readCheckpoint())) {
       throw new Error("Publication sync v2 requires an initialized local checkpoint.");
     }
-    await Promise.all([synchronize(), listen()]);
+    await Promise.all([
+      synchronize(), listen(),
+      listenLocalOutbox?.({ signal, onWake: requestLocalSync }),
+    ]);
   } finally {
     signal.removeEventListener("abort", wakeWorker);
   }

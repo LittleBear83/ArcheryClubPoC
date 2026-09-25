@@ -50,6 +50,9 @@ export function normalizeTournamentTemplateDefinition(template, options = {}) {
     template.eligibilityRules && typeof template.eligibilityRules === "object"
       ? { ...template.eligibilityRules }
       : null;
+  const randomiseEveryRound = Object.hasOwn(template.capabilities ?? {}, "randomiseEveryRound")
+    ? template.capabilities.randomiseEveryRound === true
+    : template.capabilities?.randomizeEachRound === true;
 
   return {
     key: normalizedKey,
@@ -59,7 +62,11 @@ export function normalizeTournamentTemplateDefinition(template, options = {}) {
     roundType: normalizedRoundType,
     description: String(template.description ?? "").trim(),
     defaults,
-    capabilities: normalizeTemplateBooleanMap(template.capabilities),
+    capabilities: {
+      ...normalizeTemplateBooleanMap(template.capabilities),
+      randomiseEveryRound,
+      randomizeEachRound: randomiseEveryRound,
+    },
     eligibilityRules,
     isCustom: options.isCustom === true,
   };

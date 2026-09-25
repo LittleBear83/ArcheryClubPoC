@@ -1,3 +1,4 @@
+import { validateRoundPairings } from "./tournamentPairings.js";
 const RESOLVED_TOURNAMENT_MATCH_STATUSES = new Set([
   "completed",
   "finalised",
@@ -103,12 +104,23 @@ function fillHighestLoserSlots(nextRoundParticipants, matches = []) {
   });
 }
 
+function drawRank(value) {
+  let hash = 2166136261;
+  for (const character of value) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
 function buildTournamentBracket(
   registrations,
   scoresByRound,
   persistedMatchesByKey = new Map(),
   {
     frozenDrawOrderUsernames = [],
+    roundPairings = {},
+    randomizeEachRound = false,
     supportsHighestLoserProgression = false,
   } = {},
 ) {
@@ -162,6 +174,11 @@ function buildTournamentBracket(
     const roundIndex = rounds.length + 1;
     const roundScores = scoresByRound.get(roundIndex) ?? new Map();
     const matches = [];
+    const savedPairings = roundPairings[roundIndex];
+    if (validateRoundPairings(savedPairings, currentParticipants.map((participant) => participant?.username ?? null))) {
+      const participantLookup = new Map(currentParticipants.filter(Boolean).map((participant) => [participant.username, participant]));
+      currentParticipants = savedPairings.flat().map((username) => username === null ? null : participantLookup.get(username));
+    }
 
     for (let index = 0; index < currentParticipants.length; index += 2) {
       const matchNumber = index / 2 + 1;
@@ -186,14 +203,14 @@ function buildTournamentBracket(
           (rightParticipant?.username ?? null);
 
       if (leftParticipant && !rightParticipant) {
-        if (roundIndex === 1) {
+        if (roundIndex === 1 || (savedPairings && rounds.every((round) => round.matches.every((match) => isTournamentMatchResolvedStatus(match.status) || match.status === "empty")))) {
           winner = leftParticipant;
           status = "bye";
         } else {
           status = "pending";
         }
       } else if (!leftParticipant && rightParticipant) {
-        if (roundIndex === 1) {
+        if (roundIndex === 1 || (savedPairings && rounds.every((round) => round.matches.every((match) => isTournamentMatchResolvedStatus(match.status) || match.status === "empty")))) {
           winner = rightParticipant;
           status = "bye";
         } else {
@@ -302,9 +319,35 @@ function buildTournamentBracket(
     });
 
     const nextRoundParticipants = matches.map((match) => match.winner);
-    currentParticipants = supportsHighestLoserProgression
+    const progressedParticipants = supportsHighestLoserProgression
       ? fillHighestLoserSlots(nextRoundParticipants, matches)
       : nextRoundParticipants;
+    if (randomizeEachRound && progressedParticipants.every(Boolean)) {
+      const nextRoundNumber = roundIndex + 1;
+      const savedMatches = Array.from({ length: progressedParticipants.length / 2 }, (_, index) =>
+        persistedMatchesByKey.get(`${nextRoundNumber}:${index + 1}`));
+      const hasStartedNextRound = savedMatches.some((match) => match && (
+        Number.isInteger(match.leftScore) || Number.isInteger(match.rightScore) ||
+        Boolean(match.submittedByUsername) || Boolean(match.confirmedByUsername) ||
+        isTournamentMatchResolvedStatus(match.status)
+      ));
+      const savedOrder = savedMatches.flatMap((match) =>
+        [match?.leftMemberUsername, match?.rightMemberUsername]);
+      const participantByUsername = new Map(progressedParticipants.map((participant) =>
+        [participant.username, participant]));
+      if (hasStartedNextRound && savedOrder.length === progressedParticipants.length &&
+          new Set(savedOrder).size === progressedParticipants.length &&
+          savedOrder.every((username) => participantByUsername.has(username))) {
+        currentParticipants = savedOrder.map((username) => participantByUsername.get(username));
+      } else {
+        currentParticipants = [...progressedParticipants].sort((left, right) =>
+          drawRank(`${frozenDrawOrderUsernames.join("|")}:${nextRoundNumber}:${left.username}`) -
+          drawRank(`${frozenDrawOrderUsernames.join("|")}:${nextRoundNumber}:${right.username}`) ||
+          left.username.localeCompare(right.username));
+      }
+    } else {
+      currentParticipants = progressedParticipants;
+    }
   }
 
   return {

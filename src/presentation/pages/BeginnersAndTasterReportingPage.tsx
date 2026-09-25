@@ -78,13 +78,13 @@ function BeginnersJourneySankey({
 
     return {
       border: vars["--accent-border"],
-      dropOff: "#111111",
-      dropOffBorder: "#f5f5f5",
+      dropOff: vars["--bg-elevated"],
+      dropOffBorder: vars["--border-strong"],
       directBeginners: vars["--success"],
       label: isDawn ? vars["--text-on-accent"] : vars["--text-on-strong"],
       linkOpacity: isDawn ? 0.68 : 0.5,
       member: vars["--accent-hover"],
-      taster: isDawn ? vars["--info"] : "#58abff",
+      taster: vars["--info"],
       tooltipBackground: vars["--modal-surface"],
       tooltipText: vars["--text-h"],
       beginners: vars["--accent"],
@@ -280,7 +280,7 @@ function BeginnersJourneySankey({
               color: sankeyColours.tooltipText,
               border: `1px solid ${sankeyColours.border}`,
               borderRadius: "12px",
-              boxShadow: "0 14px 34px rgba(0, 0, 0, 0.35)",
+              boxShadow: "var(--card-shadow)",
             },
           },
         }}

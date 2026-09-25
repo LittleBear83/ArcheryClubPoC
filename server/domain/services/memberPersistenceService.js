@@ -1,5 +1,8 @@
 import { normalizeMembershipClassification } from "../../../shared/membershipClassificationRules.js";
 
+export const normalizeRfidTag = (value) => typeof value === "string" ? value.trim() || null : null;
+export const rfidTagsEqual = (left, right) => normalizeRfidTag(left)?.toLowerCase() === normalizeRfidTag(right)?.toLowerCase();
+
 export function getDeactivatedRfidTag(rfidTag, deactivatedRfidSuffix) {
   if (typeof rfidTag !== "string") {
     return null;
@@ -127,7 +130,11 @@ export function createMemberPersistenceService({
       surname,
       userType,
       username,
+      syncContext,
     }) {
+      if (rfidTag != null && typeof rfidTag !== "string") {
+        return { success: false, status: 400, message: "RFID must be text or empty." };
+      }
       const trimmedUsername = username?.trim();
       const trimmedFirstName = firstName?.trim();
       const trimmedSurname = surname?.trim();
@@ -217,6 +224,13 @@ export function createMemberPersistenceService({
         membershipStatus: normalizedMembershipStatus,
         programmeType: normalizedProgrammeType,
       };
+      if (existingUser && syncContext && !syncContext.canManageMembers) {
+        userPayload.rfidTag = existingUser.rfid_tag;
+      }
+      const rfidSync = existingUser && syncContext?.canManageMembers
+        ? { sourceNodeMode: syncContext.nodeMode, updatedByUsername: syncContext.actorUsername,
+          requestedRfidTag: normalizeRfidTag(trimmedRfidTag) }
+        : undefined;
 
       try {
         await memberProfileGateway.saveMemberProfile({
@@ -224,6 +238,7 @@ export function createMemberPersistenceService({
           loanBow: normalizedLoanBow,
           userPayload,
           userType,
+          rfidSync,
         });
 
         const savedUser = await memberAuthGateway.findUserByUsername(userPayload.username);
@@ -241,6 +256,10 @@ export function createMemberPersistenceService({
           userProfile: buildMemberUserProfile(savedUser, normalizedDisciplines),
         };
       } catch (error) {
+        if (error?.code === "rfid_update_pending") {
+          return { success: false, status: 409, code: error.code,
+            message: "An RFID update for this member is already waiting to sync." };
+        }
         if (
           error?.message?.includes("UNIQUE constraint failed: users.rfid_tag") ||
           error?.message?.includes("duplicate key value violates unique constraint")

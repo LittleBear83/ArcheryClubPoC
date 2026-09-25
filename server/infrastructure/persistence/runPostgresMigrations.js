@@ -771,6 +771,7 @@ export function buildInitialSchemaSql() {
       thirty_day_reminder_sent INTEGER NOT NULL DEFAULT 0,
       course_fee_paid INTEGER NOT NULL DEFAULT 0,
       origin_course_type TEXT NOT NULL DEFAULT 'beginners',
+      origin_course_id BIGINT REFERENCES beginners_courses(id),
       converted_to_member INTEGER NOT NULL DEFAULT 0,
       converted_at_date TEXT,
       converted_at_time TEXT,
@@ -1465,6 +1466,10 @@ export async function runPostgresMigrations({
     await client.query(`
       ALTER TABLE beginners_course_participants
       ADD COLUMN IF NOT EXISTS origin_course_type TEXT NOT NULL DEFAULT 'beginners'
+    `);
+    await client.query(`
+      ALTER TABLE beginners_course_participants
+      ADD COLUMN IF NOT EXISTS origin_course_id BIGINT REFERENCES beginners_courses(id)
     `);
     await client.query(`
       ALTER TABLE beginners_course_participants

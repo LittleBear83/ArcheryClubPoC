@@ -19,6 +19,15 @@ function createSqliteBeginnersCourseWriteGateway({
   upsertUser,
 }) {
   return {
+    async cancelLessonDates({ courseId, lessonIds }) {
+      const transaction = db.transaction(() => {
+        for (const id of lessonIds) {
+          const result = db.prepare("UPDATE beginners_course_lessons SET is_cancelled = 1 WHERE id = ? AND course_id = ? AND is_cancelled = 0").run(id, courseId);
+          if (result.changes !== 1) throw new Error("Session dates have changed; refresh and try again.");
+        }
+      });
+      transaction();
+    },
     async cancelCourse({
       actorUsername,
       cancelledAtDate,
@@ -133,8 +142,8 @@ function createSqliteBeginnersCourseWriteGateway({
         participantId,
       );
     },
-    async transferParticipantToCourse({ courseId, participantId }) {
-      transferBeginnersCourseParticipant.run(courseId, participantId);
+    async transferParticipantToCourse({ courseId, participantId, originCourseId = null }) {
+      transferBeginnersCourseParticipant.run(originCourseId, courseId, participantId);
     },
     async replaceLessonCoaches({
       actorUsername,
@@ -289,6 +298,20 @@ function createSqliteBeginnersCourseWriteGateway({
 
 function createPostgresBeginnersCourseWriteGateway({ pool }) {
   return {
+    async cancelLessonDates({ courseId, lessonIds }) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const result = await client.query("UPDATE beginners_course_lessons SET is_cancelled = 1 WHERE course_id = $1 AND id = ANY($2::bigint[]) AND is_cancelled = 0", [courseId, lessonIds]);
+        if (result.rowCount !== lessonIds.length) throw new Error("Session dates have changed; refresh and try again.");
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async cancelCourse({
       actorUsername,
       cancelledAtDate,
@@ -477,11 +500,12 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
         [convertedAtDate, convertedAtTime, actorUsername, participantId],
       );
     },
-    async transferParticipantToCourse({ courseId, participantId }) {
+    async transferParticipantToCourse({ courseId, participantId, originCourseId = null }) {
       await pool.query(
         `
           UPDATE beginners_course_participants
           SET
+            origin_course_id = COALESCE(origin_course_id, $3),
             course_id = $1,
             assigned_case_id = NULL,
             assigned_case_by_username = NULL,
@@ -497,7 +521,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
             converted_by_username = NULL
           WHERE id = $2
         `,
-        [courseId, participantId],
+        [courseId, participantId, originCourseId],
       );
     },
     async replaceLessonCoaches({

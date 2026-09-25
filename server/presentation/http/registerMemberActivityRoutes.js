@@ -661,6 +661,57 @@ export function registerMemberActivityRoutes({
     });
   });
 
+  app.get("/api/reporting/member-range-attendance", async (req, res) => {
+    const actor = getActorUser(req);
+    const role = String(actor?.user_type ?? "").trim().toLowerCase();
+    if (!actorHasPermission(actor, PERMISSIONS.VIEW_REPORTS) ||
+        !["admin", "developer"].includes(role)) {
+      res.status(403).json({ success: false, message: "You do not have permission to view member range attendance." });
+      return;
+    }
+
+    const days = Number(req.query.days ?? 90);
+    if (![30, 60, 90, 180, 365].includes(days)) {
+      res.status(400).json({ success: false, message: "Choose a valid attendance window." });
+      return;
+    }
+
+    const endDate = startOfUtcDay(new Date());
+    const startDate = addUtcDays(endDate, 1 - days);
+    const start = toUtcDateString(startDate);
+    const end = toUtcDateString(endDate);
+    const rows = (await activityReportingGateway.listMemberRangeAttendance(start, end))
+      .map((row) => ({
+        username: row.username,
+        name: `${row.first_name ?? ""} ${row.surname ?? ""}`.trim(),
+        emailAddress: row.email_address ?? "",
+        membershipStatus: row.membership_status ?? "member",
+        role: row.user_type ?? "",
+        visitDays: Number(row.visit_days_in_range ?? 0),
+        totalVisitDays: Number(row.total_visit_days ?? 0),
+        lastVisitAt: row.last_visit_at ?? null,
+        hasRecordedVisit: Number(row.visit_days_in_range ?? 0) > 0,
+      }))
+      .sort((left, right) =>
+        Number(left.hasRecordedVisit) - Number(right.hasRecordedVisit) ||
+        String(left.lastVisitAt ?? "").localeCompare(String(right.lastVisitAt ?? "")) ||
+        left.name.localeCompare(right.name));
+    const attended = rows.filter((row) => row.hasRecordedVisit).length;
+    res.json({
+      success: true,
+      report: {
+        days,
+        startDate: start,
+        endDate: end,
+        totalMembers: rows.length,
+        attended,
+        noRecordedVisit: rows.length - attended,
+        neverRecorded: rows.filter((row) => !row.lastVisitAt).length,
+        rows,
+      },
+    });
+  });
+
   app.get("/api/reporting/attendance", async (req, res) => {
     const actor = getActorUser(req);
 

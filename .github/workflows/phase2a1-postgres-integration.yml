@@ -6,6 +6,7 @@ on:
     branches:
       - feat/phase-2a1-range-reporting
       - feat/pi-live-sync
+      - feat/committee-minutes-sync
 
 jobs:
   postgres-integration:

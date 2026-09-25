@@ -12,10 +12,11 @@ export async function notifyLocalSyncApplied(client, domains) {
   });
 }
 
-// The sync CLI and HTTP server are different processes. This local database
-// channel bridges them into the existing browser bus; it is not machine SSE.
-export function startLocalSyncBrowserBridge({ pool, serverEventBus, isLocalPiNode, refreshRoleAccess = async () => {}, retryMs = 5000 }) {
-  if (!isLocalPiNode || !pool) return () => {};
+// Translate committed database hints into the existing authenticated browser
+// bus, reading only domains and never forwarding database notification data.
+export function startLocalSyncBrowserBridge({ pool, serverEventBus, isLocalPiNode, isCloudSyncServer = false, refreshRoleAccess = async () => {}, retryMs = 5000 }) {
+  if ((!isLocalPiNode && !isCloudSyncServer) || !pool) return () => {};
+  const channel = isLocalPiNode ? CHANNEL : "archery_sync_change";
   let stopped = false;
   let client;
   let retryTimer;
@@ -23,11 +24,12 @@ export function startLocalSyncBrowserBridge({ pool, serverEventBus, isLocalPiNod
   let hasListened = false;
 
   function onNotification(message) {
-    if (stopped || message.channel !== CHANNEL) return;
+    if (stopped || message.channel !== channel) return;
     let payload;
     try { payload = JSON.parse(message.payload); } catch { return; }
-    if (!Array.isArray(payload?.domains)) return;
-    const domains = [...new Set(payload.domains.filter((domain) => typeof domain === "string" && Object.hasOwn(LOCAL_SYNC_EVENT_GROUPS, domain)))];
+    const candidates = isLocalPiNode ? payload?.domains : [payload?.domain];
+    if (!Array.isArray(candidates)) return;
+    const domains = [...new Set(candidates.filter((domain) => typeof domain === "string" && Object.hasOwn(LOCAL_SYNC_EVENT_GROUPS, domain)))];
     if (!domains.length) return;
     enqueueInvalidations(domains);
   }
@@ -69,7 +71,7 @@ export function startLocalSyncBrowserBridge({ pool, serverEventBus, isLocalPiNod
       client.on("notification", onNotification);
       client.on("error", reconnect);
       client.on("end", reconnect);
-      await client.query({ text: `LISTEN ${CHANNEL}`, query_timeout: 5000 });
+      await client.query({ text: `LISTEN ${channel}`, query_timeout: 5000 });
       if (stopped || client !== acquired) return;
       // NOTIFY hints sent during a disconnected interval are lost. Once LISTEN
       // is restored, refresh all mapped groups to catch up without record data.

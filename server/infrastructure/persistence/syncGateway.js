@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { normalizeRfidTag, rfidTagsEqual } from "../../domain/services/memberPersistenceService.js";
+import { notifyLocalSyncApplied } from "./localSyncBrowserBridge.js";
 import {
   validateCoachingBookingEligibility,
   validateEventBookingEligibility,
@@ -29,6 +31,17 @@ const SYNCED_DOMAINS = new Set([
   "golden_records_integration_status",
   "golden_records_lookup_cache",
   "outdoor_table_entries",
+  "member_distance_sign_offs",
+  "committee_roles",
+  "committee_meeting_minutes",
+  "tournament_templates",
+  "tournaments",
+  "tournament_registrations",
+  "tournament_rounds",
+  "tournament_matches",
+  "tournament_scores",
+  "tournament_handicap_tables",
+  "tournament_handicap_table_rows",
 ]);
 
 function hasScheduleEntryEnded(date, endTime) {
@@ -639,6 +652,56 @@ export function createSyncGateway({ pool }) {
           ORDER BY role_key ASC, permission_key ASC
         `,
       );
+      const memberDistanceSignOffs = await snapshotClient.query(
+        `
+          SELECT
+            username,
+            discipline,
+            distance_yards,
+            signed_off_by_username,
+            source,
+            signed_off_at_date,
+            signed_off_at_time
+          FROM member_distance_sign_offs
+          ORDER BY
+            LOWER(username) ASC,
+            LOWER(discipline) ASC,
+            distance_yards ASC
+        `,
+      );
+      const committeeMeetingMinutes = await snapshotClient.query(
+        `
+          SELECT
+            sync_id,
+            meeting_date,
+            title,
+            sections_json,
+            actions_json,
+            created_at_date,
+            created_at_time,
+            updated_at_date,
+            updated_at_time,
+            updated_by_username
+          FROM committee_meeting_minutes
+          ORDER BY meeting_date DESC, sync_id ASC
+        `,
+      );
+
+      const committeeRoles = await snapshotClient.query(
+        `
+          SELECT
+            role_key,
+            title,
+            summary,
+            responsibilities,
+            personal_blurb,
+            photo_data_url,
+            display_order,
+            assigned_username
+          FROM committee_roles
+          ORDER BY display_order ASC, role_key ASC
+        `,
+      );
       const clubEvents = await snapshotClient.query(
         `SELECT * FROM club_events ORDER BY event_date ASC, start_time ASC`,
       );
@@ -734,10 +797,13 @@ export function createSyncGateway({ pool }) {
             participants.assigned_case_at_time, participants.created_at_date,
             participants.created_at_time, participants.created_by_username,
             courses.sync_id AS course_sync_id,
+            origin_courses.sync_id AS origin_course_sync_id,
             assigned_case.sync_id AS assigned_case_sync_id
           FROM beginners_course_participants AS participants
           INNER JOIN beginners_courses AS courses
             ON courses.id = participants.course_id
+          LEFT JOIN beginners_courses AS origin_courses
+            ON origin_courses.id = participants.origin_course_id
           LEFT JOIN equipment_items AS assigned_case
             ON assigned_case.id = participants.assigned_case_id
           ORDER BY participants.course_id ASC, participants.surname ASC, participants.first_name ASC, participants.id ASC
@@ -746,7 +812,7 @@ export function createSyncGateway({ pool }) {
       const beginnersCourseLessons = await snapshotClient.query(
         `
           SELECT lessons.sync_id, lessons.lesson_number, lessons.lesson_date,
-            lessons.start_time, lessons.end_time, courses.sync_id AS course_sync_id
+            lessons.start_time, lessons.end_time, lessons.is_cancelled, courses.sync_id AS course_sync_id
           FROM beginners_course_lessons AS lessons
           INNER JOIN beginners_courses AS courses ON courses.id = lessons.course_id
           ORDER BY courses.sync_id ASC, lessons.lesson_number ASC
@@ -790,6 +856,72 @@ export function createSyncGateway({ pool }) {
           ORDER BY season_year ASC, archer_username ASC, bow_type ASC
         `,
       );
+      const tournamentTemplates = await snapshotClient.query(`
+        SELECT template_key, label, description, tournament_type, format, round_type,
+          defaults_json, capabilities_json, eligibility_rules_json, created_by,
+          created_at_date, created_at_time
+        FROM tournament_templates ORDER BY template_key ASC
+      `);
+      const tournamentHandicapTables = await snapshotClient.query(`
+        SELECT table_key, title, description, allowance_percent, is_editable,
+          updated_at_date, updated_at_time, updated_by_username
+        FROM tournament_handicap_tables ORDER BY table_key ASC
+      `);
+      const tournamentHandicapTableRows = await snapshotClient.query(`
+        SELECT tables.table_key, rows.handicap_value, rows.reference_score, rows.display_order
+        FROM tournament_handicap_table_rows AS rows
+        INNER JOIN tournament_handicap_tables AS tables ON tables.id = rows.table_id
+        ORDER BY tables.table_key ASC, rows.handicap_value ASC
+      `);
+      const tournaments = await snapshotClient.query(`
+        SELECT sync_id, name, tournament_type, template_key, template_definition_json,
+          draw_date, round_schedule_json, registration_start_date, registration_end_date,
+          score_submission_start_date, score_submission_end_date, created_by,
+          created_at_date, created_at_time
+        FROM tournaments ORDER BY sync_id ASC
+      `);
+      const tournamentRegistrations = await snapshotClient.query(`
+        SELECT tournaments.sync_id AS tournament_sync_id, registrations.member_username,
+          registrations.bow_code, registrations.registered_at_date, registrations.registered_at_time
+        FROM tournament_registrations AS registrations
+        INNER JOIN tournaments ON tournaments.id = registrations.tournament_id
+        ORDER BY tournaments.sync_id ASC, LOWER(registrations.member_username) ASC
+      `);
+      const tournamentRounds = await snapshotClient.query(`
+        SELECT tournaments.sync_id AS tournament_sync_id, rounds.round_number, rounds.title,
+          rounds.publish_date, rounds.submission_deadline, rounds.status
+        FROM tournament_rounds AS rounds
+        INNER JOIN tournaments ON tournaments.id = rounds.tournament_id
+        ORDER BY tournaments.sync_id ASC, rounds.round_number ASC
+      `);
+      const tournamentScores = await snapshotClient.query(`
+        SELECT tournaments.sync_id AS tournament_sync_id, scores.round_number,
+          scores.member_username, scores.score, scores.submitted_at_date, scores.submitted_at_time
+        FROM tournament_scores AS scores
+        INNER JOIN tournaments ON tournaments.id = scores.tournament_id
+        ORDER BY tournaments.sync_id ASC, scores.round_number ASC, LOWER(scores.member_username) ASC
+      `);
+      const tournamentMatches = await snapshotClient.query(`
+        SELECT tournaments.sync_id AS tournament_sync_id, matches.round_number,
+          matches.match_number, matches.left_member_username, matches.right_member_username,
+          matches.left_score, matches.right_score, matches.winner_username,
+          matches.submitted_by_username, matches.submitted_at_date, matches.submitted_at_time,
+          matches.confirmed_by_username, matches.confirmed_at_date, matches.confirmed_at_time,
+          matches.disputed_by_username, matches.disputed_at_date, matches.disputed_at_time,
+          matches.dispute_reason, matches.handicap_allowance_percent,
+          matches.left_handicap_value, matches.left_handicap_type,
+          matches.left_handicap_bow_class, matches.left_handicap_discipline,
+          matches.left_reference_score, matches.left_allowance_points,
+          matches.left_adjusted_score, matches.left_handicap_table_key,
+          matches.left_handicap_table_title, matches.right_handicap_value,
+          matches.right_handicap_type, matches.right_handicap_bow_class,
+          matches.right_handicap_discipline, matches.right_reference_score,
+          matches.right_allowance_points, matches.right_adjusted_score,
+          matches.right_handicap_table_key, matches.right_handicap_table_title, matches.status
+        FROM tournament_matches AS matches
+        INNER JOIN tournaments ON tournaments.id = matches.tournament_id
+        ORDER BY tournaments.sync_id ASC, matches.round_number ASC, matches.match_number ASC
+      `);
 
       const checkpointRow = await querySingleValue(
         snapshotClient,
@@ -800,6 +932,9 @@ export function createSyncGateway({ pool }) {
         checkpoint: Number(checkpointRow?.checkpoint ?? 0),
         snapshot: {
           announcements: announcements.rows,
+          committeeRoles: committeeRoles.rows,
+          committeeMeetingMinutes: committeeMeetingMinutes.rows,
+          memberDistanceSignOffs: memberDistanceSignOffs.rows,
           clubEvents: clubEvents.rows,
           coachingSessionBookings: coachingSessionBookings.rows,
           coachingSessions: coachingSessions.rows,
@@ -823,6 +958,14 @@ export function createSyncGateway({ pool }) {
           userDisciplines: userDisciplines.rows,
           userTypes: userTypes.rows,
           users: users.rows,
+          tournamentTemplates: tournamentTemplates.rows,
+          tournamentHandicapTables: tournamentHandicapTables.rows,
+          tournamentHandicapTableRows: tournamentHandicapTableRows.rows,
+          tournaments: tournaments.rows,
+          tournamentRegistrations: tournamentRegistrations.rows,
+          tournamentRounds: tournamentRounds.rows,
+          tournamentScores: tournamentScores.rows,
+          tournamentMatches: tournamentMatches.rows,
         },
       };
     },
@@ -941,6 +1084,18 @@ export function createSyncGateway({ pool }) {
       );
     },
     async rejectOutboxEvents({ client = pool, rejections = [] }) {
+      if (rejections.length && client === pool && typeof pool.connect === "function") {
+        const transaction = await pool.connect();
+        try {
+          await transaction.query("BEGIN");
+          await this.rejectOutboxEvents({ client: transaction, rejections });
+          await transaction.query("COMMIT");
+        } catch (error) {
+          await transaction.query("ROLLBACK");
+          throw error;
+        } finally { transaction.release(); }
+        return;
+      }
       for (const rejection of rejections) {
         const updatedRow = await querySingleValue(
           client,
@@ -965,6 +1120,35 @@ export function createSyncGateway({ pool }) {
         );
 
         if (!updatedRow) {
+          continue;
+        }
+
+        if (updatedRow.event_type === "member_rfid_updated") {
+          const payload = updatedRow.payload_json;
+          const nullableTag = (value) => value === null || typeof value === "string";
+          if (typeof payload?.username !== "string" || !nullableTag(payload.rfidTag)
+            || !nullableTag(payload.previousRfidTag)) continue;
+          const conflict = rejection.code === "member_rfid_conflict";
+          if (conflict && !nullableTag(rejection.authoritativeRfidTag)) continue;
+          if (!conflict && !["rfid_tag_in_use", "member_not_found", "malformed_member_rfid_update"].includes(rejection.code)) continue;
+          const replacement = normalizeRfidTag(conflict ? rejection.authoritativeRfidTag : payload.previousRfidTag);
+          if (replacement) await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`archery:rfid:${replacement.toLowerCase()}`]);
+          // Lock the member before checking newer commands, so a profile save
+          // cannot commit a newer assignment between the guard and compensation.
+          await client.query("SELECT username FROM users WHERE LOWER(username) = LOWER($1) FOR UPDATE", [payload.username]);
+          const owner = replacement ? await querySingleValue(client, `SELECT 1 FROM users
+            WHERE LOWER(BTRIM(rfid_tag)) = LOWER($1) AND LOWER(username) <> LOWER($2) LIMIT 1`,
+          [replacement, payload.username]) : null;
+          // A chained optimistic assignment may have taken the rollback tag.
+          // Fail closed instead of leaving the rejected credential active.
+          const safeReplacement = owner ? null : replacement;
+          const compensated = await client.query(`UPDATE users SET rfid_tag = $2
+            WHERE LOWER(username) = LOWER($1)
+              AND LOWER(NULLIF(BTRIM(rfid_tag), '')) IS NOT DISTINCT FROM LOWER($3::text)
+              AND NOT EXISTS (SELECT 1 FROM sync_local_outbox
+                WHERE event_type = 'member_rfid_updated' AND aggregate_key = $4 AND outbox_order > $5)`,
+          [payload.username, safeReplacement, normalizeRfidTag(payload.rfidTag), updatedRow.aggregate_key, updatedRow.outbox_order]);
+          if (compensated.rowCount > 0) await notifyLocalSyncApplied(client, ["users"]);
           continue;
         }
 
@@ -1308,6 +1492,51 @@ export function createSyncGateway({ pool }) {
           machineId ?? null,
         ],
       );
+    },
+    async enqueueMemberRfidUpdateCommand({ client, payload }) {
+      await client.query(`INSERT INTO sync_local_outbox (event_id, event_type, aggregate_key, payload_json)
+        VALUES ($1, 'member_rfid_updated', $2, $3::jsonb)`,
+      [payload.eventId, payload.username.toLowerCase(), JSON.stringify(payload)]);
+    },
+    async processMemberRfidUpdateCommand({ client = pool, event, machineId }) {
+      // All command processing uses the caller's push transaction. Serialize
+      // replay before checking the durable outcome, including terminal failures.
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`archery:rfid-command:${event.eventId}`]);
+      const prior = await querySingleValue(client,
+        "SELECT outcome_json FROM sync_received_commands WHERE event_id = $1", [event.eventId]);
+      if (prior) return prior.outcome_json;
+      const payload = event.payload;
+      const nullableTag = (value) => value === null || typeof value === "string";
+      let outcome;
+      if (!payload || typeof payload.username !== "string" || !payload.username.trim()
+        || typeof payload.updatedByUsername !== "string" || !payload.updatedByUsername.trim()
+        || typeof payload.eventId !== "string" || payload.eventId !== event.eventId
+        || !nullableTag(payload.previousRfidTag) || !nullableTag(payload.rfidTag)) {
+        outcome = { accepted: false, code: "malformed_member_rfid_update", reason: "RFID updates require a member, actor and valid expected and requested tags." };
+      } else {
+        const tag = normalizeRfidTag(payload.rfidTag);
+        if (tag) await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`archery:rfid:${tag.toLowerCase()}`]);
+        const member = await querySingleValue(client,
+          "SELECT username, rfid_tag FROM users WHERE LOWER(username) = LOWER($1) FOR UPDATE", [payload.username.trim()]);
+        if (!member) outcome = { accepted: false, code: "member_not_found", reason: "The member no longer exists in cloud." };
+        else if (rfidTagsEqual(member.rfid_tag, tag)) outcome = { accepted: true };
+        else if (!rfidTagsEqual(member.rfid_tag, payload.previousRfidTag)) {
+          outcome = { accepted: false, code: "member_rfid_conflict",
+            reason: "The member RFID assignment changed in cloud and must be refreshed.",
+            authoritativeRfidTag: normalizeRfidTag(member.rfid_tag) };
+        } else {
+          const owner = tag ? await querySingleValue(client, `SELECT 1 FROM users
+            WHERE LOWER(BTRIM(rfid_tag)) = LOWER($1) AND LOWER(username) <> LOWER($2) LIMIT 1`, [tag, member.username]) : null;
+          if (owner) outcome = { accepted: false, code: "rfid_tag_in_use", reason: "That RFID tag is already assigned to another member." };
+          else {
+            await client.query("UPDATE users SET rfid_tag = $2 WHERE username = $1", [member.username, tag]);
+            outcome = { accepted: true };
+          }
+        }
+      }
+      await client.query(`INSERT INTO sync_received_commands (event_id, event_type, machine_id, outcome_json)
+        VALUES ($1, $2, $3, $4::jsonb)`, [event.eventId, event.eventType, machineId, JSON.stringify(outcome)]);
+      return outcome;
     },
     async processRangePresenceCommand({ client = pool, event, machineId }) {
       const prior = await querySingleValue(

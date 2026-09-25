@@ -258,7 +258,16 @@ export function registerAuthRoutes({
     });
   });
 
-  app.post("/api/auth/rfid", async (req, res) => {
+  const handleRfidScan = async (req, res, { checkInOnly = false } = {}) => {
+    if (checkInOnly && !getSessionUsername(req)) {
+      res.status(401).json({
+        success: false,
+        message: "Your session has expired. Please sign in again.",
+      });
+      return;
+    }
+
+    const target = checkInOnly ? "/api/auth/rfid/check-in" : "/api/auth/rfid";
     const { rfidTag } = req.body ?? {};
 
     if (!rfidTag) {
@@ -268,7 +277,7 @@ export function registerAuthRoutes({
         method: "rfid",
         req,
         statusCode: 400,
-        target: "/api/auth/rfid",
+        target,
       });
       res.status(400).json({
         success: false,
@@ -291,7 +300,7 @@ export function registerAuthRoutes({
         method: "rfid",
         req,
         statusCode: 401,
-        target: "/api/auth/rfid",
+        target,
       });
       res.status(401).json({
         success: false,
@@ -309,7 +318,7 @@ export function registerAuthRoutes({
         method: "rfid",
         req,
         statusCode: 403,
-        target: "/api/auth/rfid",
+        target,
       });
       res.status(403).json({
         success: false,
@@ -333,25 +342,30 @@ export function registerAuthRoutes({
         action: "created",
         actorUsername: user.username,
         after: {
-          activityType: "login",
+          activityType: checkInOnly ? "rfid_check_in" : "login",
           method: "rfid",
           username: user.username,
         },
         before: null,
         changedAtDate: loggedAtDate,
         changedAtTime: loggedAtTime,
-        entityId: `${user.username}:${loggedAtDate}:${loggedAtTime}:rfid`,
+        entityId: `${user.username}:${loggedAtDate}:${loggedAtTime}:${checkInOnly ? "rfid-check-in" : "rfid"}`,
         entityLabel: `${user.first_name} ${user.surname}`.trim() || user.username,
         entityType: "member_activity",
         req,
         statusCode: 200,
-        target: "/api/auth/rfid",
+        target,
       }).catch((auditError) => {
-        console.error("Failed to record RFID login audit event", auditError);
+        console.error("Failed to record RFID activity audit event", auditError);
       });
     }
+    broadcastRangeMembersUpdated(checkInOnly ? "auth.rfid-check-in" : "auth.rfid-login");
+    if (checkInOnly) {
+      res.json({ success: true, username: user.username });
+      return;
+    }
+
     await markActiveAnnouncementsSeen(user.username);
-    broadcastRangeMembersUpdated("auth.rfid-login");
     const csrfToken = setSessionCookies(req, res, user.username);
     const disciplines = await memberAuthGateway.findDisciplinesByUsername(
       user.username,
@@ -365,7 +379,12 @@ export function registerAuthRoutes({
         disciplines.map((discipline) => discipline.discipline),
       ),
     });
-  });
+  };
+
+  app.post("/api/auth/rfid", (req, res) => handleRfidScan(req, res));
+  app.post("/api/auth/rfid/check-in", (req, res) =>
+    handleRfidScan(req, res, { checkInOnly: true }),
+  );
 
   app.get("/api/auth/rfid/status", (_req, res) => {
     res.json({

@@ -4,6 +4,10 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const root = process.cwd();
+await import("../server/presentation/http/tournamentTemplateCapability.test.js");
+await import("../server/presentation/http/registerTournamentRoutes.templateUpdate.test.js");
+await import("../server/infrastructure/persistence/tournamentTemplateUpdate.test.js");
+await import("../server/infrastructure/persistence/createSqliteBeginnersCourseStatements.test.js");
 const outDir = path.join(root, ".test-dist");
 const files = [
   "src/presentation/pages/roles/rolePermissionsUtils.ts",
@@ -99,6 +103,38 @@ await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/runPostgresMigrations.test.js"))
 );
 await import(
+  pathToFileURL(
+    path.join(
+      root,
+      "server/infrastructure/persistence/postgresMigrations/010_member_signoff_committee_sync.test.js",
+    ),
+  ),
+);
+await import(
+  pathToFileURL(
+    path.join(
+      root,
+      "server/infrastructure/persistence/postgresMigrations/014_tournament_sync.test.js",
+    ),
+  ),
+);
+await import(
+  pathToFileURL(
+    path.join(
+      root,
+      "server/infrastructure/persistence/postgresMigrations/011_committee_minutes_sync.test.js",
+    ),
+  ),
+);
+await import(
+  pathToFileURL(
+    path.join(
+      root,
+      "server/infrastructure/persistence/committeeMinutesSyncPublication.test.js",
+    ),
+  ),
+);
+await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/phase2a1PostgresIntegrationGuards.test.js"))
 );
 await import(
@@ -133,7 +169,19 @@ await import(
 await import(
   pathToFileURL(path.join(root, "server/domain/services/localDatabaseSyncService.test.js"))
 );
+await import(
+  pathToFileURL(path.join(root, "server/domain/services/tournamentSync.test.js"))
+);
+await import(
+  pathToFileURL(
+    path.join(
+      root,
+      "server/domain/services/committeeMinutesLocalSync.test.js",
+    ),
+  ),
+);
 await import("../server/domain/services/localSyncBrowserEvents.test.js");
+await import("../server/infrastructure/persistence/memberProfileGateway.test.js");
 await import(
   pathToFileURL(path.join(root, "server/domain/services/tournamentEngine.test.js"))
 );
@@ -167,3 +215,5 @@ await import(new URL("../server/domain/services/goldenRecordsAchievements.test.j
 await import(new URL("../server/infrastructure/golden-records/goldenRecordsCurrentHandicapService.test.js", import.meta.url));
 await import(new URL("../server/infrastructure/persistence/bootstrapSqliteBaseSchema.test.js", import.meta.url));
 await import(new URL("../server/infrastructure/golden-records/goldenRecordsIntegrationService.test.js", import.meta.url));
+await import("../server/domain/services/tournamentPairings.test.js");
+await import("../server/presentation/http/workflowEnhancements.test.js");

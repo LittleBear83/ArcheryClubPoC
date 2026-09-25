@@ -5,6 +5,9 @@ export abstract class TournamentRepository {
 
   abstract createTournamentTemplate(actorUsername: string, form: unknown): Promise<unknown>;
 
+  abstract updateTournamentTemplate(actorUsername: string, templateKey: string, form: unknown): Promise<unknown>;
+  abstract listLiveTournamentsForTemplate(actorUsername: string, templateKey: string): Promise<unknown>;
+
   abstract updateTournament(actorUsername: string, tournamentId: string | number, form: unknown): Promise<unknown>;
 
   abstract deleteTournament(actorUsername: string, tournamentId: string | number): Promise<unknown>;

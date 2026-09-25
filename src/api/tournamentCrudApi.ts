@@ -26,6 +26,22 @@ export class TournamentCrudApi {
     });
   }
 
+  async updateTournamentTemplate(actorUsername: string, templateKey: string, form: unknown) {
+    return fetchApi(`/api/tournament-templates/${encodeURIComponent(templateKey)}`, {
+      method: "PUT",
+      headers: buildActorHeaders(actorUsername, true),
+      cache: "no-store",
+      body: JSON.stringify(form),
+    });
+  }
+
+  async listLiveTournamentsForTemplate(actorUsername: string, templateKey: string) {
+    return fetchApi(`/api/tournament-templates/${encodeURIComponent(templateKey)}/live-tournaments`, {
+      headers: buildActorHeaders(actorUsername),
+      cache: "no-store",
+    });
+  }
+
   async updateTournament(
     actorUsername: string,
     tournamentId: string | number,

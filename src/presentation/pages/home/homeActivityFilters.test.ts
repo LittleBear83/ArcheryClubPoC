@@ -6,7 +6,7 @@ import {
 } from "./homeActivityFilters";
 
 test("past dated home activity items are hidden", () => {
-  const now = new Date("2026-07-28T12:00:00.000Z");
+  const now = new Date("2026-07-28T12:00:00");
 
   assert.equal(
     isHomeActivityCurrentOrUpcoming(
@@ -20,7 +20,7 @@ test("past dated home activity items are hidden", () => {
 });
 
 test("same-day events remain visible until their end time", () => {
-  const now = new Date("2026-07-28T12:00:00.000Z");
+  const now = new Date("2026-07-28T12:00:00");
 
   assert.equal(
     isHomeActivityCurrentOrUpcoming(
@@ -48,7 +48,7 @@ test("same-day events remain visible until their end time", () => {
 });
 
 test("same-day reminders without a time remain visible for the whole day", () => {
-  const now = new Date("2026-07-28T22:00:00.000Z");
+  const now = new Date("2026-07-28T22:00:00");
 
   assert.equal(
     isHomeActivityCurrentOrUpcoming(
@@ -62,7 +62,7 @@ test("same-day reminders without a time remain visible for the whole day", () =>
 });
 
 test("home activity filtering keeps only current and future items", () => {
-  const now = new Date("2026-07-28T12:00:00.000Z");
+  const now = new Date("2026-07-28T12:00:00");
 
   const filtered = filterHomeActivityCurrentOrUpcoming(
     [
@@ -77,4 +77,15 @@ test("home activity filtering keeps only current and future items", () => {
     { date: "2026-07-28", endTime: "12:30", id: "current" },
     { date: "2026-07-29", id: "future" },
   ]);
+});
+
+test("local end-time boundaries, day rollover and cancellations", () => {
+  const event = { date: "2026-07-28", startTime: "14:00", endTime: "16:00" };
+  assert.equal(isHomeActivityCurrentOrUpcoming(event, new Date(2026, 6, 28, 15, 0)), true);
+  assert.equal(isHomeActivityCurrentOrUpcoming(event, new Date(2026, 6, 28, 16, 0)), true);
+  assert.equal(isHomeActivityCurrentOrUpcoming(event, new Date(2026, 6, 28, 16, 0, 1)), false);
+  assert.equal(isHomeActivityCurrentOrUpcoming(event, new Date(2026, 6, 28, 16, 1)), false);
+  assert.equal(isHomeActivityCurrentOrUpcoming(event, new Date(2026, 6, 29, 0, 0)), false);
+  assert.equal(isHomeActivityCurrentOrUpcoming(event, new Date(2026, 6, 27, 23, 59)), true);
+  assert.equal(isHomeActivityCurrentOrUpcoming({ ...event, isCancelled: true }, new Date(2026, 6, 27)), false);
 });

@@ -2,6 +2,7 @@ export type HomeActivityListItem = {
   date: string;
   startTime?: string;
   endTime?: string;
+  isCancelled?: boolean;
 };
 
 function normalizeTimeForComparison(timeValue?: string) {
@@ -17,18 +18,18 @@ function normalizeTimeForComparison(timeValue?: string) {
 }
 
 function toDateString(date: Date) {
-  return date.toISOString().slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function toTimeString(date: Date) {
-  return date.toISOString().slice(11, 19);
+  return [date.getHours(), date.getMinutes(), date.getSeconds()].map((part) => String(part).padStart(2, "0")).join(":");
 }
 
 export function isHomeActivityCurrentOrUpcoming(
   item: HomeActivityListItem,
   now: Date = new Date(),
 ) {
-  if (!item?.date) {
+  if (!item?.date || item.isCancelled) {
     return false;
   }
 
@@ -42,7 +43,7 @@ export function isHomeActivityCurrentOrUpcoming(
     return false;
   }
 
-  const comparisonTime = normalizeTimeForComparison(item.endTime ?? item.startTime);
+  const comparisonTime = normalizeTimeForComparison(item.endTime);
 
   return comparisonTime >= toTimeString(now);
 }

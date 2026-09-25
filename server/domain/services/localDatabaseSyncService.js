@@ -19,6 +19,17 @@ export const REPLICATED_DOMAINS = [
   "golden_records_integration_status",
   "golden_records_lookup_cache",
   "outdoor_table_entries",
+  "member_distance_sign_offs",
+  "committee_roles",
+  "committee_meeting_minutes",
+  "tournament_templates",
+  "tournament_handicap_tables",
+  "tournament_handicap_table_rows",
+  "tournaments",
+  "tournament_registrations",
+  "tournament_rounds",
+  "tournament_scores",
+  "tournament_matches",
 ];
 const PUBLICATION_SNAPSHOT_PROPERTIES = [
   "users", "userTypes", "userDisciplines", "roles", "permissions",
@@ -27,6 +38,9 @@ const PUBLICATION_SNAPSHOT_PROPERTIES = [
   "equipmentItems", "loginEvents", "guestLoginEvents",
   "rangePresenceExtensions", "beginnersCourses", "beginnersCourseParticipants",
   "beginnersCourseLessons", "beginnersCourseLessonCoaches",
+  "tournamentTemplates", "tournamentHandicapTables", "tournamentHandicapTableRows",
+  "tournaments", "tournamentRegistrations", "tournamentRounds",
+  "tournamentScores", "tournamentMatches",
 ];
 
 function requirePublicationSyncState(stateEntry) {
@@ -94,6 +108,17 @@ function collapseChanges(changes = []) {
     ["guest_login_events", 22],
     ["event_bookings", 23],
     ["coaching_session_bookings", 24],
+    ["committee_roles", 25],
+    ["member_distance_sign_offs", 26],
+    ["committee_meeting_minutes", 27],
+    ["tournament_templates", 28],
+    ["tournament_handicap_tables", 29],
+    ["tournament_handicap_table_rows", 30],
+    ["tournaments", 31],
+    ["tournament_registrations", 32],
+    ["tournament_rounds", 33],
+    ["tournament_scores", 34],
+    ["tournament_matches", 35],
   ]);
   const deleteOrder = new Map([
     ["coaching_session_bookings", 1],
@@ -117,9 +142,35 @@ function collapseChanges(changes = []) {
     ["users", 19],
     ["roles", 20],
     ["permissions", 21],
+    ["member_distance_sign_offs", 22],
+    ["committee_roles", 23],
+    ["committee_meeting_minutes", 24],
+    ["tournament_matches", 1],
+    ["tournament_scores", 2],
+    ["tournament_rounds", 3],
+    ["tournament_registrations", 4],
+    ["tournaments", 5],
+    ["tournament_handicap_table_rows", 6],
+    ["tournament_handicap_tables", 7],
+    ["tournament_templates", 8],
   ]);
 
-  return [...latestByKey.values()].sort((left, right) => {
+  const finalChanges = [...latestByKey.values()];
+  const deletedTournaments = new Set(finalChanges
+    .filter((change) => change.domain === "tournaments" && change.operation === "delete")
+    .map((change) => change.payload.sync_id));
+  const deletedHandicapTables = new Set(finalChanges
+    .filter((change) => change.domain === "tournament_handicap_tables" && change.operation === "delete")
+    .map((change) => change.payload.table_key));
+  const tournamentChildren = new Set([
+    "tournament_registrations", "tournament_rounds", "tournament_scores", "tournament_matches",
+  ]);
+  // A final parent tombstone makes child upserts obsolete, including when the
+  // parent never existed locally. Keep child deletes for existing local graphs.
+  return finalChanges.filter((change) => change.operation !== "upsert" || !(
+    (tournamentChildren.has(change.domain) && deletedTournaments.has(change.payload.tournament_sync_id))
+    || (change.domain === "tournament_handicap_table_rows" && deletedHandicapTables.has(change.payload.table_key))
+  )).sort((left, right) => {
     if (left.operation !== right.operation) {
       return left.operation === "upsert" ? -1 : 1;
     }
@@ -137,6 +188,256 @@ async function queryRows(client, sql, values = []) {
 async function querySingleValue(client, sql, values = []) {
   const rows = await queryRows(client, sql, values);
   return rows[0] ?? null;
+}
+
+async function requireLocalTournamentId(client, tournamentSyncId) {
+  const row = await querySingleValue(
+    client,
+    `SELECT id FROM tournaments WHERE sync_id = $1 LIMIT 1`,
+    [tournamentSyncId],
+  );
+  if (!row?.id) {
+    throw new Error(`Tournament sync parent not found: ${String(tournamentSyncId ?? "missing")}`);
+  }
+  return row.id;
+}
+
+async function requireLocalHandicapTableId(client, tableKey) {
+  const row = await querySingleValue(
+    client,
+    `SELECT id FROM tournament_handicap_tables WHERE table_key = $1 LIMIT 1`,
+    [tableKey],
+  );
+  if (!row?.id) {
+    throw new Error(`Tournament handicap table sync parent not found: ${String(tableKey ?? "missing")}`);
+  }
+  return row.id;
+}
+
+async function upsertTournamentTemplates(client, rows = []) {
+  for (const row of rows) {
+    await client.query(`
+      INSERT INTO tournament_templates (
+        template_key, label, description, tournament_type, format, round_type,
+        defaults_json, capabilities_json, eligibility_rules_json, created_by,
+        created_at_date, created_at_time, created_by_user_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,
+        (SELECT id FROM users WHERE LOWER(username) = LOWER($10) LIMIT 1))
+      ON CONFLICT (template_key) DO UPDATE SET
+        label = EXCLUDED.label, description = EXCLUDED.description,
+        tournament_type = EXCLUDED.tournament_type, format = EXCLUDED.format,
+        round_type = EXCLUDED.round_type, defaults_json = EXCLUDED.defaults_json,
+        capabilities_json = EXCLUDED.capabilities_json,
+        eligibility_rules_json = EXCLUDED.eligibility_rules_json,
+        created_by = EXCLUDED.created_by, created_at_date = EXCLUDED.created_at_date,
+        created_at_time = EXCLUDED.created_at_time,
+        created_by_user_id = EXCLUDED.created_by_user_id
+    `, [row.template_key, row.label, row.description ?? "", row.tournament_type,
+      row.format, row.round_type, row.defaults_json ?? "{}", row.capabilities_json ?? "{}",
+      row.eligibility_rules_json ?? null, row.created_by, row.created_at_date, row.created_at_time]);
+  }
+}
+
+async function upsertTournamentHandicapTables(client, rows = []) {
+  for (const row of rows) {
+    await client.query(`
+      INSERT INTO tournament_handicap_tables (
+        table_key, title, description, allowance_percent, is_editable,
+        updated_at_date, updated_at_time, updated_by_username
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      ON CONFLICT (table_key) DO UPDATE SET
+        title = EXCLUDED.title, description = EXCLUDED.description,
+        allowance_percent = EXCLUDED.allowance_percent, is_editable = EXCLUDED.is_editable,
+        updated_at_date = EXCLUDED.updated_at_date, updated_at_time = EXCLUDED.updated_at_time,
+        updated_by_username = EXCLUDED.updated_by_username
+    `, [row.table_key, row.title, row.description ?? null, row.allowance_percent ?? null,
+      Number(row.is_editable ?? 0), row.updated_at_date ?? null, row.updated_at_time ?? null,
+      row.updated_by_username ?? null]);
+  }
+}
+
+async function upsertTournamentHandicapTableRows(client, rows = []) {
+  for (const row of rows) {
+    const tableId = await requireLocalHandicapTableId(client, row.table_key);
+    await client.query(`
+      INSERT INTO tournament_handicap_table_rows (table_id, handicap_value, reference_score, display_order)
+      VALUES ($1,$2,$3,$4)
+      ON CONFLICT (table_id, handicap_value) DO UPDATE SET
+        reference_score = EXCLUDED.reference_score, display_order = EXCLUDED.display_order
+    `, [tableId, Number(row.handicap_value), row.reference_score ?? null, Number(row.display_order ?? 0)]);
+  }
+}
+
+async function upsertTournaments(client, rows = []) {
+  for (const row of rows) {
+    await client.query(`
+      INSERT INTO tournaments (
+        sync_id, sync_is_cloud_managed, name, tournament_type, template_key,
+        template_definition_json, draw_date, round_schedule_json,
+        registration_start_date, registration_end_date, score_submission_start_date,
+        score_submission_end_date, created_by, created_at_date, created_at_time,
+        created_by_user_id
+      ) VALUES ($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+        (SELECT id FROM users WHERE LOWER(username) = LOWER($12) LIMIT 1))
+      ON CONFLICT (sync_id) DO UPDATE SET
+        sync_is_cloud_managed = 1, name = EXCLUDED.name,
+        tournament_type = EXCLUDED.tournament_type, template_key = EXCLUDED.template_key,
+        template_definition_json = EXCLUDED.template_definition_json,
+        draw_date = EXCLUDED.draw_date, round_schedule_json = EXCLUDED.round_schedule_json,
+        registration_start_date = EXCLUDED.registration_start_date,
+        registration_end_date = EXCLUDED.registration_end_date,
+        score_submission_start_date = EXCLUDED.score_submission_start_date,
+        score_submission_end_date = EXCLUDED.score_submission_end_date,
+        created_by = EXCLUDED.created_by, created_at_date = EXCLUDED.created_at_date,
+        created_at_time = EXCLUDED.created_at_time,
+        created_by_user_id = EXCLUDED.created_by_user_id
+    `, [row.sync_id, row.name, row.tournament_type, row.template_key ?? null,
+      row.template_definition_json ?? null, row.draw_date ?? null, row.round_schedule_json ?? "[]",
+      row.registration_start_date, row.registration_end_date, row.score_submission_start_date,
+      row.score_submission_end_date, row.created_by, row.created_at_date, row.created_at_time]);
+  }
+}
+
+async function upsertTournamentRegistrations(client, rows = []) {
+  for (const row of rows) {
+    const tournamentId = await requireLocalTournamentId(client, row.tournament_sync_id);
+    await client.query(`
+      INSERT INTO tournament_registrations (
+        tournament_id, member_username, bow_code, registered_at_date,
+        registered_at_time, member_user_id
+      ) VALUES ($1,$2,$3,$4,$5,
+        (SELECT id FROM users WHERE LOWER(username) = LOWER($2) LIMIT 1))
+      ON CONFLICT (tournament_id, member_username) DO UPDATE SET
+        bow_code = EXCLUDED.bow_code, registered_at_date = EXCLUDED.registered_at_date,
+        registered_at_time = EXCLUDED.registered_at_time,
+        member_user_id = EXCLUDED.member_user_id
+    `, [tournamentId, row.member_username, row.bow_code ?? null,
+      row.registered_at_date, row.registered_at_time]);
+  }
+}
+
+async function upsertTournamentRounds(client, rows = []) {
+  for (const row of rows) {
+    const tournamentId = await requireLocalTournamentId(client, row.tournament_sync_id);
+    await client.query(`
+      INSERT INTO tournament_rounds (
+        tournament_id, round_number, title, publish_date, submission_deadline, status
+      ) VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT (tournament_id, round_number) DO UPDATE SET
+        title = EXCLUDED.title, publish_date = EXCLUDED.publish_date,
+        submission_deadline = EXCLUDED.submission_deadline, status = EXCLUDED.status
+    `, [tournamentId, Number(row.round_number), row.title, row.publish_date ?? null,
+      row.submission_deadline ?? null, row.status ?? "scheduled"]);
+  }
+}
+
+async function upsertTournamentScores(client, rows = []) {
+  for (const row of rows) {
+    const tournamentId = await requireLocalTournamentId(client, row.tournament_sync_id);
+    await client.query(`
+      INSERT INTO tournament_scores (
+        tournament_id, round_number, member_username, score,
+        submitted_at_date, submitted_at_time, member_user_id
+      ) VALUES ($1,$2,$3,$4,$5,$6,
+        (SELECT id FROM users WHERE LOWER(username) = LOWER($3) LIMIT 1))
+      ON CONFLICT (tournament_id, round_number, member_username) DO UPDATE SET
+        score = EXCLUDED.score, submitted_at_date = EXCLUDED.submitted_at_date,
+        submitted_at_time = EXCLUDED.submitted_at_time,
+        member_user_id = EXCLUDED.member_user_id
+    `, [tournamentId, Number(row.round_number), row.member_username, Number(row.score),
+      row.submitted_at_date, row.submitted_at_time]);
+  }
+}
+
+const tournamentMatchColumns = [
+  "round_number", "match_number", "left_member_username", "right_member_username",
+  "left_score", "right_score", "winner_username", "submitted_by_username",
+  "submitted_at_date", "submitted_at_time", "confirmed_by_username",
+  "confirmed_at_date", "confirmed_at_time", "disputed_by_username",
+  "disputed_at_date", "disputed_at_time", "dispute_reason",
+  "handicap_allowance_percent", "left_handicap_value", "left_handicap_type",
+  "left_handicap_bow_class", "left_handicap_discipline", "left_reference_score",
+  "left_allowance_points", "left_adjusted_score", "left_handicap_table_key",
+  "left_handicap_table_title", "right_handicap_value", "right_handicap_type",
+  "right_handicap_bow_class", "right_handicap_discipline", "right_reference_score",
+  "right_allowance_points", "right_adjusted_score", "right_handicap_table_key",
+  "right_handicap_table_title", "status",
+];
+
+async function upsertTournamentMatches(client, rows = []) {
+  const placeholders = tournamentMatchColumns.map((_, index) => `$${index + 2}`).join(",");
+  const updates = tournamentMatchColumns.slice(2)
+    .map((column) => `${column} = EXCLUDED.${column}`).join(",");
+  for (const row of rows) {
+    const tournamentId = await requireLocalTournamentId(client, row.tournament_sync_id);
+    await client.query(`
+      INSERT INTO tournament_matches (tournament_id, ${tournamentMatchColumns.join(",")})
+      VALUES ($1,${placeholders})
+      ON CONFLICT (tournament_id, round_number, match_number) DO UPDATE SET ${updates}
+    `, [tournamentId, ...tournamentMatchColumns.map((column) => row[column] ?? null)]);
+  }
+}
+
+function tournamentChildKey(row, kind) {
+  const parent = String(row.tournament_sync_id);
+  if (kind === "registrations") return `${parent}:${String(row.member_username).toLowerCase()}`;
+  if (kind === "rounds") return `${parent}:${Number(row.round_number)}`;
+  if (kind === "scores") return `${parent}:${Number(row.round_number)}:${String(row.member_username).toLowerCase()}`;
+  return `${parent}:${Number(row.round_number)}:${Number(row.match_number)}`;
+}
+
+async function reconcileTournamentSnapshotDeletes(client, snapshot) {
+  const cloudTournamentIds = snapshot.tournaments.map((row) => row.sync_id);
+  const unknown = await queryRows(client, `
+    SELECT sync_id, name FROM tournaments
+    WHERE sync_is_cloud_managed = 0 AND sync_id <> ALL($1::text[])
+    ORDER BY id
+  `, [cloudTournamentIds]);
+  if (unknown.length > 0) {
+    throw new Error(
+      `Tournament rebaseline refused: ${unknown.length} pre-existing local tournament(s) are not Cloud-managed. Back up and explicitly reconcile them before retrying.`,
+    );
+  }
+
+  const childConfigs = [
+    ["tournament_matches", "matches", snapshot.tournamentMatches],
+    ["tournament_scores", "scores", snapshot.tournamentScores],
+    ["tournament_rounds", "rounds", snapshot.tournamentRounds],
+    ["tournament_registrations", "registrations", snapshot.tournamentRegistrations],
+  ];
+  for (const [tableName, kind, rows] of childConfigs) {
+    const incoming = [...new Set(rows.map((row) => tournamentChildKey(row, kind)))];
+    const existing = await queryRows(client, `
+      SELECT tournaments.sync_id AS tournament_sync_id, child.*
+      FROM ${tableName} AS child
+      INNER JOIN tournaments ON tournaments.id = child.tournament_id
+      WHERE tournaments.sync_is_cloud_managed = 1
+    `);
+    for (const row of existing) {
+      if (!incoming.includes(tournamentChildKey(row, kind))) {
+        const tournamentId = await requireLocalTournamentId(client, row.tournament_sync_id);
+        if (kind === "matches") await client.query(`DELETE FROM tournament_matches WHERE tournament_id=$1 AND round_number=$2 AND match_number=$3`, [tournamentId, row.round_number, row.match_number]);
+        else if (kind === "scores") await client.query(`DELETE FROM tournament_scores WHERE tournament_id=$1 AND round_number=$2 AND LOWER(member_username)=LOWER($3)`, [tournamentId, row.round_number, row.member_username]);
+        else if (kind === "rounds") await client.query(`DELETE FROM tournament_rounds WHERE tournament_id=$1 AND round_number=$2`, [tournamentId, row.round_number]);
+        else await client.query(`DELETE FROM tournament_registrations WHERE tournament_id=$1 AND LOWER(member_username)=LOWER($2)`, [tournamentId, row.member_username]);
+      }
+    }
+  }
+  await client.query(`DELETE FROM tournaments WHERE sync_is_cloud_managed = 1 AND sync_id <> ALL($1::text[])`, [cloudTournamentIds]);
+
+  const handicapRowKeys = snapshot.tournamentHandicapTableRows.map((row) => `${row.table_key}:${row.handicap_value}`);
+  const existingHandicapRows = await queryRows(client, `
+    SELECT tables.table_key, rows.handicap_value FROM tournament_handicap_table_rows AS rows
+    INNER JOIN tournament_handicap_tables AS tables ON tables.id = rows.table_id
+  `);
+  for (const row of existingHandicapRows) {
+    if (!handicapRowKeys.includes(`${row.table_key}:${row.handicap_value}`)) {
+      const tableId = await requireLocalHandicapTableId(client, row.table_key);
+      await client.query(`DELETE FROM tournament_handicap_table_rows WHERE table_id=$1 AND handicap_value=$2`, [tableId, row.handicap_value]);
+    }
+  }
+  await client.query(`DELETE FROM tournament_handicap_tables WHERE table_key <> ALL($1::text[])`, [snapshot.tournamentHandicapTables.map((row) => row.table_key)]);
+  await client.query(`DELETE FROM tournament_templates WHERE template_key <> ALL($1::text[])`, [snapshot.tournamentTemplates.map((row) => row.template_key)]);
 }
 
 function normalizeBookingKey(parentSyncId, username) {
@@ -1354,6 +1655,189 @@ async function reconcileLegacyHistorySnapshot(client, kind, cloudRows) {
   }
 }
 
+function memberDistanceSignOffKey(row) {
+  return [
+    String(row.username ?? "").trim().toLowerCase(),
+    String(row.discipline ?? "").trim().toLowerCase(),
+    Number(row.distance_yards ?? 0),
+  ].join("\u0001");
+}
+
+async function upsertMemberDistanceSignOffRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO member_distance_sign_offs (
+          username,
+          discipline,
+          distance_yards,
+          signed_off_by_username,
+          source,
+          signed_off_at_date,
+          signed_off_at_time,
+          user_id,
+          signed_off_by_user_id
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1),
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1)
+        )
+        ON CONFLICT (username, discipline, distance_yards) DO UPDATE SET
+          signed_off_by_username = EXCLUDED.signed_off_by_username,
+          source = EXCLUDED.source,
+          signed_off_at_date = EXCLUDED.signed_off_at_date,
+          signed_off_at_time = EXCLUDED.signed_off_at_time,
+          user_id = EXCLUDED.user_id,
+          signed_off_by_user_id = EXCLUDED.signed_off_by_user_id
+      `,
+      [
+        row.username,
+        row.discipline,
+        Number(row.distance_yards),
+        row.signed_off_by_username,
+        row.source ?? "manual",
+        row.signed_off_at_date,
+        row.signed_off_at_time,
+      ],
+    );
+  }
+}
+
+async function deleteMissingMemberDistanceSignOffRows(client, rows = []) {
+  const incomingKeys = new Set(rows.map(memberDistanceSignOffKey));
+  const currentRows = await queryRows(
+    client,
+    `
+      SELECT username, discipline, distance_yards
+      FROM member_distance_sign_offs
+    `,
+  );
+
+  for (const row of currentRows) {
+    if (incomingKeys.has(memberDistanceSignOffKey(row))) {
+      continue;
+    }
+
+    await client.query(
+      `
+        DELETE FROM member_distance_sign_offs
+        WHERE LOWER(username) = LOWER($1)
+          AND LOWER(discipline) = LOWER($2)
+          AND distance_yards = $3
+      `,
+      [row.username, row.discipline, Number(row.distance_yards)],
+    );
+  }
+}
+
+async function upsertCommitteeRoleRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO committee_roles (
+          role_key,
+          title,
+          summary,
+          responsibilities,
+          personal_blurb,
+          photo_data_url,
+          display_order,
+          assigned_username
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (role_key) DO UPDATE SET
+          title = EXCLUDED.title,
+          summary = EXCLUDED.summary,
+          responsibilities = EXCLUDED.responsibilities,
+          personal_blurb = EXCLUDED.personal_blurb,
+          photo_data_url = EXCLUDED.photo_data_url,
+          display_order = EXCLUDED.display_order,
+          assigned_username = EXCLUDED.assigned_username
+      `,
+      [
+        row.role_key,
+        row.title,
+        row.summary,
+        row.responsibilities,
+        row.personal_blurb,
+        row.photo_data_url,
+        Number(row.display_order ?? 0),
+        row.assigned_username ?? null,
+      ],
+    );
+  }
+}
+
+async function upsertCommitteeMeetingMinuteRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(
+      `
+        INSERT INTO committee_meeting_minutes (
+          sync_id,
+          meeting_date,
+          title,
+          sections_json,
+          actions_json,
+          created_at_date,
+          created_at_time,
+          updated_at_date,
+          updated_at_time,
+          updated_by_username,
+          updated_by_user_id
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4::jsonb,
+          $5::jsonb,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          (
+            SELECT id
+            FROM users
+            WHERE LOWER(username) = LOWER($10)
+            LIMIT 1
+          )
+        )
+        ON CONFLICT (sync_id) DO UPDATE SET
+          meeting_date = EXCLUDED.meeting_date,
+          title = EXCLUDED.title,
+          sections_json = EXCLUDED.sections_json,
+          actions_json = EXCLUDED.actions_json,
+          created_at_date = EXCLUDED.created_at_date,
+          created_at_time = EXCLUDED.created_at_time,
+          updated_at_date = EXCLUDED.updated_at_date,
+          updated_at_time = EXCLUDED.updated_at_time,
+          updated_by_username = EXCLUDED.updated_by_username,
+          updated_by_user_id = EXCLUDED.updated_by_user_id
+      `,
+      [
+        row.sync_id,
+        row.meeting_date,
+        row.title,
+        JSON.stringify(row.sections_json ?? []),
+        JSON.stringify(row.actions_json ?? []),
+        row.created_at_date,
+        row.created_at_time,
+        row.updated_at_date,
+        row.updated_at_time,
+        row.updated_by_username ?? null,
+      ],
+    );
+  }
+}
+
 async function upsertBeginnersCourses(client, courses = []) {
   for (const course of courses) {
     await client.query(
@@ -1498,7 +1982,8 @@ async function upsertBeginnersCourseParticipants(client, participants = []) {
           created_at_date,
           created_at_time,
           created_by_username,
-          created_by_user_id
+          created_by_user_id,
+          origin_course_id
         )
         VALUES (
           $1,
@@ -1529,7 +2014,8 @@ async function upsertBeginnersCourseParticipants(client, participants = []) {
           $23,
           $24,
           $25,
-          (SELECT id FROM users WHERE LOWER(username) = LOWER($25) LIMIT 1)
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($25) LIMIT 1),
+          (SELECT id FROM beginners_courses WHERE sync_id = $26 LIMIT 1)
         )
         ON CONFLICT (sync_id) DO UPDATE SET
           course_id = EXCLUDED.course_id,
@@ -1559,7 +2045,8 @@ async function upsertBeginnersCourseParticipants(client, participants = []) {
           created_at_date = EXCLUDED.created_at_date,
           created_at_time = EXCLUDED.created_at_time,
           created_by_username = EXCLUDED.created_by_username,
-          created_by_user_id = EXCLUDED.created_by_user_id
+          created_by_user_id = EXCLUDED.created_by_user_id,
+          origin_course_id = EXCLUDED.origin_course_id
       `,
       [
         participant.sync_id,
@@ -1587,6 +2074,7 @@ async function upsertBeginnersCourseParticipants(client, participants = []) {
         participant.created_at_date,
         participant.created_at_time,
         participant.created_by_username,
+        participant.origin_course_sync_id ?? null,
       ],
     );
   }
@@ -1597,21 +2085,22 @@ async function upsertBeginnersCourseLessons(client, lessons = []) {
     await client.query(
       `
         INSERT INTO beginners_course_lessons (
-          sync_id, course_id, lesson_number, lesson_date, start_time, end_time
+          sync_id, course_id, lesson_number, lesson_date, start_time, end_time, is_cancelled
         )
         VALUES (
           $1,
           (SELECT id FROM beginners_courses WHERE sync_id = $2 LIMIT 1),
-          $3, $4, $5, $6
+          $3, $4, $5, $6, $7
         )
         ON CONFLICT (sync_id) DO UPDATE SET
           course_id = EXCLUDED.course_id,
           lesson_number = EXCLUDED.lesson_number,
           lesson_date = EXCLUDED.lesson_date,
           start_time = EXCLUDED.start_time,
-          end_time = EXCLUDED.end_time
+          end_time = EXCLUDED.end_time,
+          is_cancelled = EXCLUDED.is_cancelled
       `,
-      [lesson.sync_id, lesson.course_sync_id, lesson.lesson_number, lesson.lesson_date, lesson.start_time, lesson.end_time],
+      [lesson.sync_id, lesson.course_sync_id, lesson.lesson_number, lesson.lesson_date, lesson.start_time, lesson.end_time, lesson.is_cancelled ?? 0],
     );
   }
 }
@@ -1812,6 +2301,38 @@ async function applyOperationalSnapshot({
     await reconcileLegacyHistorySnapshot(client, "guest", snapshot.guestLoginEvents);
   }
 
+  if (Object.hasOwn(snapshot, "committeeRoles")) {
+    await upsertCommitteeRoleRows(client, snapshot.committeeRoles);
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.committeeRoles.map((row) => row.role_key),
+      keyColumn: "role_key",
+      tableName: "committee_roles",
+    });
+  }
+
+  if (Object.hasOwn(snapshot, "committeeMeetingMinutes")) {
+    await upsertCommitteeMeetingMinuteRows(
+      client,
+      snapshot.committeeMeetingMinutes,
+    );
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.committeeMeetingMinutes.map(
+        (row) => row.sync_id,
+      ),
+      tableName: "committee_meeting_minutes",
+    });
+  }
+
+  if (Object.hasOwn(snapshot, "memberDistanceSignOffs")) {
+    await upsertMemberDistanceSignOffRows(client, snapshot.memberDistanceSignOffs);
+    await deleteMissingMemberDistanceSignOffRows(
+      client,
+      snapshot.memberDistanceSignOffs,
+    );
+  }
+
   await reapplyPendingBookingOverlay(client, syncGateway);
 }
 
@@ -1833,6 +2354,15 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
   await replaceRolePermissions(client, snapshot.rolePermissions);
   await replaceUserTypes(client, snapshot.userTypes);
   await replaceUserDisciplines(client, snapshot.userDisciplines);
+
+  await upsertTournamentTemplates(client, snapshot.tournamentTemplates);
+  await upsertTournamentHandicapTables(client, snapshot.tournamentHandicapTables);
+  await upsertTournamentHandicapTableRows(client, snapshot.tournamentHandicapTableRows);
+  await upsertTournaments(client, snapshot.tournaments);
+  await upsertTournamentRegistrations(client, snapshot.tournamentRegistrations);
+  await upsertTournamentRounds(client, snapshot.tournamentRounds);
+  await upsertTournamentScores(client, snapshot.tournamentScores);
+  await upsertTournamentMatches(client, snapshot.tournamentMatches);
 
   await upsertEquipmentStorageLocations(client, snapshot.equipmentStorageLocations);
   await upsertClubEvents(client, snapshot.clubEvents);
@@ -1872,6 +2402,24 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
     await upsertOutdoorTableRows(
       client,
       snapshot.outdoorTableEntries,
+    );
+  }
+
+  if (Object.hasOwn(snapshot, "committeeRoles")) {
+    await upsertCommitteeRoleRows(client, snapshot.committeeRoles);
+  }
+
+  if (Object.hasOwn(snapshot, "committeeMeetingMinutes")) {
+    await upsertCommitteeMeetingMinuteRows(
+      client,
+      snapshot.committeeMeetingMinutes,
+    );
+  }
+
+  if (Object.hasOwn(snapshot, "memberDistanceSignOffs")) {
+    await upsertMemberDistanceSignOffRows(
+      client,
+      snapshot.memberDistanceSignOffs,
     );
   }
 
@@ -1931,6 +2479,34 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
   if (Object.hasOwn(snapshot, "outdoorTableEntries")) {
     await deleteMissingOutdoorTableRows(client, snapshot.outdoorTableEntries);
   }
+
+  if (Object.hasOwn(snapshot, "memberDistanceSignOffs")) {
+    await deleteMissingMemberDistanceSignOffRows(
+      client,
+      snapshot.memberDistanceSignOffs,
+    );
+  }
+
+  if (Object.hasOwn(snapshot, "committeeRoles")) {
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.committeeRoles.map((row) => row.role_key),
+      keyColumn: "role_key",
+      tableName: "committee_roles",
+    });
+  }
+
+  if (Object.hasOwn(snapshot, "committeeMeetingMinutes")) {
+    await deleteMissingSnapshotRows({
+      client,
+      incomingKeys: snapshot.committeeMeetingMinutes.map(
+        (row) => row.sync_id,
+      ),
+      tableName: "committee_meeting_minutes",
+    });
+  }
+
+  await reconcileTournamentSnapshotDeletes(client, snapshot);
 
   const announcementKeys = snapshot.announcements.map((row) => row.sync_id);
   await client.query(`
@@ -2126,6 +2702,88 @@ async function applyCollapsedChange({
         [change.payload.username, change.payload.discipline],
       );
       return;
+    case "tournament_templates":
+      if (change.operation === "delete") {
+        await client.query(`DELETE FROM tournament_templates WHERE template_key = $1`, [change.payload.template_key]);
+        return;
+      }
+      await upsertTournamentTemplates(client, [change.payload]);
+      return;
+    case "tournament_handicap_tables":
+      if (change.operation === "delete") {
+        await client.query(`DELETE FROM tournament_handicap_tables WHERE table_key = $1`, [change.payload.table_key]);
+        return;
+      }
+      await upsertTournamentHandicapTables(client, [change.payload]);
+      return;
+    case "tournament_handicap_table_rows":
+      if (change.operation === "delete") {
+        await client.query(`
+          DELETE FROM tournament_handicap_table_rows
+          WHERE table_id = (SELECT id FROM tournament_handicap_tables WHERE table_key = $1 LIMIT 1)
+            AND handicap_value = $2
+        `, [change.payload.table_key, Number(change.payload.handicap_value)]);
+        return;
+      }
+      await upsertTournamentHandicapTableRows(client, [change.payload]);
+      return;
+    case "tournaments":
+      if (change.operation === "delete") {
+        const existing = await querySingleValue(client,
+          `SELECT sync_is_cloud_managed FROM tournaments WHERE sync_id = $1 FOR UPDATE`,
+          [change.payload.sync_id]);
+        if (existing && Number(existing.sync_is_cloud_managed) !== 1) {
+          throw new Error(`Tournament delete refused: ${change.payload.sync_id} is not Cloud-managed.`);
+        }
+        await client.query(`DELETE FROM tournaments WHERE sync_id = $1 AND sync_is_cloud_managed = 1`, [change.payload.sync_id]);
+        return;
+      }
+      await upsertTournaments(client, [change.payload]);
+      return;
+    case "tournament_registrations":
+      if (change.operation === "delete") {
+        await client.query(`
+          DELETE FROM tournament_registrations
+          WHERE tournament_id = (SELECT id FROM tournaments WHERE sync_id = $1 LIMIT 1)
+            AND LOWER(member_username) = LOWER($2)
+        `, [change.payload.tournament_sync_id, change.payload.member_username]);
+        return;
+      }
+      await upsertTournamentRegistrations(client, [change.payload]);
+      return;
+    case "tournament_rounds":
+      if (change.operation === "delete") {
+        await client.query(`
+          DELETE FROM tournament_rounds
+          WHERE tournament_id = (SELECT id FROM tournaments WHERE sync_id = $1 LIMIT 1)
+            AND round_number = $2
+        `, [change.payload.tournament_sync_id, Number(change.payload.round_number)]);
+        return;
+      }
+      await upsertTournamentRounds(client, [change.payload]);
+      return;
+    case "tournament_scores":
+      if (change.operation === "delete") {
+        await client.query(`
+          DELETE FROM tournament_scores
+          WHERE tournament_id = (SELECT id FROM tournaments WHERE sync_id = $1 LIMIT 1)
+            AND round_number = $2 AND LOWER(member_username) = LOWER($3)
+        `, [change.payload.tournament_sync_id, Number(change.payload.round_number), change.payload.member_username]);
+        return;
+      }
+      await upsertTournamentScores(client, [change.payload]);
+      return;
+    case "tournament_matches":
+      if (change.operation === "delete") {
+        await client.query(`
+          DELETE FROM tournament_matches
+          WHERE tournament_id = (SELECT id FROM tournaments WHERE sync_id = $1 LIMIT 1)
+            AND round_number = $2 AND match_number = $3
+        `, [change.payload.tournament_sync_id, Number(change.payload.round_number), Number(change.payload.match_number)]);
+        return;
+      }
+      await upsertTournamentMatches(client, [change.payload]);
+      return;
     case "beginners_courses":
       if (change.operation === "delete") {
         await client.query(`DELETE FROM beginners_courses WHERE sync_id = $1`, [change.payload.sync_id]);
@@ -2246,6 +2904,48 @@ async function applyCollapsedChange({
         return;
       }
       await upsertOutdoorTableRows(client, [change.payload]);
+      return;
+
+    case "committee_meeting_minutes":
+      if (change.operation === "delete") {
+        await client.query(
+          `DELETE FROM committee_meeting_minutes WHERE sync_id = $1`,
+          [change.payload.sync_id],
+        );
+        return;
+      }
+      await upsertCommitteeMeetingMinuteRows(client, [change.payload]);
+      return;
+
+    case "committee_roles":
+      if (change.operation === "delete") {
+        await client.query(
+          `DELETE FROM committee_roles WHERE role_key = $1`,
+          [change.payload.role_key],
+        );
+        return;
+      }
+      await upsertCommitteeRoleRows(client, [change.payload]);
+      return;
+
+    case "member_distance_sign_offs":
+      if (change.operation === "delete") {
+        await client.query(
+          `
+            DELETE FROM member_distance_sign_offs
+            WHERE LOWER(username) = LOWER($1)
+              AND LOWER(discipline) = LOWER($2)
+              AND distance_yards = $3
+          `,
+          [
+            change.payload.username,
+            change.payload.discipline,
+            Number(change.payload.distance_yards),
+          ],
+        );
+        return;
+      }
+      await upsertMemberDistanceSignOffRows(client, [change.payload]);
       return;
 
     case "range_presence_extensions":

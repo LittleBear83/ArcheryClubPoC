@@ -85,11 +85,11 @@ export function ProfileDesktopView({
       />
 
       {canSelectMembers ? (
-        <SectionPanel className="profile-admin-panel" title="Member Selection">
+        <SectionPanel className="profile-admin-panel profile-admin-panel--selection" title="Member Selection">
           <MemberAutocomplete
+            className="profile-member-selection-input"
             clearDisplayOnFocus
             fullWidth
-            maxWidth="28rem"
             label="Select member"
             options={memberOptions.map((member) => ({
               keywords: [formatMemberDisplayUsername(member), member.username],

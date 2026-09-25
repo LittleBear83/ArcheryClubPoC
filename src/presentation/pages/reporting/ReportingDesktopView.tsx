@@ -3,6 +3,7 @@ import { DatePicker } from "../../components/DatePicker";
 import { formatClockTime, formatDate } from "../../../utils/dateTime";
 import type { AttendanceReportRow, MemberJourneyReportRow } from "../../../api/reportingApi";
 import { ReportingGraph } from "./ReportingGraph";
+import { MemberRangeAttendanceSection } from "./MemberRangeAttendanceSection";
 import type { useReportingPageState } from "./useReportingPageState";
 
 function ReportingTable({ rows }: { rows: AttendanceReportRow[] }) {
@@ -129,6 +130,7 @@ export function ReportingDesktopView({
   isLoadingMemberJourneys,
   memberJourneyData,
   memberJourneyError,
+  memberRangeAttendance,
   rangeLabel,
   setEndDate,
   setIncludeGuests,
@@ -209,6 +211,8 @@ export function ReportingDesktopView({
             : "Unable to load member journey reporting."}
         </p>
       ) : null}
+
+      <MemberRangeAttendanceSection attendance={memberRangeAttendance} />
 
       {data ? (
         <>

@@ -50,7 +50,9 @@ async function migrateTable({
   tableName,
   columns,
 }) {
-  const rows = sqliteDb.prepare(sqliteSelectSql).all();
+  const hasCancellationState = tableName !== "beginners_course_lessons" || sqliteDb.prepare('PRAGMA table_info(beginners_course_lessons)').all().some((column) => column.name === "is_cancelled");
+  const selectSql = hasCancellationState ? sqliteSelectSql : sqliteSelectSql.replace('"is_cancelled"', '0 AS "is_cancelled"');
+  const rows = sqliteDb.prepare(selectSql).all();
 
   if (dryRun) {
     return {

@@ -1635,18 +1635,19 @@ test('RFID assignments commit atomically, replicate through users, reject duplic
   await seedUser(local, 1, 'Canonical');
   await seedUser(cloud, 1, 'Canonical');
   await seedUser(cloud, 2, 'Other');
-  await local.query("UPDATE users SET rfid_tag = 'OLD' WHERE username = 'Canonical'");
-  await cloud.query("UPDATE users SET rfid_tag = 'OLD' WHERE username = 'Canonical'");
+  await local.query("UPDATE users SET password = 'existing-hash', rfid_tag = 'OLD' WHERE username = 'Canonical'");
+  await cloud.query("UPDATE users SET password = 'existing-hash', rfid_tag = 'OLD' WHERE username = 'Canonical'");
   const localSync = createSyncGateway({ pool: local });
   const profile = createMemberProfileGateway({ databaseEngine: 'postgres', pool: local, syncGateway: localSync });
-  const input = { userPayload: { username: 'Canonical', firstName: 'Member', surname: 'Example', password: 'hash',
+  const input = { userPayload: { username: 'Canonical', firstName: 'Member', surname: 'Example', password: null,
     rfidTag: 'NEW', activeMember: 1, affiliateMember: 0, juniorMember: 0, coachingVolunteer: 0,
     membershipStatus: 'member', programmeType: 'none', archeryGbMembershipNumber: '', emailAddress: '' },
     userType: 'member', disciplines: [], loanBow: { hasLoanBow: false, arrowCount: 0 }, rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } };
   await profile.saveMemberProfile(input);
   const pending = await localSync.listPendingOutboxEvents({ limit: 10 });
   assert.equal(pending.length, 1);
-  assert.equal((await local.query("SELECT rfid_tag FROM users WHERE username = 'Canonical'")).rows[0].rfid_tag, 'NEW');
+  assert.deepEqual((await local.query("SELECT password, rfid_tag FROM users WHERE username = 'Canonical'")).rows[0],
+    { password: 'existing-hash', rfid_tag: 'NEW' });
   await assert.rejects(profile.saveMemberProfile({ ...input, userPayload: { ...input.userPayload, rfidTag: 'SECOND' } }), { code: 'rfid_update_pending' });
   const cloudSync = createSyncGateway({ pool: cloud });
   async function process(event) {
@@ -1661,6 +1662,7 @@ test('RFID assignments commit atomically, replicate through users, reject duplic
   }
   const event = pending[0];
   assert.deepEqual(await process(event), { accepted: true });
+  assert.equal((await cloud.query("SELECT password FROM users WHERE username = 'Canonical'")).rows[0].password, 'existing-hash');
   const changes = await cloud.query("SELECT change_id FROM sync_change_log WHERE domain = 'users' AND record_key = 'Canonical'");
   assert.deepEqual(await process(event), { accepted: true });
   assert.equal((await cloud.query("SELECT change_id FROM sync_change_log WHERE domain = 'users' AND record_key = 'Canonical'")).rowCount, changes.rowCount);
@@ -1679,6 +1681,7 @@ test('RFID assignments commit atomically, replicate through users, reject duplic
   assert.equal(conflict.code, 'member_rfid_conflict');
   assert.equal(conflict.authoritativeRfidTag, 'NEW');
   assert.deepEqual(await process(command('Canonical', 'new', null)), { accepted: true });
+  assert.equal((await cloud.query("SELECT password FROM users WHERE username = 'Canonical'")).rows[0].password, 'existing-hash');
   const races = await Promise.all([process(command('Canonical', null, 'shared')), process(command('Other', null, 'SHARED'))]);
   assert.equal(races.filter((result) => result.accepted).length, 1);
   assert.equal(races.find((result) => !result.accepted).code, 'rfid_tag_in_use');
@@ -1688,7 +1691,8 @@ test('RFID assignments commit atomically, replicate through users, reject duplic
   const rejected = await process(optimistic);
   assert.equal(rejected.code, 'member_rfid_conflict');
   await localSync.rejectOutboxEvents({ rejections: [{ eventId: optimistic.eventId, ...rejected }] });
-  assert.equal((await local.query("SELECT rfid_tag FROM users WHERE username = 'Canonical'")).rows[0].rfid_tag, 'CLOUD');
+  assert.deepEqual((await local.query("SELECT password, rfid_tag FROM users WHERE username = 'Canonical'")).rows[0],
+    { password: 'existing-hash', rfid_tag: 'CLOUD' });
   assert.equal(await localSync.countPendingOutboxEvents(), 0);
 });
 

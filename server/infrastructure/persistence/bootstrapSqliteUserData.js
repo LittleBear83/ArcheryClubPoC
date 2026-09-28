@@ -50,7 +50,7 @@ export function bootstrapSqliteUserData({
       gr_id = excluded.gr_id,
       archery_gb_membership_number = excluded.archery_gb_membership_number,
       email_address = excluded.email_address,
-      password = excluded.password,
+      password = COALESCE(excluded.password, users.password),
       rfid_tag = excluded.rfid_tag,
       active_member = excluded.active_member,
       affiliate_member = excluded.affiliate_member,

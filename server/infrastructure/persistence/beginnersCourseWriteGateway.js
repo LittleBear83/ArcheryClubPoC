@@ -723,7 +723,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
               SET
                 first_name = $1,
                 surname = $2,
-                password = $3,
+                password = COALESCE($3, users.password),
                 rfid_tag = $4,
                 active_member = $5,
                 affiliate_member = $6,

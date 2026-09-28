@@ -277,3 +277,72 @@ test('self edit cannot alter RFID or enqueue and pending failure returns 409', a
   assert.equal(result.status, 409);
   assert.equal(result.code, 'rfid_update_pending');
 });
+
+function passwordPersistenceHarness(existingUser = {
+  username: 'Canonical', password: 'scrypt$existing-hash', rfid_tag: null,
+}) {
+  const saved = [];
+  const hashed = [];
+  const service = createMemberPersistenceService({
+    buildEditableMemberProfile: () => ({}),
+    buildMemberUserProfile: () => ({}),
+    deactivatedRfidSuffix: '-deactivated',
+    hashPassword: (value) => {
+      hashed.push(value);
+      return `hashed:${value}`;
+    },
+    memberAuthGateway: { findUserByUsername: async () => ({ username: 'Canonical' }) },
+    memberProfileGateway: {
+      roleExists: async () => true,
+      findLoanBowByUsername: async () => null,
+      saveMemberProfile: async (payload) => saved.push(payload),
+    },
+    sanitizeDisciplines: () => [],
+    sanitizeLoanBow: () => ({}),
+  });
+  const input = {
+    username: 'Canonical', firstName: 'Member', surname: 'Example', userType: 'member',
+    existingUser, activeMember: true, rfidTag: null,
+  };
+  return { hashed, input, saved, service };
+}
+
+for (const [name, previousRfidTag, rfidTag, password] of [
+  ['first RFID assignment', null, 'FIRST', undefined],
+  ['RFID replacement', 'FIRST', 'SECOND', undefined],
+  ['RFID removal', 'FIRST', '', undefined],
+  ['blank password profile edit', 'FIRST', 'FIRST', '   '],
+  ['omitted password profile edit', 'FIRST', 'FIRST', undefined],
+]) {
+  test(`${name} preserves the exact existing password hash`, async () => {
+    const existingUser = {
+      username: 'Canonical', password: 'scrypt$existing-hash', rfid_tag: previousRfidTag,
+    };
+    const h = passwordPersistenceHarness(existingUser);
+    h.input.rfidTag = rfidTag;
+    if (password !== undefined) h.input.password = password;
+
+    assert.equal((await h.service.saveMemberProfile(h.input)).success, true);
+    assert.equal(h.saved[0].userPayload.password, existingUser.password);
+    assert.deepEqual(h.hashed, []);
+  });
+}
+
+test('explicit password change hashes and saves the new value', async () => {
+  const h = passwordPersistenceHarness();
+  h.input.password = 'new-secret';
+
+  assert.equal((await h.service.saveMemberProfile(h.input)).success, true);
+  assert.equal(h.saved[0].userPayload.password, 'hashed:new-secret');
+  assert.deepEqual(h.hashed, ['new-secret']);
+});
+
+test('new member without a password is still rejected', async () => {
+  const h = passwordPersistenceHarness(null);
+
+  const result = await h.service.saveMemberProfile(h.input);
+
+  assert.equal(result.success, false);
+  assert.equal(result.status, 400);
+  assert.equal(h.saved.length, 0);
+});

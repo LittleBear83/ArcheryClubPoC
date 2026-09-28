@@ -1249,7 +1249,7 @@ function adminRfidHarness({ nodeMode = 'local-pi', manager = true, pending = fal
   const handlers = new Map();
   const calls = [];
   const events = [];
-  const member = { username: 'Canonical', first_name: 'Member', surname: 'Example', rfid_tag: 'OLD', user_type: 'member' };
+  const member = { username: 'Canonical', first_name: 'Member', surname: 'Example', password: 'existing-hash', rfid_tag: 'OLD', user_type: 'member' };
   const actor = { username: manager ? 'Admin' : 'Canonical', permissions: manager ? ['manage_members'] : [] };
   registerAdminMemberRoutes({
     syncNodeMode: nodeMode,
@@ -1282,6 +1282,7 @@ for (const nodeMode of ['local-pi', 'cloud-server']) {
       assert.equal((await h.run(path)).status, 200);
       assert.deepEqual(h.calls[0].syncContext, { nodeMode, canManageMembers: true, actorUsername: 'Admin' });
       assert.equal(h.calls[0].username, 'Canonical');
+      assert.equal(h.calls[0].password, undefined);
       assert.doesNotMatch(JSON.stringify(h.events), /NEW|OLD|rfidTag|rfid_tag/);
     });
   }

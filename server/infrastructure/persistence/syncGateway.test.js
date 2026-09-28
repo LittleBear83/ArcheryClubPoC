@@ -532,7 +532,7 @@ function rfidCommand(eventId = 'rfid-event') {
     eventId, username: 'Canonical', previousRfidTag: 'OLD', rfidTag: ' NEW ', updatedByUsername: 'Admin',
   } };
 }
-function rfidCloudHarness({ member = { username: 'Canonical', rfid_tag: 'OLD' }, owner = false } = {}) {
+function rfidCloudHarness({ member = { username: 'Canonical', password: 'existing-hash', rfid_tag: 'OLD' }, owner = false } = {}) {
   const queries = [];
   const stored = new Map();
   let updates = 0;
@@ -547,7 +547,7 @@ function rfidCloudHarness({ member = { username: 'Canonical', rfid_tag: 'OLD' },
     return { rows: [], rowCount: 1 };
   } };
   const gateway = createSyncGateway({ pool: client });
-  return { queries, stored, updates: () => updates, run: (event = rfidCommand()) => gateway.processMemberRfidUpdateCommand({ client, event, machineId: 'Pi' }) };
+  return { member, queries, stored, updates: () => updates, run: (event = rfidCommand()) => gateway.processMemberRfidUpdateCommand({ client, event, machineId: 'Pi' }) };
 }
 
 for (const [name, options, payload, expected] of [
@@ -582,7 +582,9 @@ for (const [name, options, payload, expected] of [
       const update = h.queries.findIndex((q) => q.text.startsWith('UPDATE users'));
       assert.ok(lock < check && check < update);
       assert.match(h.queries[check].text, /LOWER\(BTRIM\(rfid_tag\)\)/);
+      assert.doesNotMatch(h.queries[update].text, /password/i);
     }
+    if (h.member?.password !== undefined) assert.equal(h.member.password, 'existing-hash');
   });
 }
 
@@ -629,6 +631,7 @@ for (const [code, newer, changed, expected] of [
       queries.push(text);
       if (text.startsWith('UPDATE sync_local_outbox')) return { rows: [{ event_type: 'member_rfid_updated', aggregate_key: 'canonical', outbox_order: 7, payload_json: rfidCommand().payload }] };
       if (text.startsWith('UPDATE users')) {
+        assert.doesNotMatch(text, /password/i);
         assert.match(text, /outbox_order > \$5/);
         assert.match(text, /event_type = 'member_rfid_updated'/);
         assert.match(text, /IS NOT DISTINCT FROM/);

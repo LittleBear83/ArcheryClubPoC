@@ -58,6 +58,51 @@ test("fresh SQLite development seeding accepts missing optional AGB numbers", as
   }
 });
 
+test("SQLite member upsert preserves an existing password when an RFID edit omits it", async () => {
+  const { bootstrapSqliteUserData } = await import("./bootstrapSqliteUserData.js");
+  const { bootstrapSqliteUserCompatibility } = await import("./bootstrapSqliteUserCompatibility.js");
+  const db = new Database(":memory:");
+  try {
+    bootstrapSqliteBaseSchema({db, defaultEquipmentCupboardLabel: "Club cupboard"});
+    bootstrapSqliteUserCompatibility({db});
+    for (const { userType } of getSeedUsers({ hashPassword: (value) => value, isLive: false })) {
+      db.prepare("INSERT OR IGNORE INTO roles (role_key, title) VALUES (?, ?)").run(userType, userType);
+    }
+    const statements = bootstrapSqliteUserData({
+      db, committeeRoleSeed: [], isLive: false,
+      hashPassword: (password) => `hashed:${password}`,
+      isPasswordHash: (password) => password.startsWith("hashed:"),
+    });
+    const row = db.prepare("SELECT * FROM users ORDER BY id LIMIT 1").get();
+    db.prepare("UPDATE users SET password = 'existing-hash' WHERE username = ?").run(row.username);
+
+    statements.upsertUser.run({
+      username: row.username,
+      firstName: row.first_name,
+      surname: row.surname,
+      goldenRecordsId: row.gr_id,
+      archeryGbMembershipNumber: row.archery_gb_membership_number,
+      emailAddress: row.email_address,
+      password: null,
+      rfidTag: "NEW-RFID",
+      activeMember: row.active_member,
+      affiliateMember: row.affiliate_member,
+      juniorMember: row.junior_member,
+      membershipFeesDue: row.membership_fees_due,
+      coachingVolunteer: row.coaching_volunteer,
+      membershipStatus: row.membership_status,
+      programmeType: row.programme_type,
+    });
+
+    assert.deepEqual(
+      db.prepare("SELECT password, rfid_tag FROM users WHERE username = ?").get(row.username),
+      { password: "existing-hash", rfid_tag: "NEW-RFID" },
+    );
+  } finally {
+    db.close();
+  }
+});
+
 test("full development SQLite bootstrap seeds users with optional membership numbers", async () => {
   const db = new Database(":memory:");
   try {

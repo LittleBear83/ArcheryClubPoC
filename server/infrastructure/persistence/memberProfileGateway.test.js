@@ -3,20 +3,24 @@ import { test } from 'node:test';
 import { createMemberProfileGateway } from './memberProfileGateway.js';
 import { createSyncGateway } from './syncGateway.js';
 
-function harness({ pending = false, failEnqueue = false, currentTag = 'OLD' } = {}) {
+function harness({ pending = false, failEnqueue = false, currentTag = 'OLD', currentPassword = 'existing-hash' } = {}) {
   const queries = [];
   let tag = currentTag;
+  let password = currentPassword;
   let snapshot;
   const outbox = [];
   const client = {
     async query(sql, values = []) {
       const text = String(sql).replace(/\s+/g, ' ').trim();
       queries.push({ text, values });
-      if (text === 'BEGIN') snapshot = tag;
-      if (text === 'ROLLBACK') { tag = snapshot; outbox.length = 0; }
+      if (text === 'BEGIN') snapshot = { password, tag };
+      if (text === 'ROLLBACK') { ({ password, tag } = snapshot); outbox.length = 0; }
       if (text.startsWith('SELECT username, rfid_tag')) return { rows: [{ username: 'Canonical', rfid_tag: tag }], rowCount: 1 };
       if (text.startsWith('SELECT 1 FROM sync_local_outbox')) return { rows: pending ? [{}] : [], rowCount: pending ? 1 : 0 };
-      if (text.startsWith('INSERT INTO users')) tag = values[6];
+      if (text.startsWith('INSERT INTO users')) {
+        if (values[5] !== null && values[5] !== undefined) password = values[5];
+        tag = values[6];
+      }
       if (text.startsWith('INSERT INTO sync_local_outbox')) {
         if (failEnqueue) throw new Error('enqueue unavailable');
         outbox.push(JSON.parse(values[2]));
@@ -29,13 +33,14 @@ function harness({ pending = false, failEnqueue = false, currentTag = 'OLD' } = 
   const input = { disciplines: [], loanBow: {}, userType: 'member',
     userPayload: { username: 'Canonical', rfidTag: 'NEW' },
     rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } };
-  return { gateway, input, queries, outbox, tag: () => tag };
+  return { gateway, input, queries, outbox, password: () => password, tag: () => tag };
 }
 
 test('Pi RFID and exactly one outbox command commit in existing profile transaction', async () => {
   const h = harness();
   await h.gateway.saveMemberProfile(h.input);
   assert.equal(h.tag(), 'NEW');
+  assert.equal(h.password(), 'existing-hash');
   assert.equal(h.outbox.length, 1);
   assert.deepEqual(h.outbox[0], { eventId: h.outbox[0].eventId, username: 'Canonical', previousRfidTag: 'OLD', rfidTag: 'NEW', updatedByUsername: 'Admin' });
   assert.match(h.outbox[0].eventId, /^[0-9a-f-]{36}$/);
@@ -44,6 +49,17 @@ test('Pi RFID and exactly one outbox command commit in existing profile transact
   assert.equal(statements.at(-1), 'COMMIT');
   assert.ok(statements.findIndex((s) => s.startsWith('INSERT INTO sync_local_outbox')) > statements.findIndex((s) => s.startsWith('INSERT INTO member_loan_bows')));
   assert.equal(h.queries.find((q) => q.text.startsWith('INSERT INTO sync_local_outbox')).values[1], 'canonical');
+  assert.match(h.queries.find((q) => q.text.startsWith('INSERT INTO users')).text,
+    /password = COALESCE\(EXCLUDED\.password, users\.password\)/);
+});
+
+test('explicit password value still replaces the existing hash', async () => {
+  const h = harness();
+  h.input.userPayload.password = 'new-hash';
+
+  await h.gateway.saveMemberProfile(h.input);
+
+  assert.equal(h.password(), 'new-hash');
 });
 
 for (const options of [{ failEnqueue: true }, { pending: true }]) {
@@ -51,6 +67,7 @@ for (const options of [{ failEnqueue: true }, { pending: true }]) {
     const h = harness(options);
     await assert.rejects(h.gateway.saveMemberProfile(h.input), options.pending ? { code: 'rfid_update_pending' } : /enqueue unavailable/);
     assert.equal(h.tag(), 'OLD');
+    assert.equal(h.password(), 'existing-hash');
     assert.equal(h.outbox.length, 0);
     assert.equal(h.queries.at(-1).text, 'ROLLBACK');
     if (options.pending) assert.equal(h.queries.some((q) => q.text.startsWith('INSERT INTO users')), false);

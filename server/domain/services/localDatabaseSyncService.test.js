@@ -1059,6 +1059,10 @@ test("extended SSE domains respect user dependency ordering", async () => {
   );
 
   assert.ok(userUpsert > -1);
+  assert.match(
+    queries[userUpsert].sql,
+    /password = COALESCE\(EXCLUDED\.password, users\.password\)/,
+  );
   assert.ok(goldenUpsert > userUpsert);
   assert.ok(outdoorUpsert > goldenUpsert);
 

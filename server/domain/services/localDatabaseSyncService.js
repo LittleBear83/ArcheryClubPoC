@@ -505,7 +505,7 @@ async function upsertUsers(client, users, deactivatedRfidSuffix) {
           gr_id = EXCLUDED.gr_id,
           archery_gb_membership_number = EXCLUDED.archery_gb_membership_number,
           email_address = EXCLUDED.email_address,
-          password = EXCLUDED.password,
+          password = COALESCE(EXCLUDED.password, users.password),
           rfid_tag = EXCLUDED.rfid_tag,
           active_member = EXCLUDED.active_member,
           affiliate_member = EXCLUDED.affiliate_member,

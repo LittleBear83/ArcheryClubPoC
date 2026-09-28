@@ -190,9 +190,11 @@ export function createMemberPersistenceService({
         };
       }
 
+      // `password` is a plaintext password-change input. Existing hashes come
+      // only from the trusted row and must never be fed back through hashPassword.
       const passwordToSave = trimmedPassword
         ? hashPassword(trimmedPassword)
-        : existingUser?.password || null;
+        : existingUser?.password ?? null;
       const provisionalUser = normalizeMemberStatusWithFees(
         {
           username: existingUser?.username ?? trimmedUsername,

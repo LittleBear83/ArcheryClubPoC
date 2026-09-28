@@ -19,8 +19,8 @@ test("migration 014 creates immutable UUID-backed tournament sync identity", () 
 
 test("migration 014 is registered after the local outbox notification migration", () => {
   const versions = postgresMigrations.map((entry) => entry.version);
-  assert.equal(versions.at(-2), "013_local_outbox_notifications");
-  assert.equal(versions.at(-1), migration.version);
+  const index = versions.indexOf(migration.version);
+  assert.equal(versions[index - 1], "013_local_outbox_notifications");
 });
 
 test("migration 014 installs portable tournament change-log triggers with apply suppression", () => {

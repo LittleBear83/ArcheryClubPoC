@@ -1,3 +1,6 @@
+import { createFeedbackRecord } from "./feedbackSyncCreate.js";
+import { updateFeedbackWithOutbox } from "./feedbackSyncUpdate.js";
+
 function normalizeQuestionRow(row) {
   if (!row) {
     return null;
@@ -135,10 +138,15 @@ function createSqliteMemberQuestionGateway(db) {
   };
 }
 
-function createPostgresMemberQuestionGateway({ pool }) {
+function createPostgresMemberQuestionGateway({ pool, isLocalPiNode = false, syncMachineId = null }) {
   return {
     async createQuestion(payload) {
-      const result = await pool.query(
+      const id = await createFeedbackRecord({
+        eventType: "member_question_created",
+        isLocalPiNode,
+        pool,
+        syncMachineId,
+        query:
         `
           INSERT INTO member_questions (
             submitted_by_username,
@@ -149,7 +157,10 @@ function createPostgresMemberQuestionGateway({ pool }) {
             member_seen_response,
             created_at_date,
             created_at_time,
-            submitted_by_user_id
+            submitted_by_user_id,
+            sync_id,
+            sync_source_machine_id,
+            sync_origin_event_id
           )
           VALUES (
             $1,
@@ -160,20 +171,21 @@ function createPostgresMemberQuestionGateway({ pool }) {
             TRUE,
             $4,
             $5,
-            (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1)
+            (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1),
+            $6, $7, $8
           )
-          RETURNING id
+          RETURNING *
         `,
-        [
+        values: [
           payload.submittedByUsername,
           payload.questionTitle,
           payload.questionBody,
           payload.createdAtDate,
           payload.createdAtTime,
         ],
-      );
+      });
 
-      return this.findQuestionById(result.rows[0]?.id);
+      return this.findQuestionById(id);
     },
     async findQuestionById(id) {
       const result = await pool.query(
@@ -249,21 +261,33 @@ function createPostgresMemberQuestionGateway({ pool }) {
       return result.rows.map(normalizeQuestionRow);
     },
     async markResponseSeen(id) {
-      await pool.query(
-        `
+      await updateFeedbackWithOutbox({
+        eventType: "member_question_seen",
+        id,
+        isLocalPiNode,
+        payload: { memberSeenResponse: true },
+        pool,
+        table: "member_questions",
+        updateQuery: `
           UPDATE member_questions
           SET
             member_seen_response = TRUE
           WHERE id = $1
         `,
-        [id],
-      );
+        updateValues: [id],
+      });
 
       return this.findQuestionById(id);
     },
     async respondToQuestion(id, payload) {
-      await pool.query(
-        `
+      await updateFeedbackWithOutbox({
+        eventType: "member_question_response_updated",
+        id,
+        isLocalPiNode,
+        payload,
+        pool,
+        table: "member_questions",
+        updateQuery: `
           UPDATE member_questions
           SET
             status = 'answered',
@@ -277,7 +301,7 @@ function createPostgresMemberQuestionGateway({ pool }) {
             responded_by_user_id = (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1)
           WHERE id = $7
         `,
-        [
+        updateValues: [
           payload.responseText,
           payload.respondedAtDate,
           payload.respondedAtTime,
@@ -286,7 +310,7 @@ function createPostgresMemberQuestionGateway({ pool }) {
           payload.updatedAtTime,
           id,
         ],
-      );
+      });
 
       return this.findQuestionById(id);
     },

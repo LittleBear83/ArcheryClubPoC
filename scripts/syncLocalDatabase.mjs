@@ -12,6 +12,7 @@ import {
   writeSyncAttemptState,
 } from "../server/domain/services/localDatabaseSyncService.js";
 import { createSyncGateway } from "../server/infrastructure/persistence/syncGateway.js";
+import { enqueueLegacyFeedbackRows } from "../server/infrastructure/persistence/feedbackSyncLegacyOutbox.js";
 import { notifyLocalSyncApplied } from "../server/infrastructure/persistence/localSyncBrowserBridge.js";
 import {
   acquireLocalRebaselineMaintenanceGate,
@@ -128,6 +129,8 @@ async function main() {
       await acquireLocalRebaselineMaintenanceGate(client);
       maintenanceGateAcquired = true;
     }
+
+    await enqueueLegacyFeedbackRows({ pool, machineId: serverRuntime.sync.machineId });
 
     const publicationState = isPublicationSync && !isRebaseline
       ? await readPublicationSyncState({ syncGateway })

@@ -2,8 +2,33 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import Database from "better-sqlite3";
 import { bootstrapSqliteBaseSchema } from "./bootstrapSqliteBaseSchema.js";
+import { bootstrapSqliteEquipmentCompatibility } from "./bootstrapSqliteEquipmentCompatibility.js";
+import { createSqliteEquipmentStatements } from "./createSqliteEquipmentStatements.js";
+import { bootstrapSqliteUserCompatibility } from "./bootstrapSqliteUserCompatibility.js";
 import { bootstrapPersistence } from "../../bootstrap/bootstrapPersistence.js";
 import { getSeedUsers } from "./seedUsers.js";
+
+test("SQLite equipment loan upgrade preserves old rows and adds nullable expected date", () => {
+  const db = new Database(":memory:");
+  try {
+    bootstrapSqliteBaseSchema({ db, defaultEquipmentCupboardLabel: "Club cupboard" });
+    db.pragma("foreign_keys = OFF");
+    db.exec("ALTER TABLE equipment_loans DROP COLUMN expected_return_date");
+    db.exec("INSERT INTO equipment_loans (equipment_item_id, member_username, loaned_by_username, loaned_at_date, loaned_at_time) VALUES (1, 'member', 'staff', '2026-01-01', '12:00:00')");
+    bootstrapSqliteEquipmentCompatibility({ db });
+    bootstrapSqliteEquipmentCompatibility({ db });
+    const row = db.prepare("SELECT expected_return_date, loaned_at_date FROM equipment_loans").get();
+    assert.equal(row.expected_return_date, null);
+    assert.equal(row.loaned_at_date, "2026-01-01");
+    bootstrapSqliteUserCompatibility({ db });
+    const due = "2026-12-31";
+    const statements = createSqliteEquipmentStatements(db);
+    statements.insertEquipmentLoan.run(2, "member", "staff", "2026-09-30", "12:00:00", null, due);
+    assert.equal(statements.listEquipmentLoans.all().find((loan) => loan.equipment_item_id === 2).expected_return_date, due);
+  } finally {
+    db.close();
+  }
+});
 
 for (const legacy of [false, true]) {
   test(`SQLite bootstrap supports ${legacy ? "legacy" : "fresh"} databases and repeated startup`, () => {

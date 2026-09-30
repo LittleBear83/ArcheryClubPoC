@@ -26,6 +26,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   const [assignTargetType, setAssignTargetType] = useState("member");
   const [targetMemberUsername, setTargetMemberUsername] = useState("");
   const [targetCaseId, setTargetCaseId] = useState("");
+  const [expectedReturnDate, setExpectedReturnDate] = useState("");
   const [returnCaseId, setReturnCaseId] = useState("");
   const [returnDate, setReturnDate] = useState(getTodayDateValue);
   const [cupboardLabel, setCupboardLabel] = useState("Main Cupboard");
@@ -102,7 +103,11 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
           totalReturnRecords: 0,
           neverLoanedCount: 0,
           inactiveItemsCount: 0,
+          overdueLoansCount: 0,
+          dueWithin14DaysCount: 0,
         },
+        overdueLoans: [],
+        dueWithin14DaysLoans: [],
         usageByType: [],
         mostUsedItems: [],
         neverLoanedItems: [],
@@ -365,6 +370,8 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
           memberUsername:
             assignTargetType === "member" ? targetMemberUsername : undefined,
           caseId: assignTargetType === "case" ? targetCaseId : undefined,
+          expectedReturnDate:
+            assignTargetType === "member" ? expectedReturnDate : undefined,
         },
       }),
     onMutate: () => {
@@ -373,6 +380,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     },
     onSuccess: async () => {
       setMessage("Equipment assignment updated successfully.");
+      setExpectedReturnDate("");
       await refreshDashboard();
     },
     onError: (mutationError) => {
@@ -530,6 +538,10 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   };
 
   const handleAssignEquipment = () => {
+    if (assignTargetType === "member" && !expectedReturnDate) {
+      setError("Expected return date is required for member loans.");
+      return;
+    }
     void assignMutation.mutateAsync();
   };
 
@@ -717,6 +729,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     editForm,
     editingItem,
     error,
+    expectedReturnDate,
     filteredInventoryItems,
     getCaseAssignmentOptions,
     handleAddEquipmentSubmit,
@@ -752,6 +765,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     setAssignTargetType,
     setCupboardLabel,
     setDecommissionReason,
+    setExpectedReturnDate,
     setInventoryFilter,
     setNewStorageLocation,
     setRemoveStorageLocation,

@@ -511,6 +511,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     {},
   );
   const [caseSelections, setCaseSelections] = useState<Record<number, string>>({});
+  const [conversionReturnDates, setConversionReturnDates] = useState<Record<number, string>>({});
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [coachLesson, setCoachLesson] = useState<CourseLesson | null>(null);
@@ -732,7 +733,13 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   };
 
   const convertBeginnerToMember = async (beginner: CourseBeginner) => {
-    await mutation.mutateAsync(() => convertBeginnerToMemberApi(currentUserProfile, beginner.id));
+    const expectedReturnDate = conversionReturnDates[beginner.id];
+    if (beginner.assignedCaseId && !expectedReturnDate) {
+      setError("Expected return date is required for the assigned case.");
+      return;
+    }
+    await mutation.mutateAsync(() => convertBeginnerToMemberApi(currentUserProfile, beginner.id, expectedReturnDate));
+    setConversionReturnDates((current) => ({ ...current, [beginner.id]: "" }));
     setMessage(`${formatMemberDisplayName(beginner)} converted to a full member.`);
     await refreshDashboard();
   };
@@ -1715,6 +1722,16 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                 ) : null}
                 {usesEquipmentAssignment ? (
                   <>
+                    {participant.assignedCaseId && !participant.convertedToMember ? (
+                      <label>
+                        Expected return date
+                        <input type="date" required min={new Date().toISOString().slice(0, 10)}
+                          value={conversionReturnDates[participant.id] ?? ""}
+                          onChange={(event) => setConversionReturnDates((current) => ({
+                            ...current, [participant.id]: event.target.value,
+                          }))} />
+                      </label>
+                    ) : null}
                     <Button onClick={() => {
                       setActionSelection(null);
                       void saveCaseAssignment(participant);

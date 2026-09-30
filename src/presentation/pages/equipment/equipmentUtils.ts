@@ -1,4 +1,16 @@
-import { formatShortDateTime } from "../../../utils/dateTime";
+import { formatDate, formatShortDateTime } from "../../../utils/dateTime";
+
+export function getEquipmentDueLabel(item) {
+  const date = item.expectedReturnDate ?? item.currentLoan?.expectedReturnDate;
+  if (!date) return "-";
+  const today = new Date().toISOString().slice(0, 10);
+  const limit = new Date(`${today}T00:00:00Z`);
+  limit.setUTCDate(limit.getUTCDate() + 14);
+  const display = formatDate(date);
+  if (date < today) return `Overdue: ${display}`;
+  if (date <= limit.toISOString().slice(0, 10)) return `Due within 14 days: ${display}`;
+  return `Due: ${display}`;
+}
 
 export function describeCaseContentLocation(item, caseItem) {
   if (item.currentLocation?.caseId === caseItem.id) {

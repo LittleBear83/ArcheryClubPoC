@@ -40,6 +40,7 @@ function createSqliteEquipmentGateway(deps) {
       loanedAtDate,
       loanedAtTime,
       loanContextCaseId,
+      expectedReturnDate = null,
     ) {
       deps.insertEquipmentLoan.run(
         equipmentItemId,
@@ -48,6 +49,7 @@ function createSqliteEquipmentGateway(deps) {
         loanedAtDate,
         loanedAtTime,
         loanContextCaseId,
+        expectedReturnDate,
       );
     },
     async createEquipmentStorageLocation(label, date, time) {
@@ -203,6 +205,7 @@ function createPostgresEquipmentGateway({ pool }) {
       loanedAtDate,
       loanedAtTime,
       loanContextCaseId,
+      expectedReturnDate = null,
     ) {
       await pool.query(
         `
@@ -212,9 +215,10 @@ function createPostgresEquipmentGateway({ pool }) {
             loaned_by_username,
             loaned_at_date,
             loaned_at_time,
-            loan_context_case_id
+            loan_context_case_id,
+            expected_return_date
           )
-          VALUES ($1, $2, $3, $4, $5, $6)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
         `,
         [
           equipmentItemId,
@@ -223,6 +227,7 @@ function createPostgresEquipmentGateway({ pool }) {
           loanedAtDate,
           loanedAtTime,
           loanContextCaseId,
+          expectedReturnDate,
         ],
       );
     },

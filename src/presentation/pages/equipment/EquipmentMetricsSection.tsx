@@ -47,6 +47,16 @@ export function EquipmentMetricsSection({ analytics }) {
       helper: "Items or case contents signed out now.",
     },
     {
+      label: "Overdue loans",
+      value: analytics.summary.overdueLoansCount,
+      helper: "Open loans past their expected return date.",
+    },
+    {
+      label: "Due within 14 days",
+      value: analytics.summary.dueWithin14DaysCount,
+      helper: "Open loans due today through the next 14 days.",
+    },
+    {
       label: "Loan records",
       value: analytics.summary.totalLoanRecords,
       helper: "All recorded issue events.",
@@ -90,6 +100,25 @@ export function EquipmentMetricsSection({ analytics }) {
         </div>
 
         <div className="equipment-metrics-grid">
+          {[
+            { title: "Overdue Loans", rows: analytics.overdueLoans },
+            { title: "Due Within 14 Days", rows: analytics.dueWithin14DaysLoans },
+          ].map(({ title, rows }) => (
+            <EquipmentMetricTable key={title} title={title}>
+              <table className="equipment-metrics-table">
+                <thead><tr><th>Equipment</th><th>Member</th><th>Expected return</th></tr></thead>
+                <tbody>
+                  {rows.length ? rows.map((loan) => (
+                    <tr key={loan.id}>
+                      <td>{loan.itemLabel}</td>
+                      <td>{loan.memberName}</td>
+                      <td>{renderDate(loan.expectedReturnDate)}</td>
+                    </tr>
+                  )) : <tr><td colSpan={3}>No {title.toLowerCase()}.</td></tr>}
+                </tbody>
+              </table>
+            </EquipmentMetricTable>
+          ))}
           <EquipmentMetricTable title="Usage By Type">
             <table className="equipment-metrics-table">
               <thead>

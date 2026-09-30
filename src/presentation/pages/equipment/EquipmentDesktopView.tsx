@@ -11,6 +11,7 @@ import {
   CASE_ASSIGNMENT_FIELDS,
   describeCaseContentLocation,
   getEquipmentDetailsLabel,
+  getEquipmentDueLabel,
   getEquipmentLoanDateLabel,
   getEquipmentLocationLabel,
   getEquipmentMemberLabel,
@@ -40,6 +41,7 @@ export function EquipmentDesktopView({
   equipmentQuery,
   equipmentTypeOptions,
   error,
+  expectedReturnDate,
   filteredInventoryItems,
   handleAddEquipmentSubmit,
   handleAddStorageLocation,
@@ -70,6 +72,7 @@ export function EquipmentDesktopView({
   setAssignTargetType,
   setCupboardLabel,
   setDecommissionReason,
+  setExpectedReturnDate,
   setInventoryFilter,
   setNewStorageLocation,
   setRemoveStorageLocation,
@@ -262,7 +265,10 @@ export function EquipmentDesktopView({
                       className="equipment-inline-control"
                       label="Assign to"
                       value={assignTargetType}
-                      onChange={(event) => setAssignTargetType(event.target.value)}
+                      onChange={(event) => {
+                        setAssignTargetType(event.target.value);
+                        if (event.target.value === "case") setExpectedReturnDate("");
+                      }}
                     >
                       <option value="member">Member</option>
                       <option value="case">Case</option>
@@ -271,6 +277,7 @@ export function EquipmentDesktopView({
 
                   <div className="equipment-inline-control-grid equipment-assign-fields">
                     {assignTargetType === "member" ? (
+                      <>
                       <MemberAutocomplete
                         className="equipment-inline-control"
                         clearDisplayOnFocus
@@ -285,6 +292,13 @@ export function EquipmentDesktopView({
                         value={targetMemberUsername}
                         onValueChange={setTargetMemberUsername}
                       />
+                      <label className="equipment-inline-control">
+                        Expected return date
+                        <input type="date" required min={new Date().toISOString().slice(0, 10)}
+                          value={expectedReturnDate}
+                          onChange={(event) => setExpectedReturnDate(event.target.value)} />
+                      </label>
+                      </>
                     ) : (
                       <LabeledSelect
                         className="equipment-inline-control"
@@ -380,7 +394,7 @@ export function EquipmentDesktopView({
                   >
                     {loanedItems.map((item) => (
                       <option key={item.id} value={item.id}>
-                        {item.label} | {item.currentLoan?.memberName}
+                        {item.label} | {item.currentLoan?.memberName} | {getEquipmentDueLabel(item)}
                       </option>
                       ))}
                     </LabeledSelect>
@@ -660,6 +674,7 @@ export function EquipmentDesktopView({
                     Loan Date
                   </button>
                 </th>
+                <th>Expected return</th>
                 <th>
                   <button
                     type="button"
@@ -683,12 +698,13 @@ export function EquipmentDesktopView({
                     <td>{getEquipmentLocationLabel(item)}</td>
                     <td>{getEquipmentMemberLabel(item) || "-"}</td>
                     <td>{getEquipmentLoanDateLabel(item) || "-"}</td>
+                    <td>{getEquipmentDueLabel(item)}</td>
                     <td>{item.lastAssignedBy || "-"}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7}>No equipment matches the current filter.</td>
+                  <td colSpan={8}>No equipment matches the current filter.</td>
                 </tr>
               )}
             </tbody>

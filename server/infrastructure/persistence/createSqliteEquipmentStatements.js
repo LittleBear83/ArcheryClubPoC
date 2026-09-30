@@ -246,9 +246,10 @@ export function createSqliteEquipmentStatements(db) {
       loaned_by_username,
       loaned_at_date,
       loaned_at_time,
-      loan_context_case_id
+      loan_context_case_id,
+      expected_return_date
     )
-    VALUES (?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   const closeEquipmentLoan = db.prepare(`

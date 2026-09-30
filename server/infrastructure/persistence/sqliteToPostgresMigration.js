@@ -407,6 +407,7 @@ const orderedTableCopies = [
       "loaned_at_date",
       "loaned_at_time",
       "loan_context_case_id",
+      "expected_return_date",
       "returned_by_username",
       "returned_at_date",
       "returned_at_time",

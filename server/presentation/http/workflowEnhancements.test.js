@@ -42,7 +42,7 @@ test("closed courses retain full attendee details and existing conversion contro
   assert.deepEqual(selectCourseDetails([], [closed], null), []);
   const source = readFileSync(new URL("../../../src/presentation/pages/BeginnersCoursesPage.tsx", import.meta.url), "utf8");
   assert.match(source, /closedCourseRecords\.map\(renderCoursePanel\)/);
-  assert.match(source, /convertBeginnerToMember\(beginner\)/);
+  assert.match(source, /convertBeginnerToMember\(participant\)/);
   assert.match(source, /submitTransferToBeginnersCourse\(course.id\)/);
   assert.match(source, /Closed/);
 });

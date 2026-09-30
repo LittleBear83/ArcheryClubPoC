@@ -81,6 +81,18 @@ export function registerEquipmentRoutes({
     return normalized;
   };
 
+  const sanitizeExpectedReturnDate = (value) => {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return null;
+    }
+    const parsed = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(parsed.getTime()) &&
+      parsed.toISOString().slice(0, 10) === value &&
+      value >= new Date().toISOString().slice(0, 10)
+      ? value
+      : null;
+  };
+
   const buildLoanTimestamp = (date, time) =>
     date ? `${date}T${time || "00:00:00"}` : "";
 
@@ -116,6 +128,25 @@ export function registerEquipmentRoutes({
   const buildEquipmentAnalytics = (items, loans) => {
     const inactiveThresholdDays = 60;
     const activeItems = items.filter((item) => item.status === "active");
+    const today = new Date().toISOString().slice(0, 10);
+    const dueLimit = new Date(`${today}T00:00:00Z`);
+    dueLimit.setUTCDate(dueLimit.getUTCDate() + 14);
+    const dueLimitDate = dueLimit.toISOString().slice(0, 10);
+    const activeById = new Map(activeItems.map((item) => [item.id, item]));
+    const dueLoans = loans
+      .filter((loan) => !loan.returned_at_date && loan.expected_return_date && activeById.has(loan.equipment_item_id))
+      .map((loan) => ({
+        id: loan.id,
+        equipmentItemId: loan.equipment_item_id,
+        itemLabel: activeById.get(loan.equipment_item_id).label,
+        memberName: [loan.member_first_name, loan.member_surname].filter(Boolean).join(" ") || loan.member_username,
+        expectedReturnDate: loan.expected_return_date,
+      }));
+    const overdueLoans = dueLoans.filter((loan) => loan.expectedReturnDate < today)
+      .sort((a, b) => a.expectedReturnDate.localeCompare(b.expectedReturnDate));
+    const dueWithin14DaysLoans = dueLoans.filter((loan) =>
+      loan.expectedReturnDate >= today && loan.expectedReturnDate <= dueLimitDate,
+    ).sort((a, b) => a.expectedReturnDate.localeCompare(b.expectedReturnDate));
     const itemStatsById = new Map(
       activeItems.map((item) => [
         item.id,
@@ -255,7 +286,11 @@ export function registerEquipmentRoutes({
         totalReturnRecords: loans.filter((loan) => Boolean(loan.returned_at_date)).length,
         neverLoanedCount: statRows.filter((row) => row.loanCount === 0).length,
         inactiveItemsCount: allInactiveItems.length,
+        overdueLoansCount: overdueLoans.length,
+        dueWithin14DaysCount: dueWithin14DaysLoans.length,
       },
+      overdueLoans,
+      dueWithin14DaysLoans,
       usageByType,
       mostUsedItems,
       neverLoanedItems,
@@ -676,6 +711,14 @@ export function registerEquipmentRoutes({
         assignedAtTime: time,
       });
     } else if (targetType === "member") {
+      const expectedReturnDate = sanitizeExpectedReturnDate(req.body?.expectedReturnDate);
+      if (!expectedReturnDate) {
+        res.status(400).json({
+          success: false,
+          message: "Expected return date is required and must be a valid YYYY-MM-DD date today or later (UTC).",
+        });
+        return;
+      }
       const memberUsername =
         typeof req.body?.memberUsername === "string" ? req.body.memberUsername.trim() : "";
       const member = await memberDirectoryGateway.findUserByUsername(memberUsername);
@@ -715,6 +758,7 @@ export function registerEquipmentRoutes({
             date,
             time,
             null,
+            expectedReturnDate,
           );
           await equipmentGateway.updateEquipmentItemStorage({
             id: item.id,
@@ -745,6 +789,7 @@ export function registerEquipmentRoutes({
               date,
               time,
               item.id,
+              expectedReturnDate,
             );
             await equipmentGateway.updateEquipmentAssignmentMetadata({
               id: content.id,
@@ -761,6 +806,7 @@ export function registerEquipmentRoutes({
             date,
             time,
             null,
+            expectedReturnDate,
           );
           await equipmentGateway.updateEquipmentItemStorage({
             id: item.id,
@@ -1271,6 +1317,7 @@ export function registerEquipmentRoutes({
             ? `${loan.arrow_quantity} x ${loan.arrow_length}"`
             : loan.item_number ?? "",
         loanDate: `${loan.loaned_at_date} ${loan.loaned_at_time}`.trim(),
+        expectedReturnDate: loan.expected_return_date ?? null,
       }));
 
     res.json({

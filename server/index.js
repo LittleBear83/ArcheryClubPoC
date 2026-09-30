@@ -4196,12 +4196,14 @@ function buildEquipmentItemResponse(item, maps) {
       : "",
     currentLocation,
     currentReservation,
+    expectedReturnDate: openLoan?.expected_return_date ?? null,
     currentLoan: openLoan && !isCaseContentLoan
       ? {
           memberUsername: openLoan.member_username,
           memberName: getUserDisplayName(openLoan, "member_first_name", "member_surname"),
           loanedBy: getUserDisplayName(openLoan, "loaned_by_first_name", "loaned_by_surname"),
           loanedAt: `${openLoan.loaned_at_date} ${openLoan.loaned_at_time}`.trim(),
+          expectedReturnDate: openLoan.expected_return_date ?? null,
           contextCaseId: openLoan.loan_context_case_id ?? null,
           contextCaseNumber: openLoan.context_case_number ?? "",
         }
@@ -6668,6 +6670,22 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     return;
   }
 
+  const expectedReturnDate = req.body?.expectedReturnDate;
+  if (participant.assigned_case_id) {
+    const parsed = typeof expectedReturnDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(expectedReturnDate)
+      ? new Date(`${expectedReturnDate}T00:00:00Z`)
+      : null;
+    if (!parsed || Number.isNaN(parsed.getTime()) ||
+        parsed.toISOString().slice(0, 10) !== expectedReturnDate ||
+        expectedReturnDate < new Date().toISOString().slice(0, 10)) {
+      res.status(400).json({
+        success: false,
+        message: "Expected return date is required for the assigned case and must be today or later (YYYY-MM-DD, UTC).",
+      });
+      return;
+    }
+  }
+
   const existingUser = await memberDirectoryGateway.findUserByUsername(
     participant.username,
   );
@@ -6786,6 +6804,7 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
         convertedAtDate,
         convertedAtTime,
         null,
+        expectedReturnDate,
       );
       await equipmentGateway.updateEquipmentItemStorage({
         id: caseItem.id,
@@ -6812,6 +6831,7 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
           convertedAtDate,
           convertedAtTime,
           caseItem.id,
+          expectedReturnDate,
         );
         await equipmentGateway.updateEquipmentAssignmentMetadata({
           id: content.id,
@@ -7156,6 +7176,7 @@ app.get("/api/my-beginner-dashboard", async (req, res) => {
         loan.equipment_type === EQUIPMENT_TYPES.ARROWS
           ? `${loan.arrow_quantity} x ${loan.arrow_length}"`
           : loan.item_number ?? "",
+      expectedReturnDate: loan.expected_return_date ?? null,
     }))
     .sort((left, right) => {
       const leftIsCase = left.equipmentType === EQUIPMENT_TYPES.CASE;
@@ -7171,6 +7192,7 @@ app.get("/api/my-beginner-dashboard", async (req, res) => {
       id: item.id,
       typeLabel: item.typeLabel,
       reference: item.reference,
+      expectedReturnDate: item.expectedReturnDate,
     }));
 
   res.json({

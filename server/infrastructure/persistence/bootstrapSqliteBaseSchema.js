@@ -1156,6 +1156,7 @@ export function bootstrapSqliteBaseSchema({
       loaned_at_date TEXT NOT NULL,
       loaned_at_time TEXT NOT NULL,
       loan_context_case_id INTEGER,
+      expected_return_date TEXT,
       returned_by_username TEXT,
       returned_at_date TEXT,
       returned_at_time TEXT,

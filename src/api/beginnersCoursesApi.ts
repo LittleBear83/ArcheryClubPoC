@@ -120,6 +120,7 @@ export async function assignBeginnerCase(
 export async function convertBeginnerToMember(
   actor: ActorIdentity | string,
   beginnerId: string | number,
+  expectedReturnDate?: string,
 ) {
   return fetchApi<{ success: true }>(
     `/api/beginners-course-participants/${beginnerId}/convert`,
@@ -127,6 +128,7 @@ export async function convertBeginnerToMember(
       method: "POST",
       headers: buildActorHeaders(actor, true),
       cache: "no-store",
+      body: JSON.stringify({ expectedReturnDate }),
     },
   );
 }

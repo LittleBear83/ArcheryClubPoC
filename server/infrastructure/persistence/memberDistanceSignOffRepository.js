@@ -208,11 +208,11 @@ function createPostgresMemberDistanceSignOffRepository(
         ],
       );
     },
-    async replaceForDiscipline(username, discipline, signOffs) {
-      const client = await db.pool.connect();
+    async replaceForDiscipline(username, discipline, signOffs, transactionClient) {
+      const client = transactionClient ?? await db.pool.connect();
 
       try {
-        await client.query("BEGIN");
+        if (!transactionClient) await client.query("BEGIN");
         await client.query(
           `
             DELETE FROM member_distance_sign_offs
@@ -259,12 +259,12 @@ function createPostgresMemberDistanceSignOffRepository(
           );
         }
 
-        await client.query("COMMIT");
+        if (!transactionClient) await client.query("COMMIT");
       } catch (error) {
-        await client.query("ROLLBACK");
+        if (!transactionClient) await client.query("ROLLBACK");
         throw error;
       } finally {
-        client.release();
+        if (!transactionClient) client.release();
       }
     },
   };

@@ -59,6 +59,7 @@ export function createGoldenRecordsHttpClient({
 
         return {
           body: parsedBody,
+          bodyWasEmpty: text.length === 0,
           ok: response.ok,
           status: response.status,
           statusText: response.statusText,

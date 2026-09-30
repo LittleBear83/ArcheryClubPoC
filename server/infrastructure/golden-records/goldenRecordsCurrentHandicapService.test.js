@@ -2,6 +2,74 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createGoldenRecordsCurrentHandicapService } from "./goldenRecordsCurrentHandicapService.js";
 
+test("manual member fetch accepts member-specific JSON null as no classifications", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  const paths = [];
+  try {
+    globalThis.setTimeout = (callback) => { callback(); return 0; };
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      paths.push(url.pathname);
+      const body = {
+        "/api/members": [{ member_id: "gr-j", name: "J Geldeart", member_archived: false }],
+        "/api/currenthandicaps": [
+          { member_id: "gr-j", bow_class: "Recurve", handicap: 42, type: "Outdoor" },
+          { member_id: "other", bow_class: "Recurve", handicap: 20, type: "Outdoor" },
+        ],
+        "/api/achievements": [{ member_id: "gr-j", achievement: "Archer 3rd", bow_class: "Recurve" }],
+        "/api/currentclassifications": null,
+      }[url.pathname];
+      return { ok: true, status: 200, text: async () => JSON.stringify(body) };
+    };
+    const service = createGoldenRecordsCurrentHandicapService({ apiKey: "test-key", baseUrl: "https://api2.archery-records.net" });
+    const snapshot = await service.getSnapshotForMemberById("gr-j");
+    assert.equal(snapshot.matchSource, "manual");
+    assert.equal(snapshot.matchedMemberId, "gr-j");
+    assert.equal(snapshot.handicaps.length, 1);
+    assert.equal(snapshot.achievements.length, 1);
+    assert.deepEqual(snapshot.classifications, []);
+    assert.deepEqual(paths, ["/api/members", "/api/currenthandicaps", "/api/achievements", "/api/currentclassifications"]);
+  } finally { globalThis.fetch = originalFetch; globalThis.setTimeout = originalSetTimeout; }
+});
+
+test("manual member fetch loads classifications when the API returns an array", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  try {
+    globalThis.setTimeout = (callback) => { callback(); return 0; };
+    globalThis.fetch = async (input) => {
+      const path = new URL(String(input)).pathname;
+      const rows = path === "/api/members"
+        ? [{ member_id: "gr-j", name: "J Geldeart" }]
+        : path === "/api/currentclassifications"
+          ? [{ member_id: "gr-j", classification: "Bowman 3rd", type: "Outdoor", bow_class: "Recurve" }]
+          : [];
+      return { ok: true, status: 200, text: async () => JSON.stringify(rows) };
+    };
+    const service = createGoldenRecordsCurrentHandicapService({ apiKey: "test-key", baseUrl: "https://api2.archery-records.net" });
+    const snapshot = await service.getSnapshotForMemberById("gr-j");
+    assert.equal(snapshot.classifications[0].classification, "Bowman 3rd");
+  } finally { globalThis.fetch = originalFetch; globalThis.setTimeout = originalSetTimeout; }
+});
+
+test("manual member fetch rejects nonexistent, archived and malformed remote responses", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    const memberRows = [{ member_id: "archived", member_archived: true }];
+    globalThis.fetch = async (input) => ({ ok: true, status: 200,
+      text: async () => new URL(String(input)).pathname === "/api/members" ? JSON.stringify(memberRows) : "{}" });
+    const service = createGoldenRecordsCurrentHandicapService({ apiKey: "test-key", baseUrl: "https://api2.archery-records.net" });
+    await assert.rejects(service.getSnapshotForMemberById("absent"), /not found or is archived/);
+    await assert.rejects(service.getSnapshotForMemberById("archived"), /not found or is archived/);
+    memberRows.splice(0, memberRows.length, { member_id: "present", name: "Present Member" });
+    await assert.rejects(service.getSnapshotForMemberById("present"), /Invalid Golden Records page response from \/api\/currenthandicaps/);
+    globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => "" });
+    const fresh = createGoldenRecordsCurrentHandicapService({ apiKey: "test-key", baseUrl: "https://api2.archery-records.net" });
+    await assert.rejects(fresh.getSnapshotForMemberById("present"), /Invalid Golden Records page response/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("Golden Records achievements pagination continues until a partial page is returned", async () => {
   const originalFetch = globalThis.fetch;
   const originalSetTimeout = globalThis.setTimeout;

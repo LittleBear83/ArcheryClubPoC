@@ -60,6 +60,20 @@ function createSqliteGoldenRecordsSyncGateway(db) {
     ORDER BY fetched_at DESC
     LIMIT 1
   `);
+  const updateManualMatchId = db.prepare(`
+    UPDATE users SET gr_id = ? WHERE LOWER(username) = LOWER(?)
+  `);
+
+  function writeSnapshot({ fetchedAt, snapshot, syncedAtDate, syncedAtTime, updatedByUsername, username }) {
+    upsertStatement.run({
+      username,
+      snapshotJson: JSON.stringify(snapshot ?? {}),
+      fetchedAt: String(fetchedAt ?? "").trim(),
+      syncedAtDate,
+      syncedAtTime,
+      updatedByUsername: updatedByUsername || null,
+    });
+  }
 
   return {
     async findByUsername(username) {
@@ -76,19 +90,48 @@ function createSqliteGoldenRecordsSyncGateway(db) {
       updatedByUsername,
       username,
     }) {
-      upsertStatement.run({
-        username,
-        snapshotJson: JSON.stringify(snapshot ?? {}),
-        fetchedAt: String(fetchedAt ?? "").trim(),
-        syncedAtDate,
-        syncedAtTime,
-        updatedByUsername: updatedByUsername || null,
-      });
+      writeSnapshot({ fetchedAt, snapshot, syncedAtDate, syncedAtTime, updatedByUsername, username });
+    },
+    async commitManualMatch(payload) {
+      db.transaction(() => {
+        if (updateManualMatchId.run(payload.memberId, payload.username).changes !== 1) {
+          throw new Error("Member profile not found while saving Golden Records match.");
+        }
+        writeSnapshot(payload);
+      })();
     },
   };
 }
 
 function createPostgresGoldenRecordsSyncGateway(pool) {
+  async function writeSnapshot(client, {
+    fetchedAt, snapshot, syncedAtDate, syncedAtTime, updatedByUsername, username,
+  }) {
+    await client.query(
+      `
+        INSERT INTO golden_records_member_sync (
+          username, snapshot_json, fetched_at, synced_at_date, synced_at_time,
+          updated_by_username, user_id, updated_by_user_id
+        )
+        VALUES (
+          $1, $2::jsonb, $3, $4, $5, $6,
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1),
+          (SELECT id FROM users WHERE LOWER(username) = LOWER($6) LIMIT 1)
+        )
+        ON CONFLICT(username) DO UPDATE SET
+          snapshot_json = EXCLUDED.snapshot_json,
+          fetched_at = EXCLUDED.fetched_at,
+          synced_at_date = EXCLUDED.synced_at_date,
+          synced_at_time = EXCLUDED.synced_at_time,
+          updated_by_username = EXCLUDED.updated_by_username,
+          user_id = EXCLUDED.user_id,
+          updated_by_user_id = EXCLUDED.updated_by_user_id
+      `,
+      [username, JSON.stringify(snapshot ?? {}), String(fetchedAt ?? "").trim(),
+        syncedAtDate, syncedAtTime, updatedByUsername || null],
+    );
+  }
+
   return {
     async findByUsername(username) {
       const result = await pool.query(
@@ -124,46 +167,25 @@ function createPostgresGoldenRecordsSyncGateway(pool) {
       updatedByUsername,
       username,
     }) {
-      await pool.query(
-        `
-          INSERT INTO golden_records_member_sync (
-            username,
-            snapshot_json,
-            fetched_at,
-            synced_at_date,
-            synced_at_time,
-            updated_by_username,
-            user_id,
-            updated_by_user_id
-          )
-          VALUES (
-            $1,
-            $2::jsonb,
-            $3,
-            $4,
-            $5,
-            $6,
-            (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1),
-            (SELECT id FROM users WHERE LOWER(username) = LOWER($6) LIMIT 1)
-          )
-          ON CONFLICT(username) DO UPDATE SET
-            snapshot_json = EXCLUDED.snapshot_json,
-            fetched_at = EXCLUDED.fetched_at,
-            synced_at_date = EXCLUDED.synced_at_date,
-            synced_at_time = EXCLUDED.synced_at_time,
-            updated_by_username = EXCLUDED.updated_by_username,
-            user_id = EXCLUDED.user_id,
-            updated_by_user_id = EXCLUDED.updated_by_user_id
-        `,
-        [
-          username,
-          JSON.stringify(snapshot ?? {}),
-          String(fetchedAt ?? "").trim(),
-          syncedAtDate,
-          syncedAtTime,
-          updatedByUsername || null,
-        ],
-      );
+      await writeSnapshot(pool, { fetchedAt, snapshot, syncedAtDate, syncedAtTime, updatedByUsername, username });
+    },
+    async commitManualMatch(payload, transactionClient) {
+      const client = transactionClient ?? await pool.connect();
+      try {
+        if (!transactionClient) await client.query("BEGIN");
+        const updated = await client.query(
+          "UPDATE users SET gr_id = $1 WHERE LOWER(username) = LOWER($2)",
+          [payload.memberId, payload.username],
+        );
+        if (updated.rowCount !== 1) throw new Error("Member profile not found while saving Golden Records match.");
+        await writeSnapshot(client, payload);
+        if (!transactionClient) await client.query("COMMIT");
+      } catch (error) {
+        if (!transactionClient) await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        if (!transactionClient) client.release();
+      }
     },
   };
 }

@@ -76,6 +76,7 @@ import { createRangeRulesGateway } from "./infrastructure/persistence/rangeRules
 import { createGeneralInfoGateway } from "./infrastructure/persistence/generalInfoGateway.js";
 import { createHandicapTableGateway } from "./infrastructure/persistence/handicapTableGateway.js";
 import { createGoldenRecordsSyncGateway } from "./infrastructure/persistence/goldenRecordsSyncGateway.js";
+import { withGoldenRecordsManualMatchTransaction } from "./infrastructure/persistence/goldenRecordsManualMatchTransaction.js";
 import { createSyncGateway } from "./infrastructure/persistence/syncGateway.js";
 import { createGoldenRecordsIntegrationGateway } from "./infrastructure/persistence/goldenRecordsIntegrationGateway.js";
 import { createGoldenRecordsCurrentHandicapService } from "./infrastructure/golden-records/goldenRecordsCurrentHandicapService.js";
@@ -1094,6 +1095,9 @@ const goldenRecordsMemberSyncService = createGoldenRecordsMemberSyncService({
   getUtcTimestampParts,
   goldenRecordsCurrentHandicapService,
   goldenRecordsSyncGateway,
+  manualMatchTransaction: (operation) => withGoldenRecordsManualMatchTransaction(
+    { databaseEngine: serverRuntime.databaseEngine, db, outdoorTableGateway }, operation,
+  ),
   memberDirectoryGateway,
   memberDistanceSignOffRepository,
   outdoorTableGateway,

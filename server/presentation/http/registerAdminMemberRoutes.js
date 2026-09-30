@@ -1996,12 +1996,19 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    await memberDirectoryGateway.updateGoldenRecordsId(user.username, goldenRecordsId);
-    user.gr_id = goldenRecordsId;
-
-    const syncSummary = await resolvedGoldenRecordsMemberSyncService.syncMember(user, {
-      updatedByUsername: actor.username,
-    });
+    let syncSummary;
+    try {
+      syncSummary = await resolvedGoldenRecordsMemberSyncService.assignMemberMatch(user, {
+        goldenRecordsId,
+        updatedByUsername: actor.username,
+      });
+    } catch (error) {
+      res.status(error?.status === 400 ? 400 : 502).json({
+        success: false,
+        message: error instanceof Error ? error.message : "Golden Records match assignment failed.",
+      });
+      return;
+    }
     const goldenRecords = syncSummary.goldenRecords;
 
     if (!goldenRecords.enabled) {

@@ -1,13 +1,9 @@
-export async function loanAssignedCaseForBeginnerConversion({
+export async function validateAssignedCaseForBeginnerConversion({
   caseId,
   equipmentGateway,
   caseEquipmentType,
   memberLocationType,
   memberUsername,
-  actorUsername,
-  convertedAtDate,
-  convertedAtTime,
-  expectedReturnDate,
 }) {
   const caseItem = await equipmentGateway.findEquipmentItemById(caseId);
   if (!caseItem || caseItem.equipment_type !== caseEquipmentType) {
@@ -31,6 +27,25 @@ export async function loanAssignedCaseForBeginnerConversion({
       throw new Error("The assigned case contains equipment that is already on loan.");
     }
   }
+
+  return { caseItem, caseContents };
+}
+
+export async function loanAssignedCaseForBeginnerConversion({
+  caseId,
+  equipmentGateway,
+  caseEquipmentType,
+  memberLocationType,
+  memberUsername,
+  actorUsername,
+  convertedAtDate,
+  convertedAtTime,
+  expectedReturnDate,
+  preparedCase,
+}) {
+  const { caseItem, caseContents } = preparedCase ?? await validateAssignedCaseForBeginnerConversion({
+    caseId, equipmentGateway, caseEquipmentType, memberLocationType, memberUsername,
+  });
 
   await equipmentGateway.createEquipmentLoan(
     caseItem.id, memberUsername, actorUsername, convertedAtDate,

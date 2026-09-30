@@ -16,8 +16,10 @@ import {
 } from "./domain/services/memberPersistenceService.js";
 import { createGoldenRecordsMemberSyncService } from "./domain/services/goldenRecordsMemberSyncService.js";
 import { createGoldenRecordsSyncJob } from "./domain/services/goldenRecordsSyncJob.js";
-import { loanAssignedCaseForBeginnerConversion } from "./domain/services/beginnerConversionCaseLoan.js";
+import { loanAssignedCaseForBeginnerConversion, validateAssignedCaseForBeginnerConversion } from "./domain/services/beginnerConversionCaseLoan.js";
 import { validateBeginnerConversionDate } from "./domain/services/beginnerConversionDate.js";
+import { BeginnerConversionFailure, runBeginnerConversion } from "./domain/services/runBeginnerConversion.js";
+import { withBeginnerConversionTransaction } from "./infrastructure/persistence/beginnerConversionTransaction.js";
 import { startGoldenRecordsSyncScheduler } from "./domain/services/goldenRecordsSyncScheduler.js";
 import { createServerEventBus } from "./domain/services/serverEventBus.js";
 import { startLocalSyncBrowserBridge } from "./infrastructure/persistence/localSyncBrowserBridge.js";
@@ -6714,12 +6716,12 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     return;
   }
 
-  if (
-    LEGACY_NON_MEMBER_ROLE_KEYS.has(
-      String(existingUser.user_type ?? "").trim().toLowerCase(),
-    )
-  ) {
-    const conversionResult = await memberPersistenceService.saveMemberProfile({
+  const needsMembershipUpdate = LEGACY_NON_MEMBER_ROLE_KEYS.has(
+    String(existingUser.user_type ?? "").trim().toLowerCase(),
+  );
+  const saveMembership = async (transactionClient) => {
+    if (!needsMembershipUpdate) return { success: true };
+    return memberPersistenceService.saveMemberProfile({
       username: existingUser.username,
       firstName: existingUser.first_name,
       surname: existingUser.surname,
@@ -6744,13 +6746,9 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
         ),
       ),
       existingUser,
+      transactionClient,
     });
-
-    if (!conversionResult.success) {
-      res.status(conversionResult.status).json(conversionResult);
-      return;
-    }
-  }
+  };
 
   const courseType = normalizeCourseType(course.course_type);
   const previousParticipant = await findBeginnersParticipantAuditSnapshot(
@@ -6760,10 +6758,31 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
   const [convertedAtDate, convertedAtTime] = getUtcTimestampParts();
 
   try {
-    if (participant.assigned_case_id) {
-      await loanAssignedCaseForBeginnerConversion({
+    await runBeginnerConversion({
+      inTransaction: participant.assigned_case_id
+        ? (operation) => withBeginnerConversionTransaction({ databaseEngine: serverRuntime.databaseEngine, db }, operation)
+        : (operation) => operation(null),
+      prepareCase: participant.assigned_case_id ? async (client) => {
+        if (client) {
+          // Serialize conversions of the same case before checking for open loans.
+          await client.query("SELECT id FROM equipment_items WHERE id = $1 FOR UPDATE", [participant.assigned_case_id]);
+        }
+        const scopedEquipmentGateway = client
+          ? createEquipmentGateway({ databaseEngine: "postgres", pool: client })
+          : equipmentGateway;
+        const prepared = await validateAssignedCaseForBeginnerConversion({
+          caseId: participant.assigned_case_id,
+          equipmentGateway: scopedEquipmentGateway,
+          caseEquipmentType: EQUIPMENT_TYPES.CASE,
+          memberLocationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
+          memberUsername: existingUser.username,
+        });
+        return { ...prepared, scopedEquipmentGateway };
+      } : null,
+      saveMembership,
+      loanCase: async (preparedCase) => loanAssignedCaseForBeginnerConversion({
         caseId: participant.assigned_case_id,
-        equipmentGateway,
+        equipmentGateway: preparedCase.scopedEquipmentGateway,
         caseEquipmentType: EQUIPMENT_TYPES.CASE,
         memberLocationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
         memberUsername: existingUser.username,
@@ -6771,10 +6790,29 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
         convertedAtDate,
         convertedAtTime,
         expectedReturnDate,
-      });
-    }
+        preparedCase,
+      }),
+      markParticipant: async (client) => {
+        const payload = {
+          actorUsername: actor.username, convertedAtDate, convertedAtTime,
+          participantId: participant.id,
+        };
+        if (client) {
+          await client.query(`UPDATE beginners_course_participants SET
+            converted_to_member = 1, converted_at_date = $1,
+            converted_at_time = $2, converted_by_username = $3 WHERE id = $4`,
+          [convertedAtDate, convertedAtTime, actor.username, participant.id]);
+        } else {
+          await beginnersCourseWriteGateway.markParticipantConverted(payload);
+        }
+      },
+    });
   } catch (error) {
-    res.status(400).json({
+    if (error instanceof BeginnerConversionFailure) {
+      res.status(error.response.status).json(error.response);
+      return;
+    }
+    res.status(participant.assigned_case_id ? 400 : 500).json({
       success: false,
       message:
         error instanceof Error
@@ -6783,13 +6821,6 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     });
     return;
   }
-
-  await beginnersCourseWriteGateway.markParticipantConverted({
-    actorUsername: actor.username,
-    convertedAtDate,
-    convertedAtTime,
-    participantId: participant.id,
-  });
   const convertedParticipant = await findBeginnersParticipantAuditSnapshot(
     participant.id,
     courseType,

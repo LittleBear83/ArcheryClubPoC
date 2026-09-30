@@ -11,6 +11,8 @@ await import("../server/infrastructure/persistence/createSqliteBeginnersCourseSt
 await import("../src/presentation/pages/beginnersCourseWorkflow.test.js");
 await import("../server/domain/services/beginnerConversionCaseLoan.test.js");
 await import("../server/domain/services/beginnerConversionDate.test.js");
+await import("../server/domain/services/runBeginnerConversion.test.js");
+await import("../server/infrastructure/persistence/beginnerConversionTransaction.test.js");
 const outDir = path.join(root, ".test-dist");
 const files = [
   "src/presentation/pages/roles/rolePermissionsUtils.ts",

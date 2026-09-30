@@ -131,6 +131,7 @@ export function createMemberPersistenceService({
       userType,
       username,
       syncContext,
+      transactionClient,
     }) {
       if (rfidTag != null && typeof rfidTag !== "string") {
         return { success: false, status: 400, message: "RFID must be text or empty." };
@@ -241,7 +242,12 @@ export function createMemberPersistenceService({
           userPayload,
           userType,
           rfidSync,
+          transactionClient,
         });
+
+        // The caller owns the surrounding conversion transaction. A read through
+        // the ordinary pool would not see its uncommitted membership write.
+        if (transactionClient) return { success: true };
 
         const savedUser = await memberAuthGateway.findUserByUsername(userPayload.username);
         const savedLoanBow = await memberProfileGateway.findLoanBowByUsername(

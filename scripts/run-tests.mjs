@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
@@ -8,6 +8,9 @@ await import("../server/presentation/http/tournamentTemplateCapability.test.js")
 await import("../server/presentation/http/registerTournamentRoutes.templateUpdate.test.js");
 await import("../server/infrastructure/persistence/tournamentTemplateUpdate.test.js");
 await import("../server/infrastructure/persistence/createSqliteBeginnersCourseStatements.test.js");
+await import("../src/presentation/pages/beginnersCourseWorkflow.test.js");
+await import("../server/domain/services/beginnerConversionCaseLoan.test.js");
+await import("../server/domain/services/beginnerConversionDate.test.js");
 const outDir = path.join(root, ".test-dist");
 const files = [
   "src/presentation/pages/roles/rolePermissionsUtils.ts",
@@ -16,6 +19,8 @@ const files = [
   "src/api/client.test.ts",
   "src/api/memberProfileApi.ts",
   "src/api/memberProfileApi.test.ts",
+  "src/api/beginnersCoursesApi.ts",
+  "src/api/beginnersCoursesApi.test.ts",
   "src/presentation/pages/home/committeeApprovalsCardUtils.ts",
   "src/presentation/pages/home/committeeApprovalsCardUtils.test.ts",
   "src/presentation/pages/home/committeeApprovedCoursesUtils.ts",
@@ -65,9 +70,15 @@ for (const file of files) {
   await writeFile(outputPath, rewriteRelativeImports(transpiled.outputText));
 }
 
+await copyFile(
+  path.join(root, "src/api/beginnersCourseTypeSupport.js"),
+  path.join(outDir, "src/api/beginnersCourseTypeSupport.js"),
+);
+
 await import(pathToFileURL(path.join(outDir, "src/api/client.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/rolePermissionsUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/api/beginnersCoursesApi.test.js")));
 await import(
   pathToFileURL(
     path.join(outDir, "src/presentation/pages/home/committeeApprovalsCardUtils.test.js"),

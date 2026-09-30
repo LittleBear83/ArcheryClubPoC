@@ -379,3 +379,32 @@ test("member journey report includes converted beginners and tasters with legacy
     db.close();
   }
 });
+
+test("member journey report prefers populated user_id over a conflicting username", () => {
+  const db = new Database(":memory:");
+  try {
+    seedBaseSchema(db);
+    insertMember(db, 1, "linked-member");
+    insertMember(db, 2, "other-member");
+    db.prepare("UPDATE users SET membership_status = 'beginner', programme_type = 'beginners' WHERE id = 2").run();
+    db.prepare("UPDATE user_types SET user_type = 'beginner' WHERE user_id = 2").run();
+    db.prepare("INSERT INTO beginners_courses (id, course_type) VALUES (10, 'beginners')").run();
+    db.prepare(`
+      INSERT INTO beginners_course_participants
+        (id, course_id, username, first_name, surname, created_at_date, created_at_time,
+         origin_course_type, converted_to_member, user_id)
+      VALUES (1, 10, 'other-member', 'Linked', 'Attendee', '2026-08-01', '18:00:00',
+        'taster-session', 1, 1)
+    `).run();
+
+    const rows = createSqliteReportingStatements(db).listMemberJourneyParticipants.all("2026-08-01", "2026-08-31");
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].membership_status, "member");
+    assert.equal(rows[0].programme_type, "none");
+    assert.equal(rows[0].user_type, "general");
+    assert.equal(rows[0].origin_course_type, "taster-session");
+    assert.equal(rows[0].converted_to_member, 1);
+  } finally {
+    db.close();
+  }
+});

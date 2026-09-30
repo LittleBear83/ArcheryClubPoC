@@ -401,9 +401,9 @@ function createPostgresActivityReportingGateway({ pool }) {
          FROM beginners_course_participants
          INNER JOIN beginners_courses
            ON beginners_courses.id = beginners_course_participants.course_id
-         INNER JOIN users
-           ON users.id = beginners_course_participants.user_id
-         INNER JOIN user_types
+         LEFT JOIN users
+           ON users.username = beginners_course_participants.username
+         LEFT JOIN user_types
            ON user_types.user_id = users.id
          WHERE beginners_course_participants.created_at_date >= $1
            AND beginners_course_participants.created_at_date <= $2

@@ -89,6 +89,7 @@ export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
   {
     event: "beginners.updated",
     queryKeys: [
+      (actorUsername) => ["beginners-and-taster-reporting", actorUsername],
       (actorUsername) => ["beginners-courses-dashboard", actorUsername],
       (actorUsername) => ["have-a-go-sessions-dashboard", actorUsername],
       (actorUsername) => ["taster-sessions-dashboard", actorUsername],
@@ -231,6 +232,7 @@ export function useServerEvents({
         event: "beginners.updated",
         invalidate: () =>
           invalidateQueries([
+            ["beginners-and-taster-reporting", actorUsername],
             ["beginners-courses-dashboard", actorUsername],
             ["have-a-go-sessions-dashboard", actorUsername],
             ["taster-sessions-dashboard", actorUsername],

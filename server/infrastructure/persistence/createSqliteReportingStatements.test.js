@@ -68,7 +68,8 @@ function seedBaseSchema(db) {
       converted_to_member INTEGER NOT NULL DEFAULT 0,
       converted_at_date TEXT,
       converted_at_time TEXT,
-      user_id INTEGER NOT NULL
+      converted_by_username TEXT,
+      user_id INTEGER
     );
   `);
 }
@@ -341,6 +342,39 @@ test("member journey reporting keeps origin and conversion timestamps", () => {
         user_type: "general",
       },
     ]);
+  } finally {
+    db.close();
+  }
+});
+
+test("member journey report includes converted beginners and tasters with legacy null user_id", () => {
+  const db = new Database(":memory:");
+  try {
+    seedBaseSchema(db);
+    for (const [id, username] of [[1, "beginner"], [2, "taster"], [3, "waiting"]]) {
+      insertMember(db, id, username);
+    }
+    db.prepare("INSERT INTO beginners_courses (id, course_type) VALUES (10, 'beginners')").run();
+    const insert = db.prepare(`
+      INSERT INTO beginners_course_participants
+        (id, course_id, username, first_name, surname, created_at_date, created_at_time,
+         origin_course_type, converted_to_member, converted_at_date, converted_at_time,
+         converted_by_username)
+      VALUES (?, 10, ?, ?, 'Attendee', '2026-08-01', '18:00:00', ?, ?, ?, ?, ?)
+    `);
+    insert.run(1, "beginner", "Beginner", "beginners", 1, "2026-08-12", "19:00:00", "coach");
+    insert.run(2, "taster", "Taster", "taster-session", 1, "2026-08-13", "20:00:00", "coach");
+    insert.run(3, "waiting", "Waiting", "beginners", 0, null, null, null);
+
+    const rows = createSqliteReportingStatements(db).listMemberJourneyParticipants.all("2026-08-01", "2026-08-31");
+    assert.equal(rows.length, 3);
+    assert.deepEqual(rows.map((row) => [row.origin_course_type, row.converted_to_member, row.converted_at_date]), [
+      ["beginners", 1, "2026-08-12"],
+      ["taster-session", 1, "2026-08-13"],
+      ["beginners", 0, null],
+    ]);
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM beginners_course_participants").get().count, 3);
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM users").get().count, 3);
   } finally {
     db.close();
   }

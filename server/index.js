@@ -6759,9 +6759,9 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
 
   try {
     await runBeginnerConversion({
-      inTransaction: participant.assigned_case_id
-        ? (operation) => withBeginnerConversionTransaction({ databaseEngine: serverRuntime.databaseEngine, db }, operation)
-        : (operation) => operation(null),
+      inTransaction: (operation) => withBeginnerConversionTransaction(
+        { databaseEngine: serverRuntime.databaseEngine, db }, operation,
+      ),
       prepareCase: participant.assigned_case_id ? async (client) => {
         if (client) {
           // Serialize conversions of the same case before checking for open loans.

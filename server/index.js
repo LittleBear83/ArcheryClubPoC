@@ -15,6 +15,7 @@ import {
   getDeactivatedRfidTag,
 } from "./domain/services/memberPersistenceService.js";
 import { createGoldenRecordsMemberSyncService } from "./domain/services/goldenRecordsMemberSyncService.js";
+import { createGoldenRecordsSyncJob } from "./domain/services/goldenRecordsSyncJob.js";
 import { startGoldenRecordsSyncScheduler } from "./domain/services/goldenRecordsSyncScheduler.js";
 import { createServerEventBus } from "./domain/services/serverEventBus.js";
 import { startLocalSyncBrowserBridge } from "./infrastructure/persistence/localSyncBrowserBridge.js";
@@ -1093,12 +1094,33 @@ const goldenRecordsMemberSyncService = createGoldenRecordsMemberSyncService({
   memberDistanceSignOffRepository,
   outdoorTableGateway,
 });
-
-startGoldenRecordsSyncScheduler({
-  hour: 1,
-  minute: 0,
-  syncAllMembers: () => goldenRecordsMemberSyncService.syncAllMembers(),
+const goldenRecordsSyncJob = createGoldenRecordsSyncJob({
+  goldenRecordsIntegrationGateway,
+  goldenRecordsMemberSyncService,
+  // Cloud Run defaults to request-based CPU. Opt in only after configuring
+  // instance-based billing and minimum instances on the deployed service.
+  backgroundExecutionAvailable: !process.env.K_SERVICE || process.env.GOLDEN_RECORDS_ALWAYS_ALLOCATED_CPU === "true",
+  onFinished: (status) => {
+    serverEventBus.broadcastToAll("outdoor-table.updated", {
+      changedAt: new Date().toISOString(), scope: "golden-records-sync-all",
+    });
+    broadcastMembersUpdated("members.golden-records-sync-all", status.startedByUsername === "scheduler" ? null : status.startedByUsername);
+    serverEventBus.broadcastToAll("members.updated", {
+      changedAt: new Date().toISOString(), scope: "golden-records-sync-all",
+    });
+    serverEventBus.broadcastToAll("golden-records.updated", {
+      changedAt: new Date().toISOString(), scope: "member-sync-job",
+    });
+  },
 });
+
+if (serverRuntime.sync.nodeMode !== "local-pi") {
+  startGoldenRecordsSyncScheduler({
+    hour: 1,
+    minute: 0,
+    syncAllMembers: () => goldenRecordsSyncJob.start({ actorUsername: null }),
+  });
+}
 
 const beginnersCourseReadGateway = createBeginnersCourseReadGateway({
   databaseEngine: serverRuntime.databaseEngine,
@@ -4964,6 +4986,7 @@ registerAdminMemberRoutes({
   goldenRecordsCurrentHandicapService,
   goldenRecordsIntegrationService,
   goldenRecordsMemberSyncService,
+  goldenRecordsSyncJob,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,

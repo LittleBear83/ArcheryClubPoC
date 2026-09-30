@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createGoldenRecordsMemberSyncService } from "./goldenRecordsMemberSyncService.js";
+import { createGoldenRecordsCurrentHandicapService } from "../../infrastructure/golden-records/goldenRecordsCurrentHandicapService.js";
 
 function buildTestService({
   disciplines = ["Recurve Bow"],
@@ -517,4 +518,51 @@ test("a unique name match persists its Golden Records ID", async () => {
   await service.syncMember(user);
   assert.deepEqual(saved, [["Cfleetham", "gr-craig"]]);
   assert.equal(user.gr_id, "gr-craig");
+});
+
+test("club sync links an existing AGB member, stores the profile snapshot and updates Outdoor Table without creating users", async () => {
+  const originalFetch = globalThis.fetch;
+  const user = {
+    username: "robin", first_name: "Robin", surname: "Archer",
+    gr_id: "stale-id", archery_gb_membership_number: "123456",
+  };
+  const savedIds = [];
+  try {
+    globalThis.fetch = async (input) => {
+      const path = new URL(input).pathname.toLowerCase();
+      const rows = path === "/api/currenthandicaps"
+        ? [{ member_id: "new-id", bow_class: "Recurve", type: "Outdoor", handicap: 37 }]
+        : [];
+      return { ok: true, status: 200, text: async () => JSON.stringify(rows) };
+    };
+    const currentService = createGoldenRecordsCurrentHandicapService({
+      apiKey: "test-key", baseUrl: "https://api2.archery-records.net", logger: { info() {}, error() {} },
+    });
+    const currentHandicapService = {
+      ...currentService,
+      fetchClubData: async () => ({
+        members: [{ memberId: "new-id", membershipId: "123456", name: "Robin Archer", email: "", memberArchived: false }],
+        achievementsByMember: new Map([["new-id", [{
+          member_id: "new-id", achievement: "Archer 3rd", achieved: "2026-06-12T09:00:00Z", bow_class: "Recurve",
+        }]]]),
+      }),
+    };
+    const { service, storedSnapshots, createdEntries } = buildTestService({
+      users: [user], currentHandicapService,
+      updateGoldenRecordsId: async (...args) => savedIds.push(args),
+    });
+    const result = await service.syncAllMembers({ updatedByUsername: "admin" });
+    assert.equal(result.matchedCount, 1);
+    assert.deepEqual(savedIds, [["robin", "new-id"]]);
+    assert.equal(user.gr_id, "new-id");
+    assert.equal(user.archery_gb_membership_number, "123456");
+    assert.equal(storedSnapshots.get("robin").matchedMemberId, "new-id");
+    assert.equal(storedSnapshots.get("robin").achievements[0].achievement, "Archer 3rd");
+    assert.equal(createdEntries.length, 1);
+    assert.equal(createdEntries[0].handicap, 37);
+    assert.equal(createdEntries[0].archer3rd, true);
+    assert.equal(user.username, "robin");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

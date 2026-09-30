@@ -823,7 +823,7 @@ export function createGoldenRecordsMemberSyncService({
     };
   }
 
-  async function syncAllMembers({ updatedByUsername } = {}) {
+  async function syncAllMembers({ updatedByUsername, onProgress } = {}) {
     const clubData = goldenRecordsCurrentHandicapService?.isEnabled && goldenRecordsCurrentHandicapService.fetchClubData
       ? await goldenRecordsCurrentHandicapService.fetchClubData() : undefined;
     const users = await memberDirectoryGateway.listAllUsers();
@@ -862,6 +862,13 @@ export function createGoldenRecordsMemberSyncService({
           username: user.username,
         });
       }
+      await onProgress?.({
+        attemptedCount: summary.attemptedCount,
+        matchedCount: summary.matchedCount,
+        unmatchedCount: summary.unmatchedCount,
+        achievementCount: summary.achievementCount,
+        errorCount: summary.errorCount,
+      });
     }
 
     logger.info?.("Golden Records club sync complete", summary);

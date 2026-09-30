@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { subscribeToServerEvent } from "../../../lib/serverEvents";
 import { useSseFallbackPolling } from "../../state/useSseFallbackPolling";
+import type { GoldenRecordsSnapshot } from "../../../domain/entities/MemberProfile";
 
 type LoadProfileOptions = {
   signal?: AbortSignal;
@@ -35,6 +36,7 @@ export function useProfilePageDataState({
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshingProfile, setIsRefreshingProfile] = useState(false);
   const [equipmentLoans, setEquipmentLoans] = useState([]);
+  const [goldenRecordsSnapshot, setGoldenRecordsSnapshot] = useState<GoldenRecordsSnapshot | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -60,6 +62,7 @@ export function useProfilePageDataState({
     setIsInitialLoading(true);
     setIsRefreshingProfile(false);
     setEquipmentLoans([]);
+    setGoldenRecordsSnapshot(null);
     setError("");
     setMessage("");
   }, [currentUserProfile?.auth?.username]);
@@ -98,6 +101,7 @@ export function useProfilePageDataState({
 
         setEditableProfile(result.editableProfile);
         setEquipmentLoans(result.equipmentLoans ?? []);
+        setGoldenRecordsSnapshot(result.goldenRecords ?? null);
         setDisciplineOptions(result.disciplines ?? []);
         setRoleOptions(result.userTypes ?? []);
         setMembershipStatusOptions(result.membershipStatuses ?? []);
@@ -185,6 +189,7 @@ export function useProfilePageDataState({
       hasLoadedProfileRef.current = false;
       setEditableProfile(null);
       setEquipmentLoans([]);
+      setGoldenRecordsSnapshot(null);
       setError("");
       setMessage("");
       setIsInitialLoading(false);
@@ -229,6 +234,7 @@ export function useProfilePageDataState({
     disciplineOptions,
     editableProfile,
     equipmentLoans,
+    goldenRecordsSnapshot,
     error,
     hasLoadedProfileRef,
     isInitialLoading,
@@ -243,6 +249,7 @@ export function useProfilePageDataState({
     setDisciplineOptions,
     setEditableProfile,
     setEquipmentLoans,
+    setGoldenRecordsSnapshot,
     setError,
     setIsInitialLoading,
     setIsRefreshingProfile,

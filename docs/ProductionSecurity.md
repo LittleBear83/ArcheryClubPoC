@@ -83,6 +83,34 @@ The Node HTTP server also sets request, header, and keep-alive timeouts. These
 can be tuned with `REQUEST_TIMEOUT_MS`, `HEADERS_TIMEOUT_MS`, and
 `KEEP_ALIVE_TIMEOUT_MS`.
 
+### Golden Records background sync on Cloud Run
+
+This repository does not contain a Cloud Run deployment manifest or command that
+guarantees CPU after an HTTP response. Cloud Run's default request-based billing
+can pause the detached Golden Records job after its 202 response. On Cloud Run,
+the server therefore refuses to start the job (HTTP 503) unless
+`GOLDEN_RECORDS_ALWAYS_ALLOCATED_CPU=true` is explicitly set. This flag is an
+operator assertion, not an automatic check of the deployed service.
+
+Before setting the flag, configure the Cloud Run service with instance-based
+billing (`--no-cpu-throttling`) and at least one minimum instance, then verify
+the live service settings with `gcloud run services describe`. Keep the existing
+multi-instance SSE capacity. For example, apply these options to the existing
+deployment command or update the service with:
+
+```sh
+gcloud run services update SERVICE --region REGION --no-cpu-throttling --min-instances 1 --update-env-vars GOLDEN_RECORDS_ALWAYS_ALLOCATED_CPU=true
+gcloud run services describe SERVICE --region REGION --format yaml
+```
+
+Do not set the flag without verifying the CPU allocation and minimum instance
+settings. Instance-based billing provides CPU after the initiating request ends,
+but it does not guarantee a process survives a platform restart or termination.
+An interrupted job is marked as such when the advisory lock is gone; an admin
+can retry it. The PostgreSQL advisory lock continues to prevent concurrent
+full-club jobs across service instances. This setting incurs ongoing instance
+charges.
+
 ### Cloud Run Notes For SSE
 
 When this app is deployed on Cloud Run and Server-Sent Events are enabled, do

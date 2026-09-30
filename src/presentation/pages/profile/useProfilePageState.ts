@@ -71,6 +71,7 @@ export function useProfilePageState({
     disciplineOptions,
     editableProfile,
     equipmentLoans,
+    goldenRecordsSnapshot,
     error,
     hasLoadedProfileRef,
     isInitialLoading,
@@ -84,6 +85,7 @@ export function useProfilePageState({
     selectedUsername,
     setEditableProfile,
     setEquipmentLoans,
+    setGoldenRecordsSnapshot,
     setError,
     setMemberOptions,
     setMessage,
@@ -121,10 +123,12 @@ export function useProfilePageState({
     canManageOutdoorAchievements,
     currentUserProfile,
     editableProfile,
+    goldenRecordsSnapshot,
     hasLoadedProfileRef,
     isGuest,
     loadProfile,
     memberProfileCrud,
+    setGoldenRecordsSnapshot,
     onClearMessages: () => {
       setError("");
       setMessage("");

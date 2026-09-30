@@ -127,6 +127,7 @@ export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
     event: "golden-records.updated",
     queryKeys: [
       (actorUsername) => ["golden-records-admin", actorUsername],
+      (actorUsername) => ["golden-records-sync-job", actorUsername],
     ],
   },
 ];
@@ -272,6 +273,7 @@ export function useServerEvents({
         invalidate: () =>
           invalidateQueries([
             ["golden-records-admin", actorUsername],
+            ["golden-records-sync-job", actorUsername],
           ]),
       },
     ];

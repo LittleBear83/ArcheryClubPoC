@@ -154,7 +154,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       case_item.item_number AS assigned_case_number
     FROM beginners_course_participants
     INNER JOIN users
-      ON users.id = beginners_course_participants.user_id
+      ON users.username = beginners_course_participants.username
     INNER JOIN user_types
       ON user_types.user_id = users.id
     LEFT JOIN equipment_items AS case_item
@@ -170,7 +170,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       case_item.item_number AS assigned_case_number
     FROM beginners_course_participants
     INNER JOIN users
-      ON users.id = beginners_course_participants.user_id
+      ON users.username = beginners_course_participants.username
     INNER JOIN user_types
       ON user_types.user_id = users.id
     LEFT JOIN equipment_items AS case_item
@@ -203,7 +203,7 @@ export function createSqliteBeginnersCourseStatements(db) {
       login_events.logged_in_date
     FROM beginners_course_participants
     INNER JOIN users
-      ON users.id = beginners_course_participants.user_id
+      ON users.username = beginners_course_participants.username
     INNER JOIN login_events
       ON login_events.user_id = users.id
     ORDER BY beginners_course_participants.course_id ASC,
@@ -236,9 +236,10 @@ export function createSqliteBeginnersCourseStatements(db) {
       assigned_case_at_time,
       created_by_username,
       created_at_date,
-      created_at_time
+      created_at_time,
+      user_id
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT id FROM users WHERE username = ?))
   `);
 
   const updateBeginnersCourseParticipant = db.prepare(`

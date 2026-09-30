@@ -225,7 +225,7 @@ function createPostgresBeginnersCourseReadGateway({ pool }) {
             login_events.logged_in_date
           FROM beginners_course_participants
           INNER JOIN users
-            ON users.id = beginners_course_participants.user_id
+            ON users.username = beginners_course_participants.username
           INNER JOIN login_events
             ON login_events.user_id = users.id
           ORDER BY beginners_course_participants.course_id ASC,
@@ -245,7 +245,7 @@ function createPostgresBeginnersCourseReadGateway({ pool }) {
             case_item.item_number AS assigned_case_number
           FROM beginners_course_participants
           INNER JOIN users
-            ON users.id = beginners_course_participants.user_id
+            ON users.username = beginners_course_participants.username
           INNER JOIN user_types
             ON user_types.user_id = users.id
           LEFT JOIN equipment_items AS case_item
@@ -267,7 +267,7 @@ function createPostgresBeginnersCourseReadGateway({ pool }) {
             case_item.item_number AS assigned_case_number
           FROM beginners_course_participants
           INNER JOIN users
-            ON users.id = beginners_course_participants.user_id
+            ON users.username = beginners_course_participants.username
           INNER JOIN user_types
             ON user_types.user_id = users.id
           LEFT JOIN equipment_items AS case_item

@@ -127,6 +127,7 @@ function createSqliteBeginnersCourseWriteGateway({
         actorUsername,
         createdAtDate,
         createdAtTime,
+        username,
       );
     },
     async markParticipantConverted({
@@ -455,10 +456,12 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
             assigned_case_at_time,
             created_by_username,
             created_at_date,
-            created_at_time
+            created_at_time,
+            user_id
           )
           VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, $14, $15, $16
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, $14, $15, $16,
+            (SELECT id FROM users WHERE username = $2)
           )
         `,
         [

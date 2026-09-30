@@ -264,11 +264,11 @@ function createPostgresMemberProfileGateway({
     async saveLoanBowRecord(username, loanBow) {
       await saveLoanBowWithClient(pool, username, loanBow);
     },
-    async saveMemberProfile({ disciplines, loanBow, userPayload, userType, rfidSync }) {
-      const client = await pool.connect();
+    async saveMemberProfile({ disciplines, loanBow, userPayload, userType, rfidSync, transactionClient }) {
+      const client = transactionClient ?? await pool.connect();
 
       try {
-        await client.query("BEGIN");
+        if (!transactionClient) await client.query("BEGIN");
         let rfidCommand;
         if (rfidSync) {
           const tag = normalizeRfidTag(userPayload.rfidTag);
@@ -384,12 +384,12 @@ function createPostgresMemberProfileGateway({
 
         await saveLoanBowWithClient(client, userPayload.username, loanBow);
         if (rfidCommand) await syncGateway.enqueueMemberRfidUpdateCommand({ client, payload: rfidCommand });
-        await client.query("COMMIT");
+        if (!transactionClient) await client.query("COMMIT");
       } catch (error) {
-        await client.query("ROLLBACK");
+        if (!transactionClient) await client.query("ROLLBACK");
         throw error;
       } finally {
-        client.release();
+        if (!transactionClient) client.release();
       }
     },
   };

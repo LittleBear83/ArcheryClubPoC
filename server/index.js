@@ -16,6 +16,10 @@ import {
 } from "./domain/services/memberPersistenceService.js";
 import { createGoldenRecordsMemberSyncService } from "./domain/services/goldenRecordsMemberSyncService.js";
 import { createGoldenRecordsSyncJob } from "./domain/services/goldenRecordsSyncJob.js";
+import { loanAssignedCaseForBeginnerConversion, validateAssignedCaseForBeginnerConversion } from "./domain/services/beginnerConversionCaseLoan.js";
+import { validateBeginnerConversionDate } from "./domain/services/beginnerConversionDate.js";
+import { BeginnerConversionFailure, runBeginnerConversion } from "./domain/services/runBeginnerConversion.js";
+import { withBeginnerConversionTransaction } from "./infrastructure/persistence/beginnerConversionTransaction.js";
 import { startGoldenRecordsSyncScheduler } from "./domain/services/goldenRecordsSyncScheduler.js";
 import { createServerEventBus } from "./domain/services/serverEventBus.js";
 import { startLocalSyncBrowserBridge } from "./infrastructure/persistence/localSyncBrowserBridge.js";
@@ -6694,19 +6698,10 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
   }
 
   const expectedReturnDate = req.body?.expectedReturnDate;
-  if (participant.assigned_case_id) {
-    const parsed = typeof expectedReturnDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(expectedReturnDate)
-      ? new Date(`${expectedReturnDate}T00:00:00Z`)
-      : null;
-    if (!parsed || Number.isNaN(parsed.getTime()) ||
-        parsed.toISOString().slice(0, 10) !== expectedReturnDate ||
-        expectedReturnDate < new Date().toISOString().slice(0, 10)) {
-      res.status(400).json({
-        success: false,
-        message: "Expected return date is required for the assigned case and must be today or later (YYYY-MM-DD, UTC).",
-      });
-      return;
-    }
+  const dateError = validateBeginnerConversionDate(participant.assigned_case_id, expectedReturnDate);
+  if (dateError) {
+    res.status(400).json({ success: false, message: dateError });
+    return;
   }
 
   const existingUser = await memberDirectoryGateway.findUserByUsername(
@@ -6721,12 +6716,12 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     return;
   }
 
-  if (
-    LEGACY_NON_MEMBER_ROLE_KEYS.has(
-      String(existingUser.user_type ?? "").trim().toLowerCase(),
-    )
-  ) {
-    const conversionResult = await memberPersistenceService.saveMemberProfile({
+  const needsMembershipUpdate = LEGACY_NON_MEMBER_ROLE_KEYS.has(
+    String(existingUser.user_type ?? "").trim().toLowerCase(),
+  );
+  const saveMembership = async (transactionClient) => {
+    if (!needsMembershipUpdate) return { success: true };
+    return memberPersistenceService.saveMemberProfile({
       username: existingUser.username,
       firstName: existingUser.first_name,
       surname: existingUser.surname,
@@ -6751,13 +6746,9 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
         ),
       ),
       existingUser,
+      transactionClient,
     });
-
-    if (!conversionResult.success) {
-      res.status(conversionResult.status).json(conversionResult);
-      return;
-    }
-  }
+  };
 
   const courseType = normalizeCourseType(course.course_type);
   const previousParticipant = await findBeginnersParticipantAuditSnapshot(
@@ -6767,105 +6758,61 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
   const [convertedAtDate, convertedAtTime] = getUtcTimestampParts();
 
   try {
-    if (participant.assigned_case_id) {
-      const caseItem = await equipmentGateway.findEquipmentItemById(
-        participant.assigned_case_id,
-      );
-
-      if (!caseItem || caseItem.equipment_type !== EQUIPMENT_TYPES.CASE) {
-        res.status(400).json({
-          success: false,
-          message: "The assigned case could not be found.",
-        });
-        return;
-      }
-
-      if (caseItem.status !== "active") {
-        res.status(400).json({
-          success: false,
-          message: "The assigned case is not active.",
-        });
-        return;
-      }
-
-      if (
-        caseItem.location_type === EQUIPMENT_LOCATION_TYPES.MEMBER &&
-        caseItem.location_member_username &&
-        caseItem.location_member_username !== existingUser.username
-      ) {
-        res.status(400).json({
-          success: false,
-          message: "The assigned case is already with another member.",
-        });
-        return;
-      }
-
-      if (await equipmentGateway.findOpenEquipmentLoanByItemId(caseItem.id)) {
-        res.status(400).json({
-          success: false,
-          message: "The assigned case is already on loan.",
-        });
-        return;
-      }
-
-      const caseContents = await equipmentGateway.listEquipmentItemsByCaseId(caseItem.id);
-
-      for (const content of caseContents) {
-        if (await equipmentGateway.findOpenEquipmentLoanByItemId(content.id)) {
-          res.status(400).json({
-            success: false,
-            message: "The assigned case contains equipment that is already on loan.",
-          });
-          return;
+    await runBeginnerConversion({
+      inTransaction: (operation) => withBeginnerConversionTransaction(
+        { databaseEngine: serverRuntime.databaseEngine, db }, operation,
+      ),
+      prepareCase: participant.assigned_case_id ? async (client) => {
+        if (client) {
+          // Serialize conversions of the same case before checking for open loans.
+          await client.query("SELECT id FROM equipment_items WHERE id = $1 FOR UPDATE", [participant.assigned_case_id]);
         }
-      }
-
-      await equipmentGateway.createEquipmentLoan(
-        caseItem.id,
-        existingUser.username,
-        actor.username,
+        const scopedEquipmentGateway = client
+          ? createEquipmentGateway({ databaseEngine: "postgres", pool: client })
+          : equipmentGateway;
+        const prepared = await validateAssignedCaseForBeginnerConversion({
+          caseId: participant.assigned_case_id,
+          equipmentGateway: scopedEquipmentGateway,
+          caseEquipmentType: EQUIPMENT_TYPES.CASE,
+          memberLocationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
+          memberUsername: existingUser.username,
+        });
+        return { ...prepared, scopedEquipmentGateway };
+      } : null,
+      saveMembership,
+      loanCase: async (preparedCase) => loanAssignedCaseForBeginnerConversion({
+        caseId: participant.assigned_case_id,
+        equipmentGateway: preparedCase.scopedEquipmentGateway,
+        caseEquipmentType: EQUIPMENT_TYPES.CASE,
+        memberLocationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
+        memberUsername: existingUser.username,
+        actorUsername: actor.username,
         convertedAtDate,
         convertedAtTime,
-        null,
         expectedReturnDate,
-      );
-      await equipmentGateway.updateEquipmentItemStorage({
-        id: caseItem.id,
-        locationType: EQUIPMENT_LOCATION_TYPES.MEMBER,
-        locationLabel: null,
-        locationCaseId: null,
-        locationMemberUsername: existingUser.username,
-        storageByUsername: actor.username,
-        storageAtDate: convertedAtDate,
-        storageAtTime: convertedAtTime,
-      });
-      await equipmentGateway.updateEquipmentAssignmentMetadata({
-        id: caseItem.id,
-        assignedByUsername: actor.username,
-        assignedAtDate: convertedAtDate,
-        assignedAtTime: convertedAtTime,
-      });
-
-      for (const content of caseContents) {
-        await equipmentGateway.createEquipmentLoan(
-          content.id,
-          existingUser.username,
-          actor.username,
-          convertedAtDate,
-          convertedAtTime,
-          caseItem.id,
-          expectedReturnDate,
-        );
-        await equipmentGateway.updateEquipmentAssignmentMetadata({
-          id: content.id,
-          assignedByUsername: actor.username,
-          assignedAtDate: convertedAtDate,
-          assignedAtTime: convertedAtTime,
-        });
-      }
-    }
+        preparedCase,
+      }),
+      markParticipant: async (client) => {
+        const payload = {
+          actorUsername: actor.username, convertedAtDate, convertedAtTime,
+          participantId: participant.id,
+        };
+        if (client) {
+          await client.query(`UPDATE beginners_course_participants SET
+            converted_to_member = 1, converted_at_date = $1,
+            converted_at_time = $2, converted_by_username = $3 WHERE id = $4`,
+          [convertedAtDate, convertedAtTime, actor.username, participant.id]);
+        } else {
+          await beginnersCourseWriteGateway.markParticipantConverted(payload);
+        }
+      },
+    });
   } catch (error) {
-    res.status(400).json({
+    if (error instanceof BeginnerConversionFailure) {
+      res.status(error.response.status).json(error.response);
+      return;
+    }
+    res.status(participant.assigned_case_id ? 400 : 500).json({
       success: false,
       message:
         error instanceof Error
@@ -6874,13 +6821,6 @@ app.post("/api/beginners-course-participants/:id/convert", async (req, res) => {
     });
     return;
   }
-
-  await beginnersCourseWriteGateway.markParticipantConverted({
-    actorUsername: actor.username,
-    convertedAtDate,
-    convertedAtTime,
-    participantId: participant.id,
-  });
   const convertedParticipant = await findBeginnersParticipantAuditSnapshot(
     participant.id,
     courseType,

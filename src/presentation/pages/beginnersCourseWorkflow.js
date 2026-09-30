@@ -7,6 +7,20 @@ export function hasCourseFinished(course, now = Date.now()) {
   return ends.every((end) => Number.isFinite(end)) && Math.max(...ends) < now;
 }
 
+export function validateBeginnerConversionReturnDate(assignedCaseId, expectedReturnDate, todayUtc = new Date().toISOString().slice(0, 10)) {
+  if (!assignedCaseId) return null;
+  if (!expectedReturnDate) return "Expected return date is required for the assigned case loan.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expectedReturnDate)) {
+    return "Expected return date must be a valid YYYY-MM-DD date.";
+  }
+  const parsed = new Date(`${expectedReturnDate}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== expectedReturnDate) {
+    return "Expected return date must be a valid YYYY-MM-DD date.";
+  }
+  if (expectedReturnDate < todayUtc) return "Expected return date must be today or later (UTC).";
+  return null;
+}
+
 export function selectCourseDetails(activeCourses, courses, closedDetailId) {
   return [...activeCourses, ...courses.filter((course) => course.id === closedDetailId && !activeCourses.some((active) => active.id === course.id))];
 }

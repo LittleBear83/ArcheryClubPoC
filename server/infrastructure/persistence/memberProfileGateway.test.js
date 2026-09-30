@@ -8,6 +8,7 @@ function harness({ pending = false, failEnqueue = false, currentTag = 'OLD', cur
   let tag = currentTag;
   let password = currentPassword;
   let snapshot;
+  let releases = 0;
   const outbox = [];
   const client = {
     async query(sql, values = []) {
@@ -26,15 +27,25 @@ function harness({ pending = false, failEnqueue = false, currentTag = 'OLD', cur
         outbox.push(JSON.parse(values[2]));
       }
       return { rows: [], rowCount: 0 };
-    }, release() {},
+    }, release() { releases += 1; },
   };
   const pool = { connect: async () => client };
   const gateway = createMemberProfileGateway({ databaseEngine: 'postgres', pool, syncGateway: createSyncGateway({ pool }) });
   const input = { disciplines: [], loanBow: {}, userType: 'member',
     userPayload: { username: 'Canonical', rfidTag: 'NEW' },
     rfidSync: { sourceNodeMode: 'local-pi', updatedByUsername: 'Admin' } };
-  return { gateway, input, queries, outbox, password: () => password, tag: () => tag };
+  return { gateway, input, client, queries, outbox, password: () => password, tag: () => tag,
+    releases: () => releases };
 }
+
+test('caller-owned conversion transaction keeps member profile writes on its client', async () => {
+  const h = harness();
+  await h.gateway.saveMemberProfile({ ...h.input, rfidSync: undefined, transactionClient: h.client });
+  const statements = h.queries.map((query) => query.text);
+  assert.equal(statements.some((statement) => ['BEGIN', 'COMMIT', 'ROLLBACK'].includes(statement)), false);
+  assert.equal(statements.some((statement) => statement.startsWith('INSERT INTO users')), true);
+  assert.equal(h.releases(), 0);
+});
 
 test('Pi RFID and exactly one outbox command commit in existing profile transaction', async () => {
   const h = harness();

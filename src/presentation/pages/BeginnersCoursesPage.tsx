@@ -1,4 +1,4 @@
-import { hasCourseFinished, isCourseClosed } from "./beginnersCourseWorkflow.js";
+import { hasCourseFinished, isCourseClosed, validateBeginnerConversionReturnDate } from "./beginnersCourseWorkflow.js";
 import { cancelCourseDates } from "../../api/beginnersCoursesApi";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -512,6 +512,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   );
   const [caseSelections, setCaseSelections] = useState<Record<number, string>>({});
   const [conversionReturnDates, setConversionReturnDates] = useState<Record<number, string>>({});
+  const [conversionDateRequired, setConversionDateRequired] = useState<Record<number, boolean>>({});
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [coachLesson, setCoachLesson] = useState<CourseLesson | null>(null);
@@ -734,14 +735,26 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
   const convertBeginnerToMember = async (beginner: CourseBeginner) => {
     const expectedReturnDate = conversionReturnDates[beginner.id];
-    if (beginner.assignedCaseId && !expectedReturnDate) {
-      setError("Expected return date is required for the assigned case.");
+    const needsCaseDate = Boolean(beginner.assignedCaseId || conversionDateRequired[beginner.id]);
+    const dateError = validateBeginnerConversionReturnDate(needsCaseDate, expectedReturnDate);
+    if (dateError) {
+      setError(dateError);
       return;
     }
-    await mutation.mutateAsync(() => convertBeginnerToMemberApi(currentUserProfile, beginner.id, expectedReturnDate));
-    setConversionReturnDates((current) => ({ ...current, [beginner.id]: "" }));
-    setMessage(`${formatMemberDisplayName(beginner)} converted to a full member.`);
-    await refreshDashboard();
+    try {
+      await mutation.mutateAsync(() => convertBeginnerToMemberApi(currentUserProfile, beginner.id, expectedReturnDate || undefined));
+      setConversionReturnDates((current) => ({ ...current, [beginner.id]: "" }));
+      setConversionDateRequired((current) => ({ ...current, [beginner.id]: false }));
+      setActionSelection(null);
+      setMessage(`${formatMemberDisplayName(beginner)} converted to a full member.`);
+      await refreshDashboard();
+    } catch (conversionError) {
+      const serverMessage = conversionError instanceof Error ? conversionError.message : "Unable to convert this attendee.";
+      if (serverMessage.includes("Expected return date is required for the assigned case")) {
+        setConversionDateRequired((current) => ({ ...current, [beginner.id]: true }));
+      }
+      setError(serverMessage);
+    }
   };
 
   const cancelCourse = async (courseId: number) => {
@@ -1722,23 +1735,30 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                 ) : null}
                 {usesEquipmentAssignment ? (
                   <>
-                    {participant.assignedCaseId && !participant.convertedToMember ? (
-                      <label>
-                        Expected return date
-                        <input type="date" required min={new Date().toISOString().slice(0, 10)}
-                          value={conversionReturnDates[participant.id] ?? ""}
-                          onChange={(event) => setConversionReturnDates((current) => ({
-                            ...current, [participant.id]: event.target.value,
-                          }))} />
-                      </label>
+                    {(participant.assignedCaseId || conversionDateRequired[participant.id]) && !participant.convertedToMember ? (
+                      <div>
+                        <label>
+                          Expected return date for assigned case loan
+                          <input type="date" required min={new Date().toISOString().slice(0, 10)}
+                            value={conversionReturnDates[participant.id] ?? ""}
+                            onChange={(event) => {
+                              setError("");
+                              setConversionReturnDates((current) => ({
+                                ...current, [participant.id]: event.target.value,
+                              }));
+                            }} />
+                        </label>
+                        <p className="equipment-meta-copy">This date applies to the case and its contents loaned to the new member.</p>
+                      </div>
                     ) : null}
+                    {error ? <p className="profile-error" role="alert">{error}</p> : null}
                     <Button onClick={() => {
                       setActionSelection(null);
                       void saveCaseAssignment(participant);
                     }}>Save case</Button>
                     <Button
                       variant="info"
-                      disabled={participant.convertedToMember || !canConvertBeginner || !canConvertMembers}
+                      disabled={participant.convertedToMember || !canConvertBeginner || !canConvertMembers || mutation.isPending}
                       title={participant.convertedToMember
                         ? `${formatMemberDisplayName(participant)} is already a full member.`
                         : !canConvertMembers
@@ -1747,7 +1767,6 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                             ? `Convert ${formatMemberDisplayName(participant)} to a full member.`
                             : `This button becomes available once the ${copy.itemLowerLabel} has completed.`}
                       onClick={() => {
-                        setActionSelection(null);
                         void convertBeginnerToMember(participant);
                       }}
                     >{participant.convertedToMember ? "Converted" : "Convert to member"}</Button>

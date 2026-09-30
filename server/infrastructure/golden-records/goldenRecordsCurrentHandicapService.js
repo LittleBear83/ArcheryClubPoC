@@ -273,14 +273,14 @@ export function createGoldenRecordsCurrentHandicapService({
     lastRequestAt = Date.now();
   }
 
-  async function listMembers() {
-    if (membersCache.expiresAt > Date.now()) return membersCache.rows;
+  async function listMembers({ forceRefresh = false } = {}) {
+    if (!forceRefresh && membersCache.expiresAt > Date.now()) return membersCache.rows;
     const rows = await listPagedRows("/api/members", {}, (status) => "Golden Records returned " + status + " while loading members.");
     membersCache = { expiresAt: Date.now() + DEFAULT_MEMBER_LIST_CACHE_TTL_MS, rows };
     return rows;
   }
 
-  async function listPagedRows(path, query, buildErrorMessage) {
+  async function listPagedRows(path, query, buildErrorMessage, { allowNullEmpty = false } = {}) {
     const rows = [];
 
     for (let pageNumber = 1; ; pageNumber += 1) {
@@ -295,7 +295,10 @@ export function createGoldenRecordsCurrentHandicapService({
         throw new Error(buildErrorMessage(result.status));
       }
 
-      if (!Array.isArray(result.body)) throw new Error("Invalid Golden Records page response.");
+      // Member-specific endpoints return JSON null when there are no rows.
+      // Club-wide lists must still return arrays, and other objects are invalid.
+      if (result.body === null && !result.bodyWasEmpty && allowNullEmpty) break;
+      if (!Array.isArray(result.body)) throw new Error(`Invalid Golden Records page response from ${path}.`);
       const pageRows = result.body;
 
       if (pageRows.length === 0) {
@@ -318,9 +321,10 @@ export function createGoldenRecordsCurrentHandicapService({
       { id: memberId },
       (status) =>
         `Golden Records returned ${status} while loading current handicaps.`,
+      { allowNullEmpty: true },
     );
 
-    return rows.map(normalizeHandicapRow);
+    return rows.map(normalizeHandicapRow).filter((entry) => String(entry.memberId) === String(memberId));
   }
 
   async function getAchievementsByMemberId(memberId) {
@@ -329,6 +333,7 @@ export function createGoldenRecordsCurrentHandicapService({
       { filter_id: memberId },
       (status) =>
         `Golden Records returned ${status} while loading achievements.`,
+      { allowNullEmpty: true },
     );
 
     return achievementRows
@@ -343,6 +348,7 @@ export function createGoldenRecordsCurrentHandicapService({
       { id: memberId },
       (status) =>
         `Golden Records returned ${status} while loading current classifications.`,
+      { allowNullEmpty: true },
     );
 
     return rows
@@ -543,6 +549,27 @@ export function createGoldenRecordsCurrentHandicapService({
   return {
     isEnabled: true,
     getSnapshotForMember,
+    async getSnapshotForMemberById(memberId) {
+      const selectedId = String(memberId ?? "").trim();
+      if (!selectedId) {
+        const error = new Error("A Golden Records member ID is required.");
+        error.status = 400;
+        throw error;
+      }
+      const selectedMembers = (await listMembers({ forceRefresh: true }))
+        .map(normalizeMemberRow)
+        .filter((row) => String(row.memberId) === selectedId);
+      if (selectedMembers.length !== 1 || selectedMembers[0].memberArchived) {
+        const error = new Error("Selected Golden Records member was not found or is archived.");
+        error.status = 400;
+        throw error;
+      }
+      return buildSnapshotFromMemberId({
+        fallbackName: selectedMembers[0].name,
+        matchSource: "manual",
+        memberId: selectedId,
+      });
+    },
     async fetchClubData() {
       try {
         const members = (await listPagedRows("/api/members", {}, (status) => "Golden Records members API returned " + status)).map(normalizeMemberRow);

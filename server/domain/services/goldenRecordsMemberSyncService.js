@@ -440,6 +440,7 @@ export function createGoldenRecordsMemberSyncService({
   goldenRecordsCurrentHandicapService,
   goldenRecordsSyncGateway,
   logger = console,
+  manualMatchTransaction,
   memberDirectoryGateway,
   memberDistanceSignOffRepository,
   outdoorTableGateway,
@@ -511,7 +512,7 @@ export function createGoldenRecordsMemberSyncService({
     };
   }
 
-  async function syncOutdoorTableFromGoldenRecords({ disciplines, goldenRecordsSnapshot, updatedByUsername, user }) {
+  async function syncOutdoorTableFromGoldenRecords({ disciplines, goldenRecordsSnapshot, outdoorGateway = outdoorTableGateway, updatedByUsername, user }) {
     const outdoorHandicaps = (goldenRecordsSnapshot?.handicaps ?? []).filter(
       (entry) =>
         normalizeGoldenRecordsHandicapType(entry.type) === "outdoor" &&
@@ -559,7 +560,7 @@ export function createGoldenRecordsMemberSyncService({
     }
 
     const currentSeasonYear = new Date().getUTCFullYear();
-    const currentEntries = await outdoorTableGateway.listEntriesByYear(currentSeasonYear);
+    const currentEntries = await outdoorGateway.listEntriesByYear(currentSeasonYear);
     const memberEntriesByBowType = new Map(
       currentEntries
         .filter((entry) => entry.archerUsername === user.username)
@@ -649,7 +650,7 @@ export function createGoldenRecordsMemberSyncService({
           continue;
         }
 
-        await outdoorTableGateway.updateEntry({
+        await outdoorGateway.updateEntry({
           ...nextEntry,
           updatedAtDate,
           updatedAtTime,
@@ -673,7 +674,7 @@ export function createGoldenRecordsMemberSyncService({
         classificationEntries,
       );
 
-      await outdoorTableGateway.createEntry(createdWithClassifications.entry);
+      await outdoorGateway.createEntry(createdWithClassifications.entry);
       createdCount += 1;
     }
 
@@ -687,6 +688,7 @@ export function createGoldenRecordsMemberSyncService({
   async function syncDistanceSignOffsFromGoldenRecords({
     disciplines,
     goldenRecordsSnapshot,
+    transactionClient,
     updatedByUsername,
     user,
   }) {
@@ -743,6 +745,7 @@ export function createGoldenRecordsMemberSyncService({
         user.username,
         discipline,
         signOffs,
+        transactionClient,
       );
       replacedCount += signOffs.length;
     }
@@ -823,6 +826,76 @@ export function createGoldenRecordsMemberSyncService({
     };
   }
 
+  async function assignMemberMatch(user, { goldenRecordsId, updatedByUsername } = {}) {
+    if (!user) throw new Error("A member is required before Golden Records can be assigned.");
+    if (!goldenRecordsCurrentHandicapService?.isEnabled) {
+      const error = new Error("Golden Records is not enabled for this environment.");
+      error.status = 400;
+      throw error;
+    }
+
+    const selectedId = String(goldenRecordsId ?? "").trim();
+    const currentSnapshot = await getStoredSnapshotForUser(user);
+    const selectedCandidate = currentSnapshot.candidateMatches?.find(
+      (candidate) => String(candidate.memberId) === selectedId && !candidate.memberArchived,
+    );
+    if (!selectedCandidate) {
+      const error = new Error("Select an active Golden Records candidate shown for this member. Refresh the match suggestions if needed.");
+      error.status = 400;
+      throw error;
+    }
+
+    // Fetch and validate the remote identity and every downstream page before
+    // changing users.gr_id or replacing the stored profile snapshot.
+    const remoteSnapshot = await goldenRecordsCurrentHandicapService.getSnapshotForMemberById(selectedId);
+    if (String(remoteSnapshot.matchedMemberId) !== selectedId) {
+      const error = new Error("Selected Golden Records member was not found or is archived.");
+      error.status = 400;
+      throw error;
+    }
+    const snapshot = {
+      ...remoteSnapshot,
+      rawAchievements: remoteSnapshot.rawAchievements ?? remoteSnapshot.achievements ?? [],
+      achievements: deriveGoldenRecordsAchievements(remoteSnapshot.achievements),
+    };
+    const disciplines = (await memberDirectoryGateway.findDisciplinesByUsername(user.username))
+      .map((row) => row.discipline);
+    const safeUpdatedByUsername = String(updatedByUsername ?? "").trim() || user.username;
+    const applyMatch = async ({ outdoorGateway = outdoorTableGateway, transactionClient = null } = {}) => {
+      const outdoorSummary = await syncOutdoorTableFromGoldenRecords({
+        disciplines, goldenRecordsSnapshot: snapshot, outdoorGateway,
+        updatedByUsername: safeUpdatedByUsername, user,
+      });
+      const signOffSummary = await syncDistanceSignOffsFromGoldenRecords({
+        disciplines, goldenRecordsSnapshot: snapshot, transactionClient,
+        updatedByUsername: safeUpdatedByUsername, user,
+      });
+      const [syncedAtDate, syncedAtTime] = getUtcTimestampParts();
+      await goldenRecordsSyncGateway.commitManualMatch({
+        fetchedAt: snapshot.fetchedAt ?? "",
+        memberId: selectedId,
+        snapshot,
+        syncedAtDate,
+        syncedAtTime,
+        updatedByUsername: safeUpdatedByUsername,
+        username: user.username,
+      }, transactionClient);
+      return { outdoorSummary, signOffSummary };
+    };
+    const { outdoorSummary, signOffSummary } = manualMatchTransaction
+      ? await manualMatchTransaction(applyMatch)
+      : await applyMatch();
+    user.gr_id = selectedId;
+
+    return {
+      createdCount: outdoorSummary.createdCount,
+      goldenRecords: snapshot,
+      signOffCount: signOffSummary.replacedCount,
+      syncedCount: outdoorSummary.syncedCount,
+      updatedCount: outdoorSummary.updatedCount,
+    };
+  }
+
   async function syncAllMembers({ updatedByUsername, onProgress } = {}) {
     const clubData = goldenRecordsCurrentHandicapService?.isEnabled && goldenRecordsCurrentHandicapService.fetchClubData
       ? await goldenRecordsCurrentHandicapService.fetchClubData() : undefined;
@@ -876,6 +949,7 @@ export function createGoldenRecordsMemberSyncService({
   }
 
   return {
+    assignMemberMatch,
     getStoredSnapshotForUser,
     syncAllMembers,
     syncMember,

@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getGoldenRecordsAdminSummary,
   syncGoldenRecordsLookups,
   testGoldenRecordsHealth,
 } from "../../api/goldenRecordsApi";
-import { triggerGoldenRecordsOutdoorTableSync } from "../../api/outdoorTableApi";
+import { getGoldenRecordsMemberSyncJob, triggerGoldenRecordsOutdoorTableSync } from "../../api/outdoorTableApi";
 import { formatDateTime } from "../../utils/dateTime";
 import { Button } from "../components/Button";
 import { SectionPanel } from "../components/SectionPanel";
@@ -50,6 +50,30 @@ export function GoldenRecordsAdminPage({
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
+  const lastHandledJobId = useRef("");
+
+  const jobQuery = useQuery({
+    queryKey: ["golden-records-sync-job", actorUsername],
+    queryFn: () => getGoldenRecordsMemberSyncJob(currentUserProfile),
+    enabled: canManageGoldenRecords && Boolean(actorUsername),
+    refetchInterval: (query) => query.state.data?.job?.state === "running" ? 2000 : false,
+  });
+  const memberSyncJob = jobQuery.data?.job;
+
+  useEffect(() => {
+    if (!memberSyncJob || memberSyncJob.state === "running" || lastHandledJobId.current === memberSyncJob.id) return;
+    lastHandledJobId.current = memberSyncJob.id;
+    if (memberSyncJob.state === "failed") {
+      setActionError(memberSyncJob.failureMessage || "Golden Records member sync failed.");
+    } else {
+      setActionSuccess(`Golden Records member sync finished: ${memberSyncJob.matchedCount} matched, ${memberSyncJob.unmatchedCount} unmatched, ${memberSyncJob.achievementCount} achievements, ${memberSyncJob.errorCount} errors.`);
+    }
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["outdoor-table"] }),
+      queryClient.invalidateQueries({ queryKey: ["member-profiles"] }),
+      queryClient.invalidateQueries({ queryKey: goldenRecordsQueryKeys.summary(actorUsername) }),
+    ]);
+  }, [actorUsername, memberSyncJob, queryClient]);
 
   const { data, isLoading } = useQuery({
     queryKey: goldenRecordsQueryKeys.summary(actorUsername),
@@ -103,11 +127,7 @@ export function GoldenRecordsAdminPage({
     },
     onSuccess: async (result) => {
       setActionSuccess(result.message);
-      await Promise.all([
-        refreshSummary(),
-        queryClient.invalidateQueries({ queryKey: ["outdoor-table"] }),
-        queryClient.invalidateQueries({ queryKey: ["member-profiles"] }),
-      ]);
+      await jobQuery.refetch();
     },
     onError: (error: Error) => setActionError(error.message),
   });
@@ -215,10 +235,23 @@ export function GoldenRecordsAdminPage({
           </p>
           <Button
             onClick={() => memberSyncMutation.mutate()}
-            disabled={memberSyncMutation.isPending || connectionTestMutation.isPending || lookupSyncMutation.isPending}
+            disabled={memberSyncJob?.state === "running" || memberSyncMutation.isPending || connectionTestMutation.isPending || lookupSyncMutation.isPending}
           >
-            {memberSyncMutation.isPending ? "Syncing Members..." : "Sync Members and Achievements"}
+            {memberSyncJob?.state === "running" ? "Sync in progress" : "Sync Members and Achievements"}
           </Button>
+          {memberSyncJob ? (
+            <div role="status">
+              <p>
+                <strong>Status:</strong> {memberSyncJob.state}. {memberSyncJob.attemptedCount} members attempted; {memberSyncJob.matchedCount} matched, {memberSyncJob.unmatchedCount} unmatched, {memberSyncJob.errorCount} errors.
+                {memberSyncJob.failureMessage ? ` ${memberSyncJob.failureMessage}` : ""}
+              </p>
+              {memberSyncJob.errors?.length ? (
+                <ul>{memberSyncJob.errors.slice(0, 10).map((error, index) => (
+                  <li key={`${error.username}-${index}`}>{error.username}: {error.message}</li>
+                ))}</ul>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         <section className="golden-records-admin-card">

@@ -217,4 +217,7 @@ await import(new URL("../server/infrastructure/persistence/bootstrapSqliteBaseSc
 await import(new URL("../server/infrastructure/golden-records/goldenRecordsIntegrationService.test.js", import.meta.url));
 await import("../server/domain/services/tournamentPairings.test.js");
 await import("../server/presentation/http/workflowEnhancements.test.js");
+await import("../server/domain/services/goldenRecordsSyncJob.test.js");
+await import("../server/presentation/http/goldenRecordsSyncJobRoutes.test.js");
+await import("../server/presentation/http/goldenRecordsProfileWiring.test.js");
 await import("../server/presentation/http/registerEquipmentRoutes.expectedReturn.test.js");

@@ -113,16 +113,32 @@ export function deleteOutdoorTableEntry(actor: unknown, entryId: number) {
 export function triggerGoldenRecordsOutdoorTableSync(actor: unknown) {
   return fetchApi<{
     success: true;
-    attemptedCount: number;
-    syncedCount: number;
-    matchedCount: number;
-    unmatchedCount: number;
-    achievementCount: number;
-    errorCount: number;
-    errors?: Array<{ username: string; message: string }>;
+    job: GoldenRecordsMemberSyncJob;
     message: string;
   }>("/api/golden-records/sync-outdoor-table", {
     method: "POST",
     headers: buildActorHeaders(actor, true),
   });
+}
+
+export type GoldenRecordsMemberSyncJob = {
+  id: string;
+  state: "running" | "completed" | "completed-with-errors" | "failed";
+  startedAt: string;
+  completedAt?: string;
+  startedByUsername: string;
+  attemptedCount: number;
+  matchedCount: number;
+  unmatchedCount: number;
+  achievementCount: number;
+  errorCount: number;
+  errors?: Array<{ username: string; message: string }>;
+  failureMessage?: string;
+};
+
+export function getGoldenRecordsMemberSyncJob(actor: unknown) {
+  return fetchApi<{ success: true; job: GoldenRecordsMemberSyncJob | null }>(
+    "/api/golden-records/member-sync-job",
+    { headers: buildActorHeaders(actor), cache: "no-store" },
+  );
 }

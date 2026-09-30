@@ -13,6 +13,7 @@ export function registerAdminMemberRoutes({
   goldenRecordsCurrentHandicapService,
   goldenRecordsIntegrationService,
   goldenRecordsMemberSyncService,
+  goldenRecordsSyncJob,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,
@@ -1819,28 +1820,39 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const syncSummary = await resolvedGoldenRecordsMemberSyncService.syncAllMembers({
-      updatedByUsername: actor.username,
-    });
+    if (syncNodeMode === "local-pi") {
+      res.status(409).json({ success: false, message: "Run the full-club Golden Records sync on the cloud server." });
+      return;
+    }
 
-    serverEventBus?.broadcastToAll("outdoor-table.updated", {
-      changedAt: new Date().toISOString(),
-      scope: "golden-records-sync-all",
-      username: actor.username,
+    const result = await goldenRecordsSyncJob.start({ actorUsername: actor.username });
+    if (result.started) {
+      try {
+        serverEventBus?.broadcastToAll("golden-records.updated", {
+          changedAt: new Date().toISOString(), scope: "member-sync-job-started",
+        });
+      } catch (error) {
+        console.error("Failed to publish Golden Records sync start event", error);
+      }
+    }
+    res.status(result.started ? 202 : 409).json({
+      success: result.started,
+      job: result.status,
+      message: result.started ? "Golden Records member sync started." : "A Golden Records member sync is already running.",
     });
-    broadcastMembersUpdated("members.golden-records-sync-all", actor.username);
+  });
 
-    res.json({
-      success: true,
-      attemptedCount: syncSummary.attemptedCount,
-      syncedCount: syncSummary.syncedCount,
-      matchedCount: syncSummary.matchedCount,
-      unmatchedCount: syncSummary.unmatchedCount,
-      achievementCount: syncSummary.achievementCount,
-      errorCount: syncSummary.errorCount,
-      errors: syncSummary.errors,
-      message: `Golden Records member sync finished: ${syncSummary.matchedCount} matched, ${syncSummary.unmatchedCount} unmatched, ${syncSummary.achievementCount} achievements, ${syncSummary.errorCount} errors.`,
-    });
+  app.get("/api/golden-records/member-sync-job", async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor) {
+      res.status(401).json({ success: false, message: "An authenticated member is required." });
+      return;
+    }
+    if (!canAccessGoldenRecordsAdmin(actor)) {
+      res.status(403).json({ success: false, message: "Only admins and developers can view Golden Records sync status." });
+      return;
+    }
+    res.json({ success: true, job: await goldenRecordsSyncJob.getStatus() });
   });
 
   app.get("/api/golden-records/admin-summary", async (req, res) => {

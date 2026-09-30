@@ -170,6 +170,30 @@ test("club pagination, safe matching, grouping and archived members", async () =
   }
 });
 
+test("stale Golden Records id falls back to a unique AGB match without linking ambiguous members", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => ({ ok: true, status: 200, text: async () => "[]" });
+    const service = createGoldenRecordsCurrentHandicapService({ apiKey: "test-key", baseUrl: "https://api2.archery-records.net" });
+    const clubData = {
+      members: [
+        { memberId: "new-id", membershipId: "123456", memberArchived: false, name: "Robin Archer", email: "" },
+        { memberId: "other-a", membershipId: "duplicate", memberArchived: false, name: "Other A", email: "" },
+        { memberId: "other-b", membershipId: "duplicate", memberArchived: false, name: "Other B", email: "" },
+      ],
+      achievementsByMember: new Map(),
+    };
+    const matched = await service.getSnapshotForMember({ goldenRecordsId: "stale-id", archeryGbMembershipNumber: "123456", username: "robin", clubData });
+    assert.equal(matched.matchedMemberId, "new-id");
+    assert.equal(matched.matchSource, "membership-id");
+    const ambiguous = await service.getSnapshotForMember({ goldenRecordsId: "stale-id", archeryGbMembershipNumber: "duplicate", username: "other", clubData });
+    assert.equal(ambiguous.matchSource, "ambiguous");
+    assert.equal(ambiguous.matchedMemberId, "");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("club API errors and malformed pages fail instead of returning partial success", async () => {
   const originalFetch = globalThis.fetch;
   try {

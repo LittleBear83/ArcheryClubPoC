@@ -427,9 +427,14 @@ export function createGoldenRecordsCurrentHandicapService({
       const nameMatches = candidateNames.length
         ? allMembers.filter((row) => candidateNames.includes(normalizeNamePart(row.name)))
         : [];
-      const matchedMembers = trimmedGoldenRecordsId
+      // A stale stored GR id must not suppress a unique, current AGB match.
+      // Conflicting strong identifiers require manual review rather than guessing.
+      const conflictingStrongIdentifiers = idMatches.length > 0 &&
+        membershipMatches.length === 1 &&
+        !idMatches.some((idMember) => membershipMatches.some((agbMember) => String(idMember.memberId) === String(agbMember.memberId)));
+      const matchedMembers = idMatches.length
         ? idMatches
-        : membershipMatches.length
+        : trimmedMembershipNumber
           ? membershipMatches
           : emailMatches.length
             ? emailMatches
@@ -451,6 +456,10 @@ export function createGoldenRecordsCurrentHandicapService({
         matchedMemberName: "",
         matchSource: "not-found",
       };
+
+      if (conflictingStrongIdentifiers) {
+        return { ...snapshot, matchSource: "ambiguous" };
+      }
 
       if (matchedMembers.length === 1 && clubData?.portalMembers) {
         const member = matchedMembers[0];

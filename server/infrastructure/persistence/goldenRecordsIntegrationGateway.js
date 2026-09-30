@@ -68,6 +68,9 @@ function createSqliteGoldenRecordsIntegrationGateway(db) {
   `);
 
   return {
+    async tryAcquireMemberSyncLock() {
+      return async () => {};
+    },
     async findStatus(statusKey) {
       return parseJsonValue(findStatusStatement.get(statusKey)?.status_json ?? null);
     },
@@ -112,6 +115,26 @@ function createSqliteGoldenRecordsIntegrationGateway(db) {
 
 function createPostgresGoldenRecordsIntegrationGateway(pool) {
   return {
+    async tryAcquireMemberSyncLock() {
+      const client = await pool.connect();
+      try {
+        const result = await client.query("SELECT pg_try_advisory_lock(724018, 1) AS acquired");
+        if (!result.rows[0]?.acquired) {
+          client.release();
+          return null;
+        }
+        return async () => {
+          try {
+            await client.query("SELECT pg_advisory_unlock(724018, 1)");
+          } finally {
+            client.release();
+          }
+        };
+      } catch (error) {
+        client.release();
+        throw error;
+      }
+    },
     async findStatus(statusKey) {
       const result = await pool.query(
         `

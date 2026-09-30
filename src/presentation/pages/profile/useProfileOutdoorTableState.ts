@@ -87,10 +87,12 @@ export function useProfileOutdoorTableState({
   canManageOutdoorAchievements,
   currentUserProfile,
   editableProfile,
+  goldenRecordsSnapshot,
   hasLoadedProfileRef,
   isGuest,
   loadProfile,
   memberProfileCrud,
+  setGoldenRecordsSnapshot,
   onClearMessages,
   onMessage,
 }: {
@@ -99,10 +101,12 @@ export function useProfileOutdoorTableState({
   canManageOutdoorAchievements: boolean;
   currentUserProfile: UserProfile | null;
   editableProfile: any;
+  goldenRecordsSnapshot: GoldenRecordsSnapshot | null;
   hasLoadedProfileRef: React.MutableRefObject<boolean>;
   isGuest: boolean;
   loadProfile: (username: string, options?: { signal?: AbortSignal; isBackgroundRefresh?: boolean }) => Promise<void>;
   memberProfileCrud: any;
+  setGoldenRecordsSnapshot: React.Dispatch<React.SetStateAction<GoldenRecordsSnapshot | null>>;
   onClearMessages: () => void;
   onMessage: (message: string) => void;
 }) {
@@ -116,9 +120,6 @@ export function useProfileOutdoorTableState({
   const [isSavingOutdoorTableByBowType, setIsSavingOutdoorTableByBowType] = useState<
     Record<string, boolean>
   >({});
-  const [goldenRecordsSnapshot, setGoldenRecordsSnapshot] = useState<GoldenRecordsSnapshot | null>(
-    null,
-  );
   const [isRefreshingGoldenRecordsHandicap, setIsRefreshingGoldenRecordsHandicap] =
     useState(false);
   const [isGoldenRecordsMatchModalOpen, setIsGoldenRecordsMatchModalOpen] = useState(false);

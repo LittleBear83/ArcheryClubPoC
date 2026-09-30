@@ -38,3 +38,24 @@ test("admin sync authorizes the start, returns immediately and publishes job inv
   assert.equal(events[0][0], "golden-records.updated");
   assert.equal((await call("GET", "/api/golden-records/member-sync-job")).body.job.id, "job-1");
 });
+
+test("admin sync reports unavailable background execution without publishing a start event", async () => {
+  const routes = new Map();
+  const events = [];
+  registerAdminMemberRoutes({
+    app: { get: (path, fn) => routes.set(`GET ${path}`, fn), post: (path, fn) => routes.set(`POST ${path}`, fn), put() {}, delete() {} },
+    PERMISSIONS: { MANAGE_MEMBERS: "manage_members" },
+    getActorUser: () => ({ username: "admin", user_type: "admin" }),
+    goldenRecordsSyncJob: { start: async () => ({ started: false, unavailable: true, status: null }) },
+    serverEventBus: { broadcastToAll: (...args) => events.push(args) },
+  });
+  let status;
+  let body;
+  await routes.get("POST /api/golden-records/sync-outdoor-table")({}, {
+    status(value) { status = value; return this; },
+    json(value) { body = value; },
+  });
+  assert.equal(status, 503);
+  assert.match(body.message, /background CPU/);
+  assert.deepEqual(events, []);
+});

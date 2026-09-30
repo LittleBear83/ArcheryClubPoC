@@ -69,3 +69,73 @@ test("database lock rejects a second server instance without starting another sy
   assert.equal(result.status.id, "other-instance");
   assert.equal(calls, 0);
 });
+
+test("a persisted running job without its advisory lock is marked interrupted", async () => {
+  let status = { id: "orphan", state: "running", startedAt: "2026-01-01T00:00:00.000Z" };
+  let releases = 0;
+  const job = createGoldenRecordsSyncJob({
+    goldenRecordsIntegrationGateway: {
+      findStatus: async () => status,
+      upsertStatus: async (_key, value) => { status = value; },
+      tryAcquireMemberSyncLock: async () => async () => { releases += 1; },
+    },
+    goldenRecordsMemberSyncService: { syncAllMembers: async () => { throw new Error("unexpected"); } },
+  });
+  const recovered = await job.getStatus();
+  assert.equal(recovered.id, "orphan");
+  assert.equal(recovered.state, "interrupted");
+  assert.match(recovered.failureMessage, /server stopped|execution ended/i);
+  assert.ok(recovered.completedAt);
+  assert.equal(releases, 1);
+});
+
+test("a new job can start after orphan recovery", async () => {
+  let status = { id: "orphan", state: "running", startedAt: "2026-01-01T00:00:00.000Z" };
+  let releases = 0;
+  const job = createGoldenRecordsSyncJob({
+    goldenRecordsIntegrationGateway: {
+      findStatus: async () => status,
+      upsertStatus: async (_key, value) => { status = value; },
+      tryAcquireMemberSyncLock: async () => async () => { releases += 1; },
+    },
+    goldenRecordsMemberSyncService: {
+      syncAllMembers: async () => ({ attemptedCount: 0, matchedCount: 0, unmatchedCount: 0, achievementCount: 0, errorCount: 0 }),
+    },
+  });
+  const started = await job.start({ actorUsername: "admin" });
+  assert.equal(started.started, true);
+  assert.notEqual(started.status.id, "orphan");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal((await job.getStatus()).state, "completed");
+  assert.equal(releases, 1);
+});
+
+test("an advisory-locked running job is not recovered by another instance", async () => {
+  let writes = 0;
+  const status = { id: "active", state: "running" };
+  const job = createGoldenRecordsSyncJob({
+    goldenRecordsIntegrationGateway: {
+      findStatus: async () => status,
+      upsertStatus: async () => { writes += 1; },
+      tryAcquireMemberSyncLock: async () => null,
+    },
+    goldenRecordsMemberSyncService: { syncAllMembers: async () => { throw new Error("unexpected"); } },
+  });
+  assert.equal((await job.getStatus()).state, "running");
+  assert.equal((await job.start({ actorUsername: "admin" })).started, false);
+  assert.equal(writes, 0);
+});
+
+test("Cloud Run without confirmed background CPU refuses to start a detached job", async () => {
+  let calls = 0;
+  const job = createGoldenRecordsSyncJob({
+    backgroundExecutionAvailable: false,
+    goldenRecordsIntegrationGateway: {
+      findStatus: async () => null,
+      tryAcquireMemberSyncLock: async () => { calls += 1; return async () => {}; },
+    },
+    goldenRecordsMemberSyncService: { syncAllMembers: async () => { calls += 1; } },
+  });
+  assert.deepEqual(await job.start({ actorUsername: "admin" }), { started: false, unavailable: true, status: null });
+  assert.equal(calls, 0);
+});

@@ -5,6 +5,7 @@ const STATUS_KEY = "member-sync-job";
 export function createGoldenRecordsSyncJob({
   goldenRecordsIntegrationGateway,
   goldenRecordsMemberSyncService,
+  backgroundExecutionAvailable = true,
   onFinished = () => {},
   logger = console,
 }) {
@@ -16,11 +17,39 @@ export function createGoldenRecordsSyncJob({
     await goldenRecordsIntegrationGateway.upsertStatus(STATUS_KEY, status);
   }
 
+  async function interruptOrphanedStatus() {
+    const status = await goldenRecordsIntegrationGateway.findStatus(STATUS_KEY);
+    if (status?.state !== "running") return status;
+    const release = await goldenRecordsIntegrationGateway.tryAcquireMemberSyncLock();
+    if (!release) return status;
+    try {
+      return await interruptOrphanedStatusWithLock();
+    } finally {
+      await release();
+    }
+  }
+
+  async function interruptOrphanedStatusWithLock() {
+    // Re-read while holding the lock: another instance may have completed
+    // between the initial status read and lock acquisition.
+    const status = await goldenRecordsIntegrationGateway.findStatus(STATUS_KEY);
+    if (status?.state !== "running") return status;
+    const interrupted = {
+      ...status,
+      state: "interrupted",
+      completedAt: new Date().toISOString(),
+      failureMessage: "Golden Records sync was interrupted because its server stopped or its execution ended. Start a new sync to retry.",
+    };
+    await saveStatus(interrupted);
+    return interrupted;
+  }
+
   async function getStatus() {
-    return running ? currentStatus : await goldenRecordsIntegrationGateway.findStatus(STATUS_KEY);
+    return running ? currentStatus : await interruptOrphanedStatus();
   }
 
   async function start({ actorUsername }) {
+    if (!backgroundExecutionAvailable) return { started: false, unavailable: true, status: await getStatus() };
     if (running) return { started: false, status: await getStatus() };
     const release = await goldenRecordsIntegrationGateway.tryAcquireMemberSyncLock();
     if (!release) return { started: false, status: await getStatus() };
@@ -37,6 +66,7 @@ export function createGoldenRecordsSyncJob({
       errorCount: 0,
     };
     try {
+      await interruptOrphanedStatusWithLock();
       await saveStatus(status);
     } catch (error) {
       await release();

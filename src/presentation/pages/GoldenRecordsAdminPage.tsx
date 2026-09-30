@@ -63,7 +63,7 @@ export function GoldenRecordsAdminPage({
   useEffect(() => {
     if (!memberSyncJob || memberSyncJob.state === "running" || lastHandledJobId.current === memberSyncJob.id) return;
     lastHandledJobId.current = memberSyncJob.id;
-    if (memberSyncJob.state === "failed") {
+    if (memberSyncJob.state === "failed" || memberSyncJob.state === "interrupted") {
       setActionError(memberSyncJob.failureMessage || "Golden Records member sync failed.");
     } else {
       setActionSuccess(`Golden Records member sync finished: ${memberSyncJob.matchedCount} matched, ${memberSyncJob.unmatchedCount} unmatched, ${memberSyncJob.achievementCount} achievements, ${memberSyncJob.errorCount} errors.`);

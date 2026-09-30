@@ -1097,6 +1097,9 @@ const goldenRecordsMemberSyncService = createGoldenRecordsMemberSyncService({
 const goldenRecordsSyncJob = createGoldenRecordsSyncJob({
   goldenRecordsIntegrationGateway,
   goldenRecordsMemberSyncService,
+  // Cloud Run defaults to request-based CPU. Opt in only after configuring
+  // instance-based billing and minimum instances on the deployed service.
+  backgroundExecutionAvailable: !process.env.K_SERVICE || process.env.GOLDEN_RECORDS_ALWAYS_ALLOCATED_CPU === "true",
   onFinished: (status) => {
     serverEventBus.broadcastToAll("outdoor-table.updated", {
       changedAt: new Date().toISOString(), scope: "golden-records-sync-all",

@@ -1835,10 +1835,14 @@ export function registerAdminMemberRoutes({
         console.error("Failed to publish Golden Records sync start event", error);
       }
     }
-    res.status(result.started ? 202 : 409).json({
+    res.status(result.started ? 202 : result.unavailable ? 503 : 409).json({
       success: result.started,
       job: result.status,
-      message: result.started ? "Golden Records member sync started." : "A Golden Records member sync is already running.",
+      message: result.started
+        ? "Golden Records member sync started."
+        : result.unavailable
+          ? "Golden Records member sync is unavailable: Cloud Run background CPU has not been confirmed."
+          : "A Golden Records member sync is already running.",
     });
   });
 

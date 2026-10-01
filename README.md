@@ -40,7 +40,7 @@ The application currently includes:
   member workflows
 - Have a Go session administration
 - range usage and attendance reporting
-- outdoor table viewing for classifications, 252 awards, and clout marks
+- Achievement Tables with Outdoor and Indoor tabs; Outdoor shows classifications, 252 awards and clout marks, while Indoor shows handicaps and manually recorded indoor classifications and score awards
 - lost-and-found tracking for arrows
 - records, general information, and suggestion box pages
 - mobile-specific layouts for larger feature areas

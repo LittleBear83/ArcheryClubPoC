@@ -39,7 +39,7 @@ const pages = [
   },
   {
     id: "outdoor-table",
-    label: "Outdoor Table",
+    label: "Achievement Tables",
     path: "/outdoor-table",
     restrictedForProgrammeUsers: true,
   },

@@ -70,6 +70,7 @@ export function GoldenRecordsAdminPage({
     }
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: ["outdoor-table"] }),
+      queryClient.invalidateQueries({ queryKey: ["indoor-table"] }),
       queryClient.invalidateQueries({ queryKey: ["member-profiles"] }),
       queryClient.invalidateQueries({ queryKey: goldenRecordsQueryKeys.summary(actorUsername) }),
     ]);
@@ -231,7 +232,8 @@ export function GoldenRecordsAdminPage({
           <p>
             Sync existing portal members using their Golden Records ID, AGB number, email,
             or a unique exact full-name match. Ambiguous names remain unmatched; add an
-            AGB number or email to their portal profile, then rerun the sync.
+            AGB number or email to their portal profile, then rerun the sync. The sync
+            refreshes outdoor achievements and indoor handicaps.
           </p>
           <Button
             onClick={() => memberSyncMutation.mutate()}

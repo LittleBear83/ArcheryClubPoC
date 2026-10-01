@@ -10,6 +10,7 @@ import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { MobileSectionHeader } from "../../components/mobile/MobileSectionHeader";
 import { formatDate, formatDateTime } from "../../../utils/dateTime";
 import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
+import { ProfileIndoorAchievementsSection } from "./ProfileIndoorAchievementsSection";
 import { RfidAgentInstallControl } from "./RfidAgentInstallControl";
 import { formatMemberDisplayName, formatMemberDisplayUsername } from "../../../utils/userProfile";
 import type { useProfilePageState } from "./useProfilePageState";
@@ -301,6 +302,14 @@ export function ProfileMobileView({
           onSave={handleSaveOutdoorTableEntry}
         />
       ) : null}
+
+      {editableProfile ? <ProfileIndoorAchievementsSection
+        currentUserProfile={currentUserProfile}
+        username={editableProfile.username}
+        disciplines={editableProfile.disciplines}
+        canManage={canManageMembers}
+        goldenRecordsHandicaps={goldenRecordsIndoorHandicapsByBowType}
+      /> : null}
 
       <DeleteMemberModal
         confirmationUsername={deleteConfirmationUsername}

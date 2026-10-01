@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../../api/client";
 import { subscribeToServerEvent } from "../../../lib/serverEvents";
 import { useSseFallbackPolling } from "../../state/useSseFallbackPolling";
@@ -110,6 +111,7 @@ export function useProfileOutdoorTableState({
   onClearMessages: () => void;
   onMessage: (message: string) => void;
 }) {
+  const queryClient = useQueryClient();
   const isLoadingOutdoorTableRef = useRef(false);
   const [outdoorTableEntries, setOutdoorTableEntries] = useState<OutdoorTableEntry[]>([]);
   const [outdoorTableDraftsByBowType, setOutdoorTableDraftsByBowType] = useState<
@@ -430,6 +432,7 @@ export function useProfileOutdoorTableState({
 
       setGoldenRecordsSnapshot(result.goldenRecords ?? null);
       await loadOutdoorTableEntries(editableProfile.username, undefined);
+      await queryClient.invalidateQueries({ queryKey: ["indoor-table"] });
       onMessage(
         result.message
           ? `Golden Records API sync successful. ${result.message}`
@@ -535,6 +538,7 @@ export function useProfileOutdoorTableState({
         isBackgroundRefresh: hasLoadedProfileRef.current,
       });
       await loadOutdoorTableEntries(editableProfile.username, undefined);
+      await queryClient.invalidateQueries({ queryKey: ["indoor-table"] });
       onMessage(
         result.message
           ? `Golden Records API sync successful. ${result.message}`

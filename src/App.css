@@ -10372,3 +10372,30 @@ button:disabled {
   font-size: 0.85rem;
   line-height: 1.4;
 }
+
+.achievement-tables-page {
+  display: grid;
+  gap: 1.25rem;
+  min-width: 0;
+}
+
+.indoor-table-matrix td {
+  text-align: center;
+}
+
+.indoor-table-matrix td:first-child {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.profile-indoor-achievement-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.profile-indoor-achievement-grid label {
+  display: grid;
+  gap: 0.25rem;
+}

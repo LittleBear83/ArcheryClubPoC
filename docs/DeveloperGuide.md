@@ -48,7 +48,7 @@ Implemented areas include:
 - beginner password reset, case assignment, and conversion to member workflows
 - Have a Go session administration
 - range activity and attendance reporting
-- outdoor table viewing, records, lost-and-found, general information, and
+- Achievement Tables viewing (Outdoor and Indoor tabs), records, lost-and-found, general information, and
   suggestion-box supporting pages
 - persisted theme switching between the current visual themes
 
@@ -330,7 +330,7 @@ The authenticated shell currently routes to these main page areas:
 - `/tournaments`
 - `/tournament-setup`
 - `/records`
-- `/outdoor-table`
+- `/outdoor-table` — Achievement Tables, with `?tab=outdoor` (default) or `?tab=indoor`. Existing bookmarks remain valid.
 - `/range-rules`
 - `/range-rules-admin`
 - `/general-info-admin`

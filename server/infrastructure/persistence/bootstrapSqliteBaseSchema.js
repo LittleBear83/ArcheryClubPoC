@@ -848,6 +848,24 @@ export function bootstrapSqliteBaseSchema({
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS indoor_table_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      season_year INTEGER NOT NULL,
+      archer_username TEXT NOT NULL REFERENCES users(username),
+      bow_type TEXT NOT NULL,
+      handicap INTEGER,
+      classifications_json TEXT NOT NULL DEFAULT '{}',
+      scores_json TEXT NOT NULL DEFAULT '{}',
+      created_at_date TEXT NOT NULL,
+      created_at_time TEXT NOT NULL,
+      updated_at_date TEXT,
+      updated_at_time TEXT,
+      updated_by_username TEXT REFERENCES users(username),
+      UNIQUE (season_year, archer_username, bow_type)
+    )
+  `);
+
   const outdoorTableColumns = db.prepare(`PRAGMA table_info(outdoor_table_entries)`).all();
 
   if (!outdoorTableColumns.some((column) => column.name === "award_252_20_sign_off_dates")) {

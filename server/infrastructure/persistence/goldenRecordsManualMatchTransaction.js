@@ -1,7 +1,8 @@
 import { createOutdoorTableGateway } from "./outdoorTableGateway.js";
+import { createIndoorTableGateway } from "./indoorTableGateway.js";
 
 export async function withGoldenRecordsManualMatchTransaction(
-  { databaseEngine, db, outdoorTableGateway }, operation,
+  { databaseEngine, db, outdoorTableGateway, indoorTableGateway }, operation,
 ) {
   if (databaseEngine === "postgres") {
     const client = await db.pool.connect();
@@ -9,6 +10,7 @@ export async function withGoldenRecordsManualMatchTransaction(
       await client.query("BEGIN");
       const result = await operation({
         outdoorGateway: createOutdoorTableGateway({ databaseEngine: "postgres", pool: client }),
+        indoorGateway: createIndoorTableGateway({ databaseEngine: "postgres", pool: client }),
         transactionClient: client,
       });
       await client.query("COMMIT");
@@ -25,7 +27,7 @@ export async function withGoldenRecordsManualMatchTransaction(
   // connection; the remote API fetch finishes before this transaction starts.
   db.exec("BEGIN IMMEDIATE");
   try {
-    const result = await operation({ outdoorGateway: outdoorTableGateway, transactionClient: null });
+    const result = await operation({ outdoorGateway: outdoorTableGateway, indoorGateway: indoorTableGateway, transactionClient: null });
     db.exec("COMMIT");
     return result;
   } catch (error) {

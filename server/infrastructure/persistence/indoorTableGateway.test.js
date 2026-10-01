@@ -21,6 +21,8 @@ test("SQLite indoor gateway preserves separate bows and dated progress", async (
     assert.equal(row.archerName, "Alex Archer");
     assert.equal(row.classifications.archer3rd, "2026-01-01");
     assert.equal((await gateway.findDuplicate(row)).id, row.id);
+    assert.equal(await gateway.createEntryIfAbsent({ ...row, handicap: 99 }), false);
+    assert.equal((await gateway.findEntryById(row.id)).handicap, 30);
     const updated = await gateway.updateEntry({ ...row, handicap: 25 });
     assert.equal(updated.handicap, 25);
     assert.equal((await gateway.listEntriesByYear(2026)).length, 1);

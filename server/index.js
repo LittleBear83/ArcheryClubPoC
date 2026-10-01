@@ -5182,10 +5182,12 @@ registerIndoorTableRoutes({
   auditChangeLogger,
   getActorUser,
   getUtcTimestampParts,
+  goldenRecordsMemberSyncService,
   indoorTableGateway,
   memberAuthGateway,
   PERMISSIONS,
   serverEventBus,
+  syncNodeMode: serverRuntime.sync.nodeMode,
 });
 
 function broadcastCalendarUpdated(scope = "calendar") {

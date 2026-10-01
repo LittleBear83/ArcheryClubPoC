@@ -79,6 +79,11 @@ function createSqliteGoldenRecordsSyncGateway(db) {
     async findByUsername(username) {
       return normalizeGoldenRecordsSnapshotRow(findByUsernameStatement.get(username));
     },
+    async listStoredSnapshots() {
+      return db.prepare("SELECT username, snapshot_json FROM golden_records_member_sync").all()
+        .map((row) => ({ username: row.username, snapshot: normalizeGoldenRecordsSnapshotRow(row) }))
+        .filter((row) => row.snapshot);
+    },
     async findLatestFetchedAt() {
       return String(findLatestFetchedAtStatement.get()?.fetched_at ?? "").trim();
     },
@@ -145,6 +150,11 @@ function createPostgresGoldenRecordsSyncGateway(pool) {
       );
 
       return normalizeGoldenRecordsSnapshotRow(result.rows[0] ?? null);
+    },
+    async listStoredSnapshots() {
+      const result = await pool.query("SELECT username, snapshot_json FROM golden_records_member_sync");
+      return result.rows.map((row) => ({ username: row.username, snapshot: normalizeGoldenRecordsSnapshotRow(row) }))
+        .filter((row) => row.snapshot);
     },
     async findLatestFetchedAt() {
       const result = await pool.query(

@@ -44,6 +44,10 @@ export function createIndoorTableGateway({ databaseEngine, db, pool }) {
         const result = await pool.query(`INSERT INTO indoor_table_entries (season_year, archer_username, bow_type, handicap, classifications_json, scores_json, created_at_date, created_at_time, updated_at_date, updated_at_time, updated_by_username) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11) RETURNING id`, values(entry));
         return this.findEntryById(result.rows[0].id);
       },
+      async createEntryIfAbsent(entry) {
+        const result = await pool.query(`INSERT INTO indoor_table_entries (season_year, archer_username, bow_type, handicap, classifications_json, scores_json, created_at_date, created_at_time, updated_at_date, updated_at_time, updated_by_username) VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11) ON CONFLICT (season_year, archer_username, bow_type) DO NOTHING`, values(entry));
+        return result.rowCount > 0;
+      },
       async updateEntry(entry) {
         await pool.query(`UPDATE indoor_table_entries SET season_year=$1, archer_username=$2, bow_type=$3, handicap=$4, classifications_json=$5::jsonb, scores_json=$6::jsonb, created_at_date=$7, created_at_time=$8, updated_at_date=$9, updated_at_time=$10, updated_by_username=$11 WHERE id=$12`, [...values(entry), entry.id]);
         return this.findEntryById(entry.id);
@@ -65,6 +69,9 @@ export function createIndoorTableGateway({ databaseEngine, db, pool }) {
     async createEntry(entry) {
       const result = db.prepare(`INSERT INTO indoor_table_entries (season_year, archer_username, bow_type, handicap, classifications_json, scores_json, created_at_date, created_at_time, updated_at_date, updated_at_time, updated_by_username) VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(...values(entry));
       return this.findEntryById(Number(result.lastInsertRowid));
+    },
+    async createEntryIfAbsent(entry) {
+      return db.prepare(`INSERT INTO indoor_table_entries (season_year, archer_username, bow_type, handicap, classifications_json, scores_json, created_at_date, created_at_time, updated_at_date, updated_at_time, updated_by_username) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(season_year, archer_username, bow_type) DO NOTHING`).run(...values(entry)).changes > 0;
     },
     async updateEntry(entry) {
       db.prepare(`UPDATE indoor_table_entries SET season_year=?, archer_username=?, bow_type=?, handicap=?, classifications_json=?, scores_json=?, created_at_date=?, created_at_time=?, updated_at_date=?, updated_at_time=?, updated_by_username=? WHERE id=?`).run(...values(entry), entry.id);

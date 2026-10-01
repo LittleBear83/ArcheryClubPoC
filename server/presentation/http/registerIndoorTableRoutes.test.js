@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { registerIndoorTableRoutes } from "./registerIndoorTableRoutes.js";
 
-function setup() {
+function setup({ backfill } = {}) {
   const routes = new Map();
   const entries = [];
   const events = [];
@@ -23,6 +23,7 @@ function setup() {
     auditChangeLogger: { recordEntityChange: async (event) => { audits.push(event); } },
     getActorUser: (req) => req.actor, getUtcTimestampParts: () => ["2026-10-01", "12:00:00"],
     indoorTableGateway: gateway,
+    goldenRecordsMemberSyncService: backfill ? { backfillIndoorTableFromStoredSnapshots: backfill } : undefined,
     memberAuthGateway: { findUserByUsername: async () => ({ username: "archer" }),
       findDisciplinesByUsername: async () => [{ discipline: "Recurve Bow" }] },
     PERMISSIONS: { MANAGE_MEMBERS: "manage_members" },
@@ -57,4 +58,15 @@ test("indoor routes reject invalid handicap, false discipline, duplicate and sel
   assert.equal((await h.call("POST", "/api/indoor-table", { body: payload, actor: { username: "archer" } })).statusCode, 403);
   assert.equal((await h.call("POST", "/api/indoor-table", { body: payload })).statusCode, 201);
   assert.equal((await h.call("POST", "/api/indoor-table", { body: payload })).statusCode, 409);
+});
+
+test("current-year GET backfills stored snapshots once before returning rows", async () => {
+  let calls = 0;
+  const h = setup({ backfill: async () => { calls += 1; h.entries.push({ id: 1,
+    seasonYear: new Date().getUTCFullYear(), archerUsername: "archer", bowType: "Rec",
+    handicap: 78, classifications: {}, scores: {} }); return 1; } });
+  const year = String(new Date().getUTCFullYear());
+  assert.equal((await h.call("GET", "/api/indoor-table", { year })).body.rows[0].handicap, 78);
+  assert.equal((await h.call("GET", "/api/indoor-table", { year })).body.rows.length, 1);
+  assert.equal(calls, 1);
 });

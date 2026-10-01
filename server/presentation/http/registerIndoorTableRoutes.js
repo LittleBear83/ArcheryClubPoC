@@ -31,7 +31,10 @@ function normalize(body) {
 }
 
 export function registerIndoorTableRoutes({ app, actorHasPermission, auditChangeLogger, getActorUser,
-  getUtcTimestampParts, indoorTableGateway, memberAuthGateway, PERMISSIONS, serverEventBus }) {
+  getUtcTimestampParts, goldenRecordsMemberSyncService, indoorTableGateway, memberAuthGateway,
+  PERMISSIONS, serverEventBus, syncNodeMode }) {
+  let backfilledYear = null;
+  let backfillPromise = null;
   function canManage(req, res) {
     const actor = getActorUser(req);
     if (!actor || !actorHasPermission(actor, PERMISSIONS.MANAGE_MEMBERS)) {
@@ -66,6 +69,17 @@ export function registerIndoorTableRoutes({ app, actorHasPermission, auditChange
     if (!getActorUser(req)) { res.status(401).json({ success: false, message: "An authenticated member is required." }); return; }
     const year = Number(req.query?.year);
     const seasonYear = Number.isInteger(year) && year >= 2020 && year <= 2100 ? year : new Date().getUTCFullYear();
+    if (seasonYear === new Date().getUTCFullYear() && syncNodeMode !== "local-pi" &&
+      goldenRecordsMemberSyncService?.backfillIndoorTableFromStoredSnapshots && backfilledYear !== seasonYear) {
+      if (!backfillPromise) {
+        backfillPromise = goldenRecordsMemberSyncService.backfillIndoorTableFromStoredSnapshots()
+          .then((createdCount) => {
+            backfilledYear = seasonYear;
+            if (createdCount > 0) notify("stored-snapshot-backfill");
+          }).finally(() => { backfillPromise = null; });
+      }
+      await backfillPromise;
+    }
     const [rows, availableYears] = await Promise.all([indoorTableGateway.listEntriesByYear(seasonYear), indoorTableGateway.listAvailableYears()]);
     res.json({ success: true, seasonYear, availableYears, rows });
   });

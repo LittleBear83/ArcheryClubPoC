@@ -3,6 +3,19 @@ import pg from "pg";
 import { mkdirSync } from "node:fs";
 
 const { Pool } = pg;
+const DEFAULT_POSTGRES_POOL_MAX = 5;
+
+function resolvePostgresPoolMax(value) {
+  const configuredValue = String(value ?? "").trim();
+  if (!/^\d+$/u.test(configuredValue)) {
+    return DEFAULT_POSTGRES_POOL_MAX;
+  }
+
+  const max = Number(configuredValue);
+  return Number.isSafeInteger(max) && max > 0
+    ? max
+    : DEFAULT_POSTGRES_POOL_MAX;
+}
 
 function createSqliteDatabase({
   dataDirectory,
@@ -19,10 +32,12 @@ function createSqliteDatabase({
 
 export function createPostgresPool(runtime) {
   const { databaseUrl, postgres } = runtime;
+  const max = resolvePostgresPoolMax(postgres?.poolMax);
 
   if (databaseUrl) {
     return new Pool({
       connectionString: databaseUrl,
+      max,
     });
   }
 
@@ -34,6 +49,7 @@ export function createPostgresPool(runtime) {
 
   const baseConfig = {
     database: postgres.databaseName,
+    max,
     password: postgres.password || undefined,
     port: postgres.port,
     user: postgres.user,

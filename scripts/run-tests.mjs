@@ -8,6 +8,7 @@ await import("../server/presentation/http/tournamentTemplateCapability.test.js")
 await import("../server/presentation/http/registerTournamentRoutes.templateUpdate.test.js");
 await import("../server/infrastructure/persistence/tournamentTemplateUpdate.test.js");
 await import("../server/infrastructure/persistence/createSqliteBeginnersCourseStatements.test.js");
+await import("../server/infrastructure/persistence/createDatabase.test.js");
 await import("../server/domain/services/goldenRecordsManualMatch.test.js");
 await import("../server/infrastructure/persistence/goldenRecordsManualMatchGateway.test.js");
 await import("../server/infrastructure/persistence/goldenRecordsManualMatchTransaction.test.js");

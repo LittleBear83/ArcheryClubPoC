@@ -105,6 +105,7 @@ const databaseName = process.env.DB_NAME?.trim() || "";
 const databaseUser = process.env.DB_USER?.trim() || "";
 const databasePassword = process.env.DB_PASSWORD ?? "";
 const databasePort = Number(process.env.DB_PORT ?? 5432);
+const databasePoolMax = process.env.DB_POOL_MAX;
 const goldenRecordsBaseUrl =
   process.env.GOLDEN_RECORDS_BASE_URL?.trim() || "https://api2.archery-records.net";
 const goldenRecordsAuthMode = process.env.GOLDEN_RECORDS_AUTH_MODE?.trim() || "api-key";
@@ -233,6 +234,7 @@ export const serverRuntime = {
     databaseName,
     host: databaseHost,
     password: databasePassword,
+    poolMax: databasePoolMax,
     port: databasePort,
     socketDirectory: buildPostgresSocketDirectory(cloudSqlInstanceConnectionName),
     user: databaseUser,

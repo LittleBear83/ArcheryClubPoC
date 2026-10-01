@@ -500,6 +500,7 @@ Key environment variables include:
 - `DB_NAME`
 - `DB_USER`
 - `DB_PASSWORD`
+- `DB_POOL_MAX` (positive integer; defaults to `5` if unset or invalid)
 - `INSTANCE_CONNECTION_NAME`
 - `TRUST_PROXY`
 - `HEADERS_TIMEOUT_MS`

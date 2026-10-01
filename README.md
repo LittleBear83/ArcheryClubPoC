@@ -172,6 +172,8 @@ PostgreSQL notes:
 - set `DATABASE_URL`, or set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and
   `DB_PASSWORD`
 - `INSTANCE_CONNECTION_NAME` can be used for Cloud SQL socket connections
+- `DB_POOL_MAX` sets the maximum PostgreSQL connections per app instance;
+  defaults to `5` if unset or invalid
 - live mode requires PostgreSQL configuration before the server will start
 - non-live PostgreSQL startup seeds the baseline demo users into an empty
   database

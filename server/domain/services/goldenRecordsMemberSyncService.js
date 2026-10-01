@@ -948,7 +948,7 @@ export function createGoldenRecordsMemberSyncService({
         disciplines, goldenRecordsSnapshot: snapshot, outdoorGateway,
         updatedByUsername: safeUpdatedByUsername, user,
       });
-      await syncIndoorTableFromGoldenRecords({
+      const indoorSummary = await syncIndoorTableFromGoldenRecords({
         disciplines, goldenRecordsSnapshot: snapshot, indoorGateway,
         updatedByUsername: safeUpdatedByUsername, user,
       });
@@ -966,19 +966,19 @@ export function createGoldenRecordsMemberSyncService({
         updatedByUsername: safeUpdatedByUsername,
         username: user.username,
       }, transactionClient);
-      return { outdoorSummary, signOffSummary };
+      return { outdoorSummary, indoorSummary, signOffSummary };
     };
-    const { outdoorSummary, signOffSummary } = manualMatchTransaction
+    const { outdoorSummary, indoorSummary, signOffSummary } = manualMatchTransaction
       ? await manualMatchTransaction(applyMatch)
       : await applyMatch();
     user.gr_id = selectedId;
 
     return {
-      createdCount: outdoorSummary.createdCount,
+      createdCount: outdoorSummary.createdCount + indoorSummary.createdCount,
       goldenRecords: snapshot,
       signOffCount: signOffSummary.replacedCount,
-      syncedCount: outdoorSummary.syncedCount,
-      updatedCount: outdoorSummary.updatedCount,
+      syncedCount: outdoorSummary.syncedCount + indoorSummary.syncedCount,
+      updatedCount: outdoorSummary.updatedCount + indoorSummary.updatedCount,
     };
   }
 

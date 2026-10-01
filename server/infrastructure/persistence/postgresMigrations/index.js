@@ -15,6 +15,7 @@ import { migration as localOutboxNotificationsMigration } from "./013_local_outb
 import { migration as tournamentSyncMigration } from "./014_tournament_sync.js";
 import { migration as feedbackSyncMigration } from "./015_feedback_sync.js";
 import { migration as equipmentExpectedReturnMigration } from "./016_equipment_expected_return.js";
+import { migration as indoorTableMigration } from "./017_indoor_table.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -32,4 +33,5 @@ export const postgresMigrations = [
   tournamentSyncMigration,
   feedbackSyncMigration,
   equipmentExpectedReturnMigration,
+  indoorTableMigration,
 ];

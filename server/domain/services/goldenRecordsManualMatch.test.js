@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createGoldenRecordsMemberSyncService } from "./goldenRecordsMemberSyncService.js";
 
-function createHarness({ matchSource = "not-found", failFetch = false, failSignOff = false } = {}) {
+function createHarness({ matchSource = "not-found", failFetch = false, failSignOff = false,
+  indoorOnly = false, existingIndoorRow = false } = {}) {
   const user = { username: "robin", first_name: "Robin", surname: "Archer", gr_id: "old-id" };
   const users = [user];
   const candidateSnapshot = {
@@ -13,14 +14,18 @@ function createHarness({ matchSource = "not-found", failFetch = false, failSignO
   let storedSnapshot = candidateSnapshot;
   const commits = [];
   const outdoorRows = [];
+  const indoorRows = existingIndoorRow ? [{ id: 1, seasonYear: new Date().getUTCFullYear(),
+    archerUsername: "robin", bowType: "Rec", handicap: 60, classifications: {}, scores: {} }] : [];
   const signOffs = [];
   const remoteSnapshot = {
     enabled: true, matchSource: "manual", matchedMemberId: "gr-selected",
     matchedMemberName: "Robin Archer", fetchedAt: "2026-09-30T12:00:00Z",
-    handicaps: [{ memberId: "gr-selected", bowClass: "Recurve", type: "outdoor", handicap: 37 }],
-    classifications: [{ memberId: "gr-selected", bowClass: "Recurve", type: "Outdoor",
+    handicaps: indoorOnly
+      ? [{ memberId: "gr-selected", bowClass: "Recurve", type: "Indoor Handicap", handicap: 42 }]
+      : [{ memberId: "gr-selected", bowClass: "Recurve", type: "outdoor", handicap: 37 }],
+    classifications: indoorOnly ? [] : [{ memberId: "gr-selected", bowClass: "Recurve", type: "Outdoor",
       classification: "Bowman 3rd Class", achieved: "2026-09-01" }],
-    achievements: [
+    achievements: indoorOnly ? [] : [
       { memberId: "gr-selected", bowClass: "Recurve", achievement: "Archer 3rd", achieved: "2026-08-01" },
       { memberId: "gr-selected", bowClass: "Recurve", achievement: "Sight mark 20 yds", achieved: "2026-08-02" },
     ],
@@ -45,9 +50,11 @@ function createHarness({ matchSource = "not-found", failFetch = false, failSignO
     },
     manualMatchTransaction: async (operation) => {
       const outdoorBefore = [...outdoorRows];
+      const indoorBefore = indoorRows.map((row) => ({ ...row }));
       const signOffBefore = [...signOffs];
       try { return await operation({}); } catch (error) {
         outdoorRows.splice(0, outdoorRows.length, ...outdoorBefore);
+        indoorRows.splice(0, indoorRows.length, ...indoorBefore);
         signOffs.splice(0, signOffs.length, ...signOffBefore);
         throw error;
       }
@@ -58,6 +65,13 @@ function createHarness({ matchSource = "not-found", failFetch = false, failSignO
       createEntry: async (row) => { outdoorRows.push(row); return row; },
       updateEntry: async () => { throw new Error("Unexpected update"); },
     },
+    indoorTableGateway: {
+      listEntriesByYear: async () => [...indoorRows],
+      createEntry: async (row) => { const created = { id: indoorRows.length + 1, ...row };
+        indoorRows.push(created); return created; },
+      updateEntry: async (row) => { const index = indoorRows.findIndex((entry) => entry.id === row.id);
+        indoorRows[index] = row; return row; },
+    },
     memberDistanceSignOffRepository: {
       replaceForDiscipline: async (_username, _discipline, rows) => {
         if (failSignOff) throw new Error("Sign-off write failed");
@@ -65,7 +79,7 @@ function createHarness({ matchSource = "not-found", failFetch = false, failSignO
       },
     },
   });
-  return { candidateSnapshot, commits, outdoorRows, service, signOffs,
+  return { candidateSnapshot, commits, indoorRows, outdoorRows, service, signOffs,
     storedSnapshot: () => storedSnapshot, user, users };
 }
 
@@ -125,4 +139,42 @@ test("downstream sign-off failure does not commit a new GR ID or snapshot", asyn
   assert.equal(h.storedSnapshot(), h.candidateSnapshot);
   assert.equal(h.commits.length, 0);
   assert.equal(h.outdoorRows.length, 0);
+});
+
+test("manual match reports an Indoor-only row creation in the returned totals", async () => {
+  const h = createHarness({ indoorOnly: true });
+  const result = await h.service.assignMemberMatch(h.user, {
+    goldenRecordsId: "gr-selected", updatedByUsername: "admin",
+  });
+  assert.equal(result.createdCount, 1);
+  assert.equal(result.updatedCount, 0);
+  assert.equal(result.syncedCount, 1);
+  assert.equal(h.indoorRows.length, 1);
+  assert.equal(h.indoorRows[0].handicap, 42);
+  assert.equal(h.outdoorRows.length, 0);
+  assert.equal(h.commits.length, 1);
+});
+
+test("manual match reports an Indoor-only row update in the returned totals", async () => {
+  const h = createHarness({ indoorOnly: true, existingIndoorRow: true });
+  const result = await h.service.assignMemberMatch(h.user, {
+    goldenRecordsId: "gr-selected", updatedByUsername: "admin",
+  });
+  assert.equal(result.createdCount, 0);
+  assert.equal(result.updatedCount, 1);
+  assert.equal(result.syncedCount, 1);
+  assert.equal(h.indoorRows[0].handicap, 42);
+  assert.equal(h.outdoorRows.length, 0);
+});
+
+test("manual match still rolls back Indoor writes with the snapshot on failure", async () => {
+  const h = createHarness({ indoorOnly: true, failSignOff: true });
+  await assert.rejects(() => h.service.assignMemberMatch(h.user, {
+    goldenRecordsId: "gr-selected", updatedByUsername: "admin",
+  }), /Sign-off write failed/);
+  assert.equal(h.indoorRows.length, 0);
+  assert.equal(h.outdoorRows.length, 0);
+  assert.equal(h.commits.length, 0);
+  assert.equal(h.storedSnapshot(), h.candidateSnapshot);
+  assert.equal(h.user.gr_id, "old-id");
 });

@@ -3,6 +3,7 @@ import { MemberAutocomplete } from "../../components/MemberAutocomplete";
 import { MemberProfileForm } from "../../components/MemberProfileForm";
 import { DeleteMemberModal } from "./DeleteMemberModal";
 import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
+import { ProfileIndoorAchievementsSection } from "./ProfileIndoorAchievementsSection";
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
 import { RfidAgentInstallControl } from "./RfidAgentInstallControl";
@@ -316,6 +317,14 @@ export function ProfileDesktopView({
           onSave={handleSaveOutdoorTableEntry}
         />
       ) : null}
+
+      {editableProfile ? <ProfileIndoorAchievementsSection
+        currentUserProfile={currentUserProfile}
+        username={editableProfile.username}
+        disciplines={editableProfile.disciplines}
+        canManage={canManageMembers}
+        goldenRecordsHandicaps={goldenRecordsIndoorHandicapsByBowType}
+      /> : null}
 
       <DeleteMemberModal
         confirmationUsername={deleteConfirmationUsername}

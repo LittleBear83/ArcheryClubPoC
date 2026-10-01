@@ -111,9 +111,9 @@ const TournamentsPage = lazy(() =>
 const RecordsPage = lazy(() =>
   import("./RecordsPage").then((module) => ({ default: module.RecordsPage })),
 );
-const OutdoorTablePage = lazy(() =>
-  import("./OutdoorTablePage").then((module) => ({
-    default: module.OutdoorTablePage,
+const AchievementTablesPage = lazy(() =>
+  import("./AchievementTablesPage").then((module) => ({
+    default: module.AchievementTablesPage,
   })),
 );
 const RangeRulesPage = lazy(() =>
@@ -315,7 +315,7 @@ const pageTitleMap = {
   "question-inbox": "Question Inbox",
   tournaments: "Tournaments",
   records: "Records",
-  "outdoor-table": "Outdoor Table",
+  "outdoor-table": "Achievement Tables",
   "range-rules": "Range Rules",
   "range-rules-admin": "Range Rules Admin",
   "general-info-admin": "General Info Admin",
@@ -1179,7 +1179,7 @@ export function HomePage({
               path="/outdoor-table"
               element={renderProgrammeRestrictedRoute(
                 "outdoor-table",
-                <OutdoorTablePage currentUserProfile={currentUserProfile} />,
+                <AchievementTablesPage currentUserProfile={currentUserProfile} />,
               )}
             />
             <Route

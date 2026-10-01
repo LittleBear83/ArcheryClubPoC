@@ -44,6 +44,10 @@ for (const legacy of [false, true]) {
       const bootstrap = () => bootstrapSqliteBaseSchema({db, defaultEquipmentCupboardLabel: "Club cupboard"});
       bootstrap();
       const columns = db.prepare("PRAGMA table_info(tournament_matches)").all().map((column) => column.name);
+      const indoorColumns = db.prepare("PRAGMA table_info(indoor_table_entries)").all().map((column) => column.name);
+      for (const name of ["season_year", "archer_username", "bow_type", "handicap", "classifications_json", "scores_json", "updated_by_username"]) {
+        assert.ok(indoorColumns.includes(name), name);
+      }
       for (const name of ["handicap_allowance_percent", "left_handicap_value", "right_handicap_value", "right_handicap_table_title"]) {
         assert.ok(columns.includes(name), name);
       }

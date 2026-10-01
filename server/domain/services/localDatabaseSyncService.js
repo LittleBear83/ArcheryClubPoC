@@ -20,6 +20,7 @@ export const REPLICATED_DOMAINS = [
   "golden_records_integration_status",
   "golden_records_lookup_cache",
   "outdoor_table_entries",
+  "indoor_table_entries",
   "member_distance_sign_offs",
   "committee_roles",
   "committee_meeting_minutes",
@@ -97,6 +98,7 @@ function collapseChanges(changes = []) {
     ["golden_records_integration_status", 8],
     ["golden_records_lookup_cache", 9],
     ["outdoor_table_entries", 10],
+    ["indoor_table_entries", 10],
     ["equipment_storage_locations", 11],
     ["equipment_items", 12],
     ["beginners_courses", 13],
@@ -141,6 +143,7 @@ function collapseChanges(changes = []) {
     ["golden_records_integration_status", 13],
     ["golden_records_lookup_cache", 14],
     ["outdoor_table_entries", 15],
+    ["indoor_table_entries", 15],
     ["user_disciplines", 16],
     ["user_types", 17],
     ["role_permissions", 18],
@@ -1298,6 +1301,34 @@ async function deleteMissingOutdoorTableRows(client, rows = []) {
   );
 }
 
+async function upsertIndoorTableRows(client, rows = []) {
+  for (const row of rows) {
+    await client.query(`
+      INSERT INTO indoor_table_entries (season_year, archer_username, bow_type, handicap,
+        classifications_json, scores_json, created_at_date, created_at_time,
+        updated_at_date, updated_at_time, updated_by_username)
+      VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11)
+      ON CONFLICT (season_year, archer_username, bow_type) DO UPDATE SET
+        handicap=EXCLUDED.handicap, classifications_json=EXCLUDED.classifications_json,
+        scores_json=EXCLUDED.scores_json, updated_at_date=EXCLUDED.updated_at_date,
+        updated_at_time=EXCLUDED.updated_at_time, updated_by_username=EXCLUDED.updated_by_username
+    `, [row.season_year, row.archer_username, row.bow_type, row.handicap,
+      JSON.stringify(typeof row.classifications_json === "string" ? JSON.parse(row.classifications_json) : row.classifications_json ?? {}),
+      JSON.stringify(typeof row.scores_json === "string" ? JSON.parse(row.scores_json) : row.scores_json ?? {}),
+      row.created_at_date, row.created_at_time, row.updated_at_date,
+      row.updated_at_time, row.updated_by_username]);
+  }
+}
+
+async function deleteMissingIndoorTableRows(client, rows = []) {
+  const keys = rows.map((row) => [row.season_year,
+    String(row.archer_username ?? "").toLowerCase(),
+    String(row.bow_type ?? "").toLowerCase()].join(":"));
+  if (keys.length === 0) { await client.query("DELETE FROM indoor_table_entries"); return; }
+  await client.query(`DELETE FROM indoor_table_entries WHERE concat_ws(':', season_year::text,
+    LOWER(archer_username), LOWER(bow_type)) <> ALL($1::text[])`, [keys]);
+}
+
 async function upsertGoldenRecordsMemberSyncRows(client, rows = []) {
   for (const row of rows) {
     await client.query(
@@ -2425,6 +2456,9 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
       snapshot.outdoorTableEntries,
     );
   }
+  if (Object.hasOwn(snapshot, "indoorTableEntries")) {
+    await upsertIndoorTableRows(client, snapshot.indoorTableEntries);
+  }
 
   if (Object.hasOwn(snapshot, "committeeRoles")) {
     await upsertCommitteeRoleRows(client, snapshot.committeeRoles);
@@ -2499,6 +2533,9 @@ async function reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, sna
 
   if (Object.hasOwn(snapshot, "outdoorTableEntries")) {
     await deleteMissingOutdoorTableRows(client, snapshot.outdoorTableEntries);
+  }
+  if (Object.hasOwn(snapshot, "indoorTableEntries")) {
+    await deleteMissingIndoorTableRows(client, snapshot.indoorTableEntries);
   }
 
   if (Object.hasOwn(snapshot, "memberDistanceSignOffs")) {
@@ -2925,6 +2962,16 @@ async function applyCollapsedChange({
         return;
       }
       await upsertOutdoorTableRows(client, [change.payload]);
+      return;
+
+    case "indoor_table_entries":
+      if (change.operation === "delete") {
+        await client.query(`DELETE FROM indoor_table_entries WHERE season_year = $1
+          AND LOWER(archer_username) = LOWER($2) AND LOWER(bow_type) = LOWER($3)`,
+          [change.payload.season_year, change.payload.archer_username, change.payload.bow_type]);
+        return;
+      }
+      await upsertIndoorTableRows(client, [change.payload]);
       return;
 
     case "committee_meeting_minutes":

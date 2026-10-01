@@ -32,6 +32,7 @@ const SYNCED_DOMAINS = new Set([
   "golden_records_integration_status",
   "golden_records_lookup_cache",
   "outdoor_table_entries",
+  "indoor_table_entries",
   "member_distance_sign_offs",
   "committee_roles",
   "committee_meeting_minutes",
@@ -881,6 +882,9 @@ export function createSyncGateway({ pool }) {
           ORDER BY season_year ASC, archer_username ASC, bow_type ASC
         `,
       );
+      const indoorTableEntries = await snapshotClient.query(
+        `SELECT * FROM indoor_table_entries ORDER BY season_year, archer_username, bow_type`,
+      );
       const tournamentTemplates = await snapshotClient.query(`
         SELECT template_key, label, description, tournament_type, format, round_type,
           defaults_json, capabilities_json, eligibility_rules_json, created_by,
@@ -979,6 +983,7 @@ export function createSyncGateway({ pool }) {
           goldenRecordsIntegrationStatus: goldenRecordsIntegrationStatus.rows,
           goldenRecordsLookupCache: goldenRecordsLookupCache.rows,
           outdoorTableEntries: outdoorTableEntries.rows,
+          indoorTableEntries: indoorTableEntries.rows,
           permissions: permissions.rows,
           rolePermissions: rolePermissions.rows,
           roles: roles.rows,

@@ -22,15 +22,34 @@ test("SQLite manual assignment rolls back outdoor and sign-off writes when a lat
   } finally { db.close(); }
 });
 
+test("SQLite manual assignment rolls back indoor and outdoor writes together", async () => {
+  const db = new Database(":memory:");
+  try {
+    db.exec("CREATE TABLE outdoor_rows (id INTEGER); CREATE TABLE indoor_rows (id INTEGER);");
+    await assert.rejects(() => withGoldenRecordsManualMatchTransaction({
+      databaseEngine: "sqlite", db, outdoorTableGateway: {}, indoorTableGateway: {},
+    }, async ({ outdoorGateway, indoorGateway }) => {
+      assert.ok(outdoorGateway);
+      assert.ok(indoorGateway);
+      db.exec("INSERT INTO outdoor_rows VALUES (1)");
+      db.exec("INSERT INTO indoor_rows VALUES (1)");
+      throw new Error("Manual match failed");
+    }), /Manual match failed/);
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM outdoor_rows").get().count, 0);
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM indoor_rows").get().count, 0);
+  } finally { db.close(); }
+});
+
 test("PostgreSQL manual assignment passes one client through downstream writes", async () => {
   const statements = [];
   let released = false;
   const client = { query: async (sql) => { statements.push(String(sql)); }, release: () => { released = true; } };
   const db = { pool: { connect: async () => client } };
   await assert.rejects(
-    () => withGoldenRecordsManualMatchTransaction({ databaseEngine: "postgres", db }, async ({ outdoorGateway, transactionClient }) => {
+    () => withGoldenRecordsManualMatchTransaction({ databaseEngine: "postgres", db }, async ({ outdoorGateway, indoorGateway, transactionClient }) => {
       assert.equal(transactionClient, client);
       assert.ok(outdoorGateway);
+      assert.ok(indoorGateway);
       await transactionClient.query("UPDATE outdoor_table_entries SET handicap = 37");
       throw new Error("Sign-off write failed");
     }),

@@ -444,6 +444,7 @@ export function createGoldenRecordsMemberSyncService({
   memberDirectoryGateway,
   memberDistanceSignOffRepository,
   outdoorTableGateway,
+  indoorTableGateway,
 }) {
   async function getStoredSnapshotForUser(user) {
     if (!user) {
@@ -685,6 +686,84 @@ export function createGoldenRecordsMemberSyncService({
     };
   }
 
+  // The current snapshot identifies indoor handicaps by type and bow class.
+  // Its classification and achievement labels have no verified indoor mapping yet.
+  async function syncIndoorTableFromGoldenRecords({ disciplines, goldenRecordsSnapshot, indoorGateway = indoorTableGateway, updatedByUsername, user, createMissingOnly = false, existingRows }) {
+    if (!indoorGateway) return { createdCount: 0, updatedCount: 0, syncedCount: 0 };
+    const memberId = String(goldenRecordsSnapshot?.matchedMemberId ?? "").trim();
+    const handicaps = (goldenRecordsSnapshot?.handicaps ?? []).filter((entry) =>
+      normalizeGoldenRecordsHandicapType(entry.type) === "indoor" &&
+      Number.isInteger(entry.handicap) && entry.handicap >= 0 && entry.handicap <= 150 &&
+      (!memberId || String(entry.memberId ?? "").trim() === memberId));
+    if (!handicaps.length) return { createdCount: 0, updatedCount: 0, syncedCount: 0 };
+    const seasonYear = new Date().getUTCFullYear();
+    const existing = new Map((existingRows ?? await indoorGateway.listEntriesByYear(seasonYear))
+      .filter((row) => row.archerUsername?.toLowerCase() === user.username.toLowerCase())
+      .map((row) => [row.bowType, row]));
+    const [date, time] = getUtcTimestampParts();
+    let createdCount = 0;
+    let updatedCount = 0;
+    const newestByBow = new Map();
+    for (const handicap of handicaps) {
+      const bowType = mapGoldenRecordsBowClassToOutdoorBowType(handicap.bowClass);
+      if (!bowType) continue;
+      const previous = newestByBow.get(bowType);
+      if (!previous || String(handicap.achieved ?? handicap.updated ?? "") >
+        String(previous.achieved ?? previous.updated ?? "")) newestByBow.set(bowType, handicap);
+    }
+    for (const handicap of newestByBow.values()) {
+      const bowType = mapGoldenRecordsBowClassToOutdoorBowType(handicap.bowClass);
+      if (!bowType || !disciplines.includes(mapGoldenRecordsBowClassToDiscipline(handicap.bowClass))) continue;
+      const current = existing.get(bowType);
+      if (current) {
+        if (createMissingOnly) continue;
+        if (current.handicap === handicap.handicap) continue;
+        await indoorGateway.updateEntry({ ...current, handicap: handicap.handicap,
+          updatedAtDate: date, updatedAtTime: time, updatedByUsername });
+        updatedCount += 1;
+      } else {
+        const payload = { seasonYear, archerUsername: user.username,
+          bowType, handicap: handicap.handicap, classifications: {}, scores: {},
+          createdAtDate: date, createdAtTime: time, updatedAtDate: date, updatedAtTime: time,
+          updatedByUsername };
+        const created = createMissingOnly
+          ? await indoorGateway.createEntryIfAbsent(payload)
+          : await indoorGateway.createEntry(payload);
+        if (!created) continue;
+        existing.set(bowType, created);
+        if (existingRows) existingRows.push({ archerUsername: user.username, bowType });
+        createdCount += 1;
+      }
+    }
+    return { createdCount, updatedCount, syncedCount: createdCount + updatedCount };
+  }
+
+  async function backfillIndoorTableFromStoredSnapshots() {
+    if (!indoorTableGateway || !goldenRecordsSyncGateway?.listStoredSnapshots) return 0;
+    const [stored, users, existingRows] = await Promise.all([
+      goldenRecordsSyncGateway.listStoredSnapshots(),
+      memberDirectoryGateway.listAllUsers(),
+      indoorTableGateway.listEntriesByYear(new Date().getUTCFullYear()),
+    ]);
+    const usersByName = new Map(users.map((user) => [user.username.toLowerCase(), user]));
+    let createdCount = 0;
+    for (const { username, snapshot } of stored) {
+      const user = usersByName.get(username.toLowerCase());
+      if (!user || !snapshot?.enabled || snapshot.error || !snapshot.matchedMemberId ||
+        ["ambiguous", "not-found", "disabled"].includes(snapshot.matchSource)) continue;
+      if (!(snapshot.handicaps ?? []).some((entry) =>
+        normalizeGoldenRecordsHandicapType(entry.type) === "indoor")) continue;
+      const disciplines = (await memberDirectoryGateway.findDisciplinesByUsername(user.username))
+        .map((row) => row.discipline);
+      const result = await syncIndoorTableFromGoldenRecords({
+        disciplines, goldenRecordsSnapshot: snapshot, updatedByUsername: user.username,
+        user, createMissingOnly: true, existingRows,
+      });
+      createdCount += result.createdCount;
+    }
+    return createdCount;
+  }
+
   async function syncDistanceSignOffsFromGoldenRecords({
     disciplines,
     goldenRecordsSnapshot,
@@ -795,6 +874,9 @@ export function createGoldenRecordsMemberSyncService({
       updatedByUsername: safeUpdatedByUsername,
       user,
     });
+    const indoorSyncSummary = await syncIndoorTableFromGoldenRecords({
+      disciplines, goldenRecordsSnapshot: snapshot, updatedByUsername: safeUpdatedByUsername, user,
+    });
     let signOffSummary = {
       replacedCount: 0,
     };
@@ -817,12 +899,12 @@ export function createGoldenRecordsMemberSyncService({
     }
 
     return {
-      createdCount: outdoorSyncSummary.createdCount,
+      createdCount: outdoorSyncSummary.createdCount + indoorSyncSummary.createdCount,
       goldenRecords: snapshot,
       signOffError,
       signOffCount: signOffSummary.replacedCount,
-      syncedCount: outdoorSyncSummary.syncedCount,
-      updatedCount: outdoorSyncSummary.updatedCount,
+      syncedCount: outdoorSyncSummary.syncedCount + indoorSyncSummary.syncedCount,
+      updatedCount: outdoorSyncSummary.updatedCount + indoorSyncSummary.updatedCount,
     };
   }
 
@@ -861,9 +943,13 @@ export function createGoldenRecordsMemberSyncService({
     const disciplines = (await memberDirectoryGateway.findDisciplinesByUsername(user.username))
       .map((row) => row.discipline);
     const safeUpdatedByUsername = String(updatedByUsername ?? "").trim() || user.username;
-    const applyMatch = async ({ outdoorGateway = outdoorTableGateway, transactionClient = null } = {}) => {
+    const applyMatch = async ({ outdoorGateway = outdoorTableGateway, indoorGateway = indoorTableGateway, transactionClient = null } = {}) => {
       const outdoorSummary = await syncOutdoorTableFromGoldenRecords({
         disciplines, goldenRecordsSnapshot: snapshot, outdoorGateway,
+        updatedByUsername: safeUpdatedByUsername, user,
+      });
+      const indoorSummary = await syncIndoorTableFromGoldenRecords({
+        disciplines, goldenRecordsSnapshot: snapshot, indoorGateway,
         updatedByUsername: safeUpdatedByUsername, user,
       });
       const signOffSummary = await syncDistanceSignOffsFromGoldenRecords({
@@ -880,19 +966,19 @@ export function createGoldenRecordsMemberSyncService({
         updatedByUsername: safeUpdatedByUsername,
         username: user.username,
       }, transactionClient);
-      return { outdoorSummary, signOffSummary };
+      return { outdoorSummary, indoorSummary, signOffSummary };
     };
-    const { outdoorSummary, signOffSummary } = manualMatchTransaction
+    const { outdoorSummary, indoorSummary, signOffSummary } = manualMatchTransaction
       ? await manualMatchTransaction(applyMatch)
       : await applyMatch();
     user.gr_id = selectedId;
 
     return {
-      createdCount: outdoorSummary.createdCount,
+      createdCount: outdoorSummary.createdCount + indoorSummary.createdCount,
       goldenRecords: snapshot,
       signOffCount: signOffSummary.replacedCount,
-      syncedCount: outdoorSummary.syncedCount,
-      updatedCount: outdoorSummary.updatedCount,
+      syncedCount: outdoorSummary.syncedCount + indoorSummary.syncedCount,
+      updatedCount: outdoorSummary.updatedCount + indoorSummary.updatedCount,
     };
   }
 
@@ -951,6 +1037,7 @@ export function createGoldenRecordsMemberSyncService({
   return {
     assignMemberMatch,
     getStoredSnapshotForUser,
+    backfillIndoorTableFromStoredSnapshots,
     syncAllMembers,
     syncMember,
   };

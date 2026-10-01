@@ -230,6 +230,9 @@ await import(
 );
 await import(new URL("../server/domain/services/goldenRecordsAchievements.test.js", import.meta.url));
 await import(new URL("../server/infrastructure/golden-records/goldenRecordsCurrentHandicapService.test.js", import.meta.url));
+await import("../server/domain/services/goldenRecordsIndoorSync.test.js");
+await import("../server/infrastructure/persistence/indoorTableGateway.test.js");
+await import("../server/presentation/http/registerIndoorTableRoutes.test.js");
 await import(new URL("../server/infrastructure/persistence/bootstrapSqliteBaseSchema.test.js", import.meta.url));
 await import(new URL("../server/infrastructure/golden-records/goldenRecordsIntegrationService.test.js", import.meta.url));
 await import("../server/domain/services/tournamentPairings.test.js");

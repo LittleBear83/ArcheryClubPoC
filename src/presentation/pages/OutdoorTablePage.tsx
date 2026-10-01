@@ -92,6 +92,7 @@ export function OutdoorTablePage({
       setSyncSuccessMessage(result.message);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["outdoor-table"] }),
+        queryClient.invalidateQueries({ queryKey: ["indoor-table"] }),
         queryClient.invalidateQueries({ queryKey: ["member-profiles"] }),
       ]);
     },
@@ -362,8 +363,8 @@ export function OutdoorTablePage({
         >
           <div className="outdoor-table-sync-actions">
             <p className="outdoor-table-sync-copy">
-              Run the Golden Records member sync now to refresh the outdoor
-              table without waiting for the nightly schedule.
+              Run the Golden Records member sync now to refresh outdoor achievements
+              and indoor handicaps without waiting for the nightly schedule.
             </p>
             <Button
               onClick={() => goldenRecordsSyncMutation.mutate()}

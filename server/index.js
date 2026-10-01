@@ -72,6 +72,7 @@ import { createMemberAuthGateway } from "./infrastructure/persistence/memberAuth
 import { createMemberProfileGateway } from "./infrastructure/persistence/memberProfileGateway.js";
 import { createLostArrowGateway } from "./infrastructure/persistence/lostArrowGateway.js";
 import { createOutdoorTableGateway } from "./infrastructure/persistence/outdoorTableGateway.js";
+import { createIndoorTableGateway } from "./infrastructure/persistence/indoorTableGateway.js";
 import { createRangeRulesGateway } from "./infrastructure/persistence/rangeRulesGateway.js";
 import { createGeneralInfoGateway } from "./infrastructure/persistence/generalInfoGateway.js";
 import { createHandicapTableGateway } from "./infrastructure/persistence/handicapTableGateway.js";
@@ -120,6 +121,7 @@ import { registerAuthRoutes } from "./presentation/http/registerAuthRoutes.js";
 import { registerEquipmentRoutes } from "./presentation/http/registerEquipmentRoutes.js";
 import { registerLostArrowRoutes } from "./presentation/http/registerLostArrowRoutes.js";
 import { registerOutdoorTableRoutes } from "./presentation/http/registerOutdoorTableRoutes.js";
+import { registerIndoorTableRoutes } from "./presentation/http/registerIndoorTableRoutes.js";
 import { registerRangeRulesRoutes } from "./presentation/http/registerRangeRulesRoutes.js";
 import { registerGeneralInfoRoutes } from "./presentation/http/registerGeneralInfoRoutes.js";
 import { registerHandicapTableRoutes } from "./presentation/http/registerHandicapTableRoutes.js";
@@ -1079,6 +1081,11 @@ const outdoorTableGateway = createOutdoorTableGateway({
   db,
   pool: db.pool,
 });
+const indoorTableGateway = createIndoorTableGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
+});
 
 const memberDirectoryGateway = {
   findDisciplinesByUsername: (username) =>
@@ -1096,11 +1103,12 @@ const goldenRecordsMemberSyncService = createGoldenRecordsMemberSyncService({
   goldenRecordsCurrentHandicapService,
   goldenRecordsSyncGateway,
   manualMatchTransaction: (operation) => withGoldenRecordsManualMatchTransaction(
-    { databaseEngine: serverRuntime.databaseEngine, db, outdoorTableGateway }, operation,
+    { databaseEngine: serverRuntime.databaseEngine, db, outdoorTableGateway, indoorTableGateway }, operation,
   ),
   memberDirectoryGateway,
   memberDistanceSignOffRepository,
   outdoorTableGateway,
+  indoorTableGateway,
 });
 const goldenRecordsSyncJob = createGoldenRecordsSyncJob({
   goldenRecordsIntegrationGateway,
@@ -1110,6 +1118,9 @@ const goldenRecordsSyncJob = createGoldenRecordsSyncJob({
   backgroundExecutionAvailable: !process.env.K_SERVICE || process.env.GOLDEN_RECORDS_ALWAYS_ALLOCATED_CPU === "true",
   onFinished: (status) => {
     serverEventBus.broadcastToAll("outdoor-table.updated", {
+      changedAt: new Date().toISOString(), scope: "golden-records-sync-all",
+    });
+    serverEventBus.broadcastToAll("indoor-table.updated", {
       changedAt: new Date().toISOString(), scope: "golden-records-sync-all",
     });
     broadcastMembersUpdated("members.golden-records-sync-all", status.startedByUsername === "scheduler" ? null : status.startedByUsername);
@@ -5164,6 +5175,19 @@ registerOutdoorTableRoutes({
   outdoorTableGateway,
   PERMISSIONS,
   serverEventBus,
+});
+registerIndoorTableRoutes({
+  app,
+  actorHasPermission,
+  auditChangeLogger,
+  getActorUser,
+  getUtcTimestampParts,
+  goldenRecordsMemberSyncService,
+  indoorTableGateway,
+  memberAuthGateway,
+  PERMISSIONS,
+  serverEventBus,
+  syncNodeMode: serverRuntime.sync.nodeMode,
 });
 
 function broadcastCalendarUpdated(scope = "calendar") {

@@ -1756,6 +1756,9 @@ export function registerAdminMemberRoutes({
       scope: "golden-records-sync",
       username: user.username,
     });
+    serverEventBus?.broadcastToAll("indoor-table.updated", {
+      changedAt: new Date().toISOString(), scope: "golden-records-sync", username: user.username,
+    });
     const [refreshedAtDate, refreshedAtTime] = getUtcTimestampParts();
 
     if (auditChangeLogger) {
@@ -2031,6 +2034,9 @@ export function registerAdminMemberRoutes({
       changedAt: new Date().toISOString(),
       scope: "golden-records-match-assigned",
       username: user.username,
+    });
+    serverEventBus?.broadcastToAll("indoor-table.updated", {
+      changedAt: new Date().toISOString(), scope: "golden-records-match-assigned", username: user.username,
     });
     broadcastMembersUpdated("members.golden-records-match-assigned", user.username);
 

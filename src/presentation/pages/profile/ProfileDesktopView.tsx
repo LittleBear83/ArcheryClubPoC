@@ -7,6 +7,8 @@ import { ProfileIndoorAchievementsSection } from "./ProfileIndoorAchievementsSec
 import { SectionPanel } from "../../components/SectionPanel";
 import { StatusMessagePanel } from "../../components/StatusMessagePanel";
 import { RfidAgentInstallControl } from "./RfidAgentInstallControl";
+import { ProfileAccordion } from "./ProfileAccordion";
+import { formatAchievementSummary } from "./profileSummary";
 import { formatDate, formatDateTime } from "../../../utils/dateTime";
 import { formatMemberDisplayName, formatMemberDisplayUsername } from "../../../utils/userProfile";
 import type { useProfilePageState } from "./useProfilePageState";
@@ -28,10 +30,8 @@ export function ProfileDesktopView({
   editableProfile,
   equipmentLoans,
   error,
-  goldenRecordsCandidateMatches,
   goldenRecordsFetchedAt,
   goldenRecordsIndoorHandicapsByBowType,
-  goldenRecordsMatchSource,
   goldenRecordsOutdoorHandicapsByBowType,
   handleBooleanChange,
   handleBooleanSelectChange,
@@ -42,11 +42,9 @@ export function ProfileDesktopView({
   handleDeleteMember,
   handleOpenDeleteModal,
   handleOpenDistanceSignOffModal,
-  handleOpenGoldenRecordsMatchModal,
   handleOpenRfidInstallModal,
   handleOutdoorTableAward252SignOffDateChange,
   handleOutdoorTableAchievementDateChange,
-  handleRefreshGoldenRecordsHandicap,
   handleSave,
   handleSaveOutdoorTableEntry,
   handleSelectMember,
@@ -54,7 +52,6 @@ export function ProfileDesktopView({
   isDeleteModalOpen,
   isDeletingMember,
   isLoadingOutdoorTable,
-  isRefreshingGoldenRecordsHandicap,
   isRefreshingProfile,
   isSaving,
   isSavingOutdoorTableByBowType,
@@ -74,11 +71,13 @@ export function ProfileDesktopView({
     (disciplineGroup) =>
       disciplineGroup.distances.some((distance) => !distance.signOff),
   );
+  const signedOffDistanceCount = editableProfile?.distanceSignOffs?.reduce(
+    (count, group) => count + group.distances.filter((distance) => Boolean(distance.signOff)).length,
+    0,
+  ) ?? 0;
 
   return (
     <div className="profile-page">
-      <p>Manage your member profile and account details.</p>
-
       <RfidAgentInstallControl
         canManageMembers={canManageMembers}
         onInstall={handleOpenRfidInstallModal}
@@ -140,6 +139,10 @@ export function ProfileDesktopView({
       />
 
       {editableProfile ? (
+        <ProfileAccordion
+          title="Member details"
+          detail={`${editableProfile.firstName} ${editableProfile.surname} · ${editableProfile.membershipStatus}`}
+        >
         <MemberProfileForm
           editableProfile={editableProfile}
           handleChange={handleChange}
@@ -159,9 +162,14 @@ export function ProfileDesktopView({
           onSubmit={handleSave}
           submitLabel={submitLabel}
         />
+        </ProfileAccordion>
       ) : null}
 
       {editableProfile ? (
+        <ProfileAccordion
+          title="Distance sign offs"
+          detail={`${signedOffDistanceCount} signed off`}
+        >
         <SectionPanel className="profile-form" title="Distance Sign Offs">
           <div className="profile-distance-signoff-header">
             <p>
@@ -261,9 +269,11 @@ export function ProfileDesktopView({
             </table>
           </div>
         </SectionPanel>
+        </ProfileAccordion>
       ) : null}
 
       {editableProfile ? (
+        <ProfileAccordion title="Equipment on loan" detail={`${equipmentLoans.length} ${equipmentLoans.length === 1 ? "loan" : "loans"}`}>
         <SectionPanel className="profile-form" title="Equipment On Loan">
           <div className="committee-roles-table-wrap">
             <table className="committee-roles-table">
@@ -294,37 +304,38 @@ export function ProfileDesktopView({
             </table>
           </div>
         </SectionPanel>
+        </ProfileAccordion>
       ) : null}
 
       {editableProfile ? (
+        <ProfileAccordion title="Outdoor achievements" detail={formatAchievementSummary(goldenRecordsOutdoorHandicapsByBowType, outdoorTableBowEntries.length)}>
         <ProfileOutdoorAchievementsSection
           canManageOutdoorAchievements={canManageOutdoorAchievements}
           canManageMembers={canManageMembers}
           entries={outdoorTableBowEntries}
           error={outdoorTableError}
-          goldenRecordsCandidateMatches={goldenRecordsCandidateMatches}
           goldenRecordsFetchedAt={goldenRecordsFetchedAt}
-          goldenRecordsIndoorHandicapsByBowType={goldenRecordsIndoorHandicapsByBowType}
-          goldenRecordsMatchSource={goldenRecordsMatchSource}
           goldenRecordsOutdoorHandicapsByBowType={goldenRecordsOutdoorHandicapsByBowType}
-          isRefreshingGoldenRecordsHandicap={isRefreshingGoldenRecordsHandicap}
           isLoading={isLoadingOutdoorTable}
           isSavingByBowType={isSavingOutdoorTableByBowType}
-          onOpenGoldenRecordsMatchModal={handleOpenGoldenRecordsMatchModal}
-          onRefreshGoldenRecordsHandicap={handleRefreshGoldenRecordsHandicap}
           onAward252SignOffDateChange={handleOutdoorTableAward252SignOffDateChange}
           onAchievementDateChange={handleOutdoorTableAchievementDateChange}
           onSave={handleSaveOutdoorTableEntry}
         />
+        </ProfileAccordion>
       ) : null}
 
-      {editableProfile ? <ProfileIndoorAchievementsSection
-        currentUserProfile={currentUserProfile}
-        username={editableProfile.username}
-        disciplines={editableProfile.disciplines}
-        canManage={canManageMembers}
-        goldenRecordsHandicaps={goldenRecordsIndoorHandicapsByBowType}
-      /> : null}
+      {editableProfile ? (
+        <ProfileAccordion title="Indoor achievements" detail={formatAchievementSummary(goldenRecordsIndoorHandicapsByBowType, outdoorTableBowEntries.length)}>
+          <ProfileIndoorAchievementsSection
+            currentUserProfile={currentUserProfile}
+            username={editableProfile.username}
+            disciplines={editableProfile.disciplines}
+            canManage={canManageMembers}
+            goldenRecordsHandicaps={goldenRecordsIndoorHandicapsByBowType}
+          />
+        </ProfileAccordion>
+      ) : null}
 
       <DeleteMemberModal
         confirmationUsername={deleteConfirmationUsername}

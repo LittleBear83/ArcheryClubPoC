@@ -1,5 +1,5 @@
 import { Button } from "../../components/Button";
-import { SectionPanel } from "../../components/SectionPanel";
+import { ProfileAccordion } from "./ProfileAccordion";
 import { getRfidAgentInstallControlState } from "./rfidAgentInstall";
 
 export function RfidAgentInstallControl({
@@ -18,7 +18,7 @@ export function RfidAgentInstallControl({
   }
 
   return (
-    <SectionPanel className="profile-admin-panel" title="RFID reader">
+    <ProfileAccordion title="RFID reader" detail={controlState.statusMessage}>
       <div className="profile-rfid-agent-control">
         <p>
           Reader setup applies to this computer, not the selected member
@@ -33,6 +33,6 @@ export function RfidAgentInstallControl({
           </Button>
         ) : null}
       </div>
-    </SectionPanel>
+    </ProfileAccordion>
   );
 }

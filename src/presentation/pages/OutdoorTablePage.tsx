@@ -1,11 +1,10 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "../components/Button";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import {
   listOutdoorTableDashboard,
-  triggerGoldenRecordsOutdoorTableSync,
 } from "../../api/outdoorTableApi";
 import type { UserProfile } from "../../types/app";
 import { formatDateTime } from "../../utils/dateTime";
@@ -54,21 +53,11 @@ function getAchievementColorClass(columnKey: string) {
 export function OutdoorTablePage({
   currentUserProfile,
 }: OutdoorTablePageProps) {
-  const queryClient = useQueryClient();
   const actorUsername = currentUserProfile?.auth?.username ?? "";
-  const actorRole = String(currentUserProfile?.membership?.role ?? "")
-    .trim()
-    .toLowerCase();
   const canManageOutdoorTable = hasPermission(
     currentUserProfile,
     "manage_members",
   );
-  const canRunGoldenRecordsSync = [
-    "admin",
-    "developer",
-  ].includes(actorRole);
-  const [syncSuccessMessage, setSyncSuccessMessage] = useState("");
-  const [syncErrorMessage, setSyncErrorMessage] = useState("");
   const [sortConfig, setSortConfig] = useState<{
     column: OutdoorTableSortColumn;
     direction: "asc" | "desc";
@@ -81,28 +70,6 @@ export function OutdoorTablePage({
     queryKey: ["outdoor-table", CURRENT_YEAR, actorUsername],
     queryFn: () => listOutdoorTableDashboard(currentUserProfile, CURRENT_YEAR),
     enabled: Boolean(actorUsername),
-  });
-  const goldenRecordsSyncMutation = useMutation({
-    mutationFn: () => triggerGoldenRecordsOutdoorTableSync(currentUserProfile),
-    onMutate: () => {
-      setSyncSuccessMessage("");
-      setSyncErrorMessage("");
-    },
-    onSuccess: async (result) => {
-      setSyncSuccessMessage(result.message);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["outdoor-table"] }),
-        queryClient.invalidateQueries({ queryKey: ["indoor-table"] }),
-        queryClient.invalidateQueries({ queryKey: ["member-profiles"] }),
-      ]);
-    },
-    onError: (error) => {
-      setSyncErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "The Golden Records sync could not be started.",
-      );
-    },
   });
 
   const rows = useMemo(() => {
@@ -356,31 +323,6 @@ export function OutdoorTablePage({
         )}
       </SectionPanel>
 
-      {canRunGoldenRecordsSync ? (
-        <SectionPanel
-          className="outdoor-table-sync-panel"
-          title="Golden Records Sync"
-        >
-          <div className="outdoor-table-sync-actions">
-            <p className="outdoor-table-sync-copy">
-              Run the Golden Records member sync now to refresh outdoor achievements
-              and indoor handicaps without waiting for the nightly schedule.
-            </p>
-            <Button
-              onClick={() => goldenRecordsSyncMutation.mutate()}
-              disabled={goldenRecordsSyncMutation.isPending}
-            >
-              {goldenRecordsSyncMutation.isPending
-                ? "Running Golden Records Sync..."
-                : "Run Golden Records Sync"}
-            </Button>
-          </div>
-          <StatusMessagePanel
-            error={syncErrorMessage}
-            success={syncSuccessMessage}
-          />
-        </SectionPanel>
-      ) : null}
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import "./App.css";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";

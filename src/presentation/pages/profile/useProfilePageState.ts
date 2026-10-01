@@ -73,10 +73,8 @@ export function useProfilePageState({
     equipmentLoans,
     goldenRecordsSnapshot,
     error,
-    hasLoadedProfileRef,
     isInitialLoading,
     isRefreshingProfile,
-    loadProfile,
     memberOptions,
     membershipStatusOptions,
     message,
@@ -119,15 +117,11 @@ export function useProfilePageState({
 
   const outdoorTableState = useProfileOutdoorTableState({
     activeUsername,
-    actorUsername,
     canManageOutdoorAchievements,
     currentUserProfile,
     editableProfile,
     goldenRecordsSnapshot,
-    hasLoadedProfileRef,
     isGuest,
-    loadProfile,
-    memberProfileCrud,
     setGoldenRecordsSnapshot,
     onClearMessages: () => {
       setError("");
@@ -375,15 +369,11 @@ export function useProfilePageState({
     editableProfile,
     equipmentLoans,
     error,
-    goldenRecordsCandidateMatches: outdoorTableState.goldenRecordsCandidateMatches,
     goldenRecordsFetchedAt: outdoorTableState.goldenRecordsFetchedAt,
-    goldenRecordsMatchError: outdoorTableState.goldenRecordsMatchError,
-    goldenRecordsMatchSource: outdoorTableState.goldenRecordsMatchSource,
     goldenRecordsOutdoorHandicapsByBowType:
       outdoorTableState.goldenRecordsOutdoorHandicapsByBowType,
     goldenRecordsIndoorHandicapsByBowType:
       outdoorTableState.goldenRecordsIndoorHandicapsByBowType,
-    handleAssignGoldenRecordsMatch: outdoorTableState.handleAssignGoldenRecordsMatch,
     handleBooleanChange,
     handleBooleanSelectChange,
     handleChange,
@@ -391,26 +381,16 @@ export function useProfilePageState({
     handleCloseDeleteModal: memberActionsState.handleCloseDeleteModal,
     handleCloseDistanceSignOffModal:
       memberActionsState.handleCloseDistanceSignOffModal,
-    handleCloseGoldenRecordsMatchConfirmModal:
-      outdoorTableState.handleCloseGoldenRecordsMatchConfirmModal,
-    handleCloseGoldenRecordsMatchModal:
-      outdoorTableState.handleCloseGoldenRecordsMatchModal,
     handleCloseReturnModal,
     handleCloseRfidInstallModal,
     handleDeleteConfirmationUsernameChange:
       memberActionsState.handleDeleteConfirmationUsernameChange,
     handleDeleteMember: memberActionsState.handleDeleteMember,
     handleDistanceSignOffChange: memberActionsState.handleDistanceSignOffChange,
-    handleGoldenRecordsCandidateSelectionChange:
-      outdoorTableState.handleGoldenRecordsCandidateSelectionChange,
-    handleContinueGoldenRecordsMatchAssignment:
-      outdoorTableState.handleContinueGoldenRecordsMatchAssignment,
     handleOpenCardModal: memberActionsState.handleOpenCardModal,
     handleOpenDeleteModal: memberActionsState.handleOpenDeleteModal,
     handleOpenDistanceSignOffModal:
       memberActionsState.handleOpenDistanceSignOffModal,
-    handleOpenGoldenRecordsMatchModal:
-      outdoorTableState.handleOpenGoldenRecordsMatchModal,
     handleOpenRfidInstallModal,
     handleOutdoorTableAward252SignOffDateChange:
       outdoorTableState.handleOutdoorTableAward252SignOffDateChange,
@@ -418,8 +398,6 @@ export function useProfilePageState({
       outdoorTableState.handleOutdoorTableAchievementDateChange,
     handleOutdoorTableHandicapChange:
       outdoorTableState.handleOutdoorTableHandicapChange,
-    handleRefreshGoldenRecordsHandicap:
-      outdoorTableState.handleRefreshGoldenRecordsHandicap,
     handleReturnLoanBow,
     handleInstallRfidAgent,
     handleRfidReaderConnectedConfirmationChange,
@@ -433,12 +411,7 @@ export function useProfilePageState({
     isGuest,
     isInitialLoading,
     isDeletingMember: memberActionsState.isDeletingMember,
-    isGoldenRecordsMatchConfirmModalOpen:
-      outdoorTableState.isGoldenRecordsMatchConfirmModalOpen,
-    isGoldenRecordsMatchModalOpen: outdoorTableState.isGoldenRecordsMatchModalOpen,
     isIssuingCard: memberActionsState.isIssuingCard,
-    isRefreshingGoldenRecordsHandicap:
-      outdoorTableState.isRefreshingGoldenRecordsHandicap,
     isRefreshingProfile,
     isReturnModalOpen,
     isRfidInstallModalOpen,
@@ -446,7 +419,6 @@ export function useProfilePageState({
     isRfidReaderConnectedConfirmed,
     isSaving,
     isSavingDistanceSignOff: memberActionsState.isSavingDistanceSignOff,
-    isSavingGoldenRecordsMatch: outdoorTableState.isSavingGoldenRecordsMatch,
     isSavingOutdoorTableByBowType: outdoorTableState.isSavingOutdoorTableByBowType,
     isSavingReturn,
     memberOptions,
@@ -457,8 +429,6 @@ export function useProfilePageState({
     programmeTypeOptions,
     returnError,
     roleOptions,
-    selectedGoldenRecordsCandidate: outdoorTableState.selectedGoldenRecordsCandidate,
-    selectedGoldenRecordsCandidateId: outdoorTableState.selectedGoldenRecordsCandidateId,
     selectedUsername,
     submitLabel,
     toggleDiscipline,

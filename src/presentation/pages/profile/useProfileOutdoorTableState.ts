@@ -1,6 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "../../../api/client";
 import { subscribeToServerEvent } from "../../../lib/serverEvents";
 import { useSseFallbackPolling } from "../../state/useSseFallbackPolling";
 import {
@@ -9,10 +7,7 @@ import {
   updateOutdoorTableEntry,
 } from "../../../api/outdoorTableApi";
 import type { OutdoorTableEntry, UserProfile } from "../../../types/app";
-import type {
-  GoldenRecordsCandidateMatch,
-  GoldenRecordsSnapshot,
-} from "../../../domain/entities/MemberProfile";
+import type { GoldenRecordsSnapshot } from "../../../domain/entities/MemberProfile";
 import {
   BOW_TYPE_DISCIPLINE_MAPPINGS,
   CURRENT_OUTDOOR_SEASON_YEAR,
@@ -84,34 +79,25 @@ function buildGoldenRecordsHandicapsByBowType(snapshot, type) {
 
 export function useProfileOutdoorTableState({
   activeUsername,
-  actorUsername,
   canManageOutdoorAchievements,
   currentUserProfile,
   editableProfile,
   goldenRecordsSnapshot,
-  hasLoadedProfileRef,
   isGuest,
-  loadProfile,
-  memberProfileCrud,
   setGoldenRecordsSnapshot,
   onClearMessages,
   onMessage,
 }: {
   activeUsername: string;
-  actorUsername: string;
   canManageOutdoorAchievements: boolean;
   currentUserProfile: UserProfile | null;
   editableProfile: any;
   goldenRecordsSnapshot: GoldenRecordsSnapshot | null;
-  hasLoadedProfileRef: React.MutableRefObject<boolean>;
   isGuest: boolean;
-  loadProfile: (username: string, options?: { signal?: AbortSignal; isBackgroundRefresh?: boolean }) => Promise<void>;
-  memberProfileCrud: any;
   setGoldenRecordsSnapshot: React.Dispatch<React.SetStateAction<GoldenRecordsSnapshot | null>>;
   onClearMessages: () => void;
   onMessage: (message: string) => void;
 }) {
-  const queryClient = useQueryClient();
   const isLoadingOutdoorTableRef = useRef(false);
   const [outdoorTableEntries, setOutdoorTableEntries] = useState<OutdoorTableEntry[]>([]);
   const [outdoorTableDraftsByBowType, setOutdoorTableDraftsByBowType] = useState<
@@ -122,15 +108,6 @@ export function useProfileOutdoorTableState({
   const [isSavingOutdoorTableByBowType, setIsSavingOutdoorTableByBowType] = useState<
     Record<string, boolean>
   >({});
-  const [isRefreshingGoldenRecordsHandicap, setIsRefreshingGoldenRecordsHandicap] =
-    useState(false);
-  const [isGoldenRecordsMatchModalOpen, setIsGoldenRecordsMatchModalOpen] = useState(false);
-  const [isGoldenRecordsMatchConfirmModalOpen, setIsGoldenRecordsMatchConfirmModalOpen] =
-    useState(false);
-  const [selectedGoldenRecordsCandidateId, setSelectedGoldenRecordsCandidateId] =
-    useState("");
-  const [goldenRecordsMatchError, setGoldenRecordsMatchError] = useState("");
-  const [isSavingGoldenRecordsMatch, setIsSavingGoldenRecordsMatch] = useState(false);
 
   const outdoorTableBowEntries = useMemo(
     () => Object.values(outdoorTableDraftsByBowType),
@@ -145,18 +122,6 @@ export function useProfileOutdoorTableState({
     [goldenRecordsSnapshot],
   );
   const goldenRecordsFetchedAt = goldenRecordsSnapshot?.fetchedAt ?? "";
-  const goldenRecordsCandidateMatches = useMemo<GoldenRecordsCandidateMatch[]>(
-    () => goldenRecordsSnapshot?.candidateMatches ?? [],
-    [goldenRecordsSnapshot],
-  );
-  const goldenRecordsMatchSource = goldenRecordsSnapshot?.matchSource ?? "";
-  const selectedGoldenRecordsCandidate = useMemo(
-    () =>
-      goldenRecordsCandidateMatches.find(
-        (candidate) => candidate.memberId === selectedGoldenRecordsCandidateId,
-      ) ?? null,
-    [goldenRecordsCandidateMatches, selectedGoldenRecordsCandidateId],
-  );
 
   const loadOutdoorTableEntries = useCallback(
     async (username, signal?: AbortSignal) => {
@@ -209,13 +174,7 @@ export function useProfileOutdoorTableState({
     setIsLoadingOutdoorTable(false);
     setIsSavingOutdoorTableByBowType({});
     setGoldenRecordsSnapshot(null);
-    setIsRefreshingGoldenRecordsHandicap(false);
-    setIsGoldenRecordsMatchModalOpen(false);
-    setIsGoldenRecordsMatchConfirmModalOpen(false);
-    setSelectedGoldenRecordsCandidateId("");
-    setGoldenRecordsMatchError("");
-    setIsSavingGoldenRecordsMatch(false);
-  }, [currentUserProfile?.auth?.username]);
+  }, [currentUserProfile?.auth?.username, setGoldenRecordsSnapshot]);
 
   useEffect(() => {
     if (!activeUsername) {
@@ -414,145 +373,6 @@ export function useProfileOutdoorTableState({
     }
   };
 
-  const handleRefreshGoldenRecordsHandicap = async () => {
-    if (!editableProfile?.username) {
-      return;
-    }
-
-    setIsRefreshingGoldenRecordsHandicap(true);
-    setOutdoorTableError("");
-    onClearMessages();
-    setGoldenRecordsMatchError("");
-
-    try {
-      const result = await memberProfileCrud.refreshGoldenRecordsHandicapUseCase.execute({
-        actorUsername,
-        username: editableProfile.username,
-      });
-
-      setGoldenRecordsSnapshot(result.goldenRecords ?? null);
-      await loadOutdoorTableEntries(editableProfile.username, undefined);
-      await queryClient.invalidateQueries({ queryKey: ["indoor-table"] });
-      onMessage(
-        result.message
-          ? `Golden Records API sync successful. ${result.message}`
-          : "Golden Records API sync successful.",
-      );
-    } catch (refreshError) {
-      if (refreshError instanceof ApiError) {
-        const payload = refreshError.payload as {
-          candidateMatches?: GoldenRecordsCandidateMatch[];
-          goldenRecords?: GoldenRecordsSnapshot | null;
-        };
-        const candidateMatches = Array.isArray(payload?.candidateMatches)
-          ? payload.candidateMatches
-          : [];
-        const suggestedSnapshot = payload?.goldenRecords ?? null;
-
-        if (suggestedSnapshot) {
-          setGoldenRecordsSnapshot(suggestedSnapshot);
-        }
-
-        if (candidateMatches.length > 0) {
-          setSelectedGoldenRecordsCandidateId(candidateMatches[0].memberId ?? "");
-          setIsGoldenRecordsMatchModalOpen(true);
-        }
-      }
-
-      setOutdoorTableError(refreshError.message);
-    } finally {
-      setIsRefreshingGoldenRecordsHandicap(false);
-    }
-  };
-
-  const handleOpenGoldenRecordsMatchModal = () => {
-    if (!goldenRecordsCandidateMatches.length) {
-      setOutdoorTableError("No likely Golden Records matches are available for this member.");
-      return;
-    }
-
-    setGoldenRecordsMatchError("");
-    setSelectedGoldenRecordsCandidateId(
-      selectedGoldenRecordsCandidateId || goldenRecordsCandidateMatches[0]?.memberId || "",
-    );
-    setIsGoldenRecordsMatchModalOpen(true);
-  };
-
-  const handleCloseGoldenRecordsMatchModal = () => {
-    if (isSavingGoldenRecordsMatch) {
-      return;
-    }
-
-    setIsGoldenRecordsMatchModalOpen(false);
-    setGoldenRecordsMatchError("");
-  };
-
-  const handleGoldenRecordsCandidateSelectionChange = (nextSelection) => {
-    setSelectedGoldenRecordsCandidateId(
-      typeof nextSelection === "string"
-        ? nextSelection
-        : nextSelection?.target?.value ?? "",
-    );
-  };
-
-  const handleContinueGoldenRecordsMatchAssignment = () => {
-    if (!selectedGoldenRecordsCandidateId) {
-      setGoldenRecordsMatchError("Choose a Golden Records account before continuing.");
-      return;
-    }
-
-    setGoldenRecordsMatchError("");
-    setIsGoldenRecordsMatchModalOpen(false);
-    setIsGoldenRecordsMatchConfirmModalOpen(true);
-  };
-
-  const handleCloseGoldenRecordsMatchConfirmModal = () => {
-    if (isSavingGoldenRecordsMatch) {
-      return;
-    }
-
-    setIsGoldenRecordsMatchConfirmModalOpen(false);
-    setGoldenRecordsMatchError("");
-  };
-
-  const handleAssignGoldenRecordsMatch = async () => {
-    if (!editableProfile?.username || !selectedGoldenRecordsCandidateId) {
-      setGoldenRecordsMatchError("Choose a Golden Records account before continuing.");
-      return;
-    }
-
-    setIsSavingGoldenRecordsMatch(true);
-    setGoldenRecordsMatchError("");
-    setOutdoorTableError("");
-    onClearMessages();
-
-    try {
-      const result = await memberProfileCrud.assignGoldenRecordsMatchUseCase.execute({
-        actorUsername,
-        goldenRecordsId: selectedGoldenRecordsCandidateId,
-        username: editableProfile.username,
-      });
-
-      setGoldenRecordsSnapshot(result.goldenRecords ?? null);
-      await loadProfile(editableProfile.username, {
-        isBackgroundRefresh: hasLoadedProfileRef.current,
-      });
-      await loadOutdoorTableEntries(editableProfile.username, undefined);
-      await queryClient.invalidateQueries({ queryKey: ["indoor-table"] });
-      onMessage(
-        result.message
-          ? `Golden Records API sync successful. ${result.message}`
-          : "Golden Records API sync successful.",
-      );
-      setIsGoldenRecordsMatchConfirmModalOpen(false);
-      setIsGoldenRecordsMatchModalOpen(false);
-    } catch (assignError) {
-      setGoldenRecordsMatchError(assignError.message);
-    } finally {
-      setIsSavingGoldenRecordsMatch(false);
-    }
-  };
-
   const resetOutdoorTableState = () => {
     setOutdoorTableEntries([]);
     setOutdoorTableDraftsByBowType({});
@@ -560,42 +380,20 @@ export function useProfileOutdoorTableState({
     setIsLoadingOutdoorTable(false);
     setIsSavingOutdoorTableByBowType({});
     setGoldenRecordsSnapshot(null);
-    setIsRefreshingGoldenRecordsHandicap(false);
-    setIsGoldenRecordsMatchModalOpen(false);
-    setIsGoldenRecordsMatchConfirmModalOpen(false);
-    setSelectedGoldenRecordsCandidateId("");
-    setGoldenRecordsMatchError("");
-    setIsSavingGoldenRecordsMatch(false);
   };
 
   return {
-    goldenRecordsCandidateMatches,
     goldenRecordsFetchedAt,
     goldenRecordsIndoorHandicapsByBowType,
-    goldenRecordsMatchError,
-    goldenRecordsMatchSource,
     goldenRecordsOutdoorHandicapsByBowType,
-    handleAssignGoldenRecordsMatch,
-    handleCloseGoldenRecordsMatchConfirmModal,
-    handleCloseGoldenRecordsMatchModal,
-    handleContinueGoldenRecordsMatchAssignment,
-    handleGoldenRecordsCandidateSelectionChange,
-    handleOpenGoldenRecordsMatchModal,
     handleOutdoorTableAchievementDateChange,
     handleOutdoorTableAward252SignOffDateChange,
     handleOutdoorTableHandicapChange,
-    handleRefreshGoldenRecordsHandicap,
     handleSaveOutdoorTableEntry,
-    isGoldenRecordsMatchConfirmModalOpen,
-    isGoldenRecordsMatchModalOpen,
     isLoadingOutdoorTable,
-    isRefreshingGoldenRecordsHandicap,
-    isSavingGoldenRecordsMatch,
     isSavingOutdoorTableByBowType,
     outdoorTableBowEntries,
     outdoorTableError,
-    selectedGoldenRecordsCandidate,
-    selectedGoldenRecordsCandidateId,
     setGoldenRecordsSnapshot,
     resetOutdoorTableState,
   };

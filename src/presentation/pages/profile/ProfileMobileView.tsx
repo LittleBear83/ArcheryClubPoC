@@ -12,6 +12,8 @@ import { formatDate, formatDateTime } from "../../../utils/dateTime";
 import { ProfileOutdoorAchievementsSection } from "./ProfileOutdoorAchievementsSection";
 import { ProfileIndoorAchievementsSection } from "./ProfileIndoorAchievementsSection";
 import { RfidAgentInstallControl } from "./RfidAgentInstallControl";
+import { ProfileAccordion } from "./ProfileAccordion";
+import { formatAchievementSummary } from "./profileSummary";
 import { formatMemberDisplayName, formatMemberDisplayUsername } from "../../../utils/userProfile";
 import type { useProfilePageState } from "./useProfilePageState";
 
@@ -41,10 +43,8 @@ export function ProfileMobileView({
   editableProfile,
   equipmentLoans,
   error,
-  goldenRecordsCandidateMatches,
   goldenRecordsFetchedAt,
   goldenRecordsIndoorHandicapsByBowType,
-  goldenRecordsMatchSource,
   goldenRecordsOutdoorHandicapsByBowType,
   handleBooleanChange,
   handleBooleanSelectChange,
@@ -55,11 +55,9 @@ export function ProfileMobileView({
   handleDeleteMember,
   handleOpenDeleteModal,
   handleOpenDistanceSignOffModal,
-  handleOpenGoldenRecordsMatchModal,
   handleOpenRfidInstallModal,
   handleOutdoorTableAward252SignOffDateChange,
   handleOutdoorTableAchievementDateChange,
-  handleRefreshGoldenRecordsHandicap,
   handleSave,
   handleSaveOutdoorTableEntry,
   handleSelectMember,
@@ -67,7 +65,6 @@ export function ProfileMobileView({
   isDeleteModalOpen,
   isDeletingMember,
   isLoadingOutdoorTable,
-  isRefreshingGoldenRecordsHandicap,
   isRefreshingProfile,
   isSaving,
   isSavingOutdoorTableByBowType,
@@ -87,11 +84,13 @@ export function ProfileMobileView({
     (disciplineGroup) =>
       disciplineGroup.distances.some((distance) => !distance.signOff),
   );
+  const signedOffDistanceCount = editableProfile?.distanceSignOffs?.reduce(
+    (count, group) => count + group.distances.filter((distance) => Boolean(distance.signOff)).length,
+    0,
+  ) ?? 0;
 
   return (
     <div className="profile-page profile-page--mobile">
-      <p>Manage your member profile and account details.</p>
-
       <RfidAgentInstallControl
         canManageMembers={canManageMembers}
         fullWidth
@@ -158,6 +157,10 @@ export function ProfileMobileView({
       />
 
       {editableProfile ? (
+        <ProfileAccordion
+          title="Member details"
+          detail={`${editableProfile.firstName} ${editableProfile.surname} · ${editableProfile.membershipStatus}`}
+        >
         <MemberProfileForm
           editableProfile={editableProfile}
           handleChange={handleChange}
@@ -177,9 +180,14 @@ export function ProfileMobileView({
           onSubmit={handleSave}
           submitLabel={submitLabel}
         />
+        </ProfileAccordion>
       ) : null}
 
       {editableProfile ? (
+        <ProfileAccordion
+          title="Distance sign offs"
+          detail={`${signedOffDistanceCount} signed off`}
+        >
         <section className="profile-form">
           <MobileSectionHeader
             title="Distance Sign Offs"
@@ -248,9 +256,11 @@ export function ProfileMobileView({
             <MobileEmptyState message="Add a discipline to this profile before recording distance sign-offs." />
           )}
         </section>
+        </ProfileAccordion>
       ) : null}
 
       {editableProfile ? (
+        <ProfileAccordion title="Equipment on loan" detail={`${equipmentLoans.length} ${equipmentLoans.length === 1 ? "loan" : "loans"}`}>
         <section className="profile-form">
           <MobileSectionHeader
             title="Equipment On Loan"
@@ -279,37 +289,38 @@ export function ProfileMobileView({
           <MobileEmptyState message="No equipment is currently on loan to this member." />
         )}
       </section>
+      </ProfileAccordion>
       ) : null}
 
       {editableProfile ? (
+        <ProfileAccordion title="Outdoor achievements" detail={formatAchievementSummary(goldenRecordsOutdoorHandicapsByBowType, outdoorTableBowEntries.length)}>
         <ProfileOutdoorAchievementsSection
           canManageOutdoorAchievements={canManageOutdoorAchievements}
           canManageMembers={canManageMembers}
           entries={outdoorTableBowEntries}
           error={outdoorTableError}
-          goldenRecordsCandidateMatches={goldenRecordsCandidateMatches}
           goldenRecordsFetchedAt={goldenRecordsFetchedAt}
-          goldenRecordsIndoorHandicapsByBowType={goldenRecordsIndoorHandicapsByBowType}
-          goldenRecordsMatchSource={goldenRecordsMatchSource}
           goldenRecordsOutdoorHandicapsByBowType={goldenRecordsOutdoorHandicapsByBowType}
-          isRefreshingGoldenRecordsHandicap={isRefreshingGoldenRecordsHandicap}
           isLoading={isLoadingOutdoorTable}
           isSavingByBowType={isSavingOutdoorTableByBowType}
-          onOpenGoldenRecordsMatchModal={handleOpenGoldenRecordsMatchModal}
-          onRefreshGoldenRecordsHandicap={handleRefreshGoldenRecordsHandicap}
           onAward252SignOffDateChange={handleOutdoorTableAward252SignOffDateChange}
           onAchievementDateChange={handleOutdoorTableAchievementDateChange}
           onSave={handleSaveOutdoorTableEntry}
         />
+        </ProfileAccordion>
       ) : null}
 
-      {editableProfile ? <ProfileIndoorAchievementsSection
-        currentUserProfile={currentUserProfile}
-        username={editableProfile.username}
-        disciplines={editableProfile.disciplines}
-        canManage={canManageMembers}
-        goldenRecordsHandicaps={goldenRecordsIndoorHandicapsByBowType}
-      /> : null}
+      {editableProfile ? (
+        <ProfileAccordion title="Indoor achievements" detail={formatAchievementSummary(goldenRecordsIndoorHandicapsByBowType, outdoorTableBowEntries.length)}>
+          <ProfileIndoorAchievementsSection
+            currentUserProfile={currentUserProfile}
+            username={editableProfile.username}
+            disciplines={editableProfile.disciplines}
+            canManage={canManageMembers}
+            goldenRecordsHandicaps={goldenRecordsIndoorHandicapsByBowType}
+          />
+        </ProfileAccordion>
+      ) : null}
 
       <DeleteMemberModal
         confirmationUsername={deleteConfirmationUsername}

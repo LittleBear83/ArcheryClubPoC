@@ -9,6 +9,7 @@ import signal
 import sys
 import threading
 import time
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
@@ -21,6 +22,7 @@ WINDOWS_MUTEX_NAME = "Local\\SelbyArcheryClubRfidAgent"
 WINDOWS_STOP_EVENT_NAME = "Local\\SelbyArcheryClubRfidAgentStop"
 LOGGER = logging.getLogger("selby-rfid-agent")
 SHUTDOWN_EVENT = threading.Event()
+BRIDGE_INSTANCE_ID = uuid.uuid4().hex
 
 DEFAULT_CONFIG = {
     "host": "127.0.0.1",
@@ -273,6 +275,7 @@ class BridgeState:
             self.sequence += 1
             self.latest_scan = {
                 "sequence": self.sequence,
+                "instanceId": BRIDGE_INSTANCE_ID,
                 "uid": uid,
                 "reader": reader_name,
                 "atr": atr,

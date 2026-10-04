@@ -3,6 +3,7 @@ import express from "express";
 import helmet from "helmet";
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
+import os from "node:os";
 import process from "node:process";
 import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
@@ -23,6 +24,7 @@ import { withBeginnerConversionTransaction } from "./infrastructure/persistence/
 import { startGoldenRecordsSyncScheduler } from "./domain/services/goldenRecordsSyncScheduler.js";
 import { createServerEventBus } from "./domain/services/serverEventBus.js";
 import { startLocalSyncBrowserBridge } from "./infrastructure/persistence/localSyncBrowserBridge.js";
+import { startRfidBridgeConsumer } from "./infrastructure/rfidBridgeConsumer.js";
 import { createLocalMutationMaintenanceGate } from "./infrastructure/persistence/localRebaselineMaintenanceGate.js";
 import { createCsrfProtection } from "./security/csrf.js";
 import { createRateLimiter } from "./security/rateLimit.js";
@@ -4966,7 +4968,7 @@ if (
   });
 }
 
-registerAuthRoutes({
+const { processRfidCheckIn } = registerAuthRoutes({
   announcementGateway,
   app,
   auditChangeLogger,
@@ -4977,6 +4979,8 @@ registerAuthRoutes({
   getUtcTimestampParts,
   hashPassword,
   memberAuthGateway,
+  rfidMachineId: serverRuntime.sync.isLocalPiNode
+    ? (serverRuntime.sync.machineId || os.hostname()) : null,
   rfidReaderStatus,
   serverEventBus,
   syncMemberStatusWithFees: (...args) =>
@@ -7348,6 +7352,10 @@ const httpServer = startServer({
   port,
   requestTimeoutMs: serverRuntime.requestTimeoutMs,
 });
+if (serverRuntime.sync.isLocalPiNode) {
+  const stopRfidBridgeConsumer = startRfidBridgeConsumer({ processRfidCheckIn });
+  httpServer.once("close", stopRfidBridgeConsumer);
+}
 const stopLocalSyncBrowserBridge = startLocalSyncBrowserBridge({
   pool: db.pool,
   serverEventBus,

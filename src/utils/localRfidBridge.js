@@ -193,6 +193,7 @@ export function subscribeToLocalRfidBridgeScans(
 
         listener({
           sequence: Number(scan.sequence ?? 0),
+          ...(scan.instanceId ? { instanceId: scan.instanceId } : {}),
           rfidTag,
           scannedAt: scan.scannedAt ?? new Date().toISOString(),
           source: "local-reader-bridge",

@@ -471,9 +471,11 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     [clearAuthenticatedQueries],
   );
 
-  const handleRfidLogin = useCallback(async (rfidTag: string) => {
+  const handleRfidLogin = useCallback(async (rfidTag: string, scan?: {
+    sequence: number; scannedAt: string; reader: string; instanceId?: string | null;
+  }) => {
     try {
-      const result = await loginWithRfid(rfidTag);
+      const result = await loginWithRfid(rfidTag, scan);
 
       markFreshSignIn();
       persistAuthenticatedUser(result.userProfile);
@@ -815,7 +817,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
 
       if (idleForMs < RFID_SESSION_HANDOFF_IDLE_MS) {
         try {
-          await recordRfidCheckIn(scan.rfidTag);
+          await recordRfidCheckIn(scan.rfidTag, scan.source === "local-reader-bridge" ? scan : undefined);
         } catch (error) {
           console.error("Unable to record RFID check-in", error);
         }
@@ -824,7 +826,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
 
       isHandingOff = true;
       try {
-        const loginResult = await handleRfidLogin(scan.rfidTag);
+        const loginResult = await handleRfidLogin(scan.rfidTag, scan.source === "local-reader-bridge" ? scan : undefined);
 
         if (!isActive) {
           return;

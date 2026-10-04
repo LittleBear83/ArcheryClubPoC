@@ -111,6 +111,7 @@ function createSqliteMemberAuthGateway({
     },
     async recordLoginEvent({ method, timestampParts, username }) {
       insertLoginEvent.run(username, method, ...timestampParts);
+      return true;
     },
     async upsertRangePresenceExtension({
       activeUntilParts,
@@ -361,11 +362,11 @@ function createPostgresMemberAuthGateway({
         ],
       );
     },
-    async recordLoginEvent({ method, timestampParts, username }) {
+    async recordLoginEvent({ eventId, method, timestampParts, username }) {
       if (syncGateway) {
-        await syncGateway.enqueueLoginEvent({
+        return syncGateway.enqueueLoginEvent({
           client: pool,
-          eventId: randomUUID(),
+          eventId: eventId ?? randomUUID(),
           loggedInDate: timestampParts[0],
           loggedInTime: timestampParts[1],
           loginMethod: method,
@@ -373,10 +374,9 @@ function createPostgresMemberAuthGateway({
           sourceNodeMode: syncNodeMode,
           username,
         });
-        return;
       }
 
-      await pool.query(
+      const inserted = await pool.query(
         `
           INSERT INTO login_events (
             username,
@@ -387,9 +387,12 @@ function createPostgresMemberAuthGateway({
             sync_event_id
           )
           VALUES ($1, (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1), $2, $3, $4, $5)
+          ON CONFLICT (sync_event_id) DO NOTHING
+          RETURNING id
         `,
-        [username, method, ...timestampParts, randomUUID()],
+        [username, method, ...timestampParts, eventId ?? randomUUID()],
       );
+      return Boolean(inserted.rowCount);
     },
     async upsertRangePresenceExtension({
       activeUntilParts,

@@ -370,6 +370,31 @@ test("malformed booking sync command is stored as a terminal rejection", async (
   assert.equal(queries.some((entry) => entry.sql.startsWith("INSERT INTO sync_received_commands")), true);
 });
 
+test("Pi RFID event and outbox are inserted once for the same physical scan ID", async () => {
+  const loginIds = new Set();
+  const outboxIds = new Set();
+  const client = {
+    async query(sql, values = []) {
+      const statement = String(sql).replace(/\s+/g, " ").trim();
+      if (statement.startsWith("INSERT INTO login_events")) {
+        if (loginIds.has(values[4])) return { rowCount: 0, rows: [] };
+        loginIds.add(values[4]);
+        return { rowCount: 1, rows: [{ id: 1 }] };
+      }
+      if (statement.startsWith("INSERT INTO sync_local_outbox")) outboxIds.add(values[0]);
+      return { rowCount: 1, rows: [] };
+    },
+  };
+  const gateway = createSyncGateway({ pool: client });
+  const input = { client, eventId: "same-scan-id", loggedInDate: "2026-10-04",
+    loggedInTime: "12:00:00", loginMethod: "rfid", machineId: "pi-1",
+    sourceNodeMode: "local-pi", username: "archer" };
+  assert.equal(await gateway.enqueueLoginEvent(input), true);
+  assert.equal(await gateway.enqueueLoginEvent(input), false);
+  assert.equal(loginIds.size, 1);
+  assert.equal(outboxIds.size, 1);
+});
+
 test("cloud push inserts an unknown event ID instead of guessing among legacy rows", async () => {
   const queries = [];
   const client = {

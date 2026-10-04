@@ -1,3 +1,5 @@
+import { getRfidScanEventId } from "../../domain/services/rfidScanIdentity.js";
+
 export function registerAuthRoutes({
   announcementGateway,
   app,
@@ -14,6 +16,7 @@ export function registerAuthRoutes({
   getUtcTimestampParts,
   hashPassword,
   memberAuthGateway,
+  rfidMachineId,
   rfidReaderStatus,
   serverEventBus,
   syncMemberStatusWithFees,
@@ -258,32 +261,20 @@ export function registerAuthRoutes({
     });
   });
 
-  const handleRfidScan = async (req, res, { checkInOnly = false } = {}) => {
-    if (checkInOnly && !getSessionUsername(req)) {
-      res.status(401).json({
-        success: false,
-        message: "Your session has expired. Please sign in again.",
-      });
-      return;
+  const processRfidScan = async ({ rfidTag, scan, req, checkInOnly = true } = {}) => {
+    const target = checkInOnly ? "/api/auth/rfid/check-in" : "/api/auth/rfid";
+    const eventId = getRfidScanEventId({ machineId: rfidMachineId, rfidTag, scan });
+
+    if (scan && rfidMachineId && !eventId) {
+      return { status: 400, message: "Invalid RFID scan metadata." };
     }
 
-    const target = checkInOnly ? "/api/auth/rfid/check-in" : "/api/auth/rfid";
-    const { rfidTag } = req.body ?? {};
-
-    if (!rfidTag) {
+    if (!rfidTag || typeof rfidTag !== "string") {
       recordFailedAuthAttempt({
         failureReason: "missing_rfid_tag",
-        incorrectFields: ["rfid_tag"],
-        method: "rfid",
-        req,
-        statusCode: 400,
-        target,
+        incorrectFields: ["rfid_tag"], method: "rfid", req, statusCode: 400, target,
       });
-      res.status(400).json({
-        success: false,
-        message: "RFID tag is required.",
-      });
-      return;
+      return { status: 400, message: "RFID tag is required." };
     }
 
     const user =
@@ -294,72 +285,66 @@ export function registerAuthRoutes({
 
     if (!user) {
       recordFailedAuthAttempt({
-        attemptedRfidTag: rfidTag,
-        failureReason: "rfid_tag_not_recognised",
-        incorrectFields: ["rfid_tag"],
-        method: "rfid",
-        req,
-        statusCode: 401,
-        target,
+        attemptedRfidTag: rfidTag, failureReason: "rfid_tag_not_recognised",
+        incorrectFields: ["rfid_tag"], method: "rfid", req, statusCode: 401, target,
       });
-      res.status(401).json({
-        success: false,
-        message: "RFID tag not recognised.",
-      });
-      return;
+      return { status: 401, message: "RFID tag not recognised." };
     }
 
     if (!user.active_member) {
       recordFailedAuthAttempt({
-        attemptedRfidTag: rfidTag,
-        attemptedUsername: user.username,
-        failureReason: "account_inactive",
-        incorrectFields: [],
-        method: "rfid",
-        req,
-        statusCode: 403,
-        target,
+        attemptedRfidTag: rfidTag, attemptedUsername: user.username,
+        failureReason: "account_inactive", incorrectFields: [], method: "rfid",
+        req, statusCode: 403, target,
       });
-      res.status(403).json({
-        success: false,
-        message:
-          "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
-      });
-      return;
+      return {
+        status: 403,
+        message: "Your member account has been susspended because your membership renewal date has passed.\nPlease contact a committee member.",
+      };
     }
 
     const timestampParts = getUtcTimestampParts();
-
-    await memberAuthGateway.recordLoginEvent({
-      method: "rfid",
-      timestampParts,
-      username: user.username,
-    });
+    const created = (await memberAuthGateway.recordLoginEvent({
+      ...(eventId ? { eventId } : {}), method: "rfid", timestampParts, username: user.username,
+    })) !== false;
     const [loggedAtDate, loggedAtTime] = timestampParts;
 
-    if (auditChangeLogger) {
+    if (created && auditChangeLogger) {
       void auditChangeLogger.recordEntityChange({
-        action: "created",
-        actorUsername: user.username,
+        action: "created", actorUsername: user.username,
         after: {
           activityType: checkInOnly ? "rfid_check_in" : "login",
-          method: "rfid",
-          username: user.username,
+          method: "rfid", username: user.username,
         },
-        before: null,
-        changedAtDate: loggedAtDate,
-        changedAtTime: loggedAtTime,
-        entityId: `${user.username}:${loggedAtDate}:${loggedAtTime}:${checkInOnly ? "rfid-check-in" : "rfid"}`,
+        before: null, changedAtDate: loggedAtDate, changedAtTime: loggedAtTime,
+        entityId: eventId ?? `${user.username}:${loggedAtDate}:${loggedAtTime}:${checkInOnly ? "rfid-check-in" : "rfid"}`,
         entityLabel: `${user.first_name} ${user.surname}`.trim() || user.username,
-        entityType: "member_activity",
-        req,
-        statusCode: 200,
-        target,
+        entityType: "member_activity", req, statusCode: 200, target,
       }).catch((auditError) => {
         console.error("Failed to record RFID activity audit event", auditError);
       });
     }
-    broadcastRangeMembersUpdated(checkInOnly ? "auth.rfid-check-in" : "auth.rfid-login");
+    if (created) broadcastRangeMembersUpdated(checkInOnly ? "auth.rfid-check-in" : "auth.rfid-login");
+    return { status: 200, user, created };
+  };
+
+  const handleRfidScan = async (req, res, { checkInOnly = false } = {}) => {
+    if (checkInOnly && !getSessionUsername(req)) {
+      res.status(401).json({
+        success: false,
+        message: "Your session has expired. Please sign in again.",
+      });
+      return;
+    }
+
+    const result = await processRfidScan({
+      rfidTag: req.body?.rfidTag, scan: req.body?.scan, req, checkInOnly,
+    });
+    if (result.status !== 200) {
+      res.status(result.status).json({ success: false, message: result.message });
+      return;
+    }
+    const { user } = result;
     if (checkInOnly) {
       res.json({ success: true, username: user.username });
       return;
@@ -598,4 +583,8 @@ export function registerAuthRoutes({
       success: true,
     });
   });
+
+  // HTTP check-in keeps its session requirement; the Pi bridge consumer
+  // invokes the same operation without a browser session.
+  return { processRfidCheckIn: (scan) => processRfidScan({ ...scan, checkInOnly: true }) };
 }

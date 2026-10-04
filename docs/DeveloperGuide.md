@@ -182,11 +182,22 @@ a valid RFID scan records the scanned member's range visit without changing the
 current session. After 15 seconds without activity, a scan records the visit
 and hands the kiosk session over to that member.
 
+On a `SYNC_NODE_MODE=local-pi` server, the backend also subscribes to the local
+RFID bridge at `127.0.0.1:8765/events`. It records check-ins while no browser is
+open. The bridge instance ID and scan metadata produce a stable
+`login_events.sync_event_id`; a kiosk browser submits the same metadata when it
+opens a session, so the unique event ID prevents another attendance row even if
+the browser is using the cloud portal. The
+existing login-event outbox syncs the check-in to cloud. Update both the portal
+and Pi bridge when deploying this flow; the bridge instance ID distinguishes
+scans across bridge restarts.
+
 Relevant files:
 
 - `src/App.tsx`
 - `src/utils/rfidScanHub.js`
 - `server/presentation/http/registerAuthRoutes.js`
+- `server/infrastructure/rfidBridgeConsumer.js`
 
 ### 2. Home dashboard
 

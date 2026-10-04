@@ -281,7 +281,7 @@ export function createSyncGateway({ pool }) {
           await queryClient.query("BEGIN");
         }
 
-        await queryClient.query(
+        const inserted = await queryClient.query(
           `
             INSERT INTO login_events (
               username,
@@ -302,6 +302,7 @@ export function createSyncGateway({ pool }) {
               $6
             )
             ON CONFLICT (sync_event_id) DO NOTHING
+            RETURNING id
           `,
           [
             username,
@@ -313,7 +314,7 @@ export function createSyncGateway({ pool }) {
           ],
         );
 
-        if (sourceNodeMode === "local-pi" && machineId) {
+        if (inserted.rowCount && sourceNodeMode === "local-pi" && machineId) {
           await queryClient.query(
             `
               INSERT INTO sync_local_outbox (
@@ -344,6 +345,7 @@ export function createSyncGateway({ pool }) {
         if (ownsClient) {
           await queryClient.query("COMMIT");
         }
+        return Boolean(inserted.rowCount);
       } catch (error) {
         if (ownsClient) {
           await queryClient.query("ROLLBACK");
@@ -355,7 +357,6 @@ export function createSyncGateway({ pool }) {
         }
       }
 
-      return eventId;
     },
     async enqueueGuestLoginEvent({
       client = pool,

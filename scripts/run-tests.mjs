@@ -105,6 +105,9 @@ await import(
   pathToFileURL(path.join(outDir, "src/data/repositories/RoleRepositoryImpl.test.js"))
 );
 await import(pathToFileURL(path.join(root, "src/utils/localRfidBridge.test.js")));
+await import(pathToFileURL(path.join(root, "server/domain/services/rfidScanIdentity.test.js")));
+await import(pathToFileURL(path.join(root, "server/infrastructure/rfidBridgeConsumer.test.js")));
+await import(pathToFileURL(path.join(root, "server/presentation/http/registerAuthRoutes.rfid.test.js")));
 await import(
   pathToFileURL(
     path.join(root, "src/presentation/pages/profile/rfidAgentInstall.test.js"),

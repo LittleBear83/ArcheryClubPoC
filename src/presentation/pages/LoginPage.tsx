@@ -180,7 +180,7 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
         setIsSubmitting(true);
 
         try {
-          const loginResult = await onRfidLogin(rfidTag);
+          const loginResult = await onRfidLogin(rfidTag, scan);
 
           if (!loginResult?.success) {
             setError(loginResult?.message ?? "Unable to log in with RFID.");

@@ -9,6 +9,13 @@ export type RfidReaderStatus = {
   detected: boolean;
 };
 
+export type RfidScanMetadata = {
+  sequence: number;
+  scannedAt: string;
+  reader: string;
+  instanceId?: string | null;
+};
+
 export async function loginWithCredentials(
   username: string,
   password: string,
@@ -23,23 +30,23 @@ export async function loginWithCredentials(
   });
 }
 
-export async function loginWithRfid(rfidTag: string) {
+export async function loginWithRfid(rfidTag: string, scan?: RfidScanMetadata) {
   return fetchApi<{ success: true; userProfile: UserProfile }>("/api/auth/rfid", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ rfidTag }),
+    body: JSON.stringify({ rfidTag, scan }),
   });
 }
 
-export async function recordRfidCheckIn(rfidTag: string) {
+export async function recordRfidCheckIn(rfidTag: string, scan?: RfidScanMetadata) {
   return fetchApi<{ success: true; username: string }>("/api/auth/rfid/check-in", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ rfidTag }),
+    body: JSON.stringify({ rfidTag, scan }),
   });
 }
 

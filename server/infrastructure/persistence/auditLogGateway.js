@@ -67,7 +67,8 @@ function buildFilters(filters, options = {}) {
     statusCode = null,
     target = "",
   } = filters;
-  const whereClauses = [];
+  // Keep historical machine sync requests out of the human-facing report too.
+  const whereClauses = ["target NOT LIKE '/api/sync/%'"];
   const values = [];
   const usePostgresPlaceholders = options.placeholderStyle === "postgres";
   const addValue = (value) => {

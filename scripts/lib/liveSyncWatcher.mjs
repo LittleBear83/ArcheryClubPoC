@@ -74,6 +74,7 @@ export async function runLiveSyncWatcher({
   wait = sleep,
   log = () => {},
   idleTimeoutMs = 75000,
+  reconcileIntervalMs = 60000,
   publicationSync = false,
   listenLocalOutbox,
   countPendingOutbox = async () => 0,
@@ -222,16 +223,22 @@ export async function runLiveSyncWatcher({
     }
   }
 
+  let reconcileTimer;
   try {
     if (signal.aborted) return;
     if (publicationSync && !validLocalCheckpoint(await readCheckpoint())) {
       throw new Error("Publication sync v2 requires an initialized local checkpoint.");
     }
+    // A durable pull/push pass also runs if every SSE hint is lost. Use the
+    // same serialized worker so polling cannot overlap event-driven work.
+    reconcileTimer = setInterval(requestLocalSync, reconcileIntervalMs);
+    reconcileTimer.unref?.();
     await Promise.all([
       synchronize(), listen(),
       listenLocalOutbox?.({ signal, onWake: requestLocalSync }),
     ]);
   } finally {
+    clearInterval(reconcileTimer);
     signal.removeEventListener("abort", wakeWorker);
   }
 }

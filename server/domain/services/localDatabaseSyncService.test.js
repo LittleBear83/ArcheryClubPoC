@@ -4,6 +4,7 @@ import {
   applyAuthChanges,
   applyAuthSnapshot,
   applyPublicationSnapshot,
+  applyReconciliationSnapshot,
   applyPulledPublicationResponse,
   applyPulledSyncResponse,
   drainPendingOutboxCommands,
@@ -43,6 +44,37 @@ const emptyPublicationSnapshot = () => ({
   tournamentRounds: [],
   tournamentScores: [],
   tournamentMatches: [],
+});
+
+test("nightly v1 reconciliation commits its own checkpoint and broadcasts every replicated domain", async () => {
+  const { client, queries } = createClientDouble();
+  const writes = [];
+  let notified;
+  await applyReconciliationSnapshot({
+    client, deactivatedRfidSuffix: "-deactivated",
+    snapshotResponse: { mode: "snapshot", checkpoint: 42, snapshot: emptyPublicationSnapshot() },
+    syncGateway: {
+      async readLocalState() { return null; },
+      async writeLocalState(entry) { writes.push(entry); },
+    },
+    onSnapshotApplied(domains) { notified = domains; assert.equal(queries.at(-1).sql, "COMMIT"); },
+  });
+  assert.equal(writes[0].state.currentCheckpoint, 42);
+  assert.equal(writes[0].stateKey, "local_machine_sync");
+  assert.ok(notified.includes("login_events") && notified.includes("suggestions") && notified.includes("tournaments"));
+  assert.ok(queries.some(({ sql }) => sql.includes("DELETE FROM club_events")));
+  assert.equal(queries.some(({ sql }) => sql === "DELETE FROM login_events"), false);
+});
+
+test("nightly v1 refuses incomplete snapshots or publication cursors before writes", async () => {
+  for (const snapshotResponse of [
+    { mode: "snapshot", checkpoint: 42, snapshot: { users: [] } },
+    { mode: "snapshot", checkpoint: "42", snapshot: emptyPublicationSnapshot() },
+  ]) {
+    await assert.rejects(applyReconciliationSnapshot({
+      client: { query() { assert.fail("invalid snapshot must not write"); } }, snapshotResponse,
+    }), /complete snapshot/);
+  }
 });
 
 function createClientDouble() {

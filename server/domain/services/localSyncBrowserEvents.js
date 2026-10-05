@@ -27,6 +27,7 @@ export const LOCAL_SYNC_EVENT_GROUPS = {
   outdoor_table_entries: ["outdoor-table.updated"],
   indoor_table_entries: ["indoor-table.updated"],
   member_distance_sign_offs: ["members.updated", "outdoor-table.updated"],
+  committee_roles: ["committee.updated", "members.updated"],
   committee_meeting_minutes: ["committee-minutes.updated"],
   member_questions: ["member-questions.updated", "member-questions.inbox-updated"],
   suggestions: ["suggestions.updated"],

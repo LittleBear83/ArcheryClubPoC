@@ -17,6 +17,49 @@ function createClientDouble() {
   };
 }
 
+test("synced RFID retries use an idempotent audit insert sourced from the persisted event", async () => {
+  const queries = [];
+  let loginExists = false;
+  const client = {
+    async query(sql, values = []) {
+      const statement = String(sql).replace(/\s+/g, " ").trim();
+      queries.push({ statement, values });
+      if (statement.includes("SELECT id FROM login_events")) {
+        return { rows: loginExists ? [{ id: 42 }] : [] };
+      }
+      if (statement.includes("INSERT INTO login_events")) loginExists = true;
+      return { rowCount: 1, rows: [] };
+    },
+  };
+  const gateway = createSyncGateway({ pool: client });
+  const event = {
+    client, eventId: "pi-rfid-1", username: "robin", loginMethod: "rfid",
+    loggedInDate: "2026-09-01", loggedInTime: "18:32:00", machineId: "selby-pi-1",
+  };
+
+  await gateway.upsertLoginEventFromSync(event);
+  await gateway.upsertLoginEventFromSync(event);
+
+  assert.equal(queries.filter(({ statement }) => statement.includes("INSERT INTO login_events")).length, 1);
+  const auditQueries = queries.filter(({ statement }) => statement.includes("INSERT INTO audit_events"));
+  assert.equal(auditQueries.length, 2);
+  assert.match(auditQueries[0].statement, /login.logged_in_date, login.logged_in_time, login.user_id, login.sync_event_id/);
+  assert.match(auditQueries[0].statement, /sync_source_machine_id/);
+  assert.match(auditQueries[0].statement, /ON CONFLICT \(sync_event_id\) DO NOTHING/);
+  assert.deepEqual(auditQueries[0].values, ["pi-rfid-1"]);
+  assert.deepEqual(queries.find(({ statement }) => statement.includes("INSERT INTO login_events")).values,
+    ["robin", "rfid", "2026-09-01", "18:32:00", "pi-rfid-1", "selby-pi-1"]);
+});
+
+test("synced non-RFID login does not duplicate existing portal login auditing", async () => {
+  const { client, queries } = createClientDouble();
+  await createSyncGateway({ pool: client }).upsertLoginEventFromSync({
+    client, eventId: "password-1", username: "robin", loginMethod: "password",
+    loggedInDate: "2026-09-01", loggedInTime: "18:32:00", machineId: "selby-pi-1",
+  });
+  assert.equal(queries.some(({ sql }) => sql.includes("INSERT INTO audit_events")), false);
+});
+
 test("only a local Pi node can add a login event to the sync outbox", async () => {
   const cloud = createClientDouble();
   const local = createClientDouble();

@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { setImmediate } from "node:timers";
 import { test } from "node:test";
 import ts from "typescript";
-import { applyPulledSyncResponse } from "./localDatabaseSyncService.js";
+import { applyPulledSyncResponse, REPLICATED_DOMAINS } from "./localDatabaseSyncService.js";
 import { createServerEventBus } from "./serverEventBus.js";
 import { LOCAL_SYNC_EVENT_GROUPS, localSyncBrowserEventNames, publishLocalSyncBrowserEvents } from "./localSyncBrowserEvents.js";
 import { notifyLocalSyncApplied, startLocalSyncBrowserBridge } from "../../infrastructure/persistence/localSyncBrowserBridge.js";
@@ -13,6 +13,11 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 const change = (domain, key = domain) => ({
   domain, recordKey: key, operation: "delete",
   payload: { sync_id: key, role_key: key, username: key, machineSecret: "private-machine-secret" },
+});
+
+test("every replicated domain has a browser invalidation, including committee assignments", () => {
+  for (const domain of REPLICATED_DOMAINS) assert.ok(localSyncBrowserEventNames([domain]).length > 0, domain);
+  assert.ok(localSyncBrowserEventNames(["committee_roles"]).includes("committee.updated"));
 });
 
 test("range presence invalidation includes member identity, role and discipline changes", () => {

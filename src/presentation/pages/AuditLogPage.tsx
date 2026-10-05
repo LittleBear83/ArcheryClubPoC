@@ -94,6 +94,10 @@ function formatAuditAction(event: AuditEventRecord) {
       const activityType = changes.find((change) => change.path === "activityType")?.after;
       const method = changes.find((change) => change.path === "method")?.after;
 
+      if (method === "rfid" && ["login", "rfid_check_in"].includes(String(activityType))) {
+        return "RFID Sign-in";
+      }
+
       if (activityType === "mobile_check_in") {
         return "mobile check-in recorded";
       }
@@ -233,7 +237,8 @@ function getActivitySourceLabel(metadata: EntityChangeAuditMetadata) {
   }
 
   if (method === "rfid") {
-    return "Source: RFID";
+    const machine = getActivityChangeValue(metadata, "sourceMachineId");
+    return typeof machine === "string" && machine ? `Source: RFID · ${machine}` : "Source: RFID";
   }
 
   if (method === "password-mobile") {

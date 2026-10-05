@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { recordSyncedRfidAudit } from "./syncedRfidAudit.js";
 import { processFeedbackCreateCommand, processFeedbackUpdateCommand } from "./feedbackSyncCommand.js";
 import { normalizeRfidTag, rfidTagsEqual } from "../../domain/services/memberPersistenceService.js";
 import { notifyLocalSyncApplied } from "./localSyncBrowserBridge.js";
@@ -1432,11 +1433,7 @@ export function createSyncGateway({ pool }) {
         [eventId],
       );
 
-      if (existing) {
-        return;
-      }
-
-      await client.query(
+      if (!existing) await client.query(
         `
           INSERT INTO login_events (
             username,
@@ -1467,6 +1464,11 @@ export function createSyncGateway({ pool }) {
           machineId,
         ],
       );
+      if (loginMethod === "rfid") {
+        // Use the original event time and stable sync ID. This shares the push
+        // transaction, so a retry can fill a missing audit row without duplicating it.
+        await recordSyncedRfidAudit(client, eventId);
+      }
     },
     async upsertGuestLoginEventFromSync({
       client = pool,

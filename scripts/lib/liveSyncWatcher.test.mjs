@@ -96,6 +96,22 @@ test("fetch sends credentials only in headers and refuses redirects", async (t) 
   assert.equal(request.url.includes(sync.machineId), false);
 });
 
+test("periodic durable sync runs without a browser or any Cloud SSE hints", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const { state, abort, task } = harness(t);
+  await until(() => state.requests.length === 1);
+  assert.equal(state.runs, 0);
+  t.mock.timers.tick(60000);
+  await until(() => state.runs === 1);
+  // The stream sent no data. Rechecking the database must still run again.
+  t.mock.timers.tick(60000);
+  await until(() => state.runs === 2);
+  abort.abort();
+  await task;
+  t.mock.timers.tick(60000);
+  assert.equal(state.runs, 2);
+});
+
 test("v2 watcher uses the publication event stream and requires an initialized string checkpoint", async (t) => {
   const { state } = harness(t, { publicationSync: true });
   await until(() => state.requests.length === 1);

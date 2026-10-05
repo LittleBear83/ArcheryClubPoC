@@ -1548,6 +1548,12 @@ test("lesson cancellation persists, rolls back mixed selections and replicates s
   const lessons = (await cloud.query("SELECT id, sync_id, is_cancelled FROM beginners_course_lessons WHERE course_id = $1 ORDER BY lesson_number", [courseId])).rows;
   assert.deepEqual(lessons.map(({ id, sync_id }) => ({ id, sync_id })), beforeMigration);
   assert.deepEqual(lessons.map((lesson) => lesson.is_cancelled), [0,0,0]);
+  // The migration-012 upgrade assertions above use the historical schema.
+  // Today's snapshot gateway also reads the later replicated domains.
+  const lessonMigrationIndex = postgresMigrations.findIndex((migration) => migration.version === "012_lesson_cancellation");
+  for (const migration of postgresMigrations.slice(lessonMigrationIndex + 1)) {
+    for (const statement of migration.statements) await cloud.query(statement);
+  }
   await write.cancelLessonDates({ courseId, lessonIds: [Number(lessons[0].id)] });
   await assert.rejects(write.cancelLessonDates({ courseId, lessonIds: [Number(lessons[0].id), Number(lessons[1].id)] }));
   assert.equal((await cloud.query("SELECT is_cancelled FROM beginners_course_lessons WHERE id = $1", [lessons[1].id])).rows[0].is_cancelled, 0);

@@ -188,6 +188,7 @@ const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/lost-arrows",
 ]);
 const AUDIT_EXCLUDED_PATH_PREFIXES = [
+  "/api/sync/",
   "/api/outdoor-table/",
   "/api/lost-arrows/",
 ];

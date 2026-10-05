@@ -3,7 +3,7 @@ Description=Run Selby Archery Club local database sync after boot and nightly
 
 [Timer]
 OnBootSec=2min
-OnCalendar=*-*-* 00:01:00
+OnCalendar=*-*-* 00:01:00 Europe/London
 Persistent=true
 Unit=selby-db-sync.service
 

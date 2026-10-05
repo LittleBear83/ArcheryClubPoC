@@ -3241,6 +3241,38 @@ export async function applyPublicationSnapshot({
   }
 }
 
+// Nightly v1 recovery reuses the existing authoritative reconciliation used by
+// v2. Its numeric checkpoint stays in the v1 state; the two feeds never mix.
+export async function applyReconciliationSnapshot({
+  client, deactivatedRfidSuffix, snapshotResponse, syncGateway, onSnapshotApplied,
+}) {
+  if (snapshotResponse?.mode !== "snapshot"
+    || !Number.isSafeInteger(snapshotResponse.checkpoint) || snapshotResponse.checkpoint < 0
+    || !snapshotResponse.snapshot || PUBLICATION_SNAPSHOT_PROPERTIES.some(
+      (property) => !Array.isArray(snapshotResponse.snapshot[property]),
+    )) {
+    throw new Error("Nightly reconciliation requires a complete snapshot and valid v1 checkpoint.");
+  }
+  await client.query("BEGIN");
+  try {
+    await client.query(`SELECT set_config('archery.sync.apply_mode', 'pull', true)`);
+    await reconcilePublicationSnapshot({ client, deactivatedRfidSuffix, snapshot: snapshotResponse.snapshot });
+    await writeSyncAttemptState({ client, syncGateway, values: {
+      currentCheckpoint: snapshotResponse.checkpoint,
+      lastError: null,
+      lastSuccessfulAt: new Date().toISOString(),
+      syncServerVersion: snapshotResponse.serverVersion ?? "sync-v1",
+    } });
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  }
+  if (onSnapshotApplied) {
+    try { await onSnapshotApplied(REPLICATED_DOMAINS); } catch { /* Best-effort invalidation. */ }
+  }
+}
+
 export async function applyPulledPublicationResponse({
   client,
   deactivatedRfidSuffix,

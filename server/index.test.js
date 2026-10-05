@@ -7,6 +7,21 @@ import { test } from "node:test";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+test("generic audit middleware excludes machine sync infrastructure", async () => {
+  const source = await readFile(path.join(__dirname, "index.js"), "utf8");
+  assert.match(source, /AUDIT_EXCLUDED_PATH_PREFIXES = \[\s*"\/api\/sync\/"/);
+});
+
+test("persistent nightly timer invokes full reconciliation with retry", async () => {
+  const timer = await readFile(path.join(__dirname, "../deploy/systemd/selby-db-sync.timer"), "utf8");
+  const service = await readFile(path.join(__dirname, "../deploy/systemd/selby-db-sync.service"), "utf8");
+  assert.match(timer, /OnCalendar=\*-\*-\* 00:01:00/);
+  assert.match(timer, /Persistent=true/);
+  assert.match(timer, /Unit=selby-db-sync.service/);
+  assert.match(service, /ExecStart=\/usr\/bin\/npm run sync:local -- --reconcile/);
+  assert.match(service, /Restart=on-failure/);
+});
+
 test("calendar retains simultaneous course identities and labels taster sessions correctly", async () => {
   const source = await readFile(path.join(__dirname, "index.js"), "utf8");
   const functionSource = source.slice(

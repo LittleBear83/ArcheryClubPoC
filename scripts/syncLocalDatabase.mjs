@@ -3,10 +3,12 @@ import pg from "pg";
 import { serverRuntime } from "../server/config/runtime.js";
 import {
   applyPublicationSnapshot,
+  applyReconciliationSnapshot,
   applyPulledPublicationResponse,
   applyPulledSyncResponse,
   drainPendingOutboxCommands,
   PUBLICATION_FEED_VERSION,
+  PUBLICATION_SYNC_STATE_KEY,
   readPublicationSyncState,
   readSyncStatus,
   writeSyncAttemptState,
@@ -102,9 +104,10 @@ async function main() {
     throw new Error("SYNC_NODE_MODE=local-pi is required to run the local sync client.");
   }
 
+  const isReconcile = process.argv.includes("--reconcile");
   const isInitialSync = process.argv.includes("--initial");
-  const isPublicationSync = process.argv.includes("--v2");
-  const isRebaseline = process.argv.includes("--rebaseline");
+  let isPublicationSync = process.argv.includes("--v2");
+  let isRebaseline = process.argv.includes("--rebaseline");
   const pool = createLocalPool();
   const syncGateway = createSyncGateway({ pool });
   const client = await pool.connect();
@@ -115,17 +118,26 @@ async function main() {
 
     if (!acquired) {
       console.log("A sync is already running; exiting without starting a second pass.");
-      process.exitCode = 0;
+      // A nightly attempt must be retried, not silently marked successful.
+      process.exitCode = isReconcile ? 1 : 0;
       return;
     }
 
+    if (isReconcile) {
+      const storedPublication = await syncGateway.readLocalState(PUBLICATION_SYNC_STATE_KEY);
+      if (storedPublication) {
+        await readPublicationSyncState({ syncGateway }); // Fail closed on corrupt state.
+        isPublicationSync = true;
+      }
+      isRebaseline = isPublicationSync;
+    }
     if (isRebaseline && !isPublicationSync) {
       throw new Error("--rebaseline requires explicit --v2 mode.");
     }
     if (isPublicationSync && isInitialSync) {
       throw new Error("--v2 cannot be combined with --initial; use --v2 --rebaseline.");
     }
-    if (isRebaseline) {
+    if (isRebaseline || isReconcile) {
       await acquireLocalRebaselineMaintenanceGate(client);
       maintenanceGateAcquired = true;
     }
@@ -136,7 +148,7 @@ async function main() {
       ? await readPublicationSyncState({ syncGateway })
       : null;
 
-    if (!isRebaseline) {
+    if (!isRebaseline || isReconcile) {
       await writeSyncAttemptState({
         syncGateway,
         values: {
@@ -148,7 +160,7 @@ async function main() {
     }
 
     const status = await readSyncStatus({ syncGateway });
-    if (isRebaseline) {
+    if (isRebaseline || isReconcile) {
       await drainPendingOutboxCommands({
         batchSize: serverRuntime.sync.pushBatchSize,
         pushEvents: (events) => requestSyncJson("/api/sync/v1/push", { events }),
@@ -156,7 +168,7 @@ async function main() {
       });
     }
 
-    const pendingEvents = isRebaseline ? [] : await syncGateway.listPendingOutboxEvents({
+    const pendingEvents = isRebaseline || isReconcile ? [] : await syncGateway.listPendingOutboxEvents({
       limit: serverRuntime.sync.pushBatchSize,
     });
 
@@ -192,8 +204,8 @@ async function main() {
           limit: serverRuntime.sync.pullBatchSize,
         })
       : await requestSyncJson("/api/sync/v1/pull", {
-          checkpoint: isInitialSync ? null : status.currentCheckpoint || null,
-          initialSync: isInitialSync || status.currentCheckpoint === 0,
+          checkpoint: isInitialSync || isReconcile ? null : status.currentCheckpoint || null,
+          initialSync: isInitialSync || isReconcile || status.currentCheckpoint === 0,
           limit: serverRuntime.sync.pullBatchSize,
         });
 
@@ -215,6 +227,14 @@ async function main() {
           syncGateway,
           onSnapshotApplied: (domains) => notifyLocalSyncApplied(applyClient, domains),
         });
+      } else if (isReconcile) {
+        await applyReconciliationSnapshot({
+          client: applyClient,
+          deactivatedRfidSuffix: applyOptions.deactivatedRfidSuffix,
+          snapshotResponse: pullResponse,
+          syncGateway,
+          onSnapshotApplied: (domains) => notifyLocalSyncApplied(applyClient, domains),
+        });
       } else if (isPublicationSync) {
         await applyPulledPublicationResponse(applyOptions);
       } else {
@@ -225,6 +245,18 @@ async function main() {
       }
     } finally {
       applyClient.release();
+    }
+
+    if (isReconcile) {
+      // Legacy-history reconciliation can discover additional Pi-only rows.
+      await drainPendingOutboxCommands({
+        batchSize: serverRuntime.sync.pushBatchSize,
+        pushEvents: (events) => requestSyncJson("/api/sync/v1/push", { events }),
+        syncGateway,
+      });
+      await writeSyncAttemptState({ syncGateway, values: {
+        lastReconciledAt: new Date().toISOString(), lastSuccessfulAt: new Date().toISOString(), lastError: null,
+      } });
     }
 
     const nextStatus = await readSyncStatus({ syncGateway });
@@ -247,7 +279,7 @@ async function main() {
       ),
     );
   } catch (error) {
-    if (!isRebaseline) {
+    if (!isRebaseline || isReconcile) {
       await writeSyncAttemptState({
         syncGateway,
         values: {

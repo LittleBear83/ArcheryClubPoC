@@ -177,6 +177,7 @@ await import(
 await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/syncGateway.test.js"))
 );
+await import("../server/infrastructure/persistence/auditLogGateway.test.js");
 await import(
   pathToFileURL(path.join(root, "server/infrastructure/persistence/syncPublicationGateway.test.js"))
 );

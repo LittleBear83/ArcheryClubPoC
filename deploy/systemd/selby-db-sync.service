@@ -2,6 +2,7 @@
 Description=Selby Archery Club local database sync
 After=network-online.target postgresql.service
 Wants=network-online.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
@@ -9,7 +10,10 @@ User=archeryapp
 Group=archeryapp
 WorkingDirectory=/opt/selby-portal
 EnvironmentFile=/etc/selby-portal/sync.env
-ExecStart=/usr/bin/npm run sync:local
+ExecStart=/usr/bin/npm run sync:local -- --reconcile
+Restart=on-failure
+RestartSec=5min
+TimeoutStartSec=15min
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

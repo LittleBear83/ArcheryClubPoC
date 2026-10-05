@@ -1,4 +1,5 @@
 import { createTournamentWorkflowLock } from "./tournamentWorkflowLock.js";
+import { tournamentRegistrationPolicy } from "../../domain/services/tournamentRegistrationPolicy.js";
 import { registerTournamentPairingRoutes } from "./registerTournamentPairingRoutes.js";
 import { ensureRandomisedRoundDraw } from "../../domain/services/tournamentPairings.js";
 import {
@@ -85,6 +86,12 @@ export function registerTournamentRoutes({
       scope,
     });
   };
+
+  const readRegistrationPolicy = async (tournament) => tournamentRegistrationPolicy({
+    tournament, isLocalPiNode, today: toUtcDateString(new Date()),
+    scores: await tournamentGateway.listTournamentScoresByTournamentId(tournament.id),
+    matches: await tournamentGateway.listTournamentMatchesByTournamentId(tournament.id),
+  });
 
   const buildTemplateKey = (label) =>
     String(label ?? "")
@@ -1206,6 +1213,7 @@ export function registerTournamentRoutes({
 
     res.json({
       success: true,
+      additionPolicy: await readRegistrationPolicy(tournament),
       members: candidates
         .filter(Boolean)
         .sort((left, right) => left.fullName.localeCompare(right.fullName)),
@@ -1648,10 +1656,11 @@ export function registerTournamentRoutes({
     }
 
     const today = toUtcDateString(new Date());
+    const canManage = actorHasPermission(actor, PERMISSIONS.MANAGE_TOURNAMENTS);
 
     if (
-      today < tournament.registration_start_date ||
-      today > tournament.registration_end_date
+      !canManage && (today < tournament.registration_start_date ||
+      today > tournament.registration_end_date)
     ) {
       res.status(400).json({
         success: false,
@@ -1662,7 +1671,7 @@ export function registerTournamentRoutes({
 
     const requestedUsername = String(req.body?.memberUsername ?? "").trim();
     const isManagerRegistration =
-      Boolean(requestedUsername) && requestedUsername !== actor.username;
+      Boolean(requestedUsername) && requestedUsername.toLowerCase() !== actor.username.toLowerCase();
 
     if (
       isManagerRegistration &&
@@ -1675,7 +1684,10 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const registrationUsername = requestedUsername || actor.username;
+    const normalizedUsername = (requestedUsername || actor.username).toLowerCase();
+    const member = (await memberDirectoryGateway.listAllUsers()).find((user) =>
+      String(user.username).trim().toLowerCase() === normalizedUsername);
+    const registrationUsername = member?.username ?? (requestedUsername || actor.username);
     const registrationContext = await buildRegistrationContext(
       tournament,
       registrationUsername,
@@ -1686,6 +1698,22 @@ export function registerTournamentRoutes({
         success: false,
         message: "Member not found.",
       });
+      return;
+    }
+
+    const existingRegistrations = await tournamentGateway.listTournamentRegistrationsByTournamentId(tournament.id);
+    if (existingRegistrations.some((entry) =>
+      String(entry.member_username ?? entry.username).toLowerCase() === registrationUsername.toLowerCase())) {
+      res.status(409).json({ success: false, message: "That member is already registered for this tournament." });
+      return;
+    }
+    const additionPolicy = await readRegistrationPolicy(tournament);
+    if (!additionPolicy.allowed) {
+      res.status(409).json({ success: false, message: additionPolicy.reason });
+      return;
+    }
+    if (additionPolicy.requiresRedraw && (!canManage || req.body?.confirmRedraw !== true)) {
+      res.status(409).json({ success: false, message: "Adding this archer requires rebuilding the unplayed draw. A tournament manager must confirm this change.", requiresRedraw: true });
       return;
     }
 
@@ -1771,13 +1799,26 @@ export function registerTournamentRoutes({
       }
     }
 
+    let builtTournament;
     try {
       const [registeredAtDate, registeredAtTime] = getUtcTimestampParts();
-      await tournamentGateway.registerForTournament({
+      builtTournament = await tournamentGateway.withRegistrationTransaction(async () => {
+        await tournamentGateway.registerForTournament({
         bowCode: resolvedBowCode || null,
         timestampParts: [registeredAtDate, registeredAtTime],
         tournamentId: tournament.id,
         username: registrationUsername,
+        resetRoundPlanJson: additionPolicy.requiresRedraw ? buildTournamentRoundPlanJson({
+          ...parseTournamentRoundPlan(tournament.round_schedule_json),
+          draw: { randomiseEveryRound: parseTournamentRoundPlan(tournament.round_schedule_json).draw?.randomiseEveryRound === true },
+        }) : null,
+        });
+        const updatedTournament = await tournamentGateway.findTournamentById(tournament.id);
+        const snapshot = await loadTournamentSnapshot(updatedTournament, actor.username);
+        const randomizedSnapshot = await maybeFreezeRandomizedDraw(
+          updatedTournament, snapshot.registrations, snapshot.matches, actor.username,
+        );
+        return (randomizedSnapshot ?? await syncTournamentMatches(updatedTournament, actor.username)).builtTournament;
       });
 
       if (auditChangeLogger) {
@@ -1788,6 +1829,7 @@ export function registerTournamentRoutes({
             bowCode: resolvedBowCode || null,
             tournamentId: tournament.id,
             username: registrationUsername,
+            drawRegenerated: additionPolicy.requiresRedraw,
           },
           before: null,
           changedAtDate: registeredAtDate,
@@ -1803,6 +1845,7 @@ export function registerTournamentRoutes({
       }
     } catch (error) {
       if (
+        error?.code === "23505" ||
         error?.message?.includes(
           "UNIQUE constraint failed: tournament_registrations.tournament_id, tournament_registrations.member_username",
         )
@@ -1823,10 +1866,6 @@ export function registerTournamentRoutes({
       return;
     }
 
-    const { builtTournament } = await syncTournamentMatches(
-      tournament,
-      actor.username,
-    );
     broadcastTournamentsUpdated("tournaments.register");
 
     res.json({

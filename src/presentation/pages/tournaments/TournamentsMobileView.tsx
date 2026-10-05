@@ -345,10 +345,7 @@ export function TournamentsMobileView({
                   type="button"
                   className="tournament-secondary-button"
                   onClick={onOpenCaptainRegistrationModal}
-                  disabled={
-                    isSaving ||
-                    !selectedTournament.registrationWindow.isOpen
-                  }
+                  disabled={isSaving}
                   variant="secondary"
                 >
                   Add member

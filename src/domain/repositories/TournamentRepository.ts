@@ -15,7 +15,7 @@ export abstract class TournamentRepository {
   abstract registerForTournament(
     actorUsername: string,
     tournamentId: string | number,
-    payload?: { bowCode?: string; memberUsername?: string },
+    payload?: { bowCode?: string; memberUsername?: string; confirmRedraw?: boolean },
   ): Promise<unknown>;
 
   abstract withdrawFromTournament(

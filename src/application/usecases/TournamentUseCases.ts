@@ -138,7 +138,7 @@ export class RegisterForTournamentUseCase {
     this.tournamentRepository = tournamentRepository;
   }
 
-  async execute({ actorUsername, bowCode, memberUsername, tournamentId }) {
+  async execute({ actorUsername, bowCode, memberUsername, tournamentId, confirmRedraw = false }) {
     if (!actorUsername?.trim()) {
       throw new Error("An authenticated member is required.");
     }
@@ -150,6 +150,7 @@ export class RegisterForTournamentUseCase {
     return this.tournamentRepository.registerForTournament(actorUsername, tournamentId, {
       bowCode,
       memberUsername,
+      confirmRedraw,
     });
   }
 }

@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 function normalizeCountLikeResult(result) {
   return {
     changes: Number(result?.changes ?? result?.rowCount ?? 0),
@@ -268,8 +270,25 @@ function createSqliteTournamentGateway({
         return findTournamentTemplateByKey.get(templateValues.templateKey);
       })();
     },
-    async registerForTournament({ bowCode = null, tournamentId, username, timestampParts }) {
-      insertTournamentRegistration.run(tournamentId, username, bowCode, ...timestampParts);
+    async withRegistrationTransaction(work) {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const result = await work();
+        db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    },
+    async registerForTournament({ bowCode = null, tournamentId, username, timestampParts, resetRoundPlanJson = null }) {
+      const insert = () => insertTournamentRegistration.run(tournamentId, username, bowCode, ...timestampParts);
+      if (resetRoundPlanJson === null) { insert(); return; }
+      db.transaction(() => {
+        insert();
+        db.prepare("UPDATE tournaments SET round_schedule_json = ? WHERE id = ?").run(resetRoundPlanJson, tournamentId);
+        deleteTournamentMatchesByTournamentId.run(tournamentId);
+      })();
     },
     async submitTournamentScore({
       tournamentId,
@@ -452,7 +471,38 @@ function createSqliteTournamentGateway({
 }
 
 function createPostgresTournamentGateway({ pool }) {
+  // Keep existing gateway methods on one connection during registration and
+  // bracket reconstruction. Their inner transaction boundaries belong to this
+  // outer transaction; request-local storage prevents cross-request leakage.
+  const connectionPool = pool;
+  const registrationTransaction = new AsyncLocalStorage();
+  pool = {
+    query: (...args) => (registrationTransaction.getStore() ?? connectionPool).query(...args),
+    connect: () => registrationTransaction.getStore() ?? connectionPool.connect(),
+  };
   return {
+    async withRegistrationTransaction(work) {
+      const client = await connectionPool.connect();
+      let pending = Promise.resolve();
+      const scopedClient = {
+        query(sql, ...args) {
+          const result = pending.then(() => /^(BEGIN|COMMIT|ROLLBACK)$/i.test(String(sql).trim())
+            ? { rows: [], rowCount: 0 } : client.query(sql, ...args));
+          pending = result.catch(() => {});
+          return result;
+        },
+        release() {},
+      };
+      try {
+        await client.query("BEGIN");
+        const result = await registrationTransaction.run(scopedClient, work);
+        await client.query("COMMIT");
+        return result;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally { client.release(); }
+    },
     async acquireWorkflowLock() {
       const client = await pool.connect();
       try {
@@ -998,8 +1048,11 @@ function createPostgresTournamentGateway({ pool }) {
         client.release();
       }
     },
-    async registerForTournament({ bowCode = null, tournamentId, username, timestampParts }) {
-      await pool.query(
+    async registerForTournament({ bowCode = null, tournamentId, username, timestampParts, resetRoundPlanJson = null }) {
+      const client = await pool.connect();
+      try {
+      await client.query("BEGIN");
+      await client.query(
         `
           INSERT INTO tournament_registrations (
             tournament_id,
@@ -1012,6 +1065,15 @@ function createPostgresTournamentGateway({ pool }) {
         `,
         [tournamentId, username, bowCode, ...timestampParts],
       );
+      if (resetRoundPlanJson !== null) {
+        await client.query("UPDATE tournaments SET round_schedule_json = $1 WHERE id = $2", [resetRoundPlanJson, tournamentId]);
+        await client.query("DELETE FROM tournament_matches WHERE tournament_id = $1", [tournamentId]);
+      }
+      await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally { client.release(); }
     },
     async submitTournamentScore({
       tournamentId,

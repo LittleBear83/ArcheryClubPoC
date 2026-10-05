@@ -15,7 +15,7 @@ type TournamentDataSource = {
   registerForTournament(
     actorUsername: string,
     tournamentId: string | number,
-    payload?: { bowCode?: string; memberUsername?: string },
+    payload?: { bowCode?: string; memberUsername?: string; confirmRedraw?: boolean },
   ): Promise<unknown>;
   withdrawFromTournament(
     actorUsername: string,

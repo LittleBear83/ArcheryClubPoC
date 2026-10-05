@@ -1003,6 +1003,7 @@ export function TournamentsPage({
   const [matchCompetitorBRetired, setMatchCompetitorBRetired] = useState(false);
   const [matchDisputeReason, setMatchDisputeReason] = useState("");
   const [selectedRegistrationBowCode, setSelectedRegistrationBowCode] = useState("");
+  const [additionPolicy, setAdditionPolicy] = useState<{ allowed: boolean; reason: string | null; requiresRedraw: boolean } | null>(null);
   const [registrationCandidates, setRegistrationCandidates] = useState<
     TournamentRegistrationCandidate[]
   >([]);
@@ -1267,7 +1268,8 @@ export function TournamentsPage({
     [selectedTournament?.registrations],
   );
   useEffect(() => {
-    if (!canManageTournaments || !selectedTournament?.registrationWindow?.isOpen) {
+    setAdditionPolicy(null);
+    if (!canManageTournaments || !selectedTournament) {
       setRegistrationCandidates([]);
       setSelectedCaptainRegistrationUsername("");
       setSelectedCaptainRegistrationBowCode("");
@@ -1278,7 +1280,7 @@ export function TournamentsPage({
     let isActive = true;
     setIsLoadingRegistrationCandidates(true);
 
-    void fetchApi<{ success: true; members?: TournamentRegistrationCandidate[] }>(
+    void fetchApi<{ success: true; members?: TournamentRegistrationCandidate[]; additionPolicy: { allowed: boolean; reason: string | null; requiresRedraw: boolean } }>(
       `/api/tournaments/${selectedTournament.id}/registration-candidates`,
       {
         headers: buildActorHeaders(actorUsername),
@@ -1291,6 +1293,7 @@ export function TournamentsPage({
         }
 
         const nextCandidates = result.members ?? [];
+        setAdditionPolicy(result.additionPolicy);
         setRegistrationCandidates(nextCandidates);
         setSelectedCaptainRegistrationUsername((current) =>
           nextCandidates.some((candidate) => candidate.username === current)
@@ -1304,6 +1307,7 @@ export function TournamentsPage({
         }
 
         setRegistrationCandidates([]);
+        setAdditionPolicy({ allowed: false, reason: "Unable to check whether archers can be added. Close this dialog and try again.", requiresRedraw: false });
         setSelectedCaptainRegistrationUsername("");
         setSelectedCaptainRegistrationBowCode("");
         setError(loadError.message);
@@ -1323,6 +1327,7 @@ export function TournamentsPage({
     selectedTournament?.id,
     selectedTournament?.registrationCount,
     selectedTournament?.registrationWindow?.isOpen,
+    isCaptainRegistrationModalOpen,
   ]);
   const selectedEditTemplate = useMemo(
     () => getTemplateForKey(tournamentTemplates, form.templateKey),
@@ -1871,6 +1876,12 @@ export function TournamentsPage({
       return false;
     }
 
+    if (!additionPolicy?.allowed) {
+      setError(additionPolicy?.reason ?? "Wait for tournament safety checks to finish.");
+      return false;
+    }
+    if (additionPolicy.requiresRedraw && !window.confirm("Adding this archer will rebuild the unplayed draw and may change pairings and byes. Continue?")) return false;
+
     if (
       captainRegistrationBowOptions.length > 1 &&
       !selectedCaptainRegistrationBowCode
@@ -1893,6 +1904,7 @@ export function TournamentsPage({
               selectedCaptainRegistrationCandidate.suggestedBowCode ||
               undefined,
         memberUsername: selectedCaptainRegistrationCandidate.username,
+        confirmRedraw: additionPolicy.requiresRedraw,
         tournamentId: selectedTournament.id,
       });
 
@@ -2778,10 +2790,7 @@ export function TournamentsPage({
                   className="tournament-secondary-button tournament-action-button"
                   onClick={openCaptainRegistrationModal}
                   disabled={
-                    isSaving ||
-                    !selectedTournament.registrationWindow.isOpen ||
-                    isLoadingRegistrationCandidates ||
-                    registrationCandidates.length === 0
+                    isSaving
                   }
                   variant="secondary"
                 >
@@ -4153,14 +4162,15 @@ export function TournamentsPage({
           </p>
           {error ? <p className="profile-error">{error}</p> : null}
           {message ? <p className="profile-success">{message}</p> : null}
-          {!selectedTournament?.registrationWindow.isOpen ? (
-            <p>Registration must be open before you can add competitors.</p>
-          ) : isLoadingRegistrationCandidates ? (
+          {isLoadingRegistrationCandidates || !additionPolicy ? (
             <p>Loading members...</p>
+          ) : !additionPolicy.allowed ? (
+            <p role="status">{additionPolicy.reason}</p>
           ) : registrationCandidates.length === 0 ? (
             <p>All available members are already registered.</p>
           ) : (
             <div className="login-form">
+              {additionPolicy.requiresRedraw ? <p>The unplayed draw must be rebuilt when an archer is added. You will be asked to confirm; pairings and byes may change.</p> : null}
               <MemberAutocomplete
                 label="Member"
                 options={registrationCandidateOptions}
@@ -4213,7 +4223,7 @@ export function TournamentsPage({
                       !selectedCaptainRegistrationBowCode)
                   }
                 >
-                  {isSaving ? "Saving..." : "Done"}
+                  {isSaving ? "Saving..." : "Add member"}
                 </Button>
                 <Button
                   type="button"
@@ -4233,6 +4243,7 @@ export function TournamentsPage({
               </div>
             </div>
           )}
+          <Button type="button" variant="secondary" onClick={closeCaptainRegistrationModal} disabled={isSaving}>Cancel</Button>
         </div>
       </Modal>
       <Modal

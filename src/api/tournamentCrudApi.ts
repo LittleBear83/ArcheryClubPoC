@@ -66,7 +66,7 @@ export class TournamentCrudApi {
   async registerForTournament(
     actorUsername: string,
     tournamentId: string | number,
-    payload: { bowCode?: string; memberUsername?: string } = {},
+    payload: { bowCode?: string; memberUsername?: string; confirmRedraw?: boolean } = {},
   ) {
     return fetchApi(`/api/tournaments/${tournamentId}/register`, {
       method: "POST",

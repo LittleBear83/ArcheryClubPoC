@@ -80,6 +80,9 @@ export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
       (actorUsername) => ["loan-bow-options", actorUsername],
       () => ["loan-bow-profile"],
       (actorUsername) => ["committee-roles", actorUsername],
+      () => ["attendance-report"],
+      () => ["member-range-attendance"],
+      () => ["member-journey-report"],
     ],
   },
   {
@@ -107,7 +110,12 @@ export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
   },
   {
     event: "range-members.updated",
-    queryKeys: [() => ["range-members"], () => ["reporting-dashboard"]],
+    queryKeys: [
+      () => ["range-members"],
+      () => ["reporting-dashboard"],
+      () => ["attendance-report"],
+      () => ["member-range-attendance"],
+    ],
   },
   {
     event: "lost-found.updated",
@@ -225,6 +233,9 @@ export function useServerEvents({
             ["loan-bow-options", actorUsername],
             ["loan-bow-profile"],
             ["committee-roles", actorUsername],
+            ["attendance-report"],
+            ["member-range-attendance"],
+            ["member-journey-report"],
           ]),
       },
       {
@@ -255,7 +266,9 @@ export function useServerEvents({
       },
       {
         event: "range-members.updated",
-        invalidate: () => invalidateQueries([["range-members"], ["reporting-dashboard"]]),
+        invalidate: () => invalidateQueries([
+          ["range-members"], ["reporting-dashboard"], ["attendance-report"], ["member-range-attendance"],
+        ]),
       },
       {
         event: "lost-found.updated",

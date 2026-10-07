@@ -25,9 +25,9 @@ const JOINING_ROUTE_OPTIONS: JoiningRouteOption[] = [
   },
   {
     value: "associated-member",
-    label: "Associated Member",
+    label: "Associate Member",
     summary:
-      "Creates a member who joins outside the course journey and is marked as an affiliate member.",
+      "Creates an associate member outside the course journey and marks the affiliate member field as Yes.",
   },
 ];
 
@@ -80,6 +80,7 @@ export function applyJoiningRoutePreset<T extends Record<string, unknown>>(
       return {
         ...baseProfile,
         affiliateMember: true,
+        membershipStatus: "associate-member",
       };
     case "direct-full-member":
     default:

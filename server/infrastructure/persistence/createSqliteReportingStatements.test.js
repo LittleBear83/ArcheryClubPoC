@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import Database from "better-sqlite3";
+import { createActivityReportingGateway } from "./activityReportingGateway.js";
 import { createSqliteReportingStatements } from "./createSqliteReportingStatements.js";
 
 function seedBaseSchema(db) {
@@ -143,14 +144,18 @@ test("recent range members only include RFID and mobile app check-ins", () => {
   }
 });
 
-test("member range attendance includes current members with no recorded visits", () => {
+test("member range attendance includes associate members and current members with no recorded visits", async () => {
   const db = new Database(":memory:");
   try {
     seedBaseSchema(db);
     insertMember(db, 1, "present");
     insertMember(db, 2, "no-check-in");
     insertMember(db, 3, "former");
+    insertMember(db, 4, "associate");
+    insertMember(db, 5, "guest");
     db.prepare("UPDATE users SET active_member = 0 WHERE username = 'former'").run();
+    db.prepare("UPDATE users SET membership_status = 'associate-member' WHERE username = 'associate'").run();
+    db.prepare("UPDATE users SET membership_status = 'guest' WHERE username = 'guest'").run();
     db.prepare("UPDATE users SET email_address = ? WHERE username = ?")
       .run("member@example.org", "no-check-in");
     const insertLogin = createInsertLogin(db);
@@ -160,10 +165,37 @@ test("member range attendance includes current members with no recorded visits",
     insertLogin.run(2, "no-check-in", "password-mobile", "2026-08-03", "09:00:00");
     insertLogin.run(2, "no-check-in", "rfid", "2026-05-01", "09:00:00");
     insertLogin.run(2, "no-check-in", "mobile-app", "2026-06-01", "09:00:00");
+    insertLogin.run(4, "associate", "rfid", "2026-08-04", "09:00:00");
 
-    const rows = createSqliteReportingStatements(db)
-      .listMemberRangeAttendance.all("2026-08-01", "2026-08-31");
-    assert.equal(rows.length, 2);
+    const statements = createSqliteReportingStatements(db);
+    assert.deepEqual(
+      statements.listCurrentMemberTypeCounts.all().sort((left, right) =>
+        left.membership_status.localeCompare(right.membership_status)),
+      [
+        { membership_status: "associate-member", count: 1 },
+        { membership_status: "guest", count: 1 },
+        { membership_status: "member", count: 2 },
+      ],
+    );
+    assert.deepEqual(
+      (await createActivityReportingGateway({ databaseEngine: "sqlite", ...statements })
+        .listCurrentMemberTypeCounts()).sort((left, right) =>
+        left.membership_status.localeCompare(right.membership_status)),
+      [
+        { membership_status: "associate-member", count: 1 },
+        { membership_status: "guest", count: 1 },
+        { membership_status: "member", count: 2 },
+      ],
+    );
+    const rows = statements.listMemberRangeAttendance.all("2026-08-01", "2026-08-31");
+    assert.equal(rows.length, 3);
+    assert.equal(rows.find((row) => row.username === "associate")?.visit_days_in_range, 1);
+    assert.equal(rows.find((row) => row.username === "associate")?.user_type, "general");
+    assert.equal(rows.some((row) => row.username === "guest"), false);
+    const reportingRow = statements.listReportingMemberLogins.all("2026-08-04T00:00:00", "2026-08-05T00:00:00")
+      .find((row) => row.username === "associate");
+    assert.equal(reportingRow?.membership_status, "associate-member");
+    assert.equal(reportingRow?.user_type, "general");
     assert.equal(rows.find((row) => row.username === "present")?.visit_days_in_range, 1);
     assert.equal(rows.find((row) => row.username === "present")?.total_visit_days, 1);
     assert.equal(rows.find((row) => row.username === "no-check-in")?.visit_days_in_range, 0);

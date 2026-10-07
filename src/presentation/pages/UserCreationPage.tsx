@@ -100,7 +100,7 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
     [optionsQuery.data?.disciplines],
   );
   const membershipStatusOptions = useMemo(
-    () => optionsQuery.data?.membershipStatuses ?? ["member", "non-member", "guest"],
+    () => optionsQuery.data?.membershipStatuses ?? ["member", "associate-member", "non-member", "guest"],
     [optionsQuery.data?.membershipStatuses],
   );
   const programmeTypeOptions = useMemo(
@@ -237,7 +237,7 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
 
   return (
     <div className="profile-page">
-      <p>Create a new account for a member, attendee, associated member, or guest.</p>
+      <p>Create a new account for a member, attendee, associate member, or guest.</p>
       <StatusMessagePanel
         error={error}
         loading={isLoading && roleOptions.length === 0}

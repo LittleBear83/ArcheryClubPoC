@@ -12,6 +12,7 @@ import {
   getTodayString,
   saveCsv,
   summarizeAttendanceBreakdown,
+  summarizeCurrentMemberTypes,
 } from "./reportingUtils";
 
 export function useReportingPageState(currentUserProfile: UserProfile | null) {
@@ -84,10 +85,14 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
     [queryResult.data],
   );
   const attendanceBreakdown = useMemo(
-    () =>
-      queryResult.data
-        ? summarizeAttendanceBreakdown(queryResult.data.rows)
-        : { membershipStatuses: [], programmeTypes: [] },
+    () => {
+      if (!queryResult.data) return { membershipStatuses: [], programmeTypes: [] };
+      const eventBreakdown = summarizeAttendanceBreakdown(queryResult.data.rows);
+      return {
+        membershipStatuses: summarizeCurrentMemberTypes(queryResult.data.memberTypeCounts),
+        programmeTypes: eventBreakdown.programmeTypes,
+      };
+    },
     [queryResult.data],
   );
 

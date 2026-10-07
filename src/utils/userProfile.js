@@ -107,6 +107,10 @@ export function getMembershipDisplaySuffix(value) {
     return " - (Non-member)";
   }
 
+  if (membershipStatus === "associate-member") {
+    return " - (Associate Member)";
+  }
+
   if (membershipStatus === "guest") {
     return " - (Guest)";
   }

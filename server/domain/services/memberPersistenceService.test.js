@@ -243,6 +243,16 @@ function rfidPersistenceHarness() {
   return { service, saved, input };
 }
 
+test("associate member type persists without changing the portal role", async () => {
+  const { service, saved, input } = rfidPersistenceHarness();
+  input.userType = "general";
+  input.membershipStatus = "associate-member";
+  input.programmeType = "none";
+  assert.equal((await service.saveMemberProfile(input)).success, true);
+  assert.equal(saved[0].userPayload.membershipStatus, "associate-member");
+  assert.equal(saved[0].userType, "general");
+});
+
 for (const [name, rfidTag, context, existing, expected] of [
   ['unchanged', ' old ', 'local-pi', true, undefined],
   ['changed Pi', ' NEW ', 'local-pi', true, 'NEW'],

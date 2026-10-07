@@ -1,4 +1,5 @@
 import { normalizeMembershipClassification } from "../../../shared/membershipClassificationRules.js";
+import { MEMBERSHIP_STATUS_OPTIONS } from "../constants.js";
 
 export const normalizeRfidTag = (value) => typeof value === "string" ? value.trim() || null : null;
 export const rfidTagsEqual = (left, right) => normalizeRfidTag(left)?.toLowerCase() === normalizeRfidTag(right)?.toLowerCase();
@@ -57,7 +58,7 @@ export function createMemberPersistenceService({
   buildMemberUserProfile,
   deactivatedRfidSuffix,
   hashPassword,
-  membershipStatusOptions = ["member", "non-member", "guest"],
+  membershipStatusOptions = MEMBERSHIP_STATUS_OPTIONS,
   memberAuthGateway,
   memberProfileGateway,
   programmeTypeOptions = ["none", "beginners", "have-a-go", "taster-session"],

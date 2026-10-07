@@ -17,6 +17,7 @@ import { migration as feedbackSyncMigration } from "./015_feedback_sync.js";
 import { migration as equipmentExpectedReturnMigration } from "./016_equipment_expected_return.js";
 import { migration as indoorTableMigration } from "./017_indoor_table.js";
 import { migration as syncedRfidAuditMigration } from "./018_synced_rfid_audit.js";
+import { migration as loginMethodReportingIndexMigration } from "./019_login_method_reporting_index.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -36,4 +37,5 @@ export const postgresMigrations = [
   equipmentExpectedReturnMigration,
   indoorTableMigration,
   syncedRfidAuditMigration,
+  loginMethodReportingIndexMigration,
 ];

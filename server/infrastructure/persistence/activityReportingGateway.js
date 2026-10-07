@@ -115,6 +115,7 @@ function createSqliteActivityReportingGateway({
   listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
+  listCurrentMemberTypeCounts,
   listMemberRangeAttendance,
   memberLoginsByDateForUserInRange,
   memberLoginsByDateInRange,
@@ -174,6 +175,12 @@ function createSqliteActivityReportingGateway({
       return normalizeReportingMemberRows(
         listReportingMemberLogins.all(startIso, endIsoExclusive),
       );
+    },
+    async listCurrentMemberTypeCounts() {
+      return listCurrentMemberTypeCounts.all().map((row) => ({
+        membership_status: row.membership_status,
+        count: Number(row.count),
+      }));
     },
     async listMemberRangeAttendance(startDate, endDate) {
       return listMemberRangeAttendance.all(startDate, endDate).map((row) => ({
@@ -454,6 +461,18 @@ function createPostgresActivityReportingGateway({ pool }) {
       );
       return normalizeReportingMemberRows(result.rows);
     },
+    async listCurrentMemberTypeCounts() {
+      const result = await pool.query(
+        `SELECT membership_status, COUNT(*) AS count
+         FROM users
+         WHERE active_member = 1
+         GROUP BY membership_status`,
+      );
+      return result.rows.map((row) => ({
+        membership_status: row.membership_status,
+        count: Number(row.count),
+      }));
+    },
     async listMemberRangeAttendance(startDate, endDate) {
       const result = await pool.query(
         `SELECT users.username, users.first_name, users.surname, users.email_address,
@@ -471,7 +490,7 @@ function createPostgresActivityReportingGateway({ pool }) {
          LEFT JOIN login_events ON login_events.username = users.username
            AND login_events.login_method IN ('rfid', 'mobile-app')
          WHERE users.active_member = 1
-           AND users.membership_status = 'member'
+           AND users.membership_status IN ('member', 'associate-member')
            AND COALESCE(users.programme_type, 'none') = 'none'
          GROUP BY users.id, users.username, users.first_name, users.surname,
                   users.email_address, users.membership_status, user_types.user_type

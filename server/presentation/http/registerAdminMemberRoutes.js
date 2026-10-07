@@ -1,3 +1,5 @@
+import { MEMBERSHIP_STATUS_OPTIONS } from "../../domain/constants.js";
+
 export function registerAdminMemberRoutes({
   syncNodeMode = "cloud-server",
   actorHasPermission,
@@ -36,6 +38,7 @@ export function registerAdminMemberRoutes({
 }) {
   const MEMBER_UPDATE_PERMISSION_KEYS = [
     PERMISSIONS.MANAGE_MEMBERS,
+    PERMISSIONS.VIEW_REPORTS,
     PERMISSIONS.SIGN_OFF_DISTANCES,
     PERMISSIONS.MANAGE_COMMITTEE_ROLES,
     "manage_loan_bows",
@@ -849,7 +852,7 @@ export function registerAdminMemberRoutes({
         userType: user.user_type,
       })),
       userTypes: listAssignableRoleKeys(),
-      membershipStatuses: ["member", "non-member", "guest"],
+      membershipStatuses: MEMBERSHIP_STATUS_OPTIONS,
       programmeTypes: ["none", "beginners", "have-a-go", "taster-session"],
       disciplines: ALLOWED_DISCIPLINES,
     });
@@ -1672,7 +1675,7 @@ export function registerAdminMemberRoutes({
       goldenRecords,
       userProfile: buildMemberUserProfile(user, disciplines),
       userTypes: listAssignableRoleKeys(),
-      membershipStatuses: ["member", "non-member", "guest"],
+      membershipStatuses: MEMBERSHIP_STATUS_OPTIONS,
       programmeTypes: ["none", "beginners", "have-a-go", "taster-session"],
       disciplines: ALLOWED_DISCIPLINES,
     });

@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 const root = process.cwd();
+await import("../server/domain/services/loginMethodReport.test.js");
 await import("../server/presentation/http/tournamentTemplateCapability.test.js");
 await import("../server/presentation/http/registerTournamentRoutes.templateUpdate.test.js");
 await import("../server/infrastructure/persistence/tournamentTemplateUpdate.test.js");
@@ -19,6 +20,14 @@ await import("../server/domain/services/runBeginnerConversion.test.js");
 await import("../server/infrastructure/persistence/beginnerConversionTransaction.test.js");
 const outDir = path.join(root, ".test-dist");
 const files = [
+  "src/api/reportingDashboardApi.ts",
+  "src/theme/themes.ts",
+  "src/theme/ThemeContext.ts",
+  "src/theme/useTheme.ts",
+  "src/presentation/pages/reporting/dashboard/DashboardCard.tsx",
+  "src/presentation/pages/reporting/dashboard/DashboardPeriodFilter.tsx",
+  "src/presentation/pages/reporting/dashboard/LoginMethodChartCard.tsx",
+  "src/presentation/pages/reporting/dashboard/reportingDashboard.test.tsx",
   "src/presentation/pages/roles/rolePermissionsUtils.ts",
   "src/presentation/pages/roles/rolePermissionsUtils.test.ts",
   "src/api/client.ts",
@@ -61,7 +70,7 @@ await rm(outDir, { force: true, recursive: true });
 
 for (const file of files) {
   const inputPath = path.join(root, file);
-  const outputPath = path.join(outDir, file).replace(/\.ts$/, ".js");
+  const outputPath = path.join(outDir, file).replace(/\.tsx?$/, ".js");
   const source = ts.sys.readFile(inputPath);
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
@@ -82,6 +91,7 @@ await copyFile(
 );
 
 await import(pathToFileURL(path.join(outDir, "src/api/client.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/dashboard/reportingDashboard.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/rolePermissionsUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/beginnersCoursesApi.test.js")));

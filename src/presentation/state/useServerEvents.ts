@@ -107,7 +107,7 @@ export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
   },
   {
     event: "range-members.updated",
-    queryKeys: [() => ["range-members"]],
+    queryKeys: [() => ["range-members"], () => ["reporting-dashboard"]],
   },
   {
     event: "lost-found.updated",
@@ -255,7 +255,7 @@ export function useServerEvents({
       },
       {
         event: "range-members.updated",
-        invalidate: () => invalidateQueries([["range-members"]]),
+        invalidate: () => invalidateQueries([["range-members"], ["reporting-dashboard"]]),
       },
       {
         event: "lost-found.updated",

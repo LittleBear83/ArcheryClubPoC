@@ -21,6 +21,10 @@ await import("../server/domain/services/runBeginnerConversion.test.js");
 await import("../server/infrastructure/persistence/beginnerConversionTransaction.test.js");
 const outDir = path.join(root, ".test-dist");
 const files = [
+  "src/utils/userProfile.js",
+  "shared/membershipClassification.js",
+  "src/presentation/pages/coachingHubModel.ts",
+  "src/presentation/pages/coachingHubModel.test.ts",
   "src/api/reportingDashboardApi.ts",
   "src/theme/themes.ts",
   "src/theme/ThemeContext.ts",
@@ -94,6 +98,7 @@ await copyFile(
 await import(pathToFileURL(path.join(outDir, "src/api/client.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/dashboard/reportingDashboard.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/rolePermissionsUtils.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/coachingHubModel.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/beginnersCoursesApi.test.js")));
 await import(

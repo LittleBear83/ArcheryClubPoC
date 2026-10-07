@@ -62,6 +62,9 @@ import { canAccessMemberPage } from "../navigation/memberPageAccess";
 const ProfilePage = lazy(() =>
   import("./ProfilePage").then((module) => ({ default: module.ProfilePage })),
 );
+const CoachingHubPage = lazy(() =>
+  import("./CoachingHubPage").then((module) => ({ default: module.CoachingHubPage })),
+);
 const UserCreationPage = lazy(() =>
   import("./UserCreationPage").then((module) => ({
     default: module.UserCreationPage,
@@ -298,6 +301,7 @@ type LostArrowNotice = LostArrowRecord;
 const TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS = 2;
 
 const pageTitleMap = {
+  "coaching": "Coaching",
   home: "Home",
   profile: "Profile",
   "user-creation": "People & Access",
@@ -330,6 +334,7 @@ const pageTitleMap = {
 };
 
 const pathToPageId = {
+  "/coaching": "coaching",
   "/": "home",
   "/profile": "profile",
   "/user-creation": "user-creation",
@@ -1024,6 +1029,7 @@ export function HomePage({
 
           <Suspense fallback={<PageLoadingFallback />}>
             <Routes>
+            <Route path="/coaching" element={<CoachingHubPage currentUserProfile={currentUserProfile} />} />
             <Route
               path="/profile"
               element={

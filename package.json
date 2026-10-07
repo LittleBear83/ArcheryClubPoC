@@ -19,7 +19,7 @@
     "seed:runtime-showcase": "node scripts/seedRuntimeShowcase.mjs",
     "seed:local": "node scripts/seedLocalDevelopment.mjs",
     "test": "node scripts/run-tests.mjs",
-    "test:postgres-integration": "node --test server/infrastructure/persistence/phase2a1PostgresIntegration.test.js server/infrastructure/persistence/memberSignoffCommitteeSyncPostgresIntegration.test.js server/infrastructure/persistence/committeeMinutesSyncPostgresIntegration.test.js server/infrastructure/persistence/syncAuditPostgresIntegration.test.js server/infrastructure/persistence/tournamentRegistrationPostgresIntegration.test.js",
+    "test:postgres-integration": "node --test server/infrastructure/persistence/phase2a1PostgresIntegration.test.js server/infrastructure/persistence/memberSignoffCommitteeSyncPostgresIntegration.test.js server/infrastructure/persistence/committeeMinutesSyncPostgresIntegration.test.js server/infrastructure/persistence/syncAuditPostgresIntegration.test.js server/infrastructure/persistence/loginMethodReportingPostgresIntegration.test.js",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 0.0.0.0 --port 8080",
     "start": "node server/index.js"
@@ -30,6 +30,7 @@
     "@g-loot/react-tournament-brackets": "^1.0.31-rc",
     "@google-cloud/storage": "^8.2.0",
     "@mui/material": "^9.3.1",
+    "@mui/x-charts": "^9.14.0",
     "@nivo/sankey": "^0.99.0",
     "@tanstack/react-query": "^5.97.0",
     "better-sqlite3": "^12.8.0",

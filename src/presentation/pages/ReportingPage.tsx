@@ -3,6 +3,8 @@ import { ReportingDesktopView } from "./reporting/ReportingDesktopView";
 import { ReportingMobileView } from "./reporting/ReportingMobileView";
 import { useReportingPageState } from "./reporting/useReportingPageState";
 import type { UserProfile } from "../../types/app";
+import { ReportingDashboard } from "./reporting/dashboard/ReportingDashboard";
+import "./reporting/dashboard/reportingDashboard.css";
 
 export function ReportingPage({
   currentUserProfile,
@@ -16,7 +18,9 @@ export function ReportingPage({
     return <p>You do not have permission to view reports.</p>;
   }
 
-  return isMobile
+  return <>{isMobile
     ? <ReportingMobileView {...reportingPageState} />
-    : <ReportingDesktopView {...reportingPageState} />;
+    : <ReportingDesktopView {...reportingPageState} />}
+    <ReportingDashboard actorUsername={currentUserProfile?.auth?.username ?? ""} />
+  </>;
 }

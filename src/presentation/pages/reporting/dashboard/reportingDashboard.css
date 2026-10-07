@@ -1,0 +1,22 @@
+.reporting-dashboard { margin-block: 2rem; min-width: 0; }
+.reporting-dashboard-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.reporting-dashboard-header h2, .reporting-dashboard-card h3 { margin: 0; color: var(--text-h); }
+.reporting-dashboard-caption { color: var(--text-muted); line-height: 1.5; }
+.reporting-dashboard-period { display: grid; gap: .4rem; color: var(--text); }
+.reporting-dashboard-period select { padding: .65rem; color: var(--text); background: var(--bg-elevated); border: 1px solid var(--border); border-radius: .5rem; }
+.reporting-dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 34rem), 1fr)); gap: 1rem; }
+.reporting-dashboard-card { min-width: 0; padding: clamp(1rem, 3vw, 1.5rem); border: 1px solid var(--border); border-radius: 1rem; background: var(--surface); }
+.login-method-visual { display: grid; grid-template-columns: minmax(0, 1fr) minmax(10rem, .75fr); gap: 1rem; align-items: center; }
+.login-method-chart { min-width: 0; }
+.login-method-total { text-align: center; color: var(--text); }
+.login-method-total strong { font-size: 1.6rem; color: var(--text-h); }
+.login-method-callouts { list-style: none; padding: 0; margin: 0; display: grid; gap: .75rem; }
+.login-method-callouts button { width: 100%; display: flex; align-items: center; gap: .75rem; min-height: 3.5rem; padding: .75rem; text-align: left; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border); border-radius: .65rem; cursor: pointer; }
+.login-method-callouts button[aria-pressed="true"] { border-color: var(--accent); }
+.login-method-callouts button:focus-visible, .reporting-dashboard-period select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.login-method-callouts strong, .login-method-callouts button span span { display: block; }
+.login-method-swatch { width: .85rem; height: .85rem; border-radius: 50%; flex-shrink: 0; }
+@media (max-width: 600px) {
+  .login-method-visual { grid-template-columns: minmax(0, 1fr); }
+  .reporting-dashboard-period, .reporting-dashboard-period select { width: 100%; }
+}

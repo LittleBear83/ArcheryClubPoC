@@ -5,6 +5,7 @@ import {
   hasPermission,
 } from "../../utils/userProfile";
 import { Button } from "./Button";
+import { canAccessCoachingHub } from "../pages/coachingHubModel";
 import {
   canAccessMemberPage,
   getRestrictedPageMessage,
@@ -13,6 +14,7 @@ import {
 const pages = [
   { id: "home", label: "Home", path: "/" },
   { id: "profile", label: "Profile", path: "/profile" },
+  { id: "coaching", label: "Coaching", path: "/coaching" },
   {
     id: "range-usage",
     label: "Range Usage",
@@ -248,6 +250,7 @@ export function SideDrawer({
   const visiblePages = useMemo(() => {
     return pages.filter(
       (page) =>
+        (page.id !== "coaching" || canAccessCoachingHub(currentUserProfile)) &&
         (!page.permission ||
           hasPermission(currentUserProfile, page.permission)) &&
         (!page.permissionAny ||

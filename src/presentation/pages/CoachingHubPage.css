@@ -1,0 +1,20 @@
+.coaching-hub { display: grid; gap: 20px; min-width: 0; }
+.coaching-hub-intro { margin: 0; }
+.coaching-hub-tabs, .coaching-hub-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.coaching-hub-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.coaching-hub-panel { background: var(--surface); border: 1px solid var(--panel-border); border-radius: 14px; padding: 20px; min-width: 0; overflow-wrap: anywhere; }
+.coaching-hub-panel h2 { margin-top: 0; color: var(--text-h); }
+.coaching-hub-next { border-left: 4px solid var(--accent-border); }
+.coaching-hub ul { list-style: none; padding: 0; margin: 0; }
+.coaching-hub-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--panel-border); }
+.coaching-hub-row:last-child { border-bottom: 0; }
+.coaching-hub-row p { margin: 6px 0; }
+.coaching-hub-row span { font-size: .9em; }
+.coaching-hub-plan { display: grid; gap: 12px; }
+.coaching-hub-plan dt { font-weight: 600; }
+.coaching-hub-plan dd { margin: 4px 0 0; }
+.coaching-hub-stats { display: flex; flex-wrap: wrap; gap: 32px; margin: 24px 0; }
+.coaching-hub-stats div { display: grid; gap: 6px; }
+.coaching-hub-stats strong { font-size: 2rem; color: var(--text-h); }
+.coaching-hub-toolbar select { padding: 8px; background: var(--surface); color: inherit; border: 1px solid var(--panel-border); border-radius: 6px; }
+@media (max-width: 760px) { .coaching-hub-columns { grid-template-columns: 1fr; } .coaching-hub-panel { padding: 16px; } }

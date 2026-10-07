@@ -23,6 +23,7 @@ export type UserProfile = {
     activeMember?: boolean;
     affiliateMember?: boolean;
     membershipFeesDue?: string;
+    coachingVolunteer?: boolean;
     [key: string]: unknown;
   };
 };

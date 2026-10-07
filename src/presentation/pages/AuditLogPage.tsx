@@ -467,7 +467,7 @@ function formatAuditValue(value: unknown) {
 
 function formatAuditChangePath(path: string) {
   const pathLabelMap: Record<string, string> = {
-    membershipStatus: "Membership status",
+    membershipStatus: "Member type",
     programmeType: "Programme type",
     userType: "Role",
     activeMember: "Active member",

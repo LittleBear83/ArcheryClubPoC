@@ -344,6 +344,10 @@ export function bootstrapSqliteBaseSchema({
   `);
 
   db.exec(LOGIN_EVENTS_TABLE_SQL);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS login_events_reporting_date_method_idx
+    ON login_events (logged_in_date, login_method)
+  `);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS audit_events (

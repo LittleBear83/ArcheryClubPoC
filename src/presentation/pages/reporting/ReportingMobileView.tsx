@@ -9,6 +9,7 @@ import { formatClockTime, formatDate } from "../../../utils/dateTime";
 import type { MemberJourneyReportRow } from "../../../api/reportingApi";
 import { ReportingGraph } from "./ReportingGraph";
 import { MemberRangeAttendanceSection } from "./MemberRangeAttendanceSection";
+import { formatMemberType } from "./reportingUtils";
 import type { useReportingPageState } from "./useReportingPageState";
 
 type ReportingPageState = ReturnType<typeof useReportingPageState>;
@@ -150,25 +151,27 @@ export function ReportingMobileView({
               <p className="usage-card-range">{rangeLabel}</p>
               <div className="usage-card-stats">
                 <div>
-                  <span className="usage-stat-label">Members</span>
+                  <span className="usage-stat-label">Member logins</span>
                   <strong>{data.members}</strong>
                 </div>
                 <div>
-                  <span className="usage-stat-label">Guests</span>
+                  <span className="usage-stat-label">Guest logins</span>
                   <strong>{data.guests}</strong>
                 </div>
                 <div>
-                  <span className="usage-stat-label">Total</span>
+                  <span className="usage-stat-label">Total logins</span>
                   <strong>{data.total}</strong>
                 </div>
               </div>
             </div>
             <div className="usage-card reporting-summary-card">
-              <p className="usage-card-title">Membership Status Breakdown</p>
+              <p className="usage-card-title">Member Type Breakdown</p>
+              <p className="reporting-table-note">Current active profiles, including members with no visits.</p>
               <BreakdownList items={attendanceBreakdown.membershipStatuses} />
             </div>
             <div className="usage-card reporting-summary-card">
               <p className="usage-card-title">Programme Breakdown</p>
+              <p className="reporting-table-note">Logins in the selected range.</p>
               <BreakdownList items={attendanceBreakdown.programmeTypes} />
             </div>
           </div>
@@ -193,7 +196,7 @@ export function ReportingMobileView({
             </div>
           </section>
 
-          <section className="usage-hourly-panel reporting-panel">
+          <section className="usage-hourly-panel reporting-panel reporting-journey-panel">
             <MobileSectionHeader
               title="New Member Journey Funnel"
               description={`Participants who started between ${formatDate(
@@ -202,15 +205,16 @@ export function ReportingMobileView({
             />
             {isLoadingMemberJourneys && !memberJourneyData ? (
               <p>Loading member journey reporting...</p>
+            ) : memberJourneyData?.rows.length === 0 ? (
+              <MobileEmptyState message="No participant journeys started in this period." />
             ) : memberJourneyData ? (
               <>
-                <div className="usage-cards reporting-summary-cards">
+                <div className="usage-cards reporting-summary-cards reporting-journey-summary">
                   <div className="usage-card reporting-summary-card">
                     <p className="usage-card-title">New Starters</p>
                     <div className="reporting-breakdown-list">
                       <p>
-                        <strong>{memberJourneyData.summary.totalParticipants}</strong> people
-                        started in this period
+                        <strong>{memberJourneyData.summary.totalParticipants}</strong> people started
                       </p>
                     </div>
                   </div>
@@ -219,7 +223,7 @@ export function ReportingMobileView({
                     <div className="reporting-breakdown-list">
                       <p>
                         <strong>{memberJourneyData.summary.convertedToMembers}</strong>{" "}
-                        converted to full members
+                        converted
                       </p>
                     </div>
                   </div>
@@ -237,32 +241,29 @@ export function ReportingMobileView({
                     </div>
                   </div>
                 </div>
-                {memberJourneyData.rows.length > 0 ? (
-                  <MobileCardList className="reporting-mobile-row-list">
-                    {memberJourneyData.rows.slice(0, 25).map((row: MemberJourneyReportRow) => (
-                      <article key={row.id} className="reporting-mobile-row-card">
-                        <p className="reporting-mobile-row-title">{row.name}</p>
-                        <MobileKeyValueList
-                          items={[
-                            { label: "Joined", value: formatDate(row.joinedAtDate) },
-                            {
-                              label: "Converted",
-                              value: row.convertedToMember ? "Yes" : "No",
-                            },
-                            {
-                              label: "Converted At",
-                              value: row.convertedAtDate
-                                ? formatDate(row.convertedAtDate)
-                                : "-",
-                            },
-                          ]}
-                        />
-                      </article>
-                    ))}
-                  </MobileCardList>
-                ) : (
-                  <MobileEmptyState message="No participant journeys started in the selected date range." />
-                )}
+                <MobileCardList className="reporting-mobile-row-list">
+                  {memberJourneyData.rows.slice(0, 25).map((row: MemberJourneyReportRow) => (
+                    <article key={row.id} className="reporting-mobile-row-card">
+                      <p className="reporting-mobile-row-title">{row.name}</p>
+                      <MobileKeyValueList
+                        items={[
+                          { label: "Joined", value: formatDate(row.joinedAtDate) },
+                          { label: "Member type", value: formatMemberType(row.membershipStatus) },
+                          {
+                            label: "Converted",
+                            value: row.convertedToMember ? "Yes" : "No",
+                          },
+                          {
+                            label: "Converted At",
+                            value: row.convertedAtDate
+                              ? formatDate(row.convertedAtDate)
+                              : "-",
+                          },
+                        ]}
+                      />
+                    </article>
+                  ))}
+                </MobileCardList>
               </>
             ) : null}
           </section>
@@ -282,7 +283,7 @@ export function ReportingMobileView({
                         { label: "Date", value: formatDate(row.date) },
                         { label: "Time", value: formatClockTime(row.time) },
                         { label: "Type", value: row.type },
-                        { label: "Status", value: row.membershipStatus || "-" },
+                        { label: "Member type", value: formatMemberType(row.membershipStatus) },
                         { label: "Programme", value: row.programmeType || "-" },
                         { label: "Role", value: row.role || "-" },
                         {

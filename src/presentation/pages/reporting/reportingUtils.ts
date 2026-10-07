@@ -41,7 +41,7 @@ export function buildCsv(report: AttendanceReport) {
     "Date",
     "Time",
     "Type",
-    "Membership Status",
+    "Member Type",
     "Programme Type",
     "Role",
     "Name",
@@ -74,10 +74,11 @@ export function buildCsv(report: AttendanceReport) {
 }
 
 export function buildMemberRangeAttendanceCsv(rows: MemberRangeAttendanceRow[]) {
-  const headers = ["Name", "Username", "Email", "Total days", "Last recorded range visit", "Status"];
+  const headers = ["Name", "Username", "Member Type", "Email", "Total days", "Last recorded range visit", "Status"];
   const lines = rows.map((row) => [
     row.name,
     row.username,
+    row.membershipStatus,
     row.emailAddress,
     row.visitDays,
     row.lastVisitAt ? formatDate(row.lastVisitAt.slice(0, 10)) : "Never recorded",
@@ -174,8 +175,22 @@ function formatBreakdownLabel(value: string, fallback: string) {
     .join(" ");
 }
 
+export function formatMemberType(value: string) {
+  return formatBreakdownLabel(value, "Unknown");
+}
+
+const MEMBER_TYPES = ["member", "associate-member", "non-member", "guest"];
+
+export function summarizeCurrentMemberTypes(rows: Array<{ membership_status: string; count: number }>) {
+  const counts = new Map(rows.map((row) => [row.membership_status, Number(row.count)]));
+  return [
+    ...MEMBER_TYPES,
+    ...[...counts.keys()].filter((key) => !MEMBER_TYPES.includes(key)).sort(),
+  ].map((key) => ({ key, label: formatMemberType(key), count: counts.get(key) ?? 0 }));
+}
+
 export function summarizeAttendanceBreakdown(rows: AttendanceReportRow[]) {
-  const membershipStatusCounts = new Map<string, number>();
+  const membershipStatusCounts = new Map(MEMBER_TYPES.map((type) => [type, 0]));
   const programmeTypeCounts = new Map<string, number>();
 
   for (const row of rows) {
@@ -199,7 +214,14 @@ export function summarizeAttendanceBreakdown(rows: AttendanceReportRow[]) {
         label: formatBreakdownLabel(key, "Unknown"),
         count,
       }))
-      .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label)),
+      .sort((left, right) => {
+        const leftIndex = MEMBER_TYPES.indexOf(left.key);
+        const rightIndex = MEMBER_TYPES.indexOf(right.key);
+        if (leftIndex >= 0 && rightIndex >= 0) return leftIndex - rightIndex;
+        if (leftIndex >= 0) return -1;
+        if (rightIndex >= 0) return 1;
+        return right.count - left.count || left.label.localeCompare(right.label);
+      }),
     programmeTypes: [...programmeTypeCounts.entries()]
       .map(([key, count]) => ({
         key,

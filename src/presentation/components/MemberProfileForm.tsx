@@ -82,7 +82,7 @@ export function MemberProfileForm({
           <p className="profile-classification-title">Access and status</p>
           <p className="profile-classification-summary">{membershipSummary}</p>
           <p className="profile-classification-copy">
-            Role sets portal permissions; membership status records club membership.
+            Role sets portal permissions; member type records club membership.
           </p>
         </div>
       ) : null}
@@ -139,7 +139,7 @@ export function MemberProfileForm({
         </label>
 
         <label>
-          Membership status
+          Member type
           <select
             value={editableProfile.membershipStatus}
             onChange={handleChange("membershipStatus")}

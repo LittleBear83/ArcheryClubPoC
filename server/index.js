@@ -57,6 +57,8 @@ import {
 } from "./domain/constants.js";
 import { createDatabase } from "./infrastructure/persistence/createDatabase.js";
 import { createActivityReportingGateway } from "./infrastructure/persistence/activityReportingGateway.js";
+import { createLoginMethodReportingGateway } from "./infrastructure/persistence/loginMethodReportingGateway.js";
+import { registerReportingDashboardRoutes } from "./presentation/http/registerReportingDashboardRoutes.js";
 import { createSqliteAuthAuditStatements } from "./infrastructure/persistence/createSqliteAuthAuditStatements.js";
 import { createBeginnersCourseReadGateway } from "./infrastructure/persistence/beginnersCourseReadGateway.js";
 import { createBeginnersCourseWriteGateway } from "./infrastructure/persistence/beginnersCourseWriteGateway.js";
@@ -969,6 +971,7 @@ const {
   listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
+  listCurrentMemberTypeCounts,
   listMemberRangeAttendance,
   memberLoginsByDateForUserInRange,
   memberLoginsByDateInRange,
@@ -995,6 +998,7 @@ const activityReportingGateway = createActivityReportingGateway({
   listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
+  listCurrentMemberTypeCounts,
   listMemberRangeAttendance,
   memberLoginsByDateForUserInRange,
   memberLoginsByDateInRange,
@@ -7314,6 +7318,11 @@ registerScheduleRoutes({
   PERMISSIONS,
   scheduleGateway,
   serverEventBus,
+});
+
+registerReportingDashboardRoutes({
+  app, getActorUser, actorHasPermission, PERMISSIONS,
+  loginMethodReportingGateway: createLoginMethodReportingGateway({ databaseEngine: serverRuntime.databaseEngine, db, pool: db.pool }),
 });
 
 registerMemberActivityRoutes({

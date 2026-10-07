@@ -18,7 +18,7 @@ export function normalizeMembershipClassification(
   }
 
   if (changedField === "membershipStatus") {
-    if (membershipStatus === "guest" || membershipStatus === "member") {
+    if (["guest", "member", "associate-member"].includes(membershipStatus)) {
       programmeType = "none";
     }
   }
@@ -27,7 +27,7 @@ export function normalizeMembershipClassification(
     membershipStatus = "non-member";
   }
 
-  if (programmeType !== "none" && membershipStatus === "member") {
+  if (programmeType !== "none" && ["member", "associate-member"].includes(membershipStatus)) {
     membershipStatus = "non-member";
   }
 

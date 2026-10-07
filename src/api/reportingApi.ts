@@ -30,6 +30,7 @@ export type AttendanceReport = {
   endDate: string;
   includeMembers: boolean;
   includeGuests: boolean;
+  memberTypeCounts: Array<{ membership_status: string; count: number }>;
   total: number;
   members: number;
   guests: number;

@@ -338,6 +338,10 @@ test("every mapped event reaches the existing React hook's query invalidations",
     return adapters[name];
   }, exports);
   exports.useServerEvents({ actorUsername: "kiosk", enabled: true });
+  const memberUpdates = exports.AUTHENTICATED_EVENT_QUERY_GROUPS.find((entry) => entry.event === "members.updated");
+  for (const queryKey of ["attendance-report", "member-range-attendance", "member-journey-report"]) {
+    assert.ok(memberUpdates.queryKeys.some((key) => key("kiosk")[0] === queryKey), queryKey);
+  }
   for (const event of localSyncBrowserEventNames(Object.keys(LOCAL_SYNC_EVENT_GROUPS))) {
     invalidated.length = 0;
     assert.ok(subscriptions.has(event), event);

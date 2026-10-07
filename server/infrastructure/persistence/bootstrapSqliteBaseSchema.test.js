@@ -53,6 +53,12 @@ for (const legacy of [false, true]) {
       }
       bootstrap();
       assert.deepEqual(db.prepare("PRAGMA table_info(tournament_matches)").all().map((column) => column.name), columns);
+      const dashboardPlan = db.prepare(`EXPLAIN QUERY PLAN
+        SELECT login_method, COUNT(*) FROM login_events
+        WHERE logged_in_date >= ? AND logged_in_date < ?
+        GROUP BY login_method`).all("2026-09-01", "2026-10-01");
+      assert.ok(dashboardPlan.some(({ detail }) =>
+        detail.includes("USING COVERING INDEX login_events_reporting_date_method_idx")));
       if (legacy) assert.equal(db.prepare("SELECT left_score FROM tournament_matches").get().left_score, 252);
     } finally {
       db.close();

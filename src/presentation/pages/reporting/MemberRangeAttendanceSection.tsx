@@ -3,6 +3,7 @@ import { MobileCardList } from "../../components/mobile/MobileCardList";
 import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { formatDate } from "../../../utils/dateTime";
 import type { useReportingPageState } from "./useReportingPageState";
+import { formatMemberType } from "./reportingUtils";
 
 type AttendanceState = ReturnType<typeof useReportingPageState>["memberRangeAttendance"];
 
@@ -65,6 +66,8 @@ export function MemberRangeAttendanceSection({
         <>
           <div className="member-range-attendance-summary">
             <p><strong>{attendance.data.totalMembers}</strong> current members</p>
+            <p><strong>{attendance.data.rows.filter((row) => row.membershipStatus === "member").length}</strong> Members</p>
+            <p><strong>{attendance.data.rows.filter((row) => row.membershipStatus === "associate-member").length}</strong> Associate Members</p>
             <p><strong>{attendance.data.attended}</strong> with a recorded visit</p>
             <p><strong>{attendance.data.noRecordedVisit}</strong> without a recorded visit</p>
             <p><strong>{attendance.data.neverRecorded}</strong> never recorded</p>
@@ -80,6 +83,7 @@ export function MemberRangeAttendanceSection({
                 <article key={row.username} className="reporting-mobile-row-card">
                   <p className="reporting-mobile-row-title">{row.name}</p>
                   <MobileKeyValueList items={[
+                    { label: "Member type", value: formatMemberType(row.membershipStatus) },
                     { label: "Status", value: row.hasRecordedVisit ? "Recorded visit" : "No recorded visit" },
                     { label: "Total days", value: String(row.visitDays) },
                     { label: "Last visit", value: lastVisitLabel(row.lastVisitAt) },
@@ -92,11 +96,12 @@ export function MemberRangeAttendanceSection({
           ) : (
             <div className="reporting-table-wrap">
               <table className="committee-roles-table reporting-table">
-                <thead><tr><th>Name</th><th>Status</th><th>Total days</th><th>Last recorded visit</th><th>Email</th></tr></thead>
+                <thead><tr><th>Name</th><th>Member type</th><th>Status</th><th>Total days</th><th>Last recorded visit</th><th>Email</th></tr></thead>
                 <tbody>
                   {attendance.rows.map((row) => (
                     <tr key={row.username}>
                       <td>{row.name}</td>
+                      <td>{formatMemberType(row.membershipStatus)}</td>
                       <td>{row.hasRecordedVisit ? "Recorded visit" : "No recorded visit"}</td>
                       <td>{row.visitDays}</td>
                       <td>{lastVisitLabel(row.lastVisitAt)}</td>

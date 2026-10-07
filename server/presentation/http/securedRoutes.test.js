@@ -129,9 +129,10 @@ function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission,
       guestLoginsByWeekdayInRange: async () => [],
       listAllUserDisciplines: async () => [],
       listMemberJourneyParticipants: async () => [],
+      listCurrentMemberTypeCounts: overrides.listCurrentMemberTypeCounts ?? (async () => []),
       listMemberRangeAttendance: overrides.listMemberRangeAttendance ?? (async () => []),
       listReportingGuestLogins: async () => [],
-      listReportingMemberLogins: async () => [],
+      listReportingMemberLogins: overrides.listReportingMemberLogins ?? (async () => []),
       memberLoginsByDateForUserInRange: async () => [],
       memberLoginsByDateInRange: async () => [],
       memberLoginsByHourForUserInRange: async () => [],
@@ -1245,6 +1246,36 @@ test("reporting attendance route rejects authenticated members without report pe
   }
 });
 
+test("reporting attendance keeps associate member type and unchanged role", async () => {
+  const app = express();
+  registerMemberActivityTestRoutes(app,
+    () => ({ id: 2, username: "reporter", user_type: "admin" }),
+    (_actor, permission) => permission === "view_reports",
+    { listCurrentMemberTypeCounts: async () => [
+      { membership_status: "member", count: 8 },
+      { membership_status: "associate-member", count: 1 },
+    ], listReportingMemberLogins: async () => [{
+      id: 12, username: "associate", first_name: "Avery", surname: "Archer",
+      membership_status: "associate-member", programme_type: "none", user_type: "general",
+      login_method: "rfid", logged_in_date: "2026-08-12", logged_in_time: "18:00:00",
+    }] },
+  );
+  const { baseUrl, server } = await startTestServer(app);
+  try {
+    const response = await requestJson(baseUrl, "/api/reporting/attendance?start=2026-08-12&end=2026-08-12");
+    assert.equal(response.status, 200);
+    assert.equal(response.body.report.members, 1);
+    assert.equal(response.body.report.rows[0].membershipStatus, "associate-member");
+    assert.equal(response.body.report.rows[0].role, "general");
+    assert.deepEqual(response.body.report.memberTypeCounts, [
+      { membership_status: "member", count: 8 },
+      { membership_status: "associate-member", count: 1 },
+    ]);
+  } finally {
+    server.close();
+  }
+});
+
 function adminRfidHarness({ nodeMode = 'local-pi', manager = true, pending = false } = {}) {
   const handlers = new Map();
   const calls = [];
@@ -1324,7 +1355,7 @@ test("member range attendance is limited to admins and developers with report pe
         calls.push({ start, end });
         return [
           { username: "no-visit", first_name: "No", surname: "Visit", email_address: "no@example.org", visit_days_in_range: 0, total_visit_days: 0, last_visit_at: null },
-          { username: "attended", first_name: "Range", surname: "Visitor", email_address: "yes@example.org", visit_days_in_range: 2, total_visit_days: 5, last_visit_at: `${end}T09:00:00` },
+          { username: "attended", first_name: "Range", surname: "Visitor", email_address: "yes@example.org", membership_status: "associate-member", user_type: "general", visit_days_in_range: 2, total_visit_days: 5, last_visit_at: `${end}T09:00:00` },
         ];
       },
     },
@@ -1346,6 +1377,8 @@ test("member range attendance is limited to admins and developers with report pe
     assert.equal(adminResponse.body.report.rows[0].username, "no-visit");
     assert.equal(adminResponse.body.report.rows[0].emailAddress, "no@example.org");
     assert.equal(adminResponse.body.report.rows[1].totalVisitDays, 5);
+    assert.equal(adminResponse.body.report.rows[1].membershipStatus, "associate-member");
+    assert.equal(adminResponse.body.report.rows[1].role, "general");
     assert.equal(calls.length, 1);
 
     actor = { id: 3, username: "developer", user_type: "developer" };

@@ -867,6 +867,7 @@ export function registerMemberActivityRoutes({
         endDate: toUtcDateString(filteredEndDay),
         includeMembers,
         includeGuests,
+        memberTypeCounts: await activityReportingGateway.listCurrentMemberTypeCounts(),
         total: rows.length,
         members: rows.filter((row) => row.type === "Member").length,
         guests: rows.filter((row) => row.type === "Guest").length,

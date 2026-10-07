@@ -5729,16 +5729,62 @@ button:disabled {
 
 .reporting-summary-cards .reporting-summary-card {
   display: grid;
-  gap: 10px;
+  align-content: start;
+  gap: 8px;
+  padding: 20px;
+}
+
+.reporting-summary-cards .usage-card-title,
+.reporting-summary-cards .usage-card-range,
+.reporting-summary-cards .reporting-table-note {
+  margin: 0;
+}
+
+.reporting-summary-cards .reporting-table-note {
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.reporting-summary-cards .usage-card-stats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.reporting-summary-cards .usage-stat-label {
+  font-size: 0.75rem;
+  line-height: 1.25;
 }
 
 .reporting-summary-cards .reporting-breakdown-list {
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  line-height: 1.35;
 }
 
 .reporting-summary-cards .reporting-breakdown-list p {
   margin: 0;
+}
+
+.reporting-journey-panel {
+  padding: 20px;
+}
+
+.reporting-journey-panel .usage-hourly-header {
+  margin-bottom: 12px;
+}
+
+.usage-cards.reporting-summary-cards.reporting-journey-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reporting-journey-summary .reporting-summary-card {
+  gap: 4px;
+  padding: 16px;
+}
+
+.reporting-journey-summary .usage-card-title {
+  font-size: 1rem;
 }
 
 .mobile-section-header {
@@ -9146,6 +9192,10 @@ button:disabled {
   .usage-cards.reporting-summary-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+  }
+
+  .usage-cards.reporting-summary-cards.reporting-journey-summary {
+    grid-template-columns: 1fr;
   }
 
   .beginners-journey-reporting-page .usage-card,

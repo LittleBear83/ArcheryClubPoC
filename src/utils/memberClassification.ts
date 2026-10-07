@@ -33,5 +33,9 @@ export function describeMembershipClassification(
     return "This person is marked as a non-member with basic portal access only.";
   }
 
+  if (membershipStatus === "associate-member") {
+    return "This person is treated as an associate club member.";
+  }
+
   return "This person is treated as a standard club member.";
 }

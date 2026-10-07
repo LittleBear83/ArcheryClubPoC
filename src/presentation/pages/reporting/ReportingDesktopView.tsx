@@ -4,6 +4,7 @@ import { formatClockTime, formatDate } from "../../../utils/dateTime";
 import type { AttendanceReportRow, MemberJourneyReportRow } from "../../../api/reportingApi";
 import { ReportingGraph } from "./ReportingGraph";
 import { MemberRangeAttendanceSection } from "./MemberRangeAttendanceSection";
+import { formatMemberType } from "./reportingUtils";
 import type { useReportingPageState } from "./useReportingPageState";
 
 function ReportingTable({ rows }: { rows: AttendanceReportRow[] }) {
@@ -19,7 +20,7 @@ function ReportingTable({ rows }: { rows: AttendanceReportRow[] }) {
             <th>Date</th>
             <th>Time</th>
             <th>Type</th>
-            <th>Status</th>
+            <th>Member type</th>
             <th>Programme</th>
             <th>Role</th>
             <th>Name</th>
@@ -33,7 +34,7 @@ function ReportingTable({ rows }: { rows: AttendanceReportRow[] }) {
               <td>{formatDate(row.date)}</td>
               <td>{formatClockTime(row.time)}</td>
               <td>{row.type}</td>
-              <td>{row.membershipStatus || "-"}</td>
+              <td>{formatMemberType(row.membershipStatus)}</td>
               <td>{row.programmeType || "-"}</td>
               <td>{row.role || "-"}</td>
               <td>{row.name}</td>
@@ -68,6 +69,7 @@ function MemberJourneyTable({ rows }: { rows: MemberJourneyReportRow[] }) {
           <tr>
             <th>Joined</th>
             <th>Name</th>
+            <th>Member type</th>
             <th>Converted</th>
             <th>Converted At</th>
           </tr>
@@ -77,6 +79,7 @@ function MemberJourneyTable({ rows }: { rows: MemberJourneyReportRow[] }) {
             <tr key={row.id}>
               <td>{formatDate(row.joinedAtDate)}</td>
               <td>{row.name}</td>
+              <td>{formatMemberType(row.membershipStatus)}</td>
               <td>{row.convertedToMember ? "Yes" : "No"}</td>
               <td>{row.convertedAtDate ? formatDate(row.convertedAtDate) : "-"}</td>
             </tr>
@@ -222,25 +225,27 @@ export function ReportingDesktopView({
               <p className="usage-card-range">{rangeLabel}</p>
               <div className="usage-card-stats">
                 <div>
-                  <span className="usage-stat-label">Members</span>
+                  <span className="usage-stat-label">Member logins</span>
                   <strong>{data.members}</strong>
                 </div>
                 <div>
-                  <span className="usage-stat-label">Guests</span>
+                  <span className="usage-stat-label">Guest logins</span>
                   <strong>{data.guests}</strong>
                 </div>
                 <div>
-                  <span className="usage-stat-label">Total</span>
+                  <span className="usage-stat-label">Total logins</span>
                   <strong>{data.total}</strong>
                 </div>
               </div>
             </div>
             <div className="usage-card reporting-summary-card">
-              <p className="usage-card-title">Membership Status Breakdown</p>
+              <p className="usage-card-title">Member Type Breakdown</p>
+              <p className="reporting-table-note">Current active profiles, including members with no visits.</p>
               <BreakdownList items={attendanceBreakdown.membershipStatuses} />
             </div>
             <div className="usage-card reporting-summary-card">
               <p className="usage-card-title">Programme Breakdown</p>
+              <p className="reporting-table-note">Logins in the selected range.</p>
               <BreakdownList items={attendanceBreakdown.programmeTypes} />
             </div>
           </div>
@@ -269,31 +274,32 @@ export function ReportingDesktopView({
           <section className="usage-hourly-panel reporting-panel">
             <div className="usage-hourly-header">
               <h3>Report Rows</h3>
-              <p>Rows now include membership status, programme type, role, and guest attendance details.</p>
+              <p>Rows now include member type, programme type, role, and guest attendance details.</p>
             </div>
             <ReportingTable rows={data.rows} />
           </section>
 
-          <section className="usage-hourly-panel reporting-panel">
+          <section className="usage-hourly-panel reporting-panel reporting-journey-panel">
             <div className="usage-hourly-header">
               <h3>New Member Journey Funnel</h3>
               <p>
-                Cohort view based on participants who started between {formatDate(
+                Participants who started between {formatDate(
                   memberJourneyData?.startDate ?? startDate,
                 )} and {formatDate(memberJourneyData?.endDate ?? endDate)}.
               </p>
             </div>
             {isLoadingMemberJourneys && !memberJourneyData ? (
               <p>Loading member journey reporting...</p>
+            ) : memberJourneyData?.rows.length === 0 ? (
+              <p className="usage-empty-state">No participant journeys started in this period.</p>
             ) : memberJourneyData ? (
               <>
-                <div className="usage-cards reporting-summary-cards">
+                <div className="usage-cards reporting-summary-cards reporting-journey-summary">
                   <div className="usage-card reporting-summary-card">
                     <p className="usage-card-title">New Starters</p>
                     <div className="reporting-breakdown-list">
                       <p>
-                        <strong>{memberJourneyData.summary.totalParticipants}</strong> people
-                        started in this period
+                        <strong>{memberJourneyData.summary.totalParticipants}</strong> people started
                       </p>
                     </div>
                   </div>
@@ -302,7 +308,7 @@ export function ReportingDesktopView({
                     <div className="reporting-breakdown-list">
                       <p>
                         <strong>{memberJourneyData.summary.convertedToMembers}</strong>{" "}
-                        converted to full members
+                        converted
                       </p>
                     </div>
                   </div>

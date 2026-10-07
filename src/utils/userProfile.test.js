@@ -35,6 +35,10 @@ test("explicit non-member status without a programme shows a generic non-member 
   );
 });
 
+test("associate member type is visible without changing the role", () => {
+  assert.equal(getMembershipDisplaySuffix({ userType: "general", membershipStatus: "associate-member" }), " - (Associate Member)");
+});
+
 test("explicit taster-session programme shows a taster non-member suffix", () => {
   const profile = {
     firstName: "Tia",

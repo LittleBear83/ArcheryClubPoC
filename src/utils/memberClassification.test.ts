@@ -4,6 +4,7 @@ import {
   describeMembershipClassification,
   normalizeMembershipClassification,
 } from "./memberClassification.ts";
+import { applyJoiningRoutePreset } from "./joiningRoutes.ts";
 
 test("programme types force non-member status", () => {
   assert.deepEqual(
@@ -71,4 +72,26 @@ test("steady-state guest accounts clear unsupported programme types", () => {
       programmeType: "none",
     },
   );
+});
+
+test("associate member type clears programme settings and preserves the portal role", () => {
+  assert.deepEqual(
+    normalizeMembershipClassification(
+      { membershipStatus: "associate-member", programmeType: "beginners" },
+      "membershipStatus",
+    ),
+    { membershipStatus: "associate-member", programmeType: "none" },
+  );
+  assert.deepEqual(
+    normalizeMembershipClassification(
+      { membershipStatus: "associate-member", programmeType: "beginners" },
+      "programmeType",
+    ),
+    { membershipStatus: "non-member", programmeType: "beginners" },
+  );
+  const profile = applyJoiningRoutePreset("associated-member", { userType: "general" });
+  assert.equal(profile.membershipStatus, "associate-member");
+  assert.equal(profile.userType, "general");
+  assert.equal(profile.affiliateMember, true);
+  assert.equal(describeMembershipClassification(profile), "This person is treated as an associate club member.");
 });

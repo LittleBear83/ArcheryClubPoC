@@ -57,6 +57,22 @@ test("SQLite aggregates successful history only, respects boundaries and does no
   assert.equal(buildLoginMethodReport(await gateway.countByMethod(all), all).total, 4);
 });
 
+test("PostgreSQL dashboard queries use bounded dates without an optional OR predicate", async () => {
+  const calls = [];
+  const gateway = createLoginMethodReportingGateway({
+    databaseEngine: "postgres",
+    pool: { async query(sql, values) { calls.push({ sql, values }); return { rows: [] }; } },
+  });
+  await gateway.countByMethod(resolveDashboardPeriod("7d", new Date("2026-10-05T12:00:00Z")));
+  await gateway.countByMethod(resolveDashboardPeriod("all", new Date("2026-10-05T12:00:00Z")));
+  assert.deepEqual(calls.map(({ values }) => values), [
+    ["2026-09-29", "2026-10-06"], ["2026-10-06"],
+  ]);
+  assert.match(calls[0].sql, /logged_in_date >= \$1 AND logged_in_date < \$2/);
+  assert.match(calls[1].sql, /logged_in_date < \$1/);
+  assert.ok(calls.every(({ sql }) => !/\bOR\b/.test(sql)));
+});
+
 test("dashboard route enforces Reporting permission before querying and validates presets", async () => {
   let handler, calls = 0;
   registerReportingDashboardRoutes({ app: { get(_path, callback) { handler = callback; } },

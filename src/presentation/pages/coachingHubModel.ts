@@ -1,4 +1,3 @@
-import { hasPermission } from "../../utils/userProfile.js";
 import type { UserProfile } from "../../types/app";
 
 export type CoachAssignment = {
@@ -14,7 +13,7 @@ export type CoachAssignment = {
 };
 
 export function canAccessCoachingHub(profile: UserProfile | null) {
-  return ["add_coaching_sessions", "approve_coaching_sessions", "manage_beginners_courses", "approve_beginners_courses", "manage_have_a_go_sessions", "approve_have_a_go_sessions"].some(permission => hasPermission(profile, permission));
+  return profile?.meta?.coachingVolunteer === true;
 }
 
 export function courseLabel(type?: string) {

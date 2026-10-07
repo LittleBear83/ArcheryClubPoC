@@ -54,7 +54,12 @@ export function CoachingHubPage({ currentUserProfile }: { currentUserProfile: Us
   };
   return <div className="coaching-hub">
     <p className="coaching-hub-intro">Your sessions, shared lesson plans and participant progress in one place.</p>
-    <nav className="coaching-hub-tabs" aria-label="Coaching sections">{sections.map((label, index) => <Button key={label} variant={section === sectionKeys[index] ? "primary" : "secondary"} aria-current={section === sectionKeys[index] ? "page" : undefined} onClick={() => setParams({ tab: sectionKeys[index] })}>{label}</Button>)}</nav>
+    <nav className="coaching-hub-tabs committee-tabs beginners-course-tabs" role="tablist" aria-label="Coaching sections">{sections.map((label, index) => {
+      const isActive = section === sectionKeys[index];
+      return <Button key={label} type="button" role="tab" aria-selected={isActive}
+        className={`committee-tab beginners-course-tab ${isActive ? "is-active" : ""}`}
+        variant="ghost" onClick={() => setParams({ tab: sectionKeys[index] })}>{label}</Button>;
+    })}</nav>
     {assignmentsQuery.isPending ? <p role="status">Loading your coaching assignments…</p> : null}
     {assignmentsQuery.isError ? <div role="alert"><p>Your assignments could not be loaded.</p><Button variant="secondary" onClick={() => assignmentsQuery.refetch()}>Try again</Button></div> : null}
     {section === "overview" && <>

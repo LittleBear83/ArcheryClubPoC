@@ -4495,6 +4495,26 @@ button:disabled {
   gap: var(--section-gap);
 }
 
+.section-panel-accordion.profile-form {
+  min-width: 0;
+  padding: 0;
+  border-radius: 14px;
+}
+
+.section-panel-accordion .profile-accordion-summary {
+  gap: 8px 12px;
+}
+
+.section-panel-accordion-description {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.section-panel-accordion .profile-accordion-icon {
+  margin-left: auto;
+}
+
 .equipment-actions-layout {
   display: grid;
   gap: 14px;
@@ -7749,6 +7769,28 @@ button:disabled {
   gap: 14px;
 }
 
+.beginners-course-submit-form .beginners-course-form-grid {
+  align-items: start;
+}
+
+.beginners-course-submit-form .beginners-course-form-grid > label {
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  gap: 8px;
+}
+
+.beginners-course-submit-form .beginners-course-form-grid select,
+.beginners-course-submit-form .beginners-course-form-grid input,
+.beginners-course-submit-form .custom-date-picker-trigger {
+  height: var(--control-height);
+  min-height: var(--control-height);
+}
+
+.beginners-course-submit-form .custom-date-picker-trigger {
+  padding-block: 8px;
+}
+
 .beginners-course-form-grid label,
 .beginners-course-panel select,
 .beginners-course-panel input {
@@ -7789,8 +7831,182 @@ button:disabled {
 .beginners-course-header {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 8px;
+  align-items: center;
+}
+
+.beginners-course-collapsible-panel {
+  gap: 0;
+  padding: 0;
+}
+
+.beginners-course-toggle {
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.beginners-course-summary-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.beginners-course-title {
+  font-size: 1.17em;
+}
+
+.beginners-course-summary-copy .equipment-meta-copy,
+.beginners-course-summary-copy .profile-error {
+  display: block;
+  margin: 0;
+}
+
+.beginners-course-toggle[aria-expanded="true"] .profile-accordion-icon {
+  transform: rotate(225deg) translateY(-2px);
+}
+
+.beginners-course-expanded-content {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.beginners-course-management-actions {
+  justify-content: flex-end;
+}
+
+.beginners-course-expanded-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+}
+
+.beginners-course-expanded-toolbar h4 {
+  margin: 0;
+}
+
+.beginners-course-expanded-toolbar .beginners-course-management-actions {
+  margin-left: auto;
+}
+
+.beginners-course-expanded-content > .beginners-course-entry-panel {
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.beginners-course-expanded-content > .beginners-course-subpanel h4 {
+  margin: 0;
+}
+
+.beginners-course-closed-panel .beginners-course-expanded-content {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.beginners-course-closed-panel .beginners-course-expanded-content > .beginners-course-subpanel {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  background: var(--surface-deep);
+}
+
+.beginners-course-closed-panel .equipment-inventory-table-wrap {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.beginners-course-closed-panel .beginners-course-participants-table {
+  min-width: 1100px;
+}
+
+.beginners-course-closed-panel .beginners-course-coaches-table {
+  min-width: 860px;
+}
+
+.beginners-course-historical-table {
+  min-width: 1000px;
+  font-size: clamp(13px, 0.8rem, 16px);
+  line-height: 1.3;
+}
+
+.beginners-course-historical-table td,
+.beginners-course-historical-table th {
+  padding: 6px 8px;
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: nowrap;
+}
+
+.beginners-course-historical-table td:nth-child(9) {
+  min-width: 120px;
+  white-space: normal;
+}
+
+.beginners-course-expanded-content > .beginners-course-historical-section {
+  gap: 8px;
+}
+
+.beginners-course-historical-section h4 {
+  font-size: clamp(17px, 1rem, 20px);
+}
+
+.beginners-course-historical-section > .equipment-meta-copy {
+  margin: 0;
+  font-size: clamp(13px, 0.85rem, 17px);
+}
+
+.beginners-course-closed-panel .beginners-course-actions-cell button,
+.beginners-course-closed-panel .beginners-course-coaches-table td:last-child button {
+  white-space: nowrap;
+}
+
+.beginners-course-participant-form {
   align-items: start;
+  gap: 10px 14px;
+}
+
+.beginners-course-participant-form > label {
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  gap: 6px;
+}
+
+.beginners-course-participant-form input:not([type="checkbox"]),
+.beginners-course-participant-form select {
+  height: var(--control-height);
+  min-height: var(--control-height);
+}
+
+.beginners-course-participant-form > .beginners-course-checkbox-row {
+  grid-column: 1 / -1;
+  align-self: start;
+  min-height: 0;
+  gap: 8px 20px;
+}
+
+.beginners-course-participant-form .beginners-course-checkbox {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.beginners-course-participant-form .beginners-course-checkbox input[type="checkbox"] {
+  order: 0;
 }
 
 .beginners-course-checkbox {
@@ -7899,6 +8115,43 @@ button:disabled {
   display: grid;
   gap: 12px;
 }
+
+.beginners-course-coach-requirement-content {
+  display: grid;
+  gap: 10px;
+}
+
+.beginners-course-coach-requirement-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.beginners-course-coach-requirement-list label {
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  gap: 6px;
+}
+
+.beginners-course-coach-requirement-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.beginners-course-submit-form .beginners-course-coach-requirement-list input {
+  height: var(--control-height);
+  min-height: var(--control-height);
+}
+
+.beginners-course-coach-requirement-list input {
+  min-width: 0;
+}
+
+.coaching-coverage-shortfall { color: var(--warning-panel-copy, #a75b00); font-weight: 600; }
+.coaching-coverage-covered { color: var(--text); }
 
 .beginners-course-reschedule-modal {
   display: grid;
@@ -8705,6 +8958,12 @@ button:disabled {
   .beginners-course-header {
     flex-direction: column;
   }
+
+  .beginners-course-expanded-toolbar .beginners-course-management-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
 
   .beginners-course-checkbox-row {
     flex-direction: column;

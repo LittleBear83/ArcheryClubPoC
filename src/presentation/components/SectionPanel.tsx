@@ -8,6 +8,7 @@ type SectionPanelProps = {
   description?: string;
   title: string;
   titleClassName?: string;
+  toggleStyle?: "button" | "accordion";
 };
 
 export function SectionPanel({
@@ -18,11 +19,32 @@ export function SectionPanel({
   description = "",
   title,
   titleClassName = "",
+  toggleStyle = "button",
 }: SectionPanelProps) {
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
   const headingClassName = ["profile-section-title", titleClassName]
     .filter(Boolean)
     .join(" ");
+
+  if (collapsible && toggleStyle === "accordion") {
+    return (
+      <details
+        className={["profile-accordion", "section-panel-accordion", className]
+          .filter(Boolean)
+          .join(" ")}
+        open={!defaultCollapsed}
+      >
+        <summary className="profile-accordion-summary">
+          <span className="profile-accordion-label">{title}</span>
+          {description ? (
+            <span className="section-panel-accordion-description">{description}</span>
+          ) : null}
+          <span className="profile-accordion-icon" aria-hidden="true" />
+        </summary>
+        <div className="profile-accordion-content">{children}</div>
+      </details>
+    );
+  }
 
   return (
     <section className={className}>

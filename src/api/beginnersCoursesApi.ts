@@ -264,6 +264,23 @@ export async function assignLessonCoaches(
   });
 }
 
+export async function updateLessonRequiredCoachCount(actor: ActorIdentity | string, lessonId: string | number, requiredCoachCount: number) {
+  return fetchApi<{ success: true; requiredCoachCount: number }>(`/api/beginners-course-lessons/${lessonId}/required-coaches`, {
+    method: "PUT",
+    headers: buildActorHeaders(actor, true),
+    body: JSON.stringify({ requiredCoachCount }),
+    cache: "no-store",
+  });
+}
+
+export async function setManualLessonAttendance(actor: ActorIdentity | string, lessonId: string | number, participantId: string | number, attended: boolean) {
+  return fetchApi<{ success: true; attended: boolean }>(`/api/beginners-course-lessons/${lessonId}/attendance/${participantId}`, {
+    method: attended ? "POST" : "DELETE",
+    headers: buildActorHeaders(actor, true),
+    cache: "no-store",
+  });
+}
+
 export async function updateBeginnerParticipant(
   actor: ActorIdentity | string,
   beginnerId: string | number,

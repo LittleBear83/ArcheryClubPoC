@@ -80,7 +80,8 @@ export function useHomePageToasts({
 }) {
   const queryClient = useQueryClient();
   const [lostArrowToasts, setLostArrowToasts] = useState<HomePageToast[]>([]);
-  const [beginnersRescheduleToasts, setBeginnersRescheduleToasts] = useState<HomePageToast[]>([]);
+  const [beginnersRescheduleToasts, setBeginnersRescheduleToasts] = useState<(HomePageToast & { actorUsername: string })[]>([]);
+  const [coachingAssignmentToasts, setCoachingAssignmentToasts] = useState<HomePageToast[]>([]);
   const [dismissedQuestionToastIds, setDismissedQuestionToastIds] = useState<string[]>([]);
   const previousOpenLostArrowIdsRef = useRef<number[] | null>(null);
   const seenLostArrowToastIdsRef = useRef<Set<string>>(new Set());
@@ -110,7 +111,6 @@ export function useHomePageToasts({
 
   useEffect(() => {
     if (!actorUsername) {
-      setBeginnersRescheduleToasts([]);
       return undefined;
     }
 
@@ -134,9 +134,27 @@ export function useHomePageToasts({
             id: toastPayload.id,
             message: toastPayload.message,
             targetPath: toastPayload.targetPath,
+            actorUsername,
           },
         ].slice(-3);
       });
+    });
+  }, [actorUsername]);
+
+  useEffect(() => {
+    if (!actorUsername) return undefined;
+    return subscribeToServerEvent("coaching.assignment.changed", (payload) => {
+      const event = payload as { eventId?: string; action?: string; lessonId?: string | number; lessonNumber?: number; lessonDate?: string; actorName?: string } | null;
+      if (!event || !event.lessonId || !event.action) return;
+      const id = `coaching-assignment-${event.eventId ?? `${event.action}-${event.lessonId}`}`;
+      setCoachingAssignmentToasts((current) => [
+        ...current.filter((toast) => toast.id !== id),
+        {
+          id,
+          message: `${event.actorName || "A coach"} ${event.action === "withdrew" ? "withdrew from" : "volunteered for"} session ${event.lessonNumber ?? ""} on ${event.lessonDate ?? ""}.`,
+          targetPath: `/coaching?tab=sessions&session=${encodeURIComponent(String(event.lessonId))}`,
+        },
+      ].slice(-3));
     });
   }, [actorUsername]);
 
@@ -259,7 +277,11 @@ export function useHomePageToasts({
   }, [beginnersRescheduleToasts]);
 
   return {
-    beginnersRescheduleToasts: actorUsername ? beginnersRescheduleToasts : [],
+    beginnersRescheduleToasts: actorUsername
+      ? beginnersRescheduleToasts.filter((toast) => toast.actorUsername === actorUsername)
+      : [],
+    coachingAssignmentToasts: actorUsername ? coachingAssignmentToasts : [],
+    dismissCoachingAssignmentToast: (toastId: string) => setCoachingAssignmentToasts((current) => current.filter((toast) => toast.id !== toastId)),
     lostArrowToasts: actorUsername ? lostArrowToasts : [],
     questionResponseToasts,
     dismissBeginnersRescheduleToast: (toastId: string) => {

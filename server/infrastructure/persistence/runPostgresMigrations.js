@@ -754,6 +754,7 @@ export function buildInitialSchemaSql() {
       lesson_date TEXT NOT NULL,
       start_time TEXT NOT NULL,
       end_time TEXT NOT NULL,
+      required_coach_count INTEGER NOT NULL DEFAULT 1 CHECK (required_coach_count >= 1),
       UNIQUE (course_id, lesson_number)
     );
 

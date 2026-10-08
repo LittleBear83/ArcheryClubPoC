@@ -132,9 +132,10 @@ export function createSqliteBeginnersCourseStatements(db) {
       lesson_number,
       lesson_date,
       start_time,
-      end_time
+      end_time,
+      required_coach_count
     )
-    VALUES (?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   const updateBeginnersCourseLessonSchedule = db.prepare(`
@@ -209,6 +210,15 @@ export function createSqliteBeginnersCourseStatements(db) {
     ORDER BY beginners_course_participants.course_id ASC,
       beginners_course_participants.username ASC,
       login_events.logged_in_date ASC
+  `);
+
+  const listBeginnersCourseAttendanceByDate = db.prepare(`
+    SELECT DISTINCT beginners_course_participants.username
+    FROM beginners_course_participants
+    INNER JOIN users ON users.username = beginners_course_participants.username
+    INNER JOIN login_events ON login_events.user_id = users.id
+    WHERE beginners_course_participants.course_id = ?
+      AND login_events.logged_in_date = ?
   `);
 
   const insertBeginnersCourseParticipant = db.prepare(`
@@ -343,9 +353,15 @@ export function createSqliteBeginnersCourseStatements(db) {
       coach_username,
       assigned_by_username,
       assigned_at_date,
-      assigned_at_time
+      assigned_at_time,
+      coach_user_id,
+      assigned_by_user_id
     )
-    VALUES (?, ?, ?, ?, ?)
+    VALUES (
+      ?, ?, ?, ?, ?,
+      (SELECT id FROM users WHERE LOWER(username) = LOWER(?)),
+      (SELECT id FROM users WHERE LOWER(username) = LOWER(?))
+    )
   `);
 
   const deleteBeginnersLessonCoachesByLessonId = db.prepare(`
@@ -361,8 +377,13 @@ export function createSqliteBeginnersCourseStatements(db) {
       beginners_course_lessons.lesson_date,
       beginners_course_lessons.start_time,
       beginners_course_lessons.end_time,
+      beginners_course_lessons.required_coach_count,
       beginners_courses.course_type,
       beginners_courses.first_lesson_date,
+      beginners_courses.coordinator_username,
+      beginners_courses.beginner_capacity,
+      (SELECT COUNT(*) FROM beginners_course_participants participants WHERE participants.course_id = beginners_course_lessons.course_id) AS participant_count,
+      (SELECT COUNT(*) FROM beginners_course_lesson_coaches coaches WHERE coaches.lesson_id = beginners_course_lessons.id) AS coach_count,
       coordinator.first_name AS coordinator_first_name,
       coordinator.surname AS coordinator_surname
     FROM beginners_course_lesson_coaches
@@ -402,6 +423,7 @@ export function createSqliteBeginnersCourseStatements(db) {
     listBeginnersCourseLessons,
     listBeginnersCourseLessonsByCourseId,
     listBeginnersCourseParticipantLoginDates,
+    listBeginnersCourseAttendanceByDate,
     listBeginnersCourseParticipants,
     listBeginnersCourseParticipantsByCourseId,
     listBeginnersCourses,

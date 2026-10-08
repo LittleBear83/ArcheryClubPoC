@@ -104,6 +104,7 @@ export function BeginnersAndTasterPage({
         <BeginnersAndTasterReportingPage currentUserProfile={currentUserProfile} />
       ) : (
         <BeginnersCoursesPage
+          key={activeTab}
           currentUserProfile={currentUserProfile}
           variant={activeTab}
         />

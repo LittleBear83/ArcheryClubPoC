@@ -9,7 +9,6 @@ import { formatShortDateTime } from "../../../utils/dateTime";
 import { EquipmentMetricsSection } from "./EquipmentMetricsSection";
 import {
   CASE_ASSIGNMENT_FIELDS,
-  describeCaseContentLocation,
   getEquipmentDetailsLabel,
   getEquipmentDueLabel,
   getEquipmentLoanDateLabel,
@@ -111,6 +110,9 @@ export function EquipmentDesktopView({
             className="profile-form"
             title="Add Equipment"
             description="Create a new equipment record with its key details."
+            collapsible
+            defaultCollapsed
+            toggleStyle="accordion"
           >
             <form className="left-align-form" onSubmit={handleAddEquipmentSubmit}>
               <div className="profile-form-grid">
@@ -145,6 +147,9 @@ export function EquipmentDesktopView({
               className="profile-form"
               title="Manage Storage Locations"
               description="Add, rename, or retire the storage places used by the club."
+              collapsible
+              defaultCollapsed
+              toggleStyle="accordion"
             >
               <div className="equipment-storage-management-grid">
                 <div className="equipment-storage-management-card">
@@ -222,6 +227,7 @@ export function EquipmentDesktopView({
         description="Assign, return, store, or retire equipment."
         collapsible
         defaultCollapsed
+        toggleStyle="accordion"
       >
         <div className="left-align-form equipment-actions-layout">
           <div className="equipment-actions-layout-full">
@@ -488,6 +494,7 @@ export function EquipmentDesktopView({
         description="Review each case and manage what belongs in it."
         collapsible
         defaultCollapsed
+        toggleStyle="accordion"
       >
         <div className="equipment-case-grid">
           {cases.map((caseItem) => (
@@ -610,6 +617,7 @@ export function EquipmentDesktopView({
         description="Search and review the full equipment list."
         collapsible
         defaultCollapsed
+        toggleStyle="accordion"
       >
         <div className="equipment-table-toolbar">
           <label className="profile-member-select">

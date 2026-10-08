@@ -19,12 +19,19 @@ await import("../server/domain/services/beginnerConversionCaseLoan.test.js");
 await import("../server/domain/services/beginnerConversionDate.test.js");
 await import("../server/domain/services/runBeginnerConversion.test.js");
 await import("../server/infrastructure/persistence/beginnerConversionTransaction.test.js");
+await import("../server/presentation/http/registerCoachingHubRoutes.test.js");
+await import("../server/presentation/http/beginnersCourseCoachRequirements.test.js");
 const outDir = path.join(root, ".test-dist");
 const files = [
   "src/utils/userProfile.js",
   "shared/membershipClassification.js",
   "src/presentation/pages/coachingHubModel.ts",
   "src/presentation/pages/coachingHubModel.test.ts",
+  "src/presentation/pages/courseCoachRequirements.ts",
+  "src/presentation/pages/courseCoachRequirements.test.ts",
+  "src/presentation/pages/CoachingParticipantsList.tsx",
+  "src/presentation/components/Button.tsx",
+  "src/utils/dateTime.js",
   "src/api/reportingDashboardApi.ts",
   "src/theme/themes.ts",
   "src/theme/ThemeContext.ts",

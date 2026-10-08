@@ -12,7 +12,6 @@ import { formatShortDateTime } from "../../../utils/dateTime";
 import { EquipmentMetricsSection } from "./EquipmentMetricsSection";
 import {
   CASE_ASSIGNMENT_FIELDS,
-  describeCaseContentLocation,
   getEquipmentDetailsLabel,
   getEquipmentDueLabel,
   getEquipmentLoanDateLabel,
@@ -119,6 +118,9 @@ export function EquipmentMobileView({
             className="profile-form"
             title="Add Equipment"
             description="Create a new equipment record with its key details."
+            collapsible
+            defaultCollapsed
+            toggleStyle="accordion"
           >
             <form className="left-align-form" onSubmit={handleAddEquipmentSubmit}>
               <div className="profile-form-grid">
@@ -157,6 +159,9 @@ export function EquipmentMobileView({
               className="profile-form"
               title="Manage Storage Locations"
               description="Add, rename, or retire the storage places used by the club."
+              collapsible
+              defaultCollapsed
+              toggleStyle="accordion"
             >
               <div className="equipment-storage-management-grid">
                 <div className="equipment-storage-management-card">
@@ -236,6 +241,7 @@ export function EquipmentMobileView({
         description="Assign, return, store, or retire equipment."
         collapsible
         defaultCollapsed
+        toggleStyle="accordion"
       >
         <div className="left-align-form equipment-mobile-action-list">
           <LabeledSelect
@@ -502,6 +508,7 @@ export function EquipmentMobileView({
         description="Review each case and manage what belongs in it."
         collapsible
         defaultCollapsed
+        toggleStyle="accordion"
       >
         {cases.length > 0 ? (
           <MobileCardList className="equipment-mobile-case-list">
@@ -630,6 +637,7 @@ export function EquipmentMobileView({
         description="Search and review the full equipment list."
         collapsible
         defaultCollapsed
+        toggleStyle="accordion"
       >
         <div className="equipment-table-toolbar equipment-table-toolbar--mobile">
           <label className="profile-member-select">

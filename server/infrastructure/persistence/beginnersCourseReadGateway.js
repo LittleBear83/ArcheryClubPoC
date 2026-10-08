@@ -6,6 +6,7 @@ function createSqliteBeginnersCourseReadGateway({
   listBeginnersCourseLessons,
   listBeginnersCourseLessonsByCourseId,
   listBeginnersCourseParticipantLoginDates,
+  listBeginnersCourseAttendanceByDate,
   listBeginnersCourseParticipants,
   listBeginnersCourseParticipantsByCourseId,
   listBeginnersCourses,
@@ -43,6 +44,9 @@ function createSqliteBeginnersCourseReadGateway({
     },
     async listParticipantLoginDates() {
       return listBeginnersCourseParticipantLoginDates.all();
+    },
+    async listParticipantAttendanceByDate(courseId, lessonDate) {
+      return listBeginnersCourseAttendanceByDate.all(courseId, lessonDate);
     },
     async listParticipants() {
       return listBeginnersCourseParticipants.all();
@@ -235,6 +239,17 @@ function createPostgresBeginnersCourseReadGateway({ pool }) {
       );
       return result.rows;
     },
+    async listParticipantAttendanceByDate(courseId, lessonDate) {
+      const result = await pool.query(`
+        SELECT DISTINCT beginners_course_participants.username
+        FROM beginners_course_participants
+        INNER JOIN users ON users.username = beginners_course_participants.username
+        INNER JOIN login_events ON login_events.user_id = users.id
+        WHERE beginners_course_participants.course_id = $1
+          AND login_events.logged_in_date = $2
+      `, [courseId, lessonDate]);
+      return result.rows;
+    },
     async listParticipants() {
       const result = await pool.query(
         `
@@ -290,8 +305,16 @@ function createPostgresBeginnersCourseReadGateway({ pool }) {
             beginners_course_lessons.lesson_date,
             beginners_course_lessons.start_time,
             beginners_course_lessons.end_time,
+            beginners_course_lessons.required_coach_count,
             beginners_courses.course_type,
             beginners_courses.first_lesson_date,
+            beginners_courses.coordinator_username,
+            beginners_courses.beginner_capacity,
+            beginners_courses.approval_status,
+            beginners_courses.is_cancelled AS course_is_cancelled,
+            beginners_course_lessons.is_cancelled AS lesson_is_cancelled,
+            (SELECT COUNT(*)::int FROM beginners_course_participants participants WHERE participants.course_id = beginners_course_lessons.course_id) AS participant_count,
+            (SELECT COUNT(*)::int FROM beginners_course_lesson_coaches coaches WHERE coaches.lesson_id = beginners_course_lessons.id) AS coach_count,
             coordinator.first_name AS coordinator_first_name,
             coordinator.surname AS coordinator_surname
           FROM beginners_course_lesson_coaches

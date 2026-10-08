@@ -59,9 +59,12 @@ import { createDatabase } from "./infrastructure/persistence/createDatabase.js";
 import { createActivityReportingGateway } from "./infrastructure/persistence/activityReportingGateway.js";
 import { createLoginMethodReportingGateway } from "./infrastructure/persistence/loginMethodReportingGateway.js";
 import { registerReportingDashboardRoutes } from "./presentation/http/registerReportingDashboardRoutes.js";
+import { registerCoachingHubRoutes } from "./presentation/http/registerCoachingHubRoutes.js";
+import { buildCourseLessonCoachRequirements } from "./presentation/http/beginnersCourseCoachRequirements.js";
 import { createSqliteAuthAuditStatements } from "./infrastructure/persistence/createSqliteAuthAuditStatements.js";
 import { createBeginnersCourseReadGateway } from "./infrastructure/persistence/beginnersCourseReadGateway.js";
 import { createBeginnersCourseWriteGateway } from "./infrastructure/persistence/beginnersCourseWriteGateway.js";
+import { createManualLessonAttendanceGateway } from "./infrastructure/persistence/manualLessonAttendanceGateway.js";
 import { createSqliteBeginnersCourseStatements } from "./infrastructure/persistence/createSqliteBeginnersCourseStatements.js";
 import { createSqliteEquipmentStatements } from "./infrastructure/persistence/createSqliteEquipmentStatements.js";
 import { createSqliteLoanBowStatements } from "./infrastructure/persistence/createSqliteLoanBowStatements.js";
@@ -817,6 +820,7 @@ const {
   listBeginnersCourseLessons,
   listBeginnersCourseLessonsByCourseId,
   listBeginnersCourseParticipantLoginDates,
+  listBeginnersCourseAttendanceByDate,
   listBeginnersCourseParticipants,
   listBeginnersCourseParticipantsByCourseId,
   listBeginnersCourses,
@@ -1157,12 +1161,19 @@ const beginnersCourseReadGateway = createBeginnersCourseReadGateway({
   listBeginnersCourseLessons,
   listBeginnersCourseLessonsByCourseId,
   listBeginnersCourseParticipantLoginDates,
+  listBeginnersCourseAttendanceByDate,
   listBeginnersCourseParticipants,
   listBeginnersCourseParticipantsByCourseId,
   listBeginnersCourses,
   listBeginnersLessonCoaches,
   listBeginnersLessonCoachesByLessonId,
   listCoachBeginnersLessonsByUserId,
+  pool: db.pool,
+});
+
+const manualLessonAttendanceGateway = createManualLessonAttendanceGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
   pool: db.pool,
 });
 
@@ -1568,7 +1579,7 @@ function buildBeginnersLessonDates(firstLessonDate, lessonCount) {
   }));
 }
 
-async function sanitizeBeginnersCoursePayload(payload) {
+async function sanitizeBeginnersCoursePayload(payload, courseType) {
   const firstLessonDate =
     typeof payload?.firstLessonDate === "string" ? payload.firstLessonDate.trim() : "";
   const startTime =
@@ -1626,6 +1637,11 @@ async function sanitizeBeginnersCoursePayload(payload) {
     };
   }
 
+  const coachRequirements = buildCourseLessonCoachRequirements({ courseType, lessonCount, payload });
+  if (!coachRequirements.success) {
+    return { success: false, status: 400, message: coachRequirements.message };
+  }
+
   return {
     success: true,
     value: {
@@ -1635,6 +1651,8 @@ async function sanitizeBeginnersCoursePayload(payload) {
       endTime,
       lessonCount,
       beginnerCapacity,
+      requiredCoachesDefault: coachRequirements.requiredCoachesDefault,
+      lessonCoachRequirements: coachRequirements.lessonCoachRequirements,
     },
   };
 }
@@ -1845,9 +1863,12 @@ async function hasParticipantRecordedAttendance(participant) {
     return false;
   }
 
-  const loginDates = await beginnersCourseReadGateway.listParticipantLoginDates();
+  const [loginDates, manualAttendance] = await Promise.all([
+    beginnersCourseReadGateway.listParticipantLoginDates(),
+    manualLessonAttendanceGateway.listAll(),
+  ]);
 
-  return loginDates.some(
+  return manualAttendance.some((row) => Number(row.participant_id) === Number(participant.id)) || loginDates.some(
     (row) =>
       Number(row.course_id) === Number(participant.course_id) &&
       String(row.username ?? "").trim().toLowerCase() ===
@@ -1861,13 +1882,14 @@ function getCourseParticipantUserType(courseType) {
 
 async function buildBeginnersCourseDashboard(courseType = "beginners") {
   const normalizedCourseType = normalizeCourseType(courseType);
-  const [allCourses, allLessons, allParticipants, allLoginDates, allLessonCoaches] =
+  const [allCourses, allLessons, allParticipants, allLoginDates, allLessonCoaches, manualAttendance] =
     await Promise.all([
       beginnersCourseReadGateway.listCourses(),
       beginnersCourseReadGateway.listLessons(),
       beginnersCourseReadGateway.listParticipants(),
       beginnersCourseReadGateway.listParticipantLoginDates(),
       beginnersCourseReadGateway.listLessonCoaches(),
+      manualLessonAttendanceGateway.listAll(),
     ]);
   const courses = allCourses.filter(
     (course) => normalizeCourseType(course.course_type) === normalizedCourseType,
@@ -1885,6 +1907,16 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
     (row) => `${row.course_id}:${row.username}`,
     (row) => row.logged_in_date,
   );
+  const manualDatesByCourseParticipant = groupRowsBy(
+    manualAttendance,
+    (row) => `${row.course_id}:${row.username}`,
+    (row) => row.lesson_date,
+  );
+  const manualLessonIdsByParticipant = groupRowsBy(
+    manualAttendance,
+    (row) => `${row.course_id}:${row.username}`,
+    (row) => Number(row.lesson_id),
+  );
   const coachesByLessonId = groupRowsBy(
     allLessonCoaches,
     (row) => row.lesson_id,
@@ -1895,15 +1927,24 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
   );
 
   return courses.map((course) => {
-    const lessons = (lessonsByCourseId.get(course.id) ?? []).map((lesson) => ({
-      id: lesson.id,
-      lessonNumber: lesson.lesson_number,
-      date: lesson.lesson_date,
-      startTime: lesson.start_time,
-      endTime: lesson.end_time,
-      isCancelled: Boolean(lesson.is_cancelled),
-      coaches: coachesByLessonId.get(lesson.id) ?? [],
-    }));
+    const lessons = (lessonsByCourseId.get(course.id) ?? []).map((lesson) => {
+      const coaches = coachesByLessonId.get(lesson.id) ?? [];
+      const requiredCoachCount = Number(lesson.required_coach_count ?? 1);
+      const isCancelled = Boolean(course.is_cancelled || lesson.is_cancelled);
+      return {
+        id: lesson.id,
+        lessonNumber: lesson.lesson_number,
+        date: lesson.lesson_date,
+        startTime: lesson.start_time,
+        endTime: lesson.end_time,
+        isCancelled: Boolean(lesson.is_cancelled),
+        coaches,
+        requiredCoachCount,
+        assignedCoachCount: coaches.length,
+        coachShortfall: isCancelled ? 0 : Math.max(requiredCoachCount - coaches.length, 0),
+        isFullyCovered: isCancelled || coaches.length >= requiredCoachCount,
+      };
+    });
     const beginners = (participantsByCourseId.get(course.id) ?? []).map((participant) => ({
       id: participant.id,
       username: participant.username,
@@ -1926,12 +1967,16 @@ async function buildBeginnersCourseDashboard(courseType = "beginners") {
         : "",
       noShowRecordedByUsername: participant.no_show_recorded_by_username ?? "",
       attendanceDates: [
-        ...new Set(
-          loginDatesByCourseParticipant.get(
-            `${participant.course_id}:${participant.username}`,
-          ) ?? [],
-        ),
+        ...new Set([
+          ...(loginDatesByCourseParticipant.get(`${participant.course_id}:${participant.username}`) ?? []),
+          ...(manualDatesByCourseParticipant.get(`${participant.course_id}:${participant.username}`) ?? []),
+        ]),
       ],
+      manualAttendanceLessonIds: manualLessonIdsByParticipant.get(`${participant.course_id}:${participant.username}`) ?? [],
+      attendedLessonIds: lessons.filter((lesson) =>
+        (loginDatesByCourseParticipant.get(`${participant.course_id}:${participant.username}`) ?? []).includes(lesson.date) ||
+        (manualLessonIdsByParticipant.get(`${participant.course_id}:${participant.username}`) ?? []).includes(Number(lesson.id)),
+      ).map((lesson) => Number(lesson.id)),
       convertedToMember:
         Boolean(participant.converted_to_member) ||
         !LEGACY_NON_MEMBER_ROLE_KEYS.has(
@@ -2243,6 +2288,10 @@ async function buildBeginnersCourseCalendarLessons(courseType = null) {
         startTime: lesson.start_time,
         endTime: lesson.end_time,
         lessonNumber: lesson.lesson_number,
+        requiredCoachCount: Number(lesson.required_coach_count ?? 1),
+        assignedCoachCount: (coachesByLessonId.get(lesson.id) ?? []).length,
+        coachShortfall: course.is_cancelled || lesson.is_cancelled ? 0 : Math.max(Number(lesson.required_coach_count ?? 1) - (coachesByLessonId.get(lesson.id) ?? []).length, 0),
+        isFullyCovered: course.is_cancelled || lesson.is_cancelled || (coachesByLessonId.get(lesson.id) ?? []).length >= Number(lesson.required_coach_count ?? 1),
         coordinatorName: getUserDisplayName(
           course,
           "coordinator_first_name",
@@ -5358,7 +5407,7 @@ app.post("/api/beginners-courses", async (req, res) => {
     return;
   }
 
-  const sanitized = await sanitizeBeginnersCoursePayload(req.body);
+  const sanitized = await sanitizeBeginnersCoursePayload(req.body, courseType);
 
   if (!sanitized.success) {
     res.status(sanitized.status).json(sanitized);
@@ -5380,7 +5429,11 @@ app.post("/api/beginners-courses", async (req, res) => {
     lessonDates: buildBeginnersLessonDates(
       sanitized.value.firstLessonDate,
       sanitized.value.lessonCount,
-    ),
+    ).map((lesson) => ({
+      ...lesson,
+      requiredCoachCount: sanitized.value.lessonCoachRequirements[lesson.lessonNumber],
+    })),
+    requiredCoachesDefault: sanitized.value.requiredCoachesDefault,
     startTime: sanitized.value.startTime,
   });
   const createdCourse = await findBeginnersCourseAuditSnapshot(courseId, courseType);
@@ -7216,39 +7269,24 @@ app.get("/api/my-beginner-dashboard", async (req, res) => {
   });
 });
 
-app.get("/api/my-beginner-coaching-assignments", async (req, res) => {
-  const actor = getActorUser(req);
-
-  if (!actor) {
-    res.status(401).json({
-      success: false,
-      message: "An authenticated member is required.",
-    });
-    return;
-  }
-
-  const lessons = (await beginnersCourseReadGateway.listCoachLessonsByUserId(actor.id)).map((lesson) => ({
-    id: lesson.id,
-    courseId: lesson.course_id,
-    courseType: normalizeCourseType(lesson.course_type),
-    lessonNumber: lesson.lesson_number,
-    date: lesson.lesson_date,
-    startTime: lesson.start_time,
-    endTime: lesson.end_time,
-    coordinatorName: `${lesson.coordinator_first_name} ${lesson.coordinator_surname}`.trim(),
-    beginnerCount: 0,
-  }));
-
-  for (const lesson of lessons) {
-    lesson.beginnerCount = (
-      await beginnersCourseReadGateway.listParticipantsByCourseId(lesson.courseId)
-    ).length;
-  }
-
-  res.json({
-    success: true,
-    lessons,
-  });
+registerCoachingHubRoutes({
+  app,
+  actorHasPermission,
+  getCourseTypePermissions,
+  getActorUser,
+  isCoachEligible: isBeginnersCourseCoachEligible,
+  beginnersCourseReadGateway,
+  beginnersCourseWriteGateway,
+  manualLessonAttendanceGateway,
+  buildBeginnersCourseCalendarLessons,
+  getUtcTimestampParts,
+  normalizeCourseType,
+  resolveCanonicalUsername,
+  findBeginnersLessonAuditSnapshot,
+  auditChangeLogger,
+  broadcastBeginnersUpdated,
+  broadcastCalendarUpdated,
+  broadcastToUsers: (usernames, eventName, payload) => serverEventBus.broadcastToUsers(usernames, eventName, payload),
 });
 
 registerTournamentRoutes({

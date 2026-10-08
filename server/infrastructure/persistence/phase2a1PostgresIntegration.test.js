@@ -1554,20 +1554,24 @@ test("lesson cancellation persists, rolls back mixed selections and replicates s
   for (const migration of postgresMigrations.slice(lessonMigrationIndex + 1)) {
     for (const statement of migration.statements) await cloud.query(statement);
   }
+  await write.setLessonRequiredCoachCount({ lessonId: Number(lessons[1].id), requiredCoachCount: 3 });
   await write.cancelLessonDates({ courseId, lessonIds: [Number(lessons[0].id)] });
   await assert.rejects(write.cancelLessonDates({ courseId, lessonIds: [Number(lessons[0].id), Number(lessons[1].id)] }));
   assert.equal((await cloud.query("SELECT is_cancelled FROM beginners_course_lessons WHERE id = $1", [lessons[1].id])).rows[0].is_cancelled, 0);
   const publication = createSyncPublicationGateway({ pool: cloud });
   const snapshot = await publication.createSnapshot();
   assert.equal(snapshot.snapshot.beginnersCourseLessons.find((lesson) => lesson.sync_id === lessons[0].sync_id).is_cancelled, 1);
+  assert.equal(snapshot.snapshot.beginnersCourseLessons.find((lesson) => lesson.sync_id === lessons[1].sync_id).required_coach_count, 3);
   const localGateway = createSyncGateway({ pool: local });
   const client = await local.connect();
   const applySnapshot = (response) => applyPublicationSnapshot({ client, deactivatedRfidSuffix: "-deactivated", snapshotResponse: { ...response, feedVersion: "sync-publication-v2", mode: "snapshot" }, syncGateway: localGateway });
   try {
     await applySnapshot(snapshot);
     assert.equal((await local.query("SELECT is_cancelled FROM beginners_course_lessons WHERE sync_id = $1", [lessons[0].sync_id])).rows[0].is_cancelled, 1);
+    assert.equal((await local.query("SELECT required_coach_count FROM beginners_course_lessons WHERE sync_id = $1", [lessons[1].sync_id])).rows[0].required_coach_count, 3);
     const ids = (await local.query("SELECT id FROM beginners_course_lessons ORDER BY lesson_number")).rows;
     const changesBefore = (await local.query("SELECT COUNT(*)::int AS n FROM sync_change_log")).rows[0].n;
+    await write.setLessonRequiredCoachCount({ lessonId: Number(lessons[1].id), requiredCoachCount: 4 });
     await write.cancelLessonDates({ courseId, lessonIds: lessons.slice(1).map((lesson) => Number(lesson.id)) });
     await publication.publishBatch();
     const changes = await publication.listPublishedChanges({ checkpoint: snapshot.checkpoint, limit: 500 });
@@ -1576,6 +1580,7 @@ test("lesson cancellation persists, rolls back mixed selections and replicates s
     await applyPulledPublicationResponse({ client, deactivatedRfidSuffix: "-deactivated", pullResponse: response, syncGateway: localGateway });
     await applyPulledPublicationResponse({ client, deactivatedRfidSuffix: "-deactivated", pullResponse: response, syncGateway: localGateway });
     assert.deepEqual((await local.query("SELECT is_cancelled FROM beginners_course_lessons ORDER BY lesson_number")).rows.map((lesson) => lesson.is_cancelled), [1,1,1]);
+    assert.equal((await local.query("SELECT required_coach_count FROM beginners_course_lessons WHERE sync_id = $1", [lessons[1].sync_id])).rows[0].required_coach_count, 4);
     assert.equal((await cloud.query("SELECT is_cancelled FROM beginners_courses WHERE id = $1", [courseId])).rows[0].is_cancelled, 0);
     assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM sync_change_log")).rows[0].n, changesBefore);
     assert.deepEqual((await local.query("SELECT id FROM beginners_course_lessons ORDER BY lesson_number")).rows, ids);
@@ -1583,6 +1588,72 @@ test("lesson cancellation persists, rolls back mixed selections and replicates s
     assert.equal((await cloud.query("SELECT is_cancelled FROM beginners_courses WHERE id = $1", [courseId])).rows[0].is_cancelled, 1);
     assert.equal((await cloud.query("SELECT COUNT(*)::int AS n FROM beginners_course_lessons WHERE course_id = $1", [courseId])).rows[0].n, 3);
   } finally { client.release(); }
+});
+
+test("PostgreSQL serializes concurrent claims for the final required coach slot", { timeout: 30000 }, async () => {
+  const pool = await createTemporaryPool("coach_coverage");
+  disposablePools.push(pool);
+  for (const [id, username] of [[210, "coverage-coordinator"], [211, "coverage-one"], [212, "coverage-two"], [213, "coverage-three"]]) {
+    await seedUser(pool, id, username);
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const futureDate = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const write = createBeginnersCourseWriteGateway({ databaseEngine: "postgres", pool });
+  const courseId = await write.createCourseWithLessons({
+    actorUsername: "coverage-coordinator", coordinatorUsername: "coverage-coordinator", courseType: "beginners",
+    firstLessonDate: futureDate, startTime: "18:00:00", endTime: "20:00:00", lessonCount: 1, beginnerCapacity: 8,
+    lessonDates: [{ lessonNumber: 1, lessonDate: futureDate }], createdAtDate: today, createdAtTime: "09:00:00",
+  });
+  await pool.query("UPDATE beginners_courses SET approval_status = 'approved' WHERE id = $1", [courseId]);
+  const lessonId = Number((await pool.query("SELECT id FROM beginners_course_lessons WHERE course_id = $1", [courseId])).rows[0].id);
+  assert.equal(await write.setLessonRequiredCoachCount({ lessonId, requiredCoachCount: 2 }), true);
+  const slot = { lessonId, assignedAtDate: today, assignedAtTime: "10:00:00" };
+  assert.equal(await write.addLessonCoachSelf({ ...slot, actorUsername: "coverage-one" }), true);
+  const claims = await Promise.all(["coverage-two", "coverage-three"].map((actorUsername) => write.addLessonCoachSelf({ ...slot, actorUsername })));
+  assert.equal(claims.filter(Boolean).length, 1);
+  assert.equal(Number((await pool.query("SELECT COUNT(*) AS count FROM beginners_course_lesson_coaches WHERE lesson_id = $1", [lessonId])).rows[0].count), 2);
+});
+
+test("PostgreSQL course creation persists coach defaults, per-lesson overrides, and Taster defaults", { timeout: 30000 }, async () => {
+  const pool = await createTemporaryPool("coach_requirements");
+  disposablePools.push(pool);
+  await seedUser(pool, 214, "requirements-coordinator");
+  const write = createBeginnersCourseWriteGateway({ databaseEngine: "postgres", pool });
+  const today = new Date().toISOString().slice(0, 10);
+  const lessons = Array.from({ length: 6 }, (_value, index) => ({
+    lessonNumber: index + 1,
+    lessonDate: `2027-08-${String(index + 1).padStart(2, "0")}`,
+  }));
+  const defaultCourseId = await write.createCourseWithLessons({
+    actorUsername: "requirements-coordinator", coordinatorUsername: "requirements-coordinator", courseType: "beginners",
+    firstLessonDate: lessons[0].lessonDate, startTime: "18:00:00", endTime: "20:00:00", lessonCount: 6, beginnerCapacity: 8,
+    lessonDates: lessons, createdAtDate: today, createdAtTime: "09:00:00",
+  });
+  assert.deepEqual(
+    (await pool.query("SELECT required_coach_count FROM beginners_course_lessons WHERE course_id = $1 ORDER BY lesson_number", [defaultCourseId])).rows.map((row) => row.required_coach_count),
+    [5, 5, 5, 5, 5, 5],
+  );
+
+  const customCourseId = await write.createCourseWithLessons({
+    actorUsername: "requirements-coordinator", coordinatorUsername: "requirements-coordinator", courseType: "beginners",
+    firstLessonDate: lessons[0].lessonDate, startTime: "18:00:00", endTime: "20:00:00", lessonCount: 6, beginnerCapacity: 8,
+    requiredCoachesDefault: 3,
+    lessonDates: lessons.map((lesson) => ({
+      ...lesson,
+      requiredCoachCount: lesson.lessonNumber === 2 ? 2 : lesson.lessonNumber === 5 ? 4 : 3,
+    })),
+    createdAtDate: today, createdAtTime: "09:00:00",
+  });
+  assert.deepEqual(
+    (await pool.query("SELECT required_coach_count FROM beginners_course_lessons WHERE course_id = $1 ORDER BY lesson_number", [customCourseId])).rows.map((row) => row.required_coach_count),
+    [3, 2, 3, 3, 4, 3],
+  );
+  const tasterCourseId = await write.createCourseWithLessons({
+    actorUsername: "requirements-coordinator", coordinatorUsername: "requirements-coordinator", courseType: "taster-session",
+    firstLessonDate: lessons[0].lessonDate, startTime: "18:00:00", endTime: "20:00:00", lessonCount: 1, beginnerCapacity: 8,
+    lessonDates: [lessons[0]], createdAtDate: today, createdAtTime: "09:00:00",
+  });
+  assert.equal((await pool.query("SELECT required_coach_count FROM beginners_course_lessons WHERE course_id = $1", [tasterCourseId])).rows[0].required_coach_count, 1);
 });
 
 test('local outbox INSERT wakes only on commit and remains durable after listener restart', { timeout: 30000 }, async () => {

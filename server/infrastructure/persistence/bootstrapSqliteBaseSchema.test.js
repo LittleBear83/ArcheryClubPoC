@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import Database from "better-sqlite3";
-import { bootstrapSqliteBaseSchema } from "./bootstrapSqliteBaseSchema.js";
+import {
+  bootstrapSqliteBaseSchema,
+  CLUB_EVENTS_TABLE_SQL,
+  COACHING_SESSIONS_TABLE_SQL,
+  COACHING_SESSION_BOOKINGS_TABLE_SQL,
+  EVENT_BOOKINGS_TABLE_SQL,
+  TOURNAMENTS_TABLE_SQL,
+  TOURNAMENT_REGISTRATIONS_TABLE_SQL,
+  TOURNAMENT_SCORES_TABLE_SQL,
+} from "./bootstrapSqliteBaseSchema.js";
+import { bootstrapSqliteCourseScheduleCompatibility } from "./bootstrapSqliteCourseScheduleCompatibility.js";
 import { bootstrapSqliteEquipmentCompatibility } from "./bootstrapSqliteEquipmentCompatibility.js";
 import { createSqliteEquipmentStatements } from "./createSqliteEquipmentStatements.js";
 import { bootstrapSqliteUserCompatibility } from "./bootstrapSqliteUserCompatibility.js";
@@ -25,6 +35,54 @@ test("SQLite equipment loan upgrade preserves old rows and adds nullable expecte
     const statements = createSqliteEquipmentStatements(db);
     statements.insertEquipmentLoan.run(2, "member", "staff", "2026-09-30", "12:00:00", null, due);
     assert.equal(statements.listEquipmentLoans.all().find((loan) => loan.equipment_item_id === 2).expected_return_date, due);
+  } finally {
+    db.close();
+  }
+});
+
+test("SQLite course requirement upgrade changes only unaudited default Beginners lessons once", () => {
+  const db = new Database(":memory:");
+  try {
+    bootstrapSqliteBaseSchema({ db, defaultEquipmentCupboardLabel: "Club cupboard" });
+    db.prepare("INSERT INTO users (username, first_name, surname) VALUES ('coordinator', 'Course', 'Coordinator')").run();
+    const course = db.prepare(`
+      INSERT INTO beginners_courses (course_type, coordinator_username, submitted_by_username,
+        first_lesson_date, start_time, end_time, lesson_count, beginner_capacity,
+        created_at_date, created_at_time)
+      VALUES (?, 'coordinator', 'coordinator', '2026-08-01', '10:00', '12:00', 1, 8,
+        '2026-07-01', '09:00')
+    `);
+    const defaultBeginnerCourseId = course.run("beginners").lastInsertRowid;
+    const configuredBeginnerCourseId = course.run("beginners").lastInsertRowid;
+    const tasterCourseId = course.run("taster-session").lastInsertRowid;
+    const insertLesson = db.prepare(`
+      INSERT INTO beginners_course_lessons (course_id, lesson_number, lesson_date, start_time, end_time, required_coach_count)
+      VALUES (?, 1, '2026-08-01', '10:00', '12:00', 1)
+    `);
+    const defaultLessonId = insertLesson.run(defaultBeginnerCourseId).lastInsertRowid;
+    const configuredLessonId = insertLesson.run(configuredBeginnerCourseId).lastInsertRowid;
+    const tasterLessonId = insertLesson.run(tasterCourseId).lastInsertRowid;
+    db.prepare(`
+      INSERT INTO audit_events (actor_username, action, target, status_code, created_at_date, created_at_time)
+      VALUES ('coordinator', 'required_coach_count_changed', ?, 200, '2026-07-01', '09:00:00')
+    `).run(`/api/beginners-course-lessons/${configuredLessonId}/required-coaches`);
+    const migrate = () => bootstrapSqliteCourseScheduleCompatibility({
+      db,
+      clubEventsTableSql: CLUB_EVENTS_TABLE_SQL,
+      coachingSessionBookingsTableSql: COACHING_SESSION_BOOKINGS_TABLE_SQL,
+      coachingSessionsTableSql: COACHING_SESSIONS_TABLE_SQL,
+      eventBookingsTableSql: EVENT_BOOKINGS_TABLE_SQL,
+      tournamentsTableSql: TOURNAMENTS_TABLE_SQL,
+      tournamentRegistrationsTableSql: TOURNAMENT_REGISTRATIONS_TABLE_SQL,
+      tournamentScoresTableSql: TOURNAMENT_SCORES_TABLE_SQL,
+    });
+    migrate();
+    migrate();
+    const requirements = new Map(db.prepare("SELECT id, required_coach_count FROM beginners_course_lessons")
+      .all().map((row) => [row.id, row.required_coach_count]));
+    assert.equal(requirements.get(defaultLessonId), 5);
+    assert.equal(requirements.get(configuredLessonId), 1);
+    assert.equal(requirements.get(tasterLessonId), 1);
   } finally {
     db.close();
   }

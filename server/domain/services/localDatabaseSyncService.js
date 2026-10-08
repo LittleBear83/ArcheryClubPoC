@@ -2123,12 +2123,16 @@ async function upsertBeginnersCourseLessons(client, lessons = []) {
     await client.query(
       `
         INSERT INTO beginners_course_lessons (
-          sync_id, course_id, lesson_number, lesson_date, start_time, end_time, is_cancelled
+          sync_id, course_id, lesson_number, lesson_date, start_time, end_time, is_cancelled, required_coach_count
         )
         VALUES (
           $1,
           (SELECT id FROM beginners_courses WHERE sync_id = $2 LIMIT 1),
-          $3, $4, $5, $6, $7
+          $3, $4, $5, $6, $7,
+          COALESCE($8, CASE
+            WHEN (SELECT course_type FROM beginners_courses WHERE sync_id = $2 LIMIT 1) = 'beginners' THEN 5
+            ELSE 1
+          END)
         )
         ON CONFLICT (sync_id) DO UPDATE SET
           course_id = EXCLUDED.course_id,
@@ -2136,9 +2140,10 @@ async function upsertBeginnersCourseLessons(client, lessons = []) {
           lesson_date = EXCLUDED.lesson_date,
           start_time = EXCLUDED.start_time,
           end_time = EXCLUDED.end_time,
-          is_cancelled = EXCLUDED.is_cancelled
+          is_cancelled = EXCLUDED.is_cancelled,
+          required_coach_count = EXCLUDED.required_coach_count
       `,
-      [lesson.sync_id, lesson.course_sync_id, lesson.lesson_number, lesson.lesson_date, lesson.start_time, lesson.end_time, lesson.is_cancelled ?? 0],
+      [lesson.sync_id, lesson.course_sync_id, lesson.lesson_number, lesson.lesson_date, lesson.start_time, lesson.end_time, lesson.is_cancelled ?? 0, lesson.required_coach_count ?? null],
     );
   }
 }

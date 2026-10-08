@@ -1270,10 +1270,15 @@ export function bootstrapSqliteBaseSchema({
       lesson_date TEXT NOT NULL,
       start_time TEXT NOT NULL,
       end_time TEXT NOT NULL,
+      required_coach_count INTEGER NOT NULL DEFAULT 1 CHECK (required_coach_count >= 1),
       UNIQUE (course_id, lesson_number),
       FOREIGN KEY (course_id) REFERENCES beginners_courses(id)
     )
   `);
+  const lessonColumns = db.prepare("PRAGMA table_info(beginners_course_lessons)").all();
+  if (!lessonColumns.some((column) => column.name === "required_coach_count")) {
+    db.exec("ALTER TABLE beginners_course_lessons ADD COLUMN required_coach_count INTEGER NOT NULL DEFAULT 1 CHECK (required_coach_count >= 1)");
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS beginners_course_participants (
@@ -1398,6 +1403,17 @@ export function bootstrapSqliteBaseSchema({
       FOREIGN KEY (lesson_id) REFERENCES beginners_course_lessons(id),
       FOREIGN KEY (coach_username) REFERENCES users(username),
       FOREIGN KEY (assigned_by_username) REFERENCES users(username)
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS beginners_course_manual_attendance (
+      lesson_id INTEGER NOT NULL REFERENCES beginners_course_lessons(id) ON DELETE CASCADE,
+      participant_id INTEGER NOT NULL REFERENCES beginners_course_participants(id) ON DELETE CASCADE,
+      recorded_by_username TEXT NOT NULL REFERENCES users(username),
+      recorded_at_date TEXT NOT NULL,
+      recorded_at_time TEXT NOT NULL,
+      PRIMARY KEY (lesson_id, participant_id)
     )
   `);
 

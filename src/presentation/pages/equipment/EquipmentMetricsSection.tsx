@@ -85,6 +85,7 @@ export function EquipmentMetricsSection({ analytics }) {
       description="Review usage trends, inactive stock, and items that may need buying or reallocating."
       collapsible
       defaultCollapsed
+      toggleStyle="accordion"
     >
       <div className="equipment-metrics-layout">
         <div className="equipment-metrics-summary-grid">

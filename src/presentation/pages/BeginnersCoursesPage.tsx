@@ -9,11 +9,13 @@ import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { MobileCardList } from "../components/mobile/MobileCardList";
 import { MobileEmptyState } from "../components/mobile/MobileEmptyState";
 import { MobileKeyValueList } from "../components/mobile/MobileKeyValueList";
+import { ProfileAccordion } from "./profile/ProfileAccordion";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
   addBeginnerToCourse,
   assignBeginnerCase,
   assignLessonCoaches,
+  updateLessonRequiredCoachCount,
   cancelBeginnersCourse,
   convertBeginnerToMember as convertBeginnerToMemberApi,
   createBeginnersCourse,
@@ -23,6 +25,7 @@ import {
   getHaveAGoSessionsDashboard,
   getTasterSessionsDashboard,
   markBeginnersParticipantNoShow,
+  setManualLessonAttendance,
   reallocateBeginnersCourseParticipant,
   removeBeginnerParticipant,
   rescheduleBeginnersCourse,
@@ -31,6 +34,13 @@ import {
   updateBeginnerParticipant,
 } from "../../api/beginnersCoursesApi";
 import { formatDate, formatClockTime } from "../../utils/dateTime";
+import {
+  buildLessonCoachRequirements,
+  DEFAULT_BEGINNERS_COACHES_PER_LESSON,
+  resizeLessonCoachRequirementOverrides,
+  setLessonCoachRequirementOverride,
+  type LessonCoachRequirementOverrides,
+} from "./courseCoachRequirements";
 import {
   formatMemberDisplayName,
   formatMemberDisplayUsername,
@@ -91,6 +101,8 @@ type CourseBeginner = {
   thirtyDayReminderSent: boolean;
   courseFeePaid: boolean;
   attendanceDates: string[];
+  attendedLessonIds: number[];
+  manualAttendanceLessonIds: number[];
   noShowRecorded: boolean;
   noShowRecordedAt: string;
   noShowRecordedByUsername: string;
@@ -107,6 +119,10 @@ type CourseLesson = {
   startTime: string;
   endTime: string;
   coaches: Array<{ username: string; fullName: string }>;
+  requiredCoachCount?: number;
+  assignedCoachCount?: number;
+  coachShortfall?: number;
+  isFullyCovered?: boolean;
 };
 
 type HistoricalAttendee = {
@@ -221,7 +237,7 @@ function formatCourseTimeRange(startTime: string, endTime: string) {
 
 function BeginnerFormFields({ copy, form, onChange, onToggle }) {
   return (
-    <div className="beginners-course-form-grid">
+    <div className="beginners-course-form-grid beginners-course-participant-form">
       <label>
         First name
         <input
@@ -504,9 +520,13 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
         ? TASTER_SESSION_COPY
         : BEGINNERS_COPY;
   const usesEquipmentAssignment = copy.courseType === "beginners";
+  const supportsCoachRequirements = copy.courseType === "beginners" || copy.courseType === "taster-session";
+  const defaultCoachesPerLesson = supportsCoachRequirements ? DEFAULT_BEGINNERS_COACHES_PER_LESSON : 1;
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const queryClient = useQueryClient();
   const [courseForm, setCourseForm] = useState(EMPTY_COURSE_FORM);
+  const [requiredCoachesDefault, setRequiredCoachesDefault] = useState(String(defaultCoachesPerLesson));
+  const [lessonCoachRequirementOverrides, setLessonCoachRequirementOverrides] = useState<LessonCoachRequirementOverrides>({});
   const [beginnerForms, setBeginnerForms] = useState<Record<number, typeof EMPTY_BEGINNER_FORM>>(
     {},
   );
@@ -518,6 +538,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const [coachLesson, setCoachLesson] = useState<CourseLesson | null>(null);
   const [bulkCoachCourse, setBulkCoachCourse] = useState<BulkCoachAssignmentCourse | null>(null);
   const [selectedCoachUsernames, setSelectedCoachUsernames] = useState<string[]>([]);
+  const [requiredCoachCountInput, setRequiredCoachCountInput] = useState(1);
   const [bulkCoachAssignments, setBulkCoachAssignments] = useState<Record<number, string[]>>({});
   const [editingBeginner, setEditingBeginner] = useState<CourseBeginner | null>(null);
   const [actionSelection, setActionSelection] = useState<{
@@ -608,6 +629,16 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     ]);
   };
 
+  const changeAttendance = async (lessonId: number, participantId: number, attended: boolean) => {
+    try {
+      await mutation.mutateAsync(() => setManualLessonAttendance(currentUserProfile, lessonId, participantId, attended));
+      setMessage(attended ? "Attendance recorded." : "Manual attendance removed.");
+      await refreshDashboard();
+    } catch (attendanceError) {
+      setError(attendanceError instanceof Error ? attendanceError.message : "Attendance could not be updated.");
+    }
+  };
+
   const beginnersCoursesQuery = useQuery({
     queryKey: [BEGINNERS_COPY.queryKey, actorUsername],
     queryFn: () =>
@@ -671,10 +702,21 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
   const submitCourse = async (event) => {
     event.preventDefault();
+    const lessonCoachRequirements = supportsCoachRequirements
+      ? buildLessonCoachRequirements(Number(courseForm.lessonCount), requiredCoachesDefault, lessonCoachRequirementOverrides)
+      : null;
+    if (supportsCoachRequirements && !lessonCoachRequirements) {
+      setError("Coach requirements must be whole numbers of at least 1 for every lesson.");
+      return;
+    }
     await mutation.mutateAsync(() =>
       copy.createCourse(currentUserProfile, {
         ...courseForm,
         coordinatorUsername: selectedCoordinatorUsername,
+        ...(supportsCoachRequirements ? {
+          requiredCoachesDefault: Number(requiredCoachesDefault),
+          lessonCoachRequirements,
+        } : {}),
       }),
     );
     setMessage(`${copy.itemLabel} submitted for approval.`);
@@ -683,6 +725,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       coordinatorUsername:
         current.coordinatorUsername || selectedCoordinatorUsername,
     }));
+    if (supportsCoachRequirements) {
+      setRequiredCoachesDefault(String(defaultCoachesPerLesson));
+      setLessonCoachRequirementOverrides({});
+    }
     await refreshDashboard();
   };
 
@@ -821,6 +867,15 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const openCoachModal = (lesson: CourseLesson) => {
     setCoachLesson(lesson);
     setSelectedCoachUsernames(lesson.coaches.map((coach) => coach.username));
+    setRequiredCoachCountInput(Math.max(1, Number(lesson.requiredCoachCount ?? 1)));
+  };
+
+  const saveRequiredCoachCount = async () => {
+    if (!coachLesson || !Number.isInteger(requiredCoachCountInput) || requiredCoachCountInput < 1) return;
+    await mutation.mutateAsync(() => updateLessonRequiredCoachCount(currentUserProfile, coachLesson.id, requiredCoachCountInput));
+    setCoachLesson((current) => current ? { ...current, requiredCoachCount: requiredCoachCountInput } : current);
+    setMessage("Required coach count updated.");
+    await refreshDashboard();
   };
 
   const openBulkCoachModal = (course: CourseRecord) => {
@@ -1017,87 +1072,73 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
             permissions.canManageBeginnersCourses &&
             copy.courseType !== "have-a-go" &&
             !hasCourseStarted(course);
+          const canAddParticipant = !isClosedCourse && permissions.canManageBeginnersCourses && !course.isCancelled && course.approvalStatus === "approved";
           const isCollapsed = collapsedCourseIds[course.id] ?? true;
 
           return (
-            <section id={`course-details-${course.id}`} key={course.id} className="equipment-action-card beginners-course-panel">
+            <section id={`course-details-${course.id}`} key={course.id} className={`equipment-action-card beginners-course-panel beginners-course-collapsible-panel${isClosedCourse ? " beginners-course-closed-panel" : ""}`}>
               <div className="beginners-course-header">
-                <div>
-                  <h3>
+                <button
+                  type="button"
+                  className="profile-accordion-summary beginners-course-toggle"
+                  onClick={() => setCollapsedCourseIds((current) => ({ ...current, [course.id]: !(current[course.id] ?? true) }))}
+                  aria-expanded={!isCollapsed}
+                >
+                  <span className="beginners-course-summary-copy">
+                  <span className="profile-accordion-label beginners-course-title" role="heading" aria-level={3}>
                     {copy.itemLabel} from {formatDate(course.firstLessonDate)}{isClosedCourse ? " - Closed" : ""}
-                  </h3>
-                  <p className="equipment-meta-copy">
+                  </span>
+                  <span className="equipment-meta-copy">
                     Time: {formatCourseTimeRange(course.startTime, course.endTime)} | Coordinator: {course.coordinatorName} | {copy.countMetaLabel}: {course.lessonCount} | {copy.capacityMetaLabel}:
                     {" "}
                     {course.beginnerCapacity} | {copy.remainingMetaLabel}: {course.placesRemaining}
-                  </p>
-                  <p className="equipment-meta-copy">
+                  </span>
+                  <span className="equipment-meta-copy">
                     Submitted by {course.submittedByName} | Status: {course.approvalStatus}
                     {course.approvedByName ? ` | Approved by ${course.approvedByName}` : ""}
-                  </p>
+                  </span>
                   {course.rejectionReason ? (
-                    <p className="profile-error">Rejected: {course.rejectionReason}</p>
+                    <span className="profile-error">Rejected: {course.rejectionReason}</span>
                   ) : null}
                   {isClosedCourse ? (
-                    <p className="equipment-meta-copy">
+                    <span className="equipment-meta-copy">
                       {course.cancellationReason || course.rejectionReason ||
                         (course.lessons.length > 0 && course.lessons.every((lesson) => lesson.isCancelled)
                           ? "All session dates cancelled"
                           : `${copy.itemLabel} completed.`)}
-                    </p>
+                    </span>
                   ) : null}
-                </div>
-                <div className="beginners-course-actions">
-                  {canCancelCourse && course.lessons.some((lesson) => !lesson.isCancelled) ? (
-                    <Button size="sm" variant="danger" onClick={() => { setError(""); setCancellationCourse(course); setCancellationLessonIds([]); }}>Cancel session date(s)</Button>
-                  ) : null}
-                  {canRescheduleCourse ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => openRescheduleModal(course)}
-                    >
-                      Reschedule
-                    </Button>
-                  ) : null}
-                  {canCancelCourse ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="danger"
-                      onClick={() => void cancelCourse(course.id)}
-                    >
-                      {copy.cancelButtonLabel}
-                    </Button>
-                  ) : null}
-                  <Button
-                    type="button"
-                    variant="unstyled"
-                    className="beginners-course-collapse-button"
-                    onClick={() =>
-                      setCollapsedCourseIds((current) => ({
-                        ...current,
-                        [course.id]: !(current[course.id] ?? true),
-                      }))
-                    }
-                    aria-expanded={!isCollapsed}
-                  >
-                    {isCollapsed ? "Expand" : "Collapse"}
-                  </Button>
-                </div>
+                  </span>
+                  <span className="profile-accordion-icon" aria-hidden="true" />
+                </button>
               </div>
 
               {isCollapsed ? null : (
-                <>
-                  {permissions.canManageBeginnersCourses && !course.isCancelled && course.approvalStatus === "approved" ? (
-                    <section className="beginners-course-subpanel">
-                      <h4>{copy.addParticipantTitle}</h4>
-                      {course.approvalStatus !== "approved" ? (
-                        <p className="equipment-meta-copy">
-                          {copy.addParticipantPendingMessage}
-                        </p>
+                <div className="beginners-course-expanded-content">
+                  {canAddParticipant || canCancelCourse || canRescheduleCourse ? (
+                    <div className="beginners-course-expanded-toolbar">
+                      {canAddParticipant ? <h4>{copy.addParticipantTitle}</h4> : null}
+                      {canCancelCourse || canRescheduleCourse ? (
+                        <div className="beginners-course-actions beginners-course-management-actions">
+                          {canCancelCourse && course.lessons.some((lesson) => !lesson.isCancelled) ? (
+                            <Button size="sm" variant="danger" onClick={() => { setError(""); setCancellationCourse(course); setCancellationLessonIds([]); }}>Cancel session date(s)</Button>
+                          ) : null}
+                          {canRescheduleCourse ? (
+                            <Button type="button" size="sm" variant="secondary" onClick={() => openRescheduleModal(course)}>
+                              Reschedule
+                            </Button>
+                          ) : null}
+                          {canCancelCourse ? (
+                            <Button type="button" size="sm" variant="danger" onClick={() => void cancelCourse(course.id)}>
+                              {copy.cancelButtonLabel}
+                            </Button>
+                          ) : null}
+                        </div>
                       ) : null}
+                    </div>
+                  ) : null}
+                  {canAddParticipant ? (
+                    <section className="beginners-course-subpanel beginners-course-entry-panel">
                       <BeginnerFormFields
                         copy={copy}
                         form={beginnerForm}
@@ -1117,7 +1158,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                     </section>
                   ) : null}
 
-                  <section className="beginners-course-subpanel">
+                  {!(isClosedCourse && copy.courseType === "taster-session" && course.beginners.length === 0 && course.historicalAttendees?.length > 0) ? <section className="beginners-course-subpanel">
                     <h4>{copy.participantListTitle}</h4>
                     {isMobile ? (
                       course.beginners.length > 0 ? (
@@ -1196,7 +1237,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                       )
                     ) : (
                       <div className="equipment-inventory-table-wrap">
-                        <table className="equipment-inventory-table">
+                        <table className="equipment-inventory-table beginners-course-participants-table">
                           <thead>
                             <tr>
                               <th>Name</th>
@@ -1261,15 +1302,15 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                         </table>
                       </div>
                     )}
-                  </section>
+                  </section> : null}
 
                   {course.historicalAttendees?.length ? (
-                    <section className="beginners-course-subpanel">
+                    <section className="beginners-course-subpanel beginners-course-historical-section">
                       <h4>Attendees moved to beginners courses</h4>
                       <p className="equipment-meta-copy">
                         These attendees came from this Taster Session. Manage their current booking in the beginners course.
                       </p>
-                      <MobileCardList className="beginners-course-mobile-card-list">
+                      {isMobile ? <MobileCardList className="beginners-course-mobile-card-list">
                         {course.historicalAttendees.map((attendee) => (
                           <article key={attendee.id} className="beginners-course-mobile-card">
                             <h5>{attendee.fullName}</h5>
@@ -1288,12 +1329,44 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                             ]} />
                           </article>
                         ))}
-                      </MobileCardList>
+                      </MobileCardList> : <div className="equipment-inventory-table-wrap">
+                        <table className="equipment-inventory-table beginners-course-historical-table">
+                          <thead>
+                            <tr>
+                              <th>Name</th>
+                              <th>Username</th>
+                              <th>Type</th>
+                              <th>Height</th>
+                              <th>Draw length</th>
+                              <th>Handedness</th>
+                              <th>Eye dominance</th>
+                              <th>Fee paid</th>
+                              <th>Taster dates attended</th>
+                              <th>Moved to course</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {course.historicalAttendees.map((attendee) => <tr key={attendee.id}>
+                              <td>{attendee.fullName}</td>
+                              <td>{attendee.username}</td>
+                              <td>{attendee.sizeCategory === "junior" ? "Junior" : "Senior"}</td>
+                              <td title={attendee.heightText ? undefined : "Not recorded"}>{attendee.heightText || "—"}</td>
+                              <td title={attendee.drawLength ? undefined : "Not recorded"}>{attendee.drawLength || "—"}</td>
+                              <td title={attendee.handedness ? undefined : "Not recorded"}>{attendee.handedness || "—"}</td>
+                              <td title={attendee.eyeDominance ? undefined : "Not recorded"}>{attendee.eyeDominance || "—"}</td>
+                              <td>{attendee.courseFeePaid ? "Yes" : "No"}</td>
+                              <td>{attendee.attendanceDates.length ? attendee.attendanceDates.map(formatDate).join(", ") : "None recorded"}</td>
+                              <td>{attendee.transferredToCourse ? formatDate(attendee.transferredToCourse) : "Beginners course"}</td>
+                            </tr>)}
+                          </tbody>
+                        </table>
+                      </div>}
                     </section>
                   ) : null}
 
                   <section className="beginners-course-subpanel">
                     <h4>Attendance Register</h4>
+                    <p className="equipment-meta-copy">A sign-in on the lesson date is recorded automatically. The coordinator or assigned coach can mark someone who missed sign-in.</p>
                     {isMobile ? (
                       course.beginners.length > 0 ? (
                         <MobileCardList className="beginners-course-mobile-card-list">
@@ -1304,17 +1377,20 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                             >
                               <h5>
                                 {formatMemberDisplayName(beginner)}
-                                {beginner.noShowRecorded ? " (No show)" : ""}
+                                {beginner.noShowRecorded && !beginner.attendedLessonIds?.length ? " (No show)" : ""}
                               </h5>
                               <p className="equipment-meta-copy">
-                                Attended {beginner.attendanceDates?.length ?? 0} of{" "}
+                                Attended {beginner.attendedLessonIds?.length ?? 0} of{" "}
                                 {course.lessons.length} {copy.countMetaLabel.toLowerCase()}
                               </p>
                               <div className="beginners-course-mobile-attendance-list">
                                 {course.lessons.map((lesson) => {
-                                  const attended = beginner.attendanceDates?.includes(
-                                    lesson.date,
-                                  );
+                                  const attended = beginner.attendedLessonIds?.includes(lesson.id);
+                                  const manual = beginner.manualAttendanceLessonIds?.includes(lesson.id);
+                                  const canRecord = !lesson.isCancelled && course.approvalStatus === "approved" &&
+                                    (course.coordinatorUsername.toLowerCase() === actorUsername.toLowerCase() ||
+                                      lesson.coaches.some((coach) => coach.username.toLowerCase() === actorUsername.toLowerCase())) &&
+                                    new Date(`${lesson.date}T${lesson.startTime}`).getTime() <= Date.now();
 
                                   return (
                                     <div
@@ -1335,6 +1411,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                             ? "No show"
                                             : "Not recorded"}
                                       </span>
+                                      {canRecord && (manual || !attended) ? <Button type="button" variant="secondary" disabled={mutation.isPending} onClick={() => void changeAttendance(lesson.id, beginner.id, !manual)}>{manual ? "Remove manual record" : "Mark attended"}</Button> : null}
                                     </div>
                                   );
                                 })}
@@ -1366,12 +1443,15 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                 <tr key={beginner.id}>
                                   <td>
                                     {formatMemberDisplayName(beginner)}
-                                    {beginner.noShowRecorded ? " (No show)" : ""}
+                                    {beginner.noShowRecorded && !beginner.attendedLessonIds?.length ? " (No show)" : ""}
                                   </td>
                                   {course.lessons.map((lesson) => {
-                                    const attended = beginner.attendanceDates?.includes(
-                                      lesson.date,
-                                    );
+                                    const attended = beginner.attendedLessonIds?.includes(lesson.id);
+                                    const manual = beginner.manualAttendanceLessonIds?.includes(lesson.id);
+                                    const canRecord = !lesson.isCancelled && course.approvalStatus === "approved" &&
+                                      (course.coordinatorUsername.toLowerCase() === actorUsername.toLowerCase() ||
+                                        lesson.coaches.some((coach) => coach.username.toLowerCase() === actorUsername.toLowerCase())) &&
+                                      new Date(`${lesson.date}T${lesson.startTime}`).getTime() <= Date.now();
 
                                     return (
                                       <td
@@ -1395,6 +1475,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                         ) : (
                                           ""
                                         )}
+                                        {canRecord && (manual || !attended) ? <Button type="button" variant="secondary" disabled={mutation.isPending} onClick={() => void changeAttendance(lesson.id, beginner.id, !manual)}>{manual ? "Remove manual record" : "Mark attended"}</Button> : null}
                                       </td>
                                     );
                                   })}
@@ -1472,7 +1553,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                       </MobileCardList>
                     ) : (
                       <div className="equipment-inventory-table-wrap">
-                        <table className="equipment-inventory-table">
+                        <table className="equipment-inventory-table beginners-course-coaches-table">
                           <thead>
                             <tr>
                               <th>{copy.lessonColumn}</th>
@@ -1515,7 +1596,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                     )}
                   </section>
 
-                </>
+                </div>
               )}
             </section>
           );
@@ -1545,7 +1626,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       {permissions.canManageBeginnersCourses ? (
         <section className="equipment-action-card beginners-course-panel">
           <h3>{copy.submitTitle}</h3>
-          <form className="beginners-course-form" onSubmit={submitCourse}>
+          <form className="beginners-course-form beginners-course-submit-form" onSubmit={submitCourse}>
             <div className="beginners-course-form-grid">
               <label>
                 {copy.coordinatorLabel}
@@ -1568,6 +1649,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
               <label>
                 {copy.firstDateLabel}
                 <DatePicker
+                  helperText=""
                   value={courseForm.firstLessonDate}
                   onChange={(value) =>
                     setCourseForm((current) => ({
@@ -1611,14 +1693,25 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                   max={24}
                   inputMode="numeric"
                   value={courseForm.lessonCount}
-                  onChange={(event) =>
-                    setCourseForm((current) => ({
-                      ...current,
-                      lessonCount: Number.parseInt(event.target.value, 10) || 1,
-                    }))
-                  }
+                  onChange={(event) => {
+                    const lessonCount = Number.parseInt(event.target.value, 10) || 1;
+                    setCourseForm((current) => ({ ...current, lessonCount }));
+                    if (supportsCoachRequirements) setLessonCoachRequirementOverrides((current) => resizeLessonCoachRequirementOverrides(current, lessonCount));
+                  }}
                 />
               </label>
+              {supportsCoachRequirements ? <label>
+                Coaches needed per lesson
+                <input
+                  type="number"
+                  min={1}
+                  max={2147483647}
+                  step={1}
+                  inputMode="numeric"
+                  value={requiredCoachesDefault}
+                  onChange={(event) => setRequiredCoachesDefault(event.target.value)}
+                />
+              </label> : null}
               <label>
                 {copy.capacityLabel}
                 <input
@@ -1636,8 +1729,31 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                 />
               </label>
             </div>
+            {supportsCoachRequirements ? <ProfileAccordion title="Customise coach requirements by lesson" detail="Optional">
+              <div className="beginners-course-coach-requirement-content">
+                <p className="beginners-course-coach-requirement-help">Change only the lessons that need a different number of coaches.</p>
+                <div className="beginners-course-coach-requirement-list">
+                  {Array.from({ length: Number(courseForm.lessonCount) }, (_value, index) => {
+                    const lessonNumber = index + 1;
+                    return <label key={lessonNumber}>
+                      Lesson {lessonNumber}
+                      <input
+                        aria-label={`Lesson ${lessonNumber} coaches needed`}
+                        type="number"
+                        min={1}
+                        max={2147483647}
+                        step={1}
+                        inputMode="numeric"
+                        value={lessonCoachRequirementOverrides[lessonNumber] ?? requiredCoachesDefault}
+                        onChange={(event) => setLessonCoachRequirementOverrides((current) => setLessonCoachRequirementOverride(current, lessonNumber, event.target.value, requiredCoachesDefault))}
+                      />
+                    </label>;
+                  })}
+                </div>
+              </div>
+            </ProfileAccordion> : null}
             <div className="beginners-course-actions">
-              <Button type="submit">{copy.submitButton}</Button>
+              <Button type="submit" disabled={supportsCoachRequirements && !buildLessonCoachRequirements(Number(courseForm.lessonCount), requiredCoachesDefault, lessonCoachRequirementOverrides)}>{copy.submitButton}</Button>
             </div>
           </form>
         </section>
@@ -1823,6 +1939,11 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
         title={copy.assignCoachesTitle}
       >
         <div className="beginners-course-coach-modal">
+          {coachLesson ? <p className={(requiredCoachCountInput > coachLesson.coaches.length) ? "coaching-coverage-shortfall" : "coaching-coverage-covered"}>Current coverage: {coachLesson.coaches.length} / {requiredCoachCountInput} coaches{requiredCoachCountInput > coachLesson.coaches.length ? ` · ${requiredCoachCountInput - coachLesson.coaches.length} more needed` : coachLesson.coaches.length > requiredCoachCountInput ? " · Covered" : " · Fully covered"}</p> : null}
+          <label className="beginners-course-required-coaches">Required coaches
+            <input type="number" min={1} step={1} value={requiredCoachCountInput} onChange={(event) => setRequiredCoachCountInput(Number(event.target.value))} />
+            <Button type="button" variant="secondary" disabled={mutation.isPending || !Number.isInteger(requiredCoachCountInput) || requiredCoachCountInput < 1} onClick={() => void saveRequiredCoachCount()}>Save requirement</Button>
+          </label>
           {coaches.map((coach) => (
             <label key={coach.username} className="beginners-course-checkbox">
               <input

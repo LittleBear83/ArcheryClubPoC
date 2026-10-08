@@ -18,6 +18,8 @@ import { migration as equipmentExpectedReturnMigration } from "./016_equipment_e
 import { migration as indoorTableMigration } from "./017_indoor_table.js";
 import { migration as syncedRfidAuditMigration } from "./018_synced_rfid_audit.js";
 import { migration as loginMethodReportingIndexMigration } from "./019_login_method_reporting_index.js";
+import { migration as lessonRequiredCoachesMigration } from "./020_lesson_required_coaches.js";
+import { migration as manualLessonAttendanceMigration } from "./021_manual_lesson_attendance.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -38,4 +40,6 @@ export const postgresMigrations = [
   indoorTableMigration,
   syncedRfidAuditMigration,
   loginMethodReportingIndexMigration,
+  lessonRequiredCoachesMigration,
+  manualLessonAttendanceMigration,
 ];

@@ -1,20 +1,46 @@
 .coaching-hub { display: grid; gap: 20px; min-width: 0; }
 .coaching-hub-intro { margin: 0; }
-.coaching-hub-tabs, .coaching-hub-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.coaching-hub-tabs { gap: 12px; }
+.coaching-hub-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .coaching-hub-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .coaching-hub-panel { background: var(--surface); border: 1px solid var(--panel-border); border-radius: 14px; padding: 20px; min-width: 0; overflow-wrap: anywhere; }
-.coaching-hub-panel h2 { margin-top: 0; color: var(--text-h); }
+.coaching-hub-panel h2, .coaching-session-detail h2, .coaching-session-detail h3 { margin-top: 0; color: var(--text-h); }
 .coaching-hub-next { border-left: 4px solid var(--accent-border); }
 .coaching-hub ul { list-style: none; padding: 0; margin: 0; }
 .coaching-hub-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0; border-bottom: 1px solid var(--panel-border); }
 .coaching-hub-row:last-child { border-bottom: 0; }
+.coaching-hub-row-content { min-width: 0; flex: 1 1 250px; }
 .coaching-hub-row p { margin: 6px 0; }
 .coaching-hub-row span { font-size: .9em; }
-.coaching-hub-plan { display: grid; gap: 12px; }
-.coaching-hub-plan dt { font-weight: 600; }
-.coaching-hub-plan dd { margin: 4px 0 0; }
+.coaching-hub-row-actions, .coaching-session-section-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.coaching-hub-feedback { margin: 0; padding: 12px 16px; border: 1px solid var(--accent-border); border-radius: 8px; background: var(--surface); }
+.coaching-session-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.coaching-session-heading h2 { margin-bottom: 8px; }
+.coaching-session-status, .coaching-session-coordinator { display: inline-flex; align-items: center; border: 1px solid var(--panel-border); border-radius: 999px; padding: 4px 10px; font-size: .85em; }
+.coaching-session-status.is-in-progress { border-color: var(--accent-border); }
+.coaching-session-section-heading { justify-content: space-between; }
+.coaching-session-section-heading h3 { margin-bottom: 0; }
+.coaching-session-coaches { display: grid; gap: 8px; margin-top: 12px !important; }
+.coaching-session-coaches li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.coaching-session-coordinator { color: var(--text-soft); }
+.coaching-session-participants { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; margin-top: 12px !important; }
+.coaching-session-participants > li { padding: 14px; border: 1px solid var(--panel-border); border-radius: 10px; background: var(--surface); }
+.coaching-session-participants h4 { margin: 0 0 10px; }
+.coaching-session-participants dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+.coaching-session-participants dl div { min-width: 0; }
+.coaching-session-participants dt { color: var(--text-soft); font-size: .85em; }
+.coaching-session-participants dd { margin: 2px 0 0; overflow-wrap: anywhere; }
 .coaching-hub-stats { display: flex; flex-wrap: wrap; gap: 32px; margin: 24px 0; }
 .coaching-hub-stats div { display: grid; gap: 6px; }
 .coaching-hub-stats strong { font-size: 2rem; color: var(--text-h); }
 .coaching-hub-toolbar select { padding: 8px; background: var(--surface); color: inherit; border: 1px solid var(--panel-border); border-radius: 6px; }
-@media (max-width: 760px) { .coaching-hub-columns { grid-template-columns: 1fr; } .coaching-hub-panel { padding: 16px; } }
+.coaching-withdraw-confirmation { display: grid; gap: 12px; }
+.coaching-withdraw-confirmation p { margin-top: 0; }
+.coaching-withdraw-confirmation textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--surface); color: inherit; font: inherit; }
+@media (max-width: 760px) {
+  .coaching-hub-columns { grid-template-columns: 1fr; }
+  .coaching-hub-panel { padding: 16px; }
+  .coaching-hub-row-actions { width: 100%; }
+  .coaching-hub-row-actions button { flex: 1 1 140px; }
+  .coaching-session-participants dl { grid-template-columns: 1fr 1fr; }
+}

@@ -40,6 +40,9 @@ function migrateCombinedDateTimeColumn({
 
 function rebuildBeginnersCourseLessonsTable(db) {
   const cancellationColumn = db.prepare("PRAGMA table_info(beginners_course_lessons)").all().some((column) => column.name === "is_cancelled") ? "is_cancelled" : "0";
+  const requiredCoachCountColumn = db.prepare("PRAGMA table_info(beginners_course_lessons)").all().some((column) => column.name === "required_coach_count")
+    ? "required_coach_count"
+    : "(SELECT CASE WHEN course_type = 'beginners' THEN 5 ELSE 1 END FROM beginners_courses WHERE id = beginners_course_lessons_old.course_id)";
   db.exec(`
     PRAGMA foreign_keys = OFF;
     BEGIN TRANSACTION;
@@ -52,6 +55,7 @@ function rebuildBeginnersCourseLessonsTable(db) {
       start_time TEXT NOT NULL,
       end_time TEXT NOT NULL,
       is_cancelled INTEGER NOT NULL DEFAULT 0 CHECK (is_cancelled IN (0, 1)),
+      required_coach_count INTEGER NOT NULL DEFAULT 1 CHECK (required_coach_count >= 1),
       UNIQUE (course_id, lesson_number),
       FOREIGN KEY (course_id) REFERENCES beginners_courses(id)
     );
@@ -62,7 +66,8 @@ function rebuildBeginnersCourseLessonsTable(db) {
       lesson_date,
       start_time,
       end_time,
-      is_cancelled
+      is_cancelled,
+      required_coach_count
     )
     SELECT
       id,
@@ -71,7 +76,8 @@ function rebuildBeginnersCourseLessonsTable(db) {
       lesson_date,
       start_time,
       end_time,
-      ${cancellationColumn}
+      ${cancellationColumn},
+      ${requiredCoachCountColumn}
     FROM beginners_course_lessons_old;
     DROP TABLE beginners_course_lessons_old;
     COMMIT;
@@ -418,6 +424,39 @@ export function bootstrapSqliteCourseScheduleCompatibility({
 
   if (!db.prepare("PRAGMA table_info(beginners_course_lessons)").all().some((column) => column.name === "is_cancelled")) {
     db.exec("ALTER TABLE beginners_course_lessons ADD COLUMN is_cancelled INTEGER NOT NULL DEFAULT 0 CHECK (is_cancelled IN (0, 1))");
+  }
+  if (!db.prepare("PRAGMA table_info(beginners_course_lessons)").all().some((column) => column.name === "required_coach_count")) {
+    db.exec("ALTER TABLE beginners_course_lessons ADD COLUMN required_coach_count INTEGER NOT NULL DEFAULT 1 CHECK (required_coach_count >= 1)");
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS local_schema_migrations (
+      version TEXT PRIMARY KEY,
+      applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  const coachDefaultMigration = "beginners_lesson_required_coaches_default_5";
+  const coachDefaultMigrationApplied = db.prepare("SELECT 1 FROM local_schema_migrations WHERE version = ?").get(coachDefaultMigration);
+  if (!coachDefaultMigrationApplied) {
+    db.exec("BEGIN TRANSACTION");
+    try {
+      db.prepare(`
+        UPDATE beginners_course_lessons
+        SET required_coach_count = 5
+        WHERE required_coach_count = 1
+          AND course_id IN (SELECT id FROM beginners_courses WHERE course_type = 'beginners')
+          AND NOT EXISTS (
+            SELECT 1 FROM audit_events
+            WHERE audit_events.action = 'required_coach_count_changed'
+              AND audit_events.target = '/api/beginners-course-lessons/' || beginners_course_lessons.id || '/required-coaches'
+          )
+      `).run();
+      db.prepare("INSERT INTO local_schema_migrations (version) VALUES (?)").run(coachDefaultMigration);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   const beginnersCourseParticipantsTable = db

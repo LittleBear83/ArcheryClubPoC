@@ -37,3 +37,35 @@ export async function listMyBeginnerCoachingAssignments<TLesson>(username: strin
     },
   );
 }
+
+export async function listMyCoachingOpportunities<TOpportunity>(username: string) {
+  return fetchApi<{ success: true; lessons?: TOpportunity[] }>("/api/my-coaching-opportunities", {
+    headers: buildActorHeaders(username),
+    cache: "no-store",
+  });
+}
+
+export async function getMyCoachingLessonDetails<TLesson>(username: string, lessonId: string | number) {
+  return fetchApi<{ success: true; lesson: TLesson }>(`/api/my-coaching-lessons/${lessonId}/details`, {
+    headers: buildActorHeaders(username),
+    cache: "no-store",
+  });
+}
+
+export async function volunteerForCoachingLesson(username: string, lessonId: string | number) {
+  return fetchApi<{ success: true; message?: string }>(`/api/beginners-course-lessons/${lessonId}/volunteer`, {
+    method: "POST",
+    headers: buildActorHeaders(username, true),
+    cache: "no-store",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function withdrawFromCoachingLesson(username: string, lessonId: string | number, reason = "") {
+  return fetchApi<{ success: true; message?: string }>(`/api/beginners-course-lessons/${lessonId}/my-assignment`, {
+    method: "DELETE",
+    headers: buildActorHeaders(username, true),
+    cache: "no-store",
+    body: JSON.stringify({ reason }),
+  });
+}

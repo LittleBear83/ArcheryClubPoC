@@ -843,6 +843,8 @@ export function HomePage({
   const {
     beginnersRescheduleToasts,
     dismissBeginnersRescheduleToast,
+    coachingAssignmentToasts,
+    dismissCoachingAssignmentToast,
     lostArrowToasts,
     questionResponseToasts,
     dismissLostArrowToast,
@@ -1341,6 +1343,19 @@ export function HomePage({
                 >
                   Close
                 </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {coachingAssignmentToasts.length > 0 ? (
+        <div className="lost-arrow-toast-stack" aria-live="polite" aria-atomic="true">
+          {coachingAssignmentToasts.map((toast) => (
+            <div key={toast.id} className="lost-arrow-toast" role="status">
+              <div className="lost-arrow-toast-copy"><strong>Coaching assignment changed</strong><p>{toast.message}</p></div>
+              <div className="lost-arrow-toast-actions">
+                <Button type="button" size="sm" variant="secondary" onClick={() => navigate(toast.targetPath)}>View session</Button>
+                <Button type="button" size="sm" variant="ghost" className="lost-arrow-toast-dismiss" onClick={() => dismissCoachingAssignmentToast(toast.id)} aria-label="Dismiss coaching assignment notification">Close</Button>
               </div>
             </div>
           ))}

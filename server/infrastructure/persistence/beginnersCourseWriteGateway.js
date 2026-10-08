@@ -19,6 +19,52 @@ function createSqliteBeginnersCourseWriteGateway({
   upsertUser,
 }) {
   return {
+    async addLessonCoachSelf({ actorUsername, assignedAtDate, assignedAtTime, lessonId }) {
+      const insertIfEligible = db.prepare(`
+        INSERT OR IGNORE INTO beginners_course_lesson_coaches (
+          lesson_id, coach_username, assigned_by_username, assigned_at_date,
+          assigned_at_time, coach_user_id, assigned_by_user_id
+        )
+        SELECT lesson.id, ?, ?, ?, ?, coach.id, assigner.id
+        FROM beginners_course_lessons AS lesson
+        INNER JOIN beginners_courses AS course ON course.id = lesson.course_id
+        INNER JOIN users AS coach ON LOWER(coach.username) = LOWER(?)
+        INNER JOIN users AS assigner ON LOWER(assigner.username) = LOWER(?)
+        WHERE lesson.id = ? AND lesson.is_cancelled = 0
+          AND course.is_cancelled = 0 AND course.approval_status = 'approved'
+          AND (lesson.lesson_date > ? OR (lesson.lesson_date = ? AND time(lesson.start_time) > time(?)))
+          AND (SELECT COUNT(*) FROM beginners_course_lesson_coaches existing WHERE existing.lesson_id = lesson.id) < lesson.required_coach_count
+      `);
+      return db.transaction(() => {
+        const result = insertIfEligible.run(
+          actorUsername, actorUsername, assignedAtDate, assignedAtTime,
+          actorUsername, actorUsername, lessonId, assignedAtDate, assignedAtDate,
+          assignedAtTime.slice(0, 8),
+        );
+        return result.changes === 1;
+      })();
+    },
+    async setLessonRequiredCoachCount({ lessonId, requiredCoachCount }) {
+      return db.prepare("UPDATE beginners_course_lessons SET required_coach_count = ? WHERE id = ?")
+        .run(requiredCoachCount, lessonId).changes === 1;
+    },
+    async removeLessonCoachSelf({ actorUsername, lessonId, nowDate, nowTime }) {
+      const removeIfEligible = db.prepare(`
+        DELETE FROM beginners_course_lesson_coaches
+        WHERE lesson_id = ? AND LOWER(coach_username) = LOWER(?)
+          AND EXISTS (
+            SELECT 1 FROM beginners_course_lessons AS lesson
+            INNER JOIN beginners_courses AS course ON course.id = lesson.course_id
+            WHERE lesson.id = beginners_course_lesson_coaches.lesson_id
+              AND lesson.is_cancelled = 0 AND course.is_cancelled = 0
+              AND course.approval_status = 'approved'
+              AND (lesson.lesson_date > ? OR (lesson.lesson_date = ? AND time(lesson.end_time) > time(?)))
+          )
+      `);
+      return db.transaction(() => removeIfEligible.run(
+        lessonId, actorUsername, nowDate, nowDate, nowTime.slice(0, 8),
+      ).changes === 1)();
+    },
     async cancelLessonDates({ courseId, lessonIds }) {
       const transaction = db.transaction(() => {
         for (const id of lessonIds) {
@@ -55,11 +101,13 @@ function createSqliteBeginnersCourseWriteGateway({
       lessonDates,
       startTime,
       beginnerCapacity,
+      requiredCoachesDefault,
       coordinatorUsername,
       createdAtDate,
       createdAtTime,
     }) {
       const transaction = db.transaction(() => {
+        const defaultCoachCount = requiredCoachesDefault ?? (courseType === "beginners" || courseType === "taster-session" ? 5 : 1);
         const result = insertBeginnersCourse.run(
           courseType,
           coordinatorUsername,
@@ -85,6 +133,7 @@ function createSqliteBeginnersCourseWriteGateway({
             lesson.lessonDate,
             startTime,
             endTime,
+            lesson.requiredCoachCount ?? defaultCoachCount,
           );
         }
 
@@ -163,6 +212,8 @@ function createSqliteBeginnersCourseWriteGateway({
             actorUsername,
             assignedAtDate,
             assignedAtTime,
+            coachUsername,
+            actorUsername,
           );
         }
       });
@@ -299,6 +350,88 @@ function createSqliteBeginnersCourseWriteGateway({
 
 function createPostgresBeginnersCourseWriteGateway({ pool }) {
   return {
+    async addLessonCoachSelf({ actorUsername, assignedAtDate, assignedAtTime, lessonId }) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const eligible = await client.query(`
+          SELECT lesson.id
+          FROM beginners_course_lessons AS lesson
+          INNER JOIN beginners_courses AS course ON course.id = lesson.course_id
+          WHERE lesson.id = $1 AND lesson.is_cancelled = 0
+            AND course.is_cancelled = 0 AND course.approval_status = 'approved'
+            AND (lesson.lesson_date > $2 OR (lesson.lesson_date = $2 AND lesson.start_time::time > $3::time))
+          FOR UPDATE OF lesson, course
+        `, [lessonId, assignedAtDate, assignedAtTime.slice(0, 8)]);
+        if (!eligible.rowCount) {
+          await client.query("ROLLBACK");
+          return false;
+        }
+        const coverage = await client.query(
+          "SELECT COUNT(*)::int AS count FROM beginners_course_lesson_coaches WHERE lesson_id = $1",
+          [lessonId],
+        );
+        const requirement = await client.query("SELECT required_coach_count FROM beginners_course_lessons WHERE id = $1", [lessonId]);
+        if (Number(coverage.rows[0]?.count ?? 0) >= Number(requirement.rows[0]?.required_coach_count ?? 1)) {
+          await client.query("ROLLBACK");
+          return false;
+        }
+        const inserted = await client.query(`
+          INSERT INTO beginners_course_lesson_coaches (
+            lesson_id, coach_username, assigned_by_username, assigned_at_date,
+            assigned_at_time, coach_user_id, assigned_by_user_id
+          )
+          SELECT $1, coach.username, assigner.username, $4, $5, coach.id, assigner.id
+          FROM users AS coach, users AS assigner
+          WHERE LOWER(coach.username) = LOWER($2)
+            AND LOWER(assigner.username) = LOWER($3)
+          ON CONFLICT DO NOTHING
+          RETURNING lesson_id
+        `, [lessonId, actorUsername, actorUsername, assignedAtDate, assignedAtTime]);
+        await client.query("COMMIT");
+        return Boolean(inserted.rowCount);
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+    async setLessonRequiredCoachCount({ lessonId, requiredCoachCount }) {
+      const result = await pool.query("UPDATE beginners_course_lessons SET required_coach_count = $1 WHERE id = $2", [requiredCoachCount, lessonId]);
+      return result.rowCount === 1;
+    },
+    async removeLessonCoachSelf({ actorUsername, lessonId, nowDate, nowTime }) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const eligible = await client.query(`
+          SELECT lesson.id
+          FROM beginners_course_lessons AS lesson
+          INNER JOIN beginners_courses AS course ON course.id = lesson.course_id
+          WHERE lesson.id = $1 AND lesson.is_cancelled = 0
+            AND course.is_cancelled = 0 AND course.approval_status = 'approved'
+            AND (lesson.lesson_date > $2 OR (lesson.lesson_date = $2 AND lesson.end_time::time > $3::time))
+          FOR UPDATE OF lesson, course
+        `, [lessonId, nowDate, nowTime.slice(0, 8)]);
+        if (!eligible.rowCount) {
+          await client.query("ROLLBACK");
+          return false;
+        }
+        const removed = await client.query(`
+          DELETE FROM beginners_course_lesson_coaches
+          WHERE lesson_id = $1 AND LOWER(coach_username) = LOWER($2)
+          RETURNING lesson_id
+        `, [lessonId, actorUsername]);
+        await client.query("COMMIT");
+        return Boolean(removed.rowCount);
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async cancelLessonDates({ courseId, lessonIds }) {
       const client = await pool.connect();
       try {
@@ -352,6 +485,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
       lessonDates,
       startTime,
       beginnerCapacity,
+      requiredCoachesDefault,
       coordinatorUsername,
       createdAtDate,
       createdAtTime,
@@ -397,6 +531,7 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
           ],
         );
         const courseId = Number(courseResult.rows[0].id);
+        const defaultCoachCount = requiredCoachesDefault ?? (courseType === "beginners" || courseType === "taster-session" ? 5 : 1);
         for (const lesson of lessonDates) {
           await client.query(
             `
@@ -405,11 +540,12 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
                 lesson_number,
                 lesson_date,
                 start_time,
-                end_time
+                end_time,
+                required_coach_count
               )
-              VALUES ($1, $2, $3, $4, $5)
+              VALUES ($1, $2, $3, $4, $5, $6)
             `,
-            [courseId, lesson.lessonNumber, lesson.lessonDate, startTime, endTime],
+            [courseId, lesson.lessonNumber, lesson.lessonDate, startTime, endTime, lesson.requiredCoachCount ?? defaultCoachCount],
           );
         }
         await client.query("COMMIT");
@@ -549,9 +685,14 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
                 coach_username,
                 assigned_by_username,
                 assigned_at_date,
-                assigned_at_time
+            assigned_at_time,
+            coach_user_id,
+            assigned_by_user_id
               )
-              VALUES ($1, $2, $3, $4, $5)
+          SELECT $1, coach.username, assigner.username, $4, $5, coach.id, assigner.id
+          FROM users AS coach, users AS assigner
+          WHERE LOWER(coach.username) = LOWER($2)
+            AND LOWER(assigner.username) = LOWER($3)
               ON CONFLICT DO NOTHING
             `,
             [lessonId, coachUsername, actorUsername, assignedAtDate, assignedAtTime],

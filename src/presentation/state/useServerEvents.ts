@@ -26,6 +26,8 @@ export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
       (actorUsername) => ["events", actorUsername],
       (actorUsername) => ["coaching-sessions", actorUsername],
       () => ["beginners-course-calendar"],
+      (actorUsername) => ["coaching-opportunities", actorUsername],
+      (actorUsername) => ["coaching-session-details", actorUsername],
       (actorUsername) => ["home-activity", actorUsername],
     ],
   },
@@ -98,7 +100,16 @@ export const AUTHENTICATED_EVENT_QUERY_GROUPS: Array<{
       (actorUsername) => ["taster-sessions-dashboard", actorUsername],
       (actorUsername) => ["committee-approval-summary", actorUsername],
       () => ["beginners-course-calendar"],
+      (actorUsername) => ["coaching-opportunities", actorUsername],
+      (actorUsername) => ["coaching-session-details", actorUsername],
       (actorUsername) => ["home-activity", actorUsername],
+    ],
+  },
+  {
+    event: "coaching.assignment.changed",
+    queryKeys: [
+      (actorUsername) => ["coaching-opportunities", actorUsername],
+      (actorUsername) => ["coaching-session-details", actorUsername],
     ],
   },
   {
@@ -177,6 +188,8 @@ export function useServerEvents({
             ["events", actorUsername],
             ["coaching-sessions", actorUsername],
             ["beginners-course-calendar"],
+            ["coaching-opportunities", actorUsername],
+            ["coaching-session-details", actorUsername],
             ["home-activity", actorUsername],
           ]),
       },
@@ -253,8 +266,18 @@ export function useServerEvents({
             ["taster-sessions-dashboard", actorUsername],
             ["committee-approval-summary", actorUsername],
             ["beginners-course-calendar"],
+            ["coaching-opportunities", actorUsername],
+            ["coaching-session-details", actorUsername],
             ["home-activity", actorUsername],
           ]),
+      },
+      {
+        event: "coaching.assignment.changed",
+        invalidate: () => invalidateQueries([
+          ["coaching-opportunities", actorUsername],
+          ["coaching-session-details", actorUsername],
+          ["beginners-course-calendar"],
+        ]),
       },
       {
         event: "tournaments.updated",

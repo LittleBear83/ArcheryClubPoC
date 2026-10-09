@@ -45,8 +45,7 @@
 .coaching-notes-list li { padding: 12px 14px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; }
 .coaching-notes-list li.is-due-for-deletion { border-color: var(--accent-border); background: var(--modal-bg); }
 .coaching-note-expiry { display: block; margin-top: 8px; color: var(--text-h); font-weight: 700; }
-.coaching-my-notes { margin-top: 28px; border-top: 1px solid var(--panel-border); padding-top: 18px; }
-.coaching-my-notes h3 { margin: 0 0 8px; }
+.coaching-my-notes h2 { margin: 0 0 8px; }
 .coaching-note-entry { display: grid; gap: 10px; }
 .coaching-note-entry textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 12px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--surface); color: inherit; font: inherit; }
 .coaching-note-counter { justify-self: end; color: var(--text-soft); font-size: .9em; }

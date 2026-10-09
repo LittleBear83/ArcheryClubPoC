@@ -321,14 +321,16 @@ test("session detail is restricted to assigned coaches and includes participant 
     beginnersCourseReadGateway: {
       ...setup().dependencies.beginnersCourseReadGateway,
       listCoachLessonsByUserId: async () => [{ id: 12, coordinator_first_name: "Coord", coordinator_surname: "One" }],
-      listParticipantsByCourseId: async () => [{ username: "robin", first_name: "Robin", surname: "Hood", beginner_size_category: "junior", handedness: "left", eye_dominance: "right", draw_length: "24 in", no_show_recorded: 0 }],
+      listParticipantsByCourseId: async () => [{ id: 23, username: "robin", first_name: "Robin", surname: "Hood", beginner_size_category: "junior", handedness: "left", eye_dominance: "right", draw_length: "24 in", no_show_recorded: 0 }],
       listParticipantAttendanceByDate: async () => [{ username: "robin" }],
     },
   });
+  state.dependencies.coachingParticipantNoteGateway.listCountsForCourse = async () => new Map([[23, 2]]);
   const result = await invoke(state, "GET /api/my-coaching-lessons/:id/details");
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.lesson.participants[0].firstName, "Robin");
   assert.equal(result.body.lesson.participants[0].attendanceRecorded, true);
+  assert.equal(result.body.lesson.participants[0].noteCount, 2);
   assert.equal(result.body.lesson.coordinatorName, "Coord One");
 
   state.dependencies.beginnersCourseReadGateway.listCoachLessonsByUserId = async () => [];

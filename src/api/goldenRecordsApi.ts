@@ -43,6 +43,38 @@ export type GoldenRecordsAdminSummary = {
   maskedBaseUrl: string;
 };
 
+export type GoldenRecordsBowDisciplineImportPlan = {
+  generatedAt: string;
+  planHash: string;
+  goldenRecordsMemberCount: number;
+  portalMemberCount: number;
+  counts: { add: number; unchanged: number; skip: number };
+  records: Array<{
+    username: string;
+    firstName: string;
+    surname: string;
+    bowClass?: string;
+    discipline?: string;
+    currentDisciplines: string[];
+    status: "add" | "unchanged" | "skip";
+    reason: string;
+  }>;
+};
+
+export async function previewGoldenRecordsBowDisciplineImport(actor: unknown) {
+  return fetchApi<{ success: true; plan: GoldenRecordsBowDisciplineImportPlan }>(
+    "/api/golden-records/bow-disciplines/import-preview",
+    { headers: buildActorHeaders(actor), cache: "no-store" },
+  );
+}
+
+export async function applyGoldenRecordsBowDisciplineImport(actor: unknown, planHash: string) {
+  return fetchApi<{ success: true; inserted: number; message: string }>(
+    "/api/golden-records/bow-disciplines/import",
+    { method: "POST", headers: buildActorHeaders(actor, true), cache: "no-store", body: JSON.stringify({ planHash }) },
+  );
+}
+
 export async function getGoldenRecordsAdminSummary(actor: unknown) {
   return fetchApi<{ success: true; summary: GoldenRecordsAdminSummary }>(
     "/api/golden-records/admin-summary",

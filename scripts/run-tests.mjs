@@ -12,6 +12,8 @@ await import("../server/infrastructure/persistence/tournamentTemplateUpdate.test
 await import("../server/infrastructure/persistence/createSqliteBeginnersCourseStatements.test.js");
 await import("../server/domain/services/goldenRecordsManualMatch.test.js");
 await import("../server/domain/services/goldenRecordsBowDisciplineImport.test.js");
+await import("../server/presentation/http/goldenRecordsBowDisciplineImportRoutes.test.js");
+await import("../server/infrastructure/golden-records/goldenRecordsBowDisciplineImportService.test.js");
 await import("../server/infrastructure/persistence/goldenRecordsManualMatchGateway.test.js");
 await import("../server/infrastructure/persistence/goldenRecordsManualMatchTransaction.test.js");
 await import("../server/presentation/http/goldenRecordsManualMatchRoute.test.js");

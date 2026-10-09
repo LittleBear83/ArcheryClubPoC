@@ -91,6 +91,7 @@ import { createSyncGateway } from "./infrastructure/persistence/syncGateway.js";
 import { createGoldenRecordsIntegrationGateway } from "./infrastructure/persistence/goldenRecordsIntegrationGateway.js";
 import { createGoldenRecordsCurrentHandicapService } from "./infrastructure/golden-records/goldenRecordsCurrentHandicapService.js";
 import { createGoldenRecordsIntegrationService } from "./infrastructure/golden-records/goldenRecordsIntegrationService.js";
+import { createGoldenRecordsBowDisciplineImportService } from "./infrastructure/golden-records/goldenRecordsBowDisciplineImportService.js";
 import { createRoleCommitteeGateway } from "./infrastructure/persistence/roleCommitteeGateway.js";
 import { createScheduleGateway } from "./infrastructure/persistence/scheduleGateway.js";
 import { createSuggestionGateway } from "./infrastructure/persistence/suggestionGateway.js";
@@ -645,6 +646,10 @@ const goldenRecordsIntegrationService = createGoldenRecordsIntegrationService(
   serverRuntime.goldenRecords,
   goldenRecordsIntegrationGateway,
 );
+const goldenRecordsBowDisciplineImportService = createGoldenRecordsBowDisciplineImportService({
+  pool: db.pool,
+  runtime: serverRuntime,
+});
 const serverEventBus = createServerEventBus();
 const publicServerEventBus = createServerEventBus();
 const syncGateway =
@@ -5064,6 +5069,7 @@ registerAdminMemberRoutes({
   DISTANCE_SIGN_OFF_YARDS,
   goldenRecordsCurrentHandicapService,
   goldenRecordsIntegrationService,
+  goldenRecordsBowDisciplineImportService,
   goldenRecordsMemberSyncService,
   goldenRecordsSyncJob,
   getActorUser,

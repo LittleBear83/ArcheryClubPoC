@@ -34,9 +34,23 @@
 .coaching-hub-stats div { display: grid; gap: 6px; }
 .coaching-hub-stats strong { font-size: 2rem; color: var(--text-h); }
 .coaching-hub-toolbar select { padding: 8px; background: var(--surface); color: inherit; border: 1px solid var(--panel-border); border-radius: 6px; }
-.coaching-withdraw-confirmation { display: grid; gap: 12px; }
-.coaching-withdraw-confirmation p { margin-top: 0; }
-.coaching-withdraw-confirmation textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--surface); color: inherit; font: inherit; }
+.coaching-unavailability-confirmation { display: grid; gap: 12px; }
+.coaching-unavailability-confirmation p { margin-top: 0; }
+.coaching-unavailability-confirmation textarea { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--surface); color: inherit; font: inherit; }
+.coaching-participant-notes-button { margin-top: 14px; }
+.modal-content.coaching-notes-modal { width: min(100%, 900px); }
+.coaching-notes-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.coaching-notes-toolbar p { margin: 0; }
+.coaching-notes-list { display: grid; gap: 10px; max-height: min(54vh, 560px); overflow-y: auto; padding: 0 4px 0 0 !important; margin: 0 !important; list-style: none; }
+.coaching-notes-list li { padding: 12px 14px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; }
+.coaching-notes-list li.is-due-for-deletion { border-color: var(--accent-border); background: var(--modal-bg); }
+.coaching-note-expiry { display: block; margin-top: 8px; color: var(--text-h); font-weight: 700; }
+.coaching-my-notes { margin-top: 28px; border-top: 1px solid var(--panel-border); padding-top: 18px; }
+.coaching-my-notes h3 { margin: 0 0 8px; }
+.coaching-note-entry { display: grid; gap: 10px; }
+.coaching-note-entry textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 12px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--surface); color: inherit; font: inherit; }
+.coaching-note-counter { justify-self: end; color: var(--text-soft); font-size: .9em; }
+.coaching-note-entry .coaching-hub-row-actions { justify-content: flex-end; }
 @media (max-width: 760px) {
   .coaching-hub-columns { grid-template-columns: 1fr; }
   .coaching-hub-panel { padding: 16px; }

@@ -12,22 +12,32 @@ function buildDistanceSignOff(row) {
   };
 }
 
-function mapDistanceSignOffsByDiscipline(rows, allowedDisciplines, disciplines, distanceYards) {
+export function mapDistanceSignOffsByDiscipline(rows, allowedDisciplines, disciplines, distanceYards) {
   const orderedDisciplines = allowedDisciplines.filter((discipline) =>
     disciplines.includes(discipline),
   );
 
   return orderedDisciplines.map((discipline) => ({
     discipline,
-    distances: distanceYards.map((signOffDistanceYards) => ({
-      distanceYards: signOffDistanceYards,
-      signOff:
-        rows.find(
-          (row) =>
-            row.discipline === discipline &&
-            row.distanceYards === signOffDistanceYards,
-        ) ?? null,
-    })),
+    distances: distanceYards.map((signOffDistanceYards) => {
+      const explicit = rows.find((row) =>
+        row.discipline === discipline && row.distanceYards === signOffDistanceYards,
+      );
+      const higher = explicit ? null : distanceYards
+        .filter((distance) => distance > signOffDistanceYards)
+        .sort((left, right) => left - right)
+        .map((distance) => rows.find((row) => row.discipline === discipline && row.distanceYards === distance))
+        .find(Boolean);
+      return {
+        distanceYards: signOffDistanceYards,
+        signOff: explicit ?? (higher ? {
+          ...higher,
+          distanceYards: signOffDistanceYards,
+          source: "inferred",
+          inferredFromDistanceYards: higher.distanceYards,
+        } : null),
+      };
+    }),
   }));
 }
 

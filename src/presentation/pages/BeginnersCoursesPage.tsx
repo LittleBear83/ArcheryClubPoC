@@ -1045,7 +1045,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
   if (dashboardQuery.isLoading || dashboardQuery.isError) {
     return (
-      <div className="beginners-course-page">
+      <div className="beginners-course-page" data-course-type={copy.courseType}>
         <StatusMessagePanel
           error={dashboardError}
           loading={dashboardQuery.isLoading}
@@ -1073,6 +1073,11 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
             copy.courseType !== "have-a-go" &&
             !hasCourseStarted(course);
           const canAddParticipant = !isClosedCourse && permissions.canManageBeginnersCourses && !course.isCancelled && course.approvalStatus === "approved";
+          const canRecordCourseAttendance =
+            course.coordinatorUsername.toLowerCase() === actorUsername.toLowerCase() ||
+            course.lessons.some((lesson) =>
+              !lesson.isCancelled && lesson.coaches.some((coach) => coach.username.toLowerCase() === actorUsername.toLowerCase()),
+            );
           const isCollapsed = collapsedCourseIds[course.id] ?? true;
 
           return (
@@ -1366,7 +1371,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
                   <section className="beginners-course-subpanel">
                     <h4>Attendance Register</h4>
-                    <p className="equipment-meta-copy">A sign-in on the lesson date is recorded automatically. The coordinator or assigned coach can mark someone who missed sign-in.</p>
+                    <p className="equipment-meta-copy">A sign-in on the lesson date is recorded automatically. The coordinator or assigned coach can mark attendance on dates without a participant sign-in.</p>
                     {isMobile ? (
                       course.beginners.length > 0 ? (
                         <MobileCardList className="beginners-course-mobile-card-list">
@@ -1387,10 +1392,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                 {course.lessons.map((lesson) => {
                                   const attended = beginner.attendedLessonIds?.includes(lesson.id);
                                   const manual = beginner.manualAttendanceLessonIds?.includes(lesson.id);
-                                  const canRecord = !lesson.isCancelled && course.approvalStatus === "approved" &&
-                                    (course.coordinatorUsername.toLowerCase() === actorUsername.toLowerCase() ||
-                                      lesson.coaches.some((coach) => coach.username.toLowerCase() === actorUsername.toLowerCase())) &&
-                                    new Date(`${lesson.date}T${lesson.startTime}`).getTime() <= Date.now();
+                                  const canRecord = !course.isCancelled && !lesson.isCancelled &&
+                                    course.approvalStatus === "approved" && canRecordCourseAttendance;
 
                                   return (
                                     <div
@@ -1411,7 +1414,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                             ? "No show"
                                             : "Not recorded"}
                                       </span>
-                                      {canRecord && (manual || !attended) ? <Button type="button" variant="secondary" disabled={mutation.isPending} onClick={() => void changeAttendance(lesson.id, beginner.id, !manual)}>{manual ? "Remove manual record" : "Mark attended"}</Button> : null}
+                                      {canRecord && (manual || !attended) ? <Button type="button" size="sm" variant="secondary" className="beginners-course-attendance-action" aria-label={`${manual ? "Remove manual attendance for" : "Mark attendance for"} ${formatMemberDisplayName(beginner)} on ${formatDate(lesson.date)}`} disabled={mutation.isPending} onClick={() => void changeAttendance(lesson.id, beginner.id, !manual)}>{manual ? "Remove" : "Mark"}</Button> : null}
                                     </div>
                                   );
                                 })}
@@ -1448,10 +1451,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                   {course.lessons.map((lesson) => {
                                     const attended = beginner.attendedLessonIds?.includes(lesson.id);
                                     const manual = beginner.manualAttendanceLessonIds?.includes(lesson.id);
-                                    const canRecord = !lesson.isCancelled && course.approvalStatus === "approved" &&
-                                      (course.coordinatorUsername.toLowerCase() === actorUsername.toLowerCase() ||
-                                        lesson.coaches.some((coach) => coach.username.toLowerCase() === actorUsername.toLowerCase())) &&
-                                      new Date(`${lesson.date}T${lesson.startTime}`).getTime() <= Date.now();
+                                    const canRecord = !course.isCancelled && !lesson.isCancelled &&
+                                      course.approvalStatus === "approved" && canRecordCourseAttendance;
 
                                     return (
                                       <td
@@ -1475,7 +1476,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                                         ) : (
                                           ""
                                         )}
-                                        {canRecord && (manual || !attended) ? <Button type="button" variant="secondary" disabled={mutation.isPending} onClick={() => void changeAttendance(lesson.id, beginner.id, !manual)}>{manual ? "Remove manual record" : "Mark attended"}</Button> : null}
+                                        {canRecord && (manual || !attended) ? <Button type="button" size="sm" variant="secondary" className="beginners-course-attendance-action" aria-label={`${manual ? "Remove manual attendance for" : "Mark attendance for"} ${formatMemberDisplayName(beginner)} on ${formatDate(lesson.date)}`} disabled={mutation.isPending} onClick={() => void changeAttendance(lesson.id, beginner.id, !manual)}>{manual ? "Remove" : "Mark"}</Button> : null}
                                       </td>
                                     );
                                   })}
@@ -1611,7 +1612,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   }
 
   return (
-    <div className="beginners-course-page">
+    <div className="beginners-course-page" data-course-type={copy.courseType}>
       <p>
         {copy.pageDescription}
       </p>

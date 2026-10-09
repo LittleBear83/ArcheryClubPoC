@@ -1,7 +1,7 @@
 import type { CoachingParticipant } from "./coachingHubModel";
 import { Button } from "../components/Button";
 
-export function CoachingParticipantsList({ participants, canRecordAttendance = false, busyParticipantId, onSetAttendance }: { participants: CoachingParticipant[]; canRecordAttendance?: boolean; busyParticipantId?: number | null; onSetAttendance?: (participant: CoachingParticipant, attended: boolean) => void }) {
+export function CoachingParticipantsList({ participants, showNotes = false, onOpenNotes }: { participants: CoachingParticipant[]; showNotes?: boolean; onOpenNotes?: (participant: CoachingParticipant) => void }) {
   if (!participants.length) return <p>No participants are enrolled.</p>;
   return <ul className="coaching-session-participants">
     {participants.map((participant, index) => <li key={`${participant.firstName}-${participant.surname}-${index}`}>
@@ -13,7 +13,7 @@ export function CoachingParticipantsList({ participants, canRecordAttendance = f
         <div><dt>Draw length</dt><dd>{participant.drawLength || "Not recorded"}</dd></div>
         <div><dt>Attendance</dt><dd>{participant.attendanceRecorded ? "Attendance recorded" : participant.noShowRecorded ? "No-show recorded" : "Not recorded"}</dd></div>
       </dl>
-      {canRecordAttendance && onSetAttendance && participant.id != null && (participant.manualAttendanceRecorded || !participant.attendanceRecorded) ? <Button type="button" variant="secondary" disabled={busyParticipantId != null} onClick={() => onSetAttendance(participant, !participant.manualAttendanceRecorded)}>{participant.manualAttendanceRecorded ? "Remove manual record" : "Mark attended"}</Button> : null}
+      {showNotes && participant.id ? <Button variant={participant.noteCount ? "info" : "secondary"} className="coaching-participant-notes-button" onClick={() => onOpenNotes?.(participant)}>Notes</Button> : null}
     </li>)}
   </ul>;
 }

@@ -26,6 +26,10 @@ function sendError(res, status, message) {
   return res.status(status).json({ success: false, message });
 }
 
+function initials(firstName, surname) {
+  return `${String(firstName ?? "").trim().charAt(0)}${String(surname ?? "").trim().charAt(0)}`.toUpperCase();
+}
+
 export function registerCoachingHubRoutes({
   app,
   actorHasPermission,
@@ -35,6 +39,8 @@ export function registerCoachingHubRoutes({
   beginnersCourseReadGateway,
   beginnersCourseWriteGateway,
   manualLessonAttendanceGateway,
+  coachingAssignmentNotificationGateway,
+  coachingParticipantNoteGateway,
   buildBeginnersCourseCalendarLessons,
   getUtcTimestampParts,
   normalizeCourseType,
@@ -45,6 +51,79 @@ export function registerCoachingHubRoutes({
   broadcastCalendarUpdated,
   broadcastToUsers = () => {},
 }) {
+  const noteContext = async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor) { sendError(res, 401, "An authenticated member is required."); return null; }
+    if (!isCoachEligible(actor)) { sendError(res, 403, "Coaching volunteer access is required."); return null; }
+    const lessonId = Number(req.params.id);
+    const participantId = Number(req.params.participantId);
+    if (!Number.isSafeInteger(lessonId) || lessonId < 1 || !Number.isSafeInteger(participantId) || participantId < 1) {
+      sendError(res, 400, "Invalid lesson or participant."); return null;
+    }
+    const lesson = await beginnersCourseReadGateway.findLessonById(lessonId);
+    if (!lesson) { sendError(res, 404, "Lesson not found."); return null; }
+    const course = await beginnersCourseReadGateway.findCourseById(lesson.course_id);
+    if (!isApprovedActiveCourse(course, lesson) || normalizeCourseType(course.course_type) !== "beginners") {
+      sendError(res, 404, "Beginners course not found."); return null;
+    }
+    const assigned = await beginnersCourseReadGateway.listCoachLessonsByUserId(actor.id);
+    if (!assigned.some((entry) => Number(entry.course_id) === Number(course.id))) {
+      sendError(res, 403, "Only coaches assigned to this course can access participant notes."); return null;
+    }
+    const participants = await beginnersCourseReadGateway.listParticipantsByCourseId(course.id);
+    const participant = participants.find((entry) => Number(entry.id) === participantId);
+    if (!participant) { sendError(res, 404, "Participant is not enrolled in this course."); return null; }
+    return { actor, course, participant };
+  };
+
+  app.get("/api/my-coaching-lessons/:id/participants/:participantId/notes", async (req, res) => {
+    const context = await noteContext(req, res);
+    if (!context) return;
+    const notes = await coachingParticipantNoteGateway.listForParticipant(context.participant.id);
+    return res.json({ success: true, notes });
+  });
+
+  app.post("/api/my-coaching-lessons/:id/participants/:participantId/notes", async (req, res) => {
+    const context = await noteContext(req, res);
+    if (!context) return;
+    const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
+    if (!text || text.length > 500) return sendError(res, 400, "Enter a note of 1 to 500 characters.");
+    const { actor, course, participant } = context;
+    const note = await coachingParticipantNoteGateway.add({
+      courseId: course.id,
+      participantId: participant.id,
+      authorUsername: actor.username,
+      authorInitials: initials(actor.first_name ?? actor.firstName, actor.surname) || String(actor.username).slice(0, 2).toUpperCase(),
+      attendeeInitials: initials(participant.first_name, participant.surname),
+      text,
+    });
+    return res.status(201).json({ success: true, note });
+  });
+
+  app.get("/api/my-coaching-notes", async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor) return sendError(res, 401, "An authenticated member is required.");
+    if (!isCoachEligible(actor)) return sendError(res, 403, "Coaching volunteer access is required.");
+    const notes = await coachingParticipantNoteGateway.listForAuthor(actor.username);
+    return res.json({ success: true, notes });
+  });
+
+  app.get("/api/my-coaching-assignment-notifications", async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor) return sendError(res, 401, "An authenticated member is required.");
+    const notifications = await coachingAssignmentNotificationGateway.list(actor.username);
+    return res.json({ success: true, notifications });
+  });
+
+  app.delete("/api/my-coaching-assignment-notifications/:id", async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor) return sendError(res, 401, "An authenticated member is required.");
+    if (!/^[1-9]\d*$/.test(String(req.params.id))) return sendError(res, 400, "Invalid notification.");
+    const removed = await coachingAssignmentNotificationGateway.remove(actor.username, req.params.id);
+    if (!removed) return sendError(res, 404, "Notification not found.");
+    return res.json({ success: true });
+  });
+
   const changeManualAttendance = async (req, res, attended) => {
     const actor = getActorUser(req);
     if (!actor) return sendError(res, 401, "Sign in to record attendance.");
@@ -59,14 +138,23 @@ export function registerCoachingHubRoutes({
     if (!isApprovedActiveCourse(course, lesson)) return sendError(res, 409, "This lesson is not active.");
     const coaches = await beginnersCourseReadGateway.listLessonCoachesByLessonId(lessonId);
     const actorName = String(actor.username ?? "").toLowerCase();
-    if (actorName !== String(course.coordinator_username ?? "").toLowerCase() &&
-      !coaches.some((coach) => String(coach.coach_username).toLowerCase() === actorName)) {
+    const isCoordinator = actorName === String(course.coordinator_username ?? "").toLowerCase();
+    const isLessonCoach = coaches.some((coach) => String(coach.coach_username).toLowerCase() === actorName);
+    const isCourseCoach = !isCoordinator && !isLessonCoach && actor.id != null &&
+      (await beginnersCourseReadGateway.listCoachLessonsByUserId(actor.id))
+        .some((assignedLesson) => Number(assignedLesson.course_id) === Number(course.id));
+    if (!isCoordinator && !isLessonCoach && !isCourseCoach) {
       return sendError(res, 403, "Only the coordinator or an assigned coach can record attendance.");
     }
-    if (!lessonHasStarted(lesson, new Date())) return sendError(res, 409, "Attendance can be recorded once the lesson starts.");
     const participants = await beginnersCourseReadGateway.listParticipantsByCourseId(course.id);
     const participant = participants.find((row) => Number(row.id) === participantId);
     if (!participant) return sendError(res, 404, "Participant is not enrolled in this course.");
+    if (attended) {
+      const signIns = await beginnersCourseReadGateway.listParticipantAttendanceByDate(course.id, lesson.lesson_date);
+      if (signIns.some((row) => String(row.username).toLowerCase() === String(participant.username).toLowerCase())) {
+        return sendError(res, 409, "This participant already signed in on this date.");
+      }
+    }
     const [date, time] = getUtcTimestampParts();
     if (attended) {
       await manualLessonAttendanceGateway.set({ lessonId, participantId, actorUsername: actor.username, date, time });
@@ -205,11 +293,11 @@ export function registerCoachingHubRoutes({
     broadcastBeginnersUpdated(courseType, "beginners.coach-volunteered");
     broadcastCalendarUpdated("beginners.coach-volunteered");
     const requiredCoachCount = Number(lesson.required_coach_count ?? defaultRequiredCoaches(lesson.course_type));
-    broadcastCoachingAssignmentChanged({ action: "volunteered", actor, actorUsername, broadcastToUsers, course, lesson, requiredCoachCount, assignedCoachCount: currentCoaches.length + 1, reason: "" });
+    await broadcastCoachingAssignmentChanged({ action: "volunteered", actor, actorUsername, broadcastToUsers, coachingAssignmentNotificationGateway, course, lesson, requiredCoachCount, assignedCoachCount: currentCoaches.length + 1, reason: "" });
     return res.json({ success: true, message: "You have volunteered for this session." });
   });
 
-  app.delete("/api/beginners-course-lessons/:id/my-assignment", async (req, res) => {
+  app.post("/api/beginners-course-lessons/:id/unavailability", async (req, res) => {
     const actor = getActorUser(req);
     if (!actor) return sendError(res, 401, "An authenticated member is required.");
     if (!isCoachEligible(actor)) return sendError(res, 403, "Coaching volunteer access is required.");
@@ -218,47 +306,49 @@ export function registerCoachingHubRoutes({
     if (!lesson) return sendError(res, 404, "Coaching session not found.");
     const course = await beginnersCourseReadGateway.findCourseById(lesson.course_id);
     if (!isApprovedActiveCourse(course, lesson)) return sendError(res, 409, "This session is no longer active.");
+    if (!course.coordinator_username) return sendError(res, 409, "This session has no coordinator to notify.");
     const actorUsername = await resolveCanonicalUsername(actor.username);
     const currentCoaches = await beginnersCourseReadGateway.listLessonCoachesByLessonId(lesson.id);
     if (!currentCoaches.some((coach) => coach.coach_username.toLowerCase() === actorUsername.toLowerCase())) {
       return sendError(res, 404, "Your assignment was not found.");
     }
     if (new Date(`${lesson.lesson_date}T${lesson.end_time}`).getTime() <= Date.now()) {
-      return sendError(res, 409, "You cannot withdraw from a completed session.");
+      return sendError(res, 409, "You cannot report unavailability for a completed session.");
+    }
+
+    const pendingNotices = await coachingAssignmentNotificationGateway.list(course.coordinator_username);
+    if (pendingNotices.some((notice) =>
+      notice.action === "cannot_attend" &&
+      String(notice.lessonId) === String(lesson.id) &&
+      String(notice.actorUsername).toLowerCase() === actorUsername.toLowerCase()
+    )) {
+      return res.json({ success: true, message: "The coordinator has already been notified. You remain assigned until they update the session." });
     }
 
     const [date, time] = getUtcTimestampParts();
-    const before = await findBeginnersLessonAuditSnapshot(lesson.id, normalizeCourseType(course.course_type));
-    const removed = await beginnersCourseWriteGateway.removeLessonCoachSelf({
-      actorUsername,
-      lessonId: lesson.id,
-      nowDate: date,
-      nowTime: time,
-    });
-    if (!removed) return sendError(res, 409, "This session has changed. Refresh and try again.");
-    const after = await findBeginnersLessonAuditSnapshot(lesson.id, normalizeCourseType(course.course_type));
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 500) : "";
-    if (auditChangeLogger && before) {
+    const requiredCoachCount = Number(lesson.required_coach_count ?? defaultRequiredCoaches(lesson.course_type));
+    await broadcastCoachingAssignmentChanged({
+      action: "cannot_attend", actor, actorUsername, broadcastToUsers,
+      coachingAssignmentNotificationGateway, course, lesson, requiredCoachCount,
+      assignedCoachCount: currentCoaches.length, reason,
+    });
+    if (auditChangeLogger) {
       void auditChangeLogger.recordEntityChange({
-        action: "coach_withdrew",
+        action: "coach_unavailability_reported",
         actorUsername,
-        after: reason ? { ...after, withdrawalReason: reason } : after,
-        before,
+        after: { lessonId: lesson.id, coachUsername: actorUsername, reason, assignmentRetained: true },
+        before: null,
         changedAtDate: date,
         changedAtTime: time,
         entityId: String(lesson.id),
         entityLabel: `Lesson ${lesson.lesson_number} ${lesson.lesson_date}`,
         entityType: "beginners_lesson",
         req,
-        target: `/api/beginners-course-lessons/${lesson.id}/my-assignment`,
-      }).catch((error) => console.error("Failed to record coaching withdrawal audit event", error));
+        target: `/api/beginners-course-lessons/${lesson.id}/unavailability`,
+      }).catch((error) => console.error("Failed to record coaching unavailability audit event", error));
     }
-    const courseType = normalizeCourseType(course.course_type);
-    broadcastBeginnersUpdated(courseType, "beginners.coach-withdrew");
-    broadcastCalendarUpdated("beginners.coach-withdrew");
-    const requiredCoachCount = Number(lesson.required_coach_count ?? defaultRequiredCoaches(lesson.course_type));
-    broadcastCoachingAssignmentChanged({ action: "withdrew", actor, actorUsername, broadcastToUsers, course, lesson, requiredCoachCount, assignedCoachCount: currentCoaches.length - 1, reason });
-    return res.json({ success: true, message: "You have withdrawn from this session." });
+    return res.json({ success: true, message: "The coordinator has been notified. You remain assigned until they update the session." });
   });
 
   app.put("/api/beginners-course-lessons/:id/required-coaches", async (req, res) => {
@@ -295,11 +385,12 @@ export function registerCoachingHubRoutes({
     }
     const course = await beginnersCourseReadGateway.findCourseById(lesson.course_id);
     if (!isApprovedActiveCourse(course, lesson)) return sendError(res, 404, "Coaching session not found.");
-    const [coaches, participants, attendanceRows, manualRows] = await Promise.all([
+    const [coaches, participants, attendanceRows, manualRows, noteCounts] = await Promise.all([
       beginnersCourseReadGateway.listLessonCoachesByLessonId(lesson.id),
       beginnersCourseReadGateway.listParticipantsByCourseId(course.id),
       beginnersCourseReadGateway.listParticipantAttendanceByDate(course.id, lesson.lesson_date),
       manualLessonAttendanceGateway.listAll(),
+      normalizeCourseType(course.course_type) === "beginners" ? coachingParticipantNoteGateway.listCountsForCourse(course.id) : Promise.resolve(new Map()),
     ]);
     const now = new Date();
     const attendedUsernames = new Set(attendanceRows.map((row) => row.username.toLowerCase()));
@@ -329,6 +420,7 @@ export function registerCoachingHubRoutes({
         })),
         participants: participants.map((participant) => ({
           id: participant.id,
+          noteCount: noteCounts.get(Number(participant.id)) ?? 0,
           firstName: participant.first_name,
           surname: participant.surname,
           sizeCategory: participant.beginner_size_category,
@@ -344,11 +436,10 @@ export function registerCoachingHubRoutes({
   });
 }
 
-function broadcastCoachingAssignmentChanged({ action, actor, actorUsername, broadcastToUsers, course, lesson, requiredCoachCount, assignedCoachCount, reason }) {
+async function broadcastCoachingAssignmentChanged({ action, actor, actorUsername, broadcastToUsers, coachingAssignmentNotificationGateway, course, lesson, requiredCoachCount, assignedCoachCount, reason }) {
   const coordinatorUsername = course.coordinator_username;
-  if (!coordinatorUsername || coordinatorUsername.toLowerCase() === actorUsername.toLowerCase()) return;
-  broadcastToUsers([coordinatorUsername], "coaching.assignment.changed", {
-    eventId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  if (!coordinatorUsername || (action !== "cannot_attend" && coordinatorUsername.toLowerCase() === actorUsername.toLowerCase())) return;
+  const payload = {
     action,
     courseId: course.id,
     lessonId: lesson.id,
@@ -363,5 +454,7 @@ function broadcastCoachingAssignmentChanged({ action, actor, actorUsername, broa
     assignedCoachCount,
     coachShortfall: Math.max(requiredCoachCount - assignedCoachCount, 0),
     reason,
-  });
+  };
+  const eventId = await coachingAssignmentNotificationGateway.add(coordinatorUsername, payload);
+  broadcastToUsers([coordinatorUsername], "coaching.assignment.changed", { ...payload, eventId });
 }

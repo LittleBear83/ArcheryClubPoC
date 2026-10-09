@@ -1,5 +1,6 @@
 import type { OutdoorTableEntryPayload } from "../../../api/outdoorTableApi";
 import type { OutdoorTableEntry } from "../../../types/app";
+import { derive252SignOffDates, find252CompletionSignOffDistance } from "../../../../shared/award252Progression.js";
 
 export type OutdoorBooleanFieldKey = keyof Pick<
   OutdoorTableEntryPayload,
@@ -111,8 +112,26 @@ export function normalizeAwardSignOffDates(value: string[] | null | undefined) {
   return normalizedDates;
 }
 
-export function countCompletedSignOffs(signOffDates: string[]) {
-  return normalizeAwardSignOffDates(signOffDates).filter(Boolean).length;
+export function countCompletedSignOffs(signOffDates: string[], inferredFromDistanceYards?: number | null) {
+  return inferredFromDistanceYards
+    ? 3
+    : derive252SignOffDates(signOffDates).filter(Boolean).length;
+}
+
+export function get252InferredFromSightMarks(
+  entry: Pick<OutdoorTableEntry, "cloutWhite20" | "cloutWhite30" | "cloutWhite40" | "cloutWhite50" | "cloutWhite60" | "cloutWhite7080" | "cloutWhite90100">,
+  distanceYards: number,
+) {
+  const signedOffDistances = [
+    [20, entry.cloutWhite20],
+    [30, entry.cloutWhite30],
+    [40, entry.cloutWhite40],
+    [50, entry.cloutWhite50],
+    [60, entry.cloutWhite60],
+    [80, entry.cloutWhite7080],
+    [100, entry.cloutWhite90100],
+  ].filter(([, signedOff]) => signedOff).map(([distance]) => Number(distance));
+  return find252CompletionSignOffDistance(distanceYards, signedOffDistances);
 }
 
 export function isAward252Complete(

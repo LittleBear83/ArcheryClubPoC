@@ -38,6 +38,7 @@ export type CoachingOpportunity = {
 
 export type CoachingParticipant = {
   id?: number;
+  noteCount?: number;
   firstName: string;
   surname: string;
   sizeCategory?: string;

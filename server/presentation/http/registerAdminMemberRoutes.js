@@ -1,4 +1,5 @@
 import { MEMBERSHIP_STATUS_OPTIONS } from "../../domain/constants.js";
+import { derive252SignOffDates } from "../../../shared/award252Progression.js";
 
 export function registerAdminMemberRoutes({
   syncNodeMode = "cloud-server",
@@ -473,31 +474,34 @@ export function registerAdminMemberRoutes({
 
     const normalized252Achievements =
       normalizeGoldenRecords252Achievements(achievements);
-    const signOffDatesByAwardKey = normalized252Achievements.reduce(
+    const signOffsByAwardKey = normalized252Achievements.reduce(
       (next, achievement) => {
-        const currentDates = next.get(achievement.awardKey) ?? [];
-        currentDates.push(achievement.achievedDate);
-        next.set(achievement.awardKey, currentDates);
+        const currentSignOffs = next.get(achievement.awardKey) ?? [];
+        currentSignOffs.push(achievement);
+        next.set(achievement.awardKey, currentSignOffs);
         return next;
       },
       new Map(),
     );
 
-    for (const [awardKey, dates] of signOffDatesByAwardKey.entries()) {
+    for (const [awardKey, signOffs] of signOffsByAwardKey.entries()) {
       const signOffKey = GOLDEN_RECORDS_252_SIGN_OFF_FIELD_BY_AWARD_KEY.get(awardKey);
 
       if (!signOffKey) {
         continue;
       }
 
-      const nextDates = normalizeGoldenRecordsSignOffDates(dates);
+      const sequenced = signOffs.filter((entry) => entry.sequenceNumber);
+      const nextDates = sequenced.some((entry) => entry.sourceLabel.includes("/"))
+        ? [1, 2, 3].map((level) => sequenced.find((entry) => entry.sequenceNumber === level)?.achievedDate ?? "")
+        : normalizeGoldenRecordsSignOffDates(signOffs.map((entry) => entry.achievedDate));
       const paddedDates = [...nextDates];
 
       while (paddedDates.length < 3) {
         paddedDates.push("");
       }
 
-      const nextAwardComplete = nextDates.length >= 3;
+      const nextAwardComplete = derive252SignOffDates(nextDates).filter(Boolean).length >= 3;
       const signOffDatesChanged =
         JSON.stringify(nextEntry[signOffKey] ?? []) !== JSON.stringify(paddedDates);
 
@@ -2548,6 +2552,11 @@ export function registerAdminMemberRoutes({
       });
     }
     broadcastMembersUpdated("members.distance-signoff", member.username);
+    serverEventBus?.broadcastToAll("outdoor-table.updated", {
+      changedAt: new Date().toISOString(),
+      scope: "distance-signoff",
+      username: member.username,
+    });
 
     const loanBow = await findMemberLoanBow(member.username);
 

@@ -1,3 +1,5 @@
+import { derive252SignOffDates, find252CompletionSignOffDistance } from "../../../shared/award252Progression.js";
+
 const BOW_TYPE_OPTIONS = new Set(["Rec", "Comp", "B/bow", "L/bow"]);
 const STANDARD_BOOLEAN_FIELD_KEYS = [
   "archer3rd",
@@ -217,7 +219,7 @@ function buildOutdoorTablePayload(body) {
       return null;
     }
 
-    const completedRounds = signOffDates.filter(Boolean).length;
+    const completedRounds = derive252SignOffDates(signOffDates).filter(Boolean).length;
 
     payload[awardKey] = legacyAwardValue || completedRounds >= 3;
     payload[signOffKey] = signOffDates;
@@ -254,12 +256,13 @@ export function registerOutdoorTableRoutes({
       entry.archerUsername,
       [discipline],
     );
-    const hasSignedOffDistance = (distanceYards) =>
-      Boolean(
-        disciplineGroup?.distances?.find(
-          (distance) => distance.distanceYards === distanceYards,
-        )?.signOff,
-      );
+    const signedOffDistances = (disciplineGroup?.distances ?? [])
+      .filter((distance) => Boolean(distance.signOff))
+      .map((distance) => distance.distanceYards);
+    const explicitSignOffDistances = (disciplineGroup?.distances ?? [])
+      .filter((distance) => distance.signOff && distance.signOff.source !== "inferred")
+      .map((distance) => distance.distanceYards);
+    const hasSignedOffDistance = (distanceYards) => signedOffDistances.includes(distanceYards);
 
     return {
       ...entry,
@@ -270,6 +273,21 @@ export function registerOutdoorTableRoutes({
       cloutWhite60: hasSignedOffDistance(60),
       cloutWhite7080: hasSignedOffDistance(80),
       cloutWhite90100: hasSignedOffDistance(100),
+      ...Object.fromEntries(
+        AWARD_252_FIELD_MAPPINGS.map(({ awardKey, signOffKey }) => {
+          const distanceYards = Number(awardKey.replace("award252", ""));
+          const completedFromHigherSignOff = find252CompletionSignOffDistance(
+            distanceYards,
+            explicitSignOffDistances,
+          ) !== null;
+          return [
+            awardKey,
+            Boolean(entry[awardKey]) ||
+              derive252SignOffDates(entry[signOffKey]).filter(Boolean).length >= 3 ||
+              completedFromHigherSignOff,
+          ];
+        }),
+      ),
     };
   }
 

@@ -13,6 +13,7 @@ import {
   OUTDOOR_252_COLUMNS,
   OUTDOOR_ACHIEVEMENT_COLUMNS,
   countCompletedSignOffs,
+  get252InferredFromSightMarks,
   isAward252Complete,
 } from "./profile/outdoorTableProfileUtils";
 
@@ -302,7 +303,10 @@ export function OutdoorTablePage({
                         }`}
                       >
                         <span className="outdoor-table-mark-count">
-                          {countCompletedSignOffs(entry[column.signOffKey])}/3
+                          {countCompletedSignOffs(
+                            entry[column.signOffKey],
+                            get252InferredFromSightMarks(entry, Number(column.label.slice(0, -1))),
+                          )}/3
                         </span>
                       </td>
                     ))}

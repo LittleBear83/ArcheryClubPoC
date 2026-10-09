@@ -65,6 +65,8 @@ import { createSqliteAuthAuditStatements } from "./infrastructure/persistence/cr
 import { createBeginnersCourseReadGateway } from "./infrastructure/persistence/beginnersCourseReadGateway.js";
 import { createBeginnersCourseWriteGateway } from "./infrastructure/persistence/beginnersCourseWriteGateway.js";
 import { createManualLessonAttendanceGateway } from "./infrastructure/persistence/manualLessonAttendanceGateway.js";
+import { createCoachingAssignmentNotificationGateway } from "./infrastructure/persistence/coachingAssignmentNotificationGateway.js";
+import { createCoachingParticipantNoteGateway } from "./infrastructure/persistence/coachingParticipantNoteGateway.js";
 import { createSqliteBeginnersCourseStatements } from "./infrastructure/persistence/createSqliteBeginnersCourseStatements.js";
 import { createSqliteEquipmentStatements } from "./infrastructure/persistence/createSqliteEquipmentStatements.js";
 import { createSqliteLoanBowStatements } from "./infrastructure/persistence/createSqliteLoanBowStatements.js";
@@ -7269,6 +7271,17 @@ app.get("/api/my-beginner-dashboard", async (req, res) => {
   });
 });
 
+const coachingParticipantNoteGateway = createCoachingParticipantNoteGateway({
+  databaseEngine: serverRuntime.databaseEngine,
+  db,
+  pool: db.pool,
+});
+const coachingNotePurgeTimer = setInterval(() => {
+  void coachingParticipantNoteGateway.purgeExpired().catch((error) => console.error("Failed to purge expired coaching notes", error));
+}, 24 * 60 * 60 * 1000);
+coachingNotePurgeTimer.unref();
+void coachingParticipantNoteGateway.purgeExpired().catch((error) => console.error("Failed to purge expired coaching notes", error));
+
 registerCoachingHubRoutes({
   app,
   actorHasPermission,
@@ -7278,6 +7291,12 @@ registerCoachingHubRoutes({
   beginnersCourseReadGateway,
   beginnersCourseWriteGateway,
   manualLessonAttendanceGateway,
+  coachingAssignmentNotificationGateway: createCoachingAssignmentNotificationGateway({
+    databaseEngine: serverRuntime.databaseEngine,
+    db,
+    pool: db.pool,
+  }),
+  coachingParticipantNoteGateway,
   buildBeginnersCourseCalendarLessons,
   getUtcTimestampParts,
   normalizeCourseType,

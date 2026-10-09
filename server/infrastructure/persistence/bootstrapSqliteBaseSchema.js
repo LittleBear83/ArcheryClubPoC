@@ -343,6 +343,17 @@ export function bootstrapSqliteBaseSchema({
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coaching_assignment_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      coordinator_username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS coaching_assignment_notifications_recipient_idx
+      ON coaching_assignment_notifications (coordinator_username, id);
+  `);
+
   db.exec(LOGIN_EVENTS_TABLE_SQL);
   db.exec(`
     CREATE INDEX IF NOT EXISTS login_events_reporting_date_method_idx
@@ -1322,6 +1333,23 @@ export function bootstrapSqliteBaseSchema({
       FOREIGN KEY (assigned_case_by_username) REFERENCES users(username),
       FOREIGN KEY (created_by_username) REFERENCES users(username)
     )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS coaching_participant_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL REFERENCES beginners_courses(id) ON DELETE CASCADE,
+      participant_id INTEGER NOT NULL REFERENCES beginners_course_participants(id) ON DELETE CASCADE,
+      author_username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+      author_initials TEXT NOT NULL,
+      attendee_initials TEXT NOT NULL,
+      note_text TEXT NOT NULL CHECK (length(note_text) BETWEEN 1 AND 500),
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS coaching_participant_notes_participant_idx ON coaching_participant_notes (participant_id, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS coaching_participant_notes_author_idx ON coaching_participant_notes (author_username, created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS coaching_participant_notes_expiry_idx ON coaching_participant_notes (expires_at);
   `);
 
   const beginnersParticipantColumns = db

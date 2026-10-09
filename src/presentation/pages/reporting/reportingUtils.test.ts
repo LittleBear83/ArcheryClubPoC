@@ -18,6 +18,7 @@ test("buildCsv includes membership and programme classification columns", () => 
     memberTypeCounts: [],
     total: 2,
     members: 1,
+    nonMembers: 0,
     guests: 1,
     daily: [],
     rows: [
@@ -116,6 +117,8 @@ test("summarizeAttendanceBreakdown groups rows by membership status and programm
     membershipStatuses: [
       { key: "member", label: "Member", count: 1 },
       { key: "associate-member", label: "Associate Member", count: 1 },
+      { key: "parent", label: "Parent", count: 0 },
+      { key: "volunteer", label: "Volunteer", count: 0 },
       { key: "non-member", label: "Non-member", count: 1 },
       { key: "guest", label: "Guest", count: 1 },
     ],
@@ -137,10 +140,12 @@ test("member type breakdown shows zero attendance for types absent from the sele
   assert.deepEqual(summarizeAttendanceBreakdown([memberRow]).membershipStatuses, [
     { key: "member", label: "Member", count: 1 },
     { key: "associate-member", label: "Associate Member", count: 0 },
+    { key: "parent", label: "Parent", count: 0 },
+    { key: "volunteer", label: "Volunteer", count: 0 },
     { key: "non-member", label: "Non-member", count: 0 },
     { key: "guest", label: "Guest", count: 0 },
   ]);
-  assert.deepEqual(summarizeAttendanceBreakdown([]).membershipStatuses.map(({ count }) => count), [0, 0, 0, 0]);
+  assert.deepEqual(summarizeAttendanceBreakdown([]).membershipStatuses.map(({ count }) => count), [0, 0, 0, 0, 0, 0]);
 });
 
 test("current member type breakdown counts active profiles without login events", () => {
@@ -150,6 +155,8 @@ test("current member type breakdown counts active profiles without login events"
   ]), [
     { key: "member", label: "Member", count: 8 },
     { key: "associate-member", label: "Associate Member", count: 1 },
+    { key: "parent", label: "Parent", count: 0 },
+    { key: "volunteer", label: "Volunteer", count: 0 },
     { key: "non-member", label: "Non-member", count: 0 },
     { key: "guest", label: "Guest", count: 0 },
   ]);

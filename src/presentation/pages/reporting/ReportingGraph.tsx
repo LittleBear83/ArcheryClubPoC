@@ -13,6 +13,8 @@ export function ReportingGraph({ rows }: { rows: AttendanceReportDailyRow[] }) {
         const totalHeight = `${(row.total / maxTotal) * 100}%`;
         const memberHeight =
           row.total > 0 ? `${(row.members / row.total) * 100}%` : "0%";
+        const nonMemberHeight =
+          row.total > 0 ? `${(row.nonMembers / row.total) * 100}%` : "0%";
         const guestHeight =
           row.total > 0 ? `${(row.guests / row.total) * 100}%` : "0%";
 
@@ -23,11 +25,15 @@ export function ReportingGraph({ rows }: { rows: AttendanceReportDailyRow[] }) {
               <div
                 className="usage-graph-stack"
                 style={{ height: totalHeight }}
-                title={`${row.fullLabel}: ${row.members} members, ${row.guests} guests`}
+                title={`${row.fullLabel}: ${row.members} members, ${row.nonMembers} non-members, ${row.guests} guests`}
               >
                 <div
                   className="usage-graph-segment usage-graph-members"
                   style={{ height: memberHeight }}
+                />
+                <div
+                  className="usage-graph-segment usage-graph-non-members"
+                  style={{ height: nonMemberHeight }}
                 />
                 <div
                   className="usage-graph-segment usage-graph-guests"

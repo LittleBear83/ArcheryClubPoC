@@ -100,7 +100,7 @@ export function UserCreationPage({ currentUserProfile, memberProfileCrud }) {
     [optionsQuery.data?.disciplines],
   );
   const membershipStatusOptions = useMemo(
-    () => optionsQuery.data?.membershipStatuses ?? ["member", "associate-member", "non-member", "guest"],
+    () => optionsQuery.data?.membershipStatuses ?? ["member", "associate-member", "parent", "volunteer", "non-member", "guest"],
     [optionsQuery.data?.membershipStatuses],
   );
   const programmeTypeOptions = useMemo(

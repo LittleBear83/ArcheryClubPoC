@@ -39,6 +39,11 @@ test("associate member type is visible without changing the role", () => {
   assert.equal(getMembershipDisplaySuffix({ userType: "general", membershipStatus: "associate-member" }), " - (Associate Member)");
 });
 
+test("parent and volunteer member types appear in profile names", () => {
+  assert.equal(getMembershipDisplaySuffix({ userType: "general", membershipStatus: "parent" }), " - (Parent)");
+  assert.equal(getMembershipDisplaySuffix({ userType: "general", membershipStatus: "volunteer" }), " - (Volunteer)");
+});
+
 test("explicit taster-session programme shows a taster non-member suffix", () => {
   const profile = {
     firstName: "Tia",

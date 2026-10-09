@@ -223,6 +223,8 @@ export const SYSTEM_ROLE_DEFINITIONS = [
 export const MEMBERSHIP_STATUS_OPTIONS = [
   "member",
   "associate-member",
+  "parent",
+  "volunteer",
   "non-member",
   "guest",
 ];

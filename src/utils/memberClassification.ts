@@ -37,5 +37,13 @@ export function describeMembershipClassification(
     return "This person is treated as an associate club member.";
   }
 
+  if (membershipStatus === "parent") {
+    return "This person is recorded as a parent and is not counted as a club member.";
+  }
+
+  if (membershipStatus === "volunteer") {
+    return "This person is recorded as a volunteer and is not counted as a club member.";
+  }
+
   return "This person is treated as a standard club member.";
 }

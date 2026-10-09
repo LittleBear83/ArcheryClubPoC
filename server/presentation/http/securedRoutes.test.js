@@ -1254,10 +1254,20 @@ test("reporting attendance keeps associate member type and unchanged role", asyn
     { listCurrentMemberTypeCounts: async () => [
       { membership_status: "member", count: 8 },
       { membership_status: "associate-member", count: 1 },
+      { membership_status: "parent", count: 1 },
+      { membership_status: "volunteer", count: 1 },
     ], listReportingMemberLogins: async () => [{
       id: 12, username: "associate", first_name: "Avery", surname: "Archer",
       membership_status: "associate-member", programme_type: "none", user_type: "general",
       login_method: "rfid", logged_in_date: "2026-08-12", logged_in_time: "18:00:00",
+    }, {
+      id: 13, username: "parent", first_name: "Pat", surname: "Parent",
+      membership_status: "parent", programme_type: "none", user_type: "general",
+      login_method: "rfid", logged_in_date: "2026-08-12", logged_in_time: "17:00:00",
+    }, {
+      id: 14, username: "volunteer", first_name: "Val", surname: "Volunteer",
+      membership_status: "volunteer", programme_type: "none", user_type: "general",
+      login_method: "rfid", logged_in_date: "2026-08-12", logged_in_time: "16:00:00",
     }] },
   );
   const { baseUrl, server } = await startTestServer(app);
@@ -1265,11 +1275,17 @@ test("reporting attendance keeps associate member type and unchanged role", asyn
     const response = await requestJson(baseUrl, "/api/reporting/attendance?start=2026-08-12&end=2026-08-12");
     assert.equal(response.status, 200);
     assert.equal(response.body.report.members, 1);
+    assert.equal(response.body.report.nonMembers, 2);
+    assert.equal(response.body.report.daily.find((row) => row.usageDate === "2026-08-12")?.nonMembers, 2);
     assert.equal(response.body.report.rows[0].membershipStatus, "associate-member");
     assert.equal(response.body.report.rows[0].role, "general");
+    assert.equal(response.body.report.rows.find((row) => row.username === "parent")?.type, "Non-member");
+    assert.equal(response.body.report.rows.find((row) => row.username === "volunteer")?.type, "Non-member");
     assert.deepEqual(response.body.report.memberTypeCounts, [
       { membership_status: "member", count: 8 },
       { membership_status: "associate-member", count: 1 },
+      { membership_status: "parent", count: 1 },
+      { membership_status: "volunteer", count: 1 },
     ]);
   } finally {
     server.close();

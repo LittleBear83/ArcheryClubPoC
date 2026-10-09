@@ -2,7 +2,7 @@ import { buildActorHeaders, fetchApi } from "./client";
 
 export type AttendanceReportRow = {
   id: string;
-  type: "Member" | "Guest";
+  type: "Member" | "Non-member" | "Guest";
   date: string;
   time: string;
   name: string;
@@ -21,6 +21,7 @@ export type AttendanceReportDailyRow = {
   label: string;
   fullLabel: string;
   members: number;
+  nonMembers: number;
   guests: number;
   total: number;
 };
@@ -33,6 +34,7 @@ export type AttendanceReport = {
   memberTypeCounts: Array<{ membership_status: string; count: number }>;
   total: number;
   members: number;
+  nonMembers: number;
   guests: number;
   daily: AttendanceReportDailyRow[];
   rows: AttendanceReportRow[];

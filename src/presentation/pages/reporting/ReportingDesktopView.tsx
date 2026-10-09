@@ -174,7 +174,7 @@ export function ReportingDesktopView({
                 checked={includeMembers}
                 onChange={(event) => setIncludeMembers(event.target.checked)}
               />
-              <span>Members</span>
+              <span>Portal accounts</span>
             </label>
             <label className="profile-checkbox">
               <input
@@ -198,7 +198,7 @@ export function ReportingDesktopView({
         </form>
       </section>
 
-      {!hasDataSource ? <p className="usage-error">Select Members, Guests, or both.</p> : null}
+      {!hasDataSource ? <p className="usage-error">Select portal accounts, guests, or both.</p> : null}
       {error ? (
         <p className="usage-error">
           {error instanceof Error
@@ -229,6 +229,10 @@ export function ReportingDesktopView({
                   <strong>{data.members}</strong>
                 </div>
                 <div>
+                  <span className="usage-stat-label">Non-member logins</span>
+                  <strong>{data.nonMembers}</strong>
+                </div>
+                <div>
                   <span className="usage-stat-label">Guest logins</span>
                   <strong>{data.guests}</strong>
                 </div>
@@ -240,7 +244,7 @@ export function ReportingDesktopView({
             </div>
             <div className="usage-card reporting-summary-card">
               <p className="usage-card-title">Member Type Breakdown</p>
-              <p className="reporting-table-note">Current active profiles, including members with no visits.</p>
+              <p className="reporting-table-note">Current active profiles, including people with no visits.</p>
               <BreakdownList items={attendanceBreakdown.membershipStatuses} />
             </div>
             <div className="usage-card reporting-summary-card">
@@ -262,6 +266,10 @@ export function ReportingDesktopView({
               <span className="usage-legend-item">
                 <span className="usage-legend-swatch usage-graph-members" />
                 Members
+              </span>
+              <span className="usage-legend-item">
+                <span className="usage-legend-swatch usage-graph-non-members" />
+                Non-members
               </span>
               <span className="usage-legend-item">
                 <span className="usage-legend-swatch usage-graph-guests" />

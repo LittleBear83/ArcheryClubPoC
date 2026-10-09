@@ -253,6 +253,18 @@ test("associate member type persists without changing the portal role", async ()
   assert.equal(saved[0].userType, "general");
 });
 
+test("parent and volunteer member types persist without changing the portal role", async () => {
+  for (const membershipStatus of ["parent", "volunteer"]) {
+    const { service, saved, input } = rfidPersistenceHarness();
+    input.userType = "general";
+    input.membershipStatus = membershipStatus;
+    input.programmeType = "none";
+    assert.equal((await service.saveMemberProfile(input)).success, true);
+    assert.equal(saved[0].userPayload.membershipStatus, membershipStatus);
+    assert.equal(saved[0].userType, "general");
+  }
+});
+
 for (const [name, rfidTag, context, existing, expected] of [
   ['unchanged', ' old ', 'local-pi', true, undefined],
   ['changed Pi', ' NEW ', 'local-pi', true, 'NEW'],

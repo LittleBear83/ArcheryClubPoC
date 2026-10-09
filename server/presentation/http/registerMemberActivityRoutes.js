@@ -781,7 +781,7 @@ export function registerMemberActivityRoutes({
       rows.push(
         ...(await activityReportingGateway.listReportingMemberLogins(startIso, endIso)).map((member) => ({
           id: `member-${member.id}`,
-          type: "Member",
+          type: ["member", "associate-member"].includes(String(member.membership_status ?? "member").toLowerCase()) ? "Member" : "Non-member",
           date: member.logged_in_date,
           time: member.logged_in_time,
           name: `${member.first_name ?? ""} ${member.surname ?? ""}`.trim(),
@@ -839,6 +839,7 @@ export function registerMemberActivityRoutes({
         label: String(date.getUTCDate()),
         fullLabel: usageDate,
         members: 0,
+        nonMembers: 0,
         guests: 0,
         total: 0,
       });
@@ -853,6 +854,8 @@ export function registerMemberActivityRoutes({
 
       if (row.type === "Member") {
         dailyRow.members += 1;
+      } else if (row.type === "Non-member") {
+        dailyRow.nonMembers += 1;
       } else {
         dailyRow.guests += 1;
       }
@@ -870,6 +873,7 @@ export function registerMemberActivityRoutes({
         memberTypeCounts: await activityReportingGateway.listCurrentMemberTypeCounts(),
         total: rows.length,
         members: rows.filter((row) => row.type === "Member").length,
+        nonMembers: rows.filter((row) => row.type === "Non-member").length,
         guests: rows.filter((row) => row.type === "Guest").length,
         daily: [...dailyMap.values()],
         rows,

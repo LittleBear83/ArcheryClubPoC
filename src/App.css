@@ -6453,6 +6453,10 @@ button:disabled {
   background: var(--accent);
 }
 
+.usage-graph-non-members {
+  background: var(--info-button-bg);
+}
+
 .usage-graph-guests {
   background: var(--success);
 }

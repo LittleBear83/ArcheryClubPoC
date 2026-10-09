@@ -111,6 +111,14 @@ export function getMembershipDisplaySuffix(value) {
     return " - (Associate Member)";
   }
 
+  if (membershipStatus === "parent") {
+    return " - (Parent)";
+  }
+
+  if (membershipStatus === "volunteer") {
+    return " - (Volunteer)";
+  }
+
   if (membershipStatus === "guest") {
     return " - (Guest)";
   }

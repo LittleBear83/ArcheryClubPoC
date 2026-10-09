@@ -136,6 +136,7 @@ export function aggregateMonthDayRows(rows: AttendanceReportDailyRow[]) {
     label: String(index + 1),
     fullLabel: `Day ${index + 1}`,
     members: 0,
+    nonMembers: 0,
     guests: 0,
     total: 0,
   }));
@@ -150,6 +151,7 @@ export function aggregateMonthDayRows(rows: AttendanceReportDailyRow[]) {
 
     const aggregateRow = aggregatedRows[dayOfMonth - 1];
     aggregateRow.members += row.members ?? 0;
+    aggregateRow.nonMembers += row.nonMembers ?? 0;
     aggregateRow.guests += row.guests ?? 0;
     aggregateRow.total += row.total ?? 0;
   }
@@ -179,7 +181,7 @@ export function formatMemberType(value: string) {
   return formatBreakdownLabel(value, "Unknown");
 }
 
-const MEMBER_TYPES = ["member", "associate-member", "non-member", "guest"];
+const MEMBER_TYPES = ["member", "associate-member", "parent", "volunteer", "non-member", "guest"];
 
 export function summarizeCurrentMemberTypes(rows: Array<{ membership_status: string; count: number }>) {
   const counts = new Map(rows.map((row) => [row.membership_status, Number(row.count)]));

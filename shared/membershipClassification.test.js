@@ -49,3 +49,11 @@ test("taster participants are recognized from explicit programme type", () => {
   assert.equal(isProgrammeUser(profile), true);
   assert.equal(isTasterProgrammeUser(profile), true);
 });
+
+test("parent and volunteer types are non-members while retaining their distinct labels", () => {
+  for (const membershipStatus of ["parent", "volunteer"]) {
+    assert.equal(getMembershipStatus({ membershipStatus }), membershipStatus);
+    assert.equal(isNonMemberUser({ membershipStatus }), true);
+    assert.equal(isProgrammeUser({ membershipStatus }), false);
+  }
+});

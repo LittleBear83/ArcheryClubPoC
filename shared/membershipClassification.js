@@ -61,7 +61,7 @@ export function isGuestUser(value) {
 }
 
 export function isNonMemberUser(value) {
-  return getMembershipStatus(value) === "non-member";
+  return ["non-member", "parent", "volunteer"].includes(getMembershipStatus(value));
 }
 
 export function isProgrammeUser(value) {

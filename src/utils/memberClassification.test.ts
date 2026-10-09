@@ -95,3 +95,15 @@ test("associate member type clears programme settings and preserves the portal r
   assert.equal(profile.affiliateMember, true);
   assert.equal(describeMembershipClassification(profile), "This person is treated as an associate club member.");
 });
+
+test("parent and volunteer types are separate from programmes and retain the portal role", () => {
+  for (const membershipStatus of ["parent", "volunteer"]) {
+    assert.deepEqual(normalizeMembershipClassification(
+      { membershipStatus, programmeType: "beginners" }, "membershipStatus",
+    ), { membershipStatus, programmeType: "none" });
+    assert.deepEqual(normalizeMembershipClassification(
+      { membershipStatus, programmeType: "beginners" }, "programmeType",
+    ), { membershipStatus: "non-member", programmeType: "beginners" });
+    assert.match(describeMembershipClassification({ membershipStatus }), /not counted as a club member/);
+  }
+});

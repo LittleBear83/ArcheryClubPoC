@@ -139,6 +139,7 @@ Useful alternatives:
 - `npm run lint`
 - `npm run typecheck`
 - `npm run migrate:postgres`
+- `npm run import:gr-bow-disciplines`
 - `npm run seed:live-showcase`
 - `npm run seed:runtime-showcase`
 - `npm run seed:local`
@@ -207,6 +208,8 @@ Current runtime behavior includes:
   Security and deployment guidance.
 - `docs/NewMemberPortalGuide.md`
   Member-facing usage guide.
+- `docs/GoldenRecordsBowDisciplineImport.md`
+  Preview and apply guide for the additive Golden Records bow-discipline import.
 
 ## Current Status
 

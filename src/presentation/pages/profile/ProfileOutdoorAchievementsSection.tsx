@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
+import Tooltip from "@mui/material/Tooltip";
+import InfoIcon from "@mui/icons-material/Info";
 import { Button } from "../../components/Button";
 import { SectionPanel } from "../../components/SectionPanel";
 import { formatDate } from "../../../utils/dateTime";
+import { derive252SignOffDates, find252CompletionSignOffDistance } from "../../../../shared/award252Progression.js";
+import type { DistanceSignOffDiscipline } from "../../../domain/entities/MemberProfile";
 import {
   BOW_TYPE_DISCIPLINE_MAPPINGS,
   OUTDOOR_252_COLUMNS,
@@ -17,6 +21,7 @@ import {
 type ProfileOutdoorAchievementsSectionProps = {
   canManageOutdoorAchievements: boolean;
   canManageMembers: boolean;
+  distanceSignOffs: DistanceSignOffDiscipline[];
   entries: ProfileOutdoorTableDraft[];
   error: string;
   goldenRecordsFetchedAt: string;
@@ -51,6 +56,7 @@ function formatAchievedDate(value: string | null | undefined) {
 export function ProfileOutdoorAchievementsSection({
   canManageOutdoorAchievements,
   canManageMembers,
+  distanceSignOffs,
   entries,
   error,
   goldenRecordsFetchedAt,
@@ -183,33 +189,73 @@ export function ProfileOutdoorAchievementsSection({
                     </div>
 
                     <div className="profile-outdoor-252-grid">
-                      {OUTDOOR_252_COLUMNS.map((column) => (
-                        <article
+                      {OUTDOOR_252_COLUMNS.map((column) => {
+                        const signedOffDistances = distanceSignOffs
+                          .find((group) => group.discipline === entry.discipline)
+                          ?.distances.filter((distance) => distance.signOff && distance.signOff.source !== "inferred")
+                          .map((distance) => distance.distanceYards) ?? [];
+                        const inferredFromDistanceYards = find252CompletionSignOffDistance(
+                          Number(column.label.slice(0, -1)),
+                          signedOffDistances,
+                        );
+                        const recordedDates = normalizeAwardSignOffDates(entry[column.signOffKey]);
+                        const displayedDates = derive252SignOffDates(recordedDates);
+                        const completedRounds = countCompletedSignOffs(
+                          recordedDates,
+                          inferredFromDistanceYards,
+                        );
+                        const isComplete = Boolean(inferredFromDistanceYards) ||
+                          isAward252Complete(entry, column.awardKey, column.signOffKey);
+                        const hasLaterRoundInference = displayedDates.some(
+                          (date, index) => Boolean(date) && !recordedDates[index],
+                        );
+                        const hasDistanceInference = Boolean(inferredFromDistanceYards) &&
+                          displayedDates.some((date) => !date);
+                        return (
+                          <article
                           key={`${entry.bowType}-${column.awardKey}`}
                           className="outdoor-table-252-card"
                         >
                           <div className="outdoor-table-252-card-header">
-                            <div>
-                              <h4>{column.label}</h4>
-                              <p>
-                                {countCompletedSignOffs(entry[column.signOffKey])}/3 qualifying
-                                rounds
-                              </p>
+                            <h4>{column.label}</h4>
+                            <div className="outdoor-table-252-card-status">
+                              {isComplete ? (
+                                <span className="outdoor-table-status-pill is-complete">Awarded</span>
+                              ) : null}
+                              {hasDistanceInference || hasLaterRoundInference ? (
+                                <Tooltip
+                                  arrow
+                                  describeChild
+                                  enterTouchDelay={0}
+                                  title={
+                                    <>
+                                      {hasDistanceInference ? (
+                                        <span>
+                                          Completion of rounds without score dates is inferred from the {inferredFromDistanceYards}y distance signoff. The actual score dates are unknown.
+                                        </span>
+                                      ) : null}
+                                      {hasLaterRoundInference ? (
+                                        <span>
+                                          Earlier rounds without a recorded date are inferred from a later 252 round.
+                                        </span>
+                                      ) : null}
+                                    </>
+                                  }
+                                >
+                                  <button
+                                    type="button"
+                                    className="outdoor-table-252-info-button"
+                                    aria-label={`About ${column.label} 252 progression`}
+                                  >
+                                    <InfoIcon fontSize="small" />
+                                  </button>
+                                </Tooltip>
+                              ) : null}
                             </div>
-                            <span
-                              className={`outdoor-table-status-pill ${
-                                isAward252Complete(entry, column.awardKey, column.signOffKey)
-                                  ? "is-complete"
-                                  : "is-pending"
-                              }`}
-                            >
-                              {isAward252Complete(entry, column.awardKey, column.signOffKey)
-                                ? "Awarded"
-                                : "In progress"}
-                            </span>
+                            <p>{completedRounds}/3 qualifying rounds</p>
                           </div>
                           <div className="outdoor-table-252-signoffs">
-                            {normalizeAwardSignOffDates(entry[column.signOffKey]).map(
+                            {displayedDates.map(
                               (signOffDate, index) => (
                                 <label
                                   key={`${entry.bowType}-${column.signOffKey}-${index}`}
@@ -220,14 +266,14 @@ export function ProfileOutdoorAchievementsSection({
                                     type="date"
                                     value={signOffDate}
                                     onChange={(event) =>
-                                    onAward252SignOffDateChange(
-                                      entry.bowType,
-                                      column.signOffKey,
-                                      index,
-                                      event.target.value,
-                                    )
-                                  }
-                                  disabled={
+                                      onAward252SignOffDateChange(
+                                        entry.bowType,
+                                        column.signOffKey,
+                                        index,
+                                        event.target.value,
+                                      )
+                                    }
+                                    disabled={
                                       !canManageOutdoorAchievements ||
                                       Boolean(isSavingByBowType[entry.bowType])
                                     }
@@ -236,8 +282,9 @@ export function ProfileOutdoorAchievementsSection({
                               ),
                             )}
                           </div>
-                        </article>
-                      ))}
+                          </article>
+                        );
+                      })}
                     </div>
                   </>
                 ) : null}
@@ -263,8 +310,8 @@ export function ProfileOutdoorAchievementsSection({
 
       <p className="profile-outdoor-footnote">
         {goldenRecordsFetchedAt
-          ? `All records shown here are from Golden Records, and are correct as of ${formatDate(goldenRecordsFetchedAt)}.`
-          : "All records shown here are from Golden Records."}
+          ? `Golden Records data was last fetched on ${formatDate(goldenRecordsFetchedAt)}. Completed 252 rounds inferred from distance signoffs have no recorded score dates.`
+          : "Completed 252 rounds inferred from distance signoffs have no recorded score dates."}
       </p>
     </SectionPanel>
   );

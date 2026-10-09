@@ -12,6 +12,7 @@ function setup(overrides = {}) {
   const lesson = { id: 12, course_id: 4, lesson_number: 2, lesson_date: dateOffset(1), start_time: "23:59:00", end_time: "23:59:59", is_cancelled: 0 };
   const course = { id: 4, course_type: "beginners", coordinator_username: "coordinator", approval_status: "approved", is_cancelled: 0, beginner_capacity: 8 };
   const coachRows = [];
+  const notifications = [];
   const calls = new Map();
   const effects = { add: 0, remove: 0, audit: [], beginners: [], calendar: [] };
   const routes = {
@@ -42,6 +43,22 @@ function setup(overrides = {}) {
       set: async () => {},
       remove: async () => {},
     },
+    coachingAssignmentNotificationGateway: {
+      add: async (username, payload) => { notifications.push({ username, payload }); return String(notifications.length); },
+      list: async (username) => notifications.filter((entry) => entry.username === username).map((entry, index) => ({ ...entry.payload, eventId: String(index + 1) })),
+      remove: async (username, id) => {
+        const index = notifications.findIndex((entry, index) => entry.username === username && String(index + 1) === String(id));
+        if (index < 0) return false;
+        notifications.splice(index, 1);
+        return true;
+      },
+    },
+    coachingParticipantNoteGateway: {
+      add: async () => { throw new Error("Unexpected note write"); },
+      listForParticipant: async () => [],
+      listForAuthor: async () => [],
+      listCountsForCourse: async () => new Map(),
+    },
     buildBeginnersCourseCalendarLessons: async () => [],
     getUtcTimestampParts: () => [new Date().toISOString().slice(0, 10), new Date().toISOString().slice(11, 19)],
     normalizeCourseType: (value) => value,
@@ -53,8 +70,41 @@ function setup(overrides = {}) {
     ...overrides,
   };
   registerCoachingHubRoutes(dependencies);
-  return { calls, effects, actor, lesson, course, coachRows, dependencies };
+  return { calls, effects, actor, lesson, course, coachRows, notifications, dependencies };
 }
+
+test("participant notes require an assigned beginners coach and enforce the 500-character limit", async () => {
+  const state = setup();
+  const participant = { id: 23, first_name: "Amy", surname: "Bell" };
+  state.dependencies.beginnersCourseReadGateway.listParticipantsByCourseId = async () => [participant];
+  const writes = [];
+  state.dependencies.coachingParticipantNoteGateway.add = async (entry) => { writes.push(entry); return { id: 1, ...entry }; };
+  const key = "POST /api/my-coaching-lessons/:id/participants/:participantId/notes";
+  const request = { params: { id: "12", participantId: "23" }, body: { text: "Good progress" } };
+  assert.equal((await invoke(state, key, request)).statusCode, 403);
+  state.dependencies.beginnersCourseReadGateway.listCoachLessonsByUserId = async () => [{ id: 12, course_id: 4 }];
+  assert.equal((await invoke(state, key, { ...request, body: { text: "x".repeat(501) } })).statusCode, 400);
+  assert.equal((await invoke(state, key, { ...request, params: { id: "12", participantId: "99" } })).statusCode, 404);
+  const saved = await invoke(state, key, request);
+  assert.equal(saved.statusCode, 201);
+  assert.equal(writes[0].text, "Good progress");
+  assert.equal(writes[0].attendeeInitials, "AB");
+  assert.equal(writes.length, 1);
+  state.course.course_type = "taster-session";
+  assert.equal((await invoke(state, key, request)).statusCode, 404);
+});
+
+test("coaches can read participant notes and their own note summary", async () => {
+  const state = setup();
+  state.dependencies.beginnersCourseReadGateway.listParticipantsByCourseId = async () => [{ id: 23, first_name: "Amy", surname: "Bell" }];
+  state.dependencies.beginnersCourseReadGateway.listCoachLessonsByUserId = async () => [{ id: 12, course_id: 4 }];
+  state.dependencies.coachingParticipantNoteGateway.listForParticipant = async () => [{ id: 1, text: "Practice stance" }];
+  state.dependencies.coachingParticipantNoteGateway.listForAuthor = async (username) => [{ id: 1, authorUsername: username }];
+  const participant = await invoke(state, "GET /api/my-coaching-lessons/:id/participants/:participantId/notes", { params: { id: "12", participantId: "23" } });
+  assert.equal(participant.body.notes[0].text, "Practice stance");
+  const mine = await invoke(state, "GET /api/my-coaching-notes");
+  assert.equal(mine.body.notes[0].authorUsername, "coach");
+});
 
 async function invoke(setupResult, key, overrides = {}) {
   const req = { params: { id: String(setupResult.lesson.id) }, body: {}, ...overrides };
@@ -103,6 +153,43 @@ test("manual attendance requires the coordinator or assigned coach and an enroll
   assert.deepEqual(writes.map((entry) => [entry.lessonId, entry.participantId, entry.actorUsername]), [[12, 23, "coach"], [12, 23, "coordinator"]]);
 });
 
+test("manual attendance can be recorded for any lesson date but cannot duplicate a sign-in", async () => {
+  const state = setup();
+  state.coachRows.push({ coach_username: "coach" });
+  state.dependencies.beginnersCourseReadGateway.listParticipantsByCourseId = async () => [
+    { id: 23, username: "beginner", first_name: "A", surname: "Beginner" },
+  ];
+  const writes = [];
+  state.dependencies.manualLessonAttendanceGateway.set = async (entry) => writes.push(entry);
+  const key = "POST /api/beginners-course-lessons/:id/attendance/:participantId";
+  const params = { id: "12", participantId: "23" };
+  assert.equal((await invoke(state, key, { params })).statusCode, 200);
+  assert.equal(writes.length, 1);
+
+  state.dependencies.beginnersCourseReadGateway.listParticipantAttendanceByDate = async () => [{ username: "BEGINNER" }];
+  const signedIn = await invoke(state, key, { params });
+  assert.equal(signedIn.statusCode, 409);
+  assert.equal(writes.length, 1);
+});
+
+test("a coach assigned to another lesson in the course can record attendance for this date", async () => {
+  const state = setup();
+  state.dependencies.beginnersCourseReadGateway.listCoachLessonsByUserId = async () => [{ id: 13, course_id: state.course.id }];
+  state.dependencies.beginnersCourseReadGateway.listParticipantsByCourseId = async () => [
+    { id: 23, username: "beginner", first_name: "A", surname: "Beginner" },
+  ];
+  const response = await invoke(state, "POST /api/beginners-course-lessons/:id/attendance/:participantId", {
+    params: { id: "12", participantId: "23" },
+  });
+  assert.equal(response.statusCode, 200);
+
+  state.dependencies.beginnersCourseReadGateway.listCoachLessonsByUserId = async () => [{ id: 14, course_id: 99 }];
+  const unrelated = await invoke(state, "POST /api/beginners-course-lessons/:id/attendance/:participantId", {
+    params: { id: "12", participantId: "23" },
+  });
+  assert.equal(unrelated.statusCode, 403);
+});
+
 test("volunteering rejects duplicate, cancelled, past and already covered lessons", async () => {
   const key = "POST /api/beginners-course-lessons/:id/volunteer";
   const duplicate = setup();
@@ -123,15 +210,34 @@ test("volunteering rejects duplicate, cancelled, past and already covered lesson
   assert.equal((await invoke(past, key)).statusCode, 409);
 });
 
-test("withdrawal removes only the actor assignment and rejects completed lessons", async () => {
-  const key = "DELETE /api/beginners-course-lessons/:id/my-assignment";
-  const state = setup();
+test("reporting unavailability notifies the coordinator and keeps the coach assigned", async () => {
+  const key = "POST /api/beginners-course-lessons/:id/unavailability";
+  const deliveries = [];
+  const state = setup({ broadcastToUsers: (...args) => deliveries.push(args) });
   state.coachRows.push({ coach_username: "coach" });
   const result = await invoke(state, key, { body: { reason: "Schedule conflict" } });
   assert.equal(result.statusCode, 200);
-  assert.equal(state.effects.remove, 1);
-  assert.equal(state.effects.audit[0].action, "coach_withdrew");
-  assert.equal(state.effects.audit[0].after.withdrawalReason, "Schedule conflict");
+  assert.match(result.body.message, /remain assigned/i);
+  assert.equal(state.effects.remove, 0);
+  assert.equal(state.coachRows.length, 1);
+  assert.equal(state.effects.audit[0].action, "coach_unavailability_reported");
+  assert.equal(state.effects.audit[0].after.reason, "Schedule conflict");
+  assert.equal(state.effects.beginners.length, 0);
+  assert.equal(state.effects.calendar.length, 0);
+  assert.equal(state.notifications[0].username, "coordinator");
+  assert.equal(state.notifications[0].payload.action, "cannot_attend");
+  assert.equal(state.notifications[0].payload.assignedCoachCount, 1);
+  assert.equal(state.notifications[0].payload.reason, "Schedule conflict");
+  assert.deepEqual(deliveries[0][0], ["coordinator"]);
+  assert.equal(deliveries[0][1], "coaching.assignment.changed");
+  const coordinatorInbox = await invoke(state, "GET /api/my-coaching-assignment-notifications", {
+    actor: { username: "coordinator" },
+  });
+  assert.equal(coordinatorInbox.body.notifications[0].action, "cannot_attend");
+  const repeated = await invoke(state, key, { body: { reason: "Schedule conflict" } });
+  assert.equal(repeated.statusCode, 200);
+  assert.equal(state.notifications.length, 1);
+  assert.equal(deliveries.length, 1);
 
   const past = setup();
   past.coachRows.push({ coach_username: "coach" });
@@ -143,6 +249,12 @@ test("withdrawal removes only the actor assignment and rejects completed lessons
   other.coachRows.push({ coach_username: "another" });
   assert.equal((await invoke(other, key)).statusCode, 404);
   assert.equal(other.effects.remove, 0);
+
+  const noCoordinator = setup();
+  noCoordinator.coachRows.push({ coach_username: "coach" });
+  noCoordinator.course.coordinator_username = "";
+  assert.equal((await invoke(noCoordinator, key)).statusCode, 409);
+  assert.equal(noCoordinator.notifications.length, 0);
 });
 
 test("opportunities exclude the actor's assignments and return additional-coverage sessions", async () => {
@@ -189,6 +301,13 @@ test("assignment event targets only the course coordinator and includes current 
   assert.equal(deliveries[0][1], "coaching.assignment.changed");
   assert.equal(deliveries[0][2].assignedCoachCount, 1);
   assert.equal(deliveries[0][2].coachShortfall, 0);
+  assert.equal(state.notifications.length, 1);
+  assert.equal(state.notifications[0].username, "coordinator");
+  const pending = await invoke(state, "GET /api/my-coaching-assignment-notifications", { actor: { username: "coordinator" } });
+  assert.equal(pending.body.notifications[0].action, "volunteered");
+  assert.equal((await invoke(state, "GET /api/my-coaching-assignment-notifications", { actor: { username: "other" } })).body.notifications.length, 0);
+  assert.equal((await invoke(state, "DELETE /api/my-coaching-assignment-notifications/:id", { actor: { username: "other" }, params: { id: "1" } })).statusCode, 404);
+  assert.equal((await invoke(state, "DELETE /api/my-coaching-assignment-notifications/:id", { actor: { username: "coordinator" }, params: { id: "1" } })).statusCode, 200);
 
   deliveries.length = 0;
   state.coachRows.length = 0;

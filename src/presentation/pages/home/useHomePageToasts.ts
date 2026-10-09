@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { dismissCoachingAssignmentNotification, listMyCoachingAssignmentNotifications } from "../../../api/homeApi";
 import { subscribeToServerEvent } from "../../../lib/serverEvents";
 import { homeQueryKeys } from "./homeQueryKeys";
 
@@ -71,17 +72,42 @@ function writeSeenLostArrowToastIds(username: string, seenIds: Set<string>) {
 
 export function useHomePageToasts({
   actorUsername,
+  isMobile,
   openLostArrows,
   unreadQuestionResponses,
 }: {
   actorUsername: string;
+  isMobile: boolean;
   openLostArrows: LostArrowToastSource[];
   unreadQuestionResponses: QuestionToastSource[];
 }) {
   const queryClient = useQueryClient();
   const [lostArrowToasts, setLostArrowToasts] = useState<HomePageToast[]>([]);
   const [beginnersRescheduleToasts, setBeginnersRescheduleToasts] = useState<(HomePageToast & { actorUsername: string })[]>([]);
-  const [coachingAssignmentToasts, setCoachingAssignmentToasts] = useState<HomePageToast[]>([]);
+  const coachingNotificationsQuery = useQuery({
+    queryKey: ["coaching-assignment-notifications", actorUsername],
+    queryFn: () => listMyCoachingAssignmentNotifications(actorUsername),
+    enabled: Boolean(actorUsername) && !isMobile,
+    refetchOnWindowFocus: true,
+    refetchInterval: isMobile ? false : 30000,
+  });
+  const coachingAssignmentToasts = (coachingNotificationsQuery.data?.notifications ?? []).slice(0, 3).map((event) => {
+    const cannotAttend = event.action === "cannot_attend";
+    const coursePath = event.courseType === "have-a-go"
+      ? "/have-a-go-sessions"
+      : `/beginners-courses?tab=${event.courseType === "taster-session" ? "taster-session" : "beginners"}`;
+    return {
+      id: event.eventId,
+      title: cannotAttend ? "Coach cannot attend" : "Coaching assignment changed",
+      message: cannotAttend
+        ? `${event.actorName || "A coach"} cannot attend session ${event.lessonNumber ?? ""} on ${event.lessonDate ?? ""}.${event.reason ? ` Reason: ${event.reason}` : ""} The coach remains assigned until you update the session.`
+        : `${event.actorName || "A coach"} ${event.action === "withdrew" ? "withdrew from" : "volunteered for"} session ${event.lessonNumber ?? ""} on ${event.lessonDate ?? ""}.`,
+      targetPath: cannotAttend
+        ? coursePath
+        : `/coaching?tab=sessions&session=${encodeURIComponent(String(event.lessonId))}`,
+      actionLabel: cannotAttend ? "Manage course" : "View session",
+    };
+  });
   const [dismissedQuestionToastIds, setDismissedQuestionToastIds] = useState<string[]>([]);
   const previousOpenLostArrowIdsRef = useRef<number[] | null>(null);
   const seenLostArrowToastIdsRef = useRef<Set<string>>(new Set());
@@ -143,20 +169,10 @@ export function useHomePageToasts({
 
   useEffect(() => {
     if (!actorUsername) return undefined;
-    return subscribeToServerEvent("coaching.assignment.changed", (payload) => {
-      const event = payload as { eventId?: string; action?: string; lessonId?: string | number; lessonNumber?: number; lessonDate?: string; actorName?: string } | null;
-      if (!event || !event.lessonId || !event.action) return;
-      const id = `coaching-assignment-${event.eventId ?? `${event.action}-${event.lessonId}`}`;
-      setCoachingAssignmentToasts((current) => [
-        ...current.filter((toast) => toast.id !== id),
-        {
-          id,
-          message: `${event.actorName || "A coach"} ${event.action === "withdrew" ? "withdrew from" : "volunteered for"} session ${event.lessonNumber ?? ""} on ${event.lessonDate ?? ""}.`,
-          targetPath: `/coaching?tab=sessions&session=${encodeURIComponent(String(event.lessonId))}`,
-        },
-      ].slice(-3));
+    return subscribeToServerEvent("coaching.assignment.changed", () => {
+      void queryClient.invalidateQueries({ queryKey: ["coaching-assignment-notifications", actorUsername] });
     });
-  }, [actorUsername]);
+  }, [actorUsername, queryClient]);
 
   useEffect(() => {
     if (!actorUsername) {
@@ -280,8 +296,11 @@ export function useHomePageToasts({
     beginnersRescheduleToasts: actorUsername
       ? beginnersRescheduleToasts.filter((toast) => toast.actorUsername === actorUsername)
       : [],
-    coachingAssignmentToasts: actorUsername ? coachingAssignmentToasts : [],
-    dismissCoachingAssignmentToast: (toastId: string) => setCoachingAssignmentToasts((current) => current.filter((toast) => toast.id !== toastId)),
+    coachingAssignmentToasts: actorUsername && !isMobile ? coachingAssignmentToasts : [],
+    dismissCoachingAssignmentToast: async (toastId: string) => {
+      await dismissCoachingAssignmentNotification(actorUsername, toastId);
+      await queryClient.invalidateQueries({ queryKey: ["coaching-assignment-notifications", actorUsername] });
+    },
     lostArrowToasts: actorUsername ? lostArrowToasts : [],
     questionResponseToasts,
     dismissBeginnersRescheduleToast: (toastId: string) => {

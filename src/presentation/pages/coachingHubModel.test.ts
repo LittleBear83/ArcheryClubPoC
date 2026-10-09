@@ -56,10 +56,11 @@ test("coaches-wanted eligibility requires future coverage and excludes own assig
 });
 test("session participant list renders member type, equipment details and no-show status", () => {
   const markup = renderToStaticMarkup(createElement(CoachingParticipantsList, { participants: [{
-    firstName: "Robin", surname: "Hood", sizeCategory: "junior", handedness: "left",
+    id: 1, firstName: "Robin", surname: "Hood", sizeCategory: "junior", handedness: "left",
     eyeDominance: "right", drawLength: "24 in", noShowRecorded: true,
   }] }));
   for (const text of ["Robin Hood", "Junior", "left", "right", "24 in", "No-show recorded"]) assert.ok(markup.includes(text), text);
+  assert.doesNotMatch(markup, /Mark attended|Remove manual record/);
   assert.equal((markup.match(/<dt>/g) ?? []).length, 5);
   assert.match(renderToStaticMarkup(createElement(CoachingParticipantsList, { participants: [] })), /No participants are enrolled/);
 });

@@ -301,7 +301,7 @@ type LostArrowNotice = LostArrowRecord;
 const TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS = 2;
 
 const pageTitleMap = {
-  "coaching": "Coaching",
+  "coaching": "Coaching Hub",
   home: "Home",
   profile: "Profile",
   "user-creation": "People & Access",
@@ -694,6 +694,7 @@ export function HomePage({
 }: HomePageProps) {
   const { theme, themeName, toggleTheme } = useTheme();
   const isMobile = useIsMobile();
+  const isPhoneScreen = useIsMobile(768);
   const [isGuestLoginModalOpen, setIsGuestLoginModalOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const location = useLocation();
@@ -851,6 +852,7 @@ export function HomePage({
     dismissQuestionToast,
   } = useHomePageToasts({
     actorUsername,
+    isMobile: isPhoneScreen,
     openLostArrows,
     unreadQuestionResponses,
   });
@@ -1352,10 +1354,10 @@ export function HomePage({
         <div className="lost-arrow-toast-stack" aria-live="polite" aria-atomic="true">
           {coachingAssignmentToasts.map((toast) => (
             <div key={toast.id} className="lost-arrow-toast" role="status">
-              <div className="lost-arrow-toast-copy"><strong>Coaching assignment changed</strong><p>{toast.message}</p></div>
+              <div className="lost-arrow-toast-copy"><strong>{toast.title}</strong><p>{toast.message}</p></div>
               <div className="lost-arrow-toast-actions">
-                <Button type="button" size="sm" variant="secondary" onClick={() => navigate(toast.targetPath)}>View session</Button>
-                <Button type="button" size="sm" variant="ghost" className="lost-arrow-toast-dismiss" onClick={() => dismissCoachingAssignmentToast(toast.id)} aria-label="Dismiss coaching assignment notification">Close</Button>
+                <Button type="button" size="sm" variant="secondary" onClick={() => { navigate(toast.targetPath); void dismissCoachingAssignmentToast(toast.id); }}>{toast.actionLabel}</Button>
+                <Button type="button" size="sm" variant="ghost" className="lost-arrow-toast-dismiss" onClick={() => void dismissCoachingAssignmentToast(toast.id)} aria-label="Dismiss coaching assignment notification">Close</Button>
               </div>
             </div>
           ))}

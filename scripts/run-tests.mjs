@@ -20,6 +20,10 @@ await import("../server/domain/services/beginnerConversionDate.test.js");
 await import("../server/domain/services/runBeginnerConversion.test.js");
 await import("../server/infrastructure/persistence/beginnerConversionTransaction.test.js");
 await import("../server/presentation/http/registerCoachingHubRoutes.test.js");
+await import("../server/infrastructure/persistence/coachingAssignmentNotificationGateway.test.js");
+await import("../server/infrastructure/persistence/coachingParticipantNoteGateway.test.js");
+await import("../shared/award252Progression.test.js");
+await import("../server/infrastructure/persistence/memberDistanceSignOffRepository.test.js");
 await import("../server/presentation/http/beginnersCourseCoachRequirements.test.js");
 const outDir = path.join(root, ".test-dist");
 const files = [

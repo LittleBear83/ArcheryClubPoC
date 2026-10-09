@@ -14,7 +14,7 @@ import {
 const pages = [
   { id: "home", label: "Home", path: "/" },
   { id: "profile", label: "Profile", path: "/profile" },
-  { id: "coaching", label: "Coaching", path: "/coaching" },
+  { id: "coaching", label: "Coaching Hub", path: "/coaching" },
   {
     id: "range-usage",
     label: "Range Usage",

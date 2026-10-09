@@ -2205,26 +2205,57 @@ button:disabled {
 }
 
 .profile-outdoor-252-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
-}
-
-.profile-outdoor-252-grid .outdoor-table-252-card {
-  padding: 12px;
-}
-
-.profile-outdoor-252-grid .outdoor-table-252-card-header {
-  margin-bottom: 10px;
-}
-
-.profile-outdoor-252-grid .outdoor-table-252-signoffs {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
+.profile-outdoor-252-grid .outdoor-table-252-card {
+  flex: 0 1 205px;
+  max-width: 205px;
+  min-width: 0;
+  align-self: start;
+  padding: 10px;
+}
+
+.profile-outdoor-252-grid .outdoor-table-252-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 2px;
+  margin-bottom: 7px;
+}
+
+.profile-outdoor-252-grid .outdoor-table-252-card-header h4 {
+  font-size: 1rem;
+  line-height: 1.1;
+}
+
+.profile-outdoor-252-grid .outdoor-table-252-card-header p {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.profile-outdoor-252-grid .outdoor-table-status-pill {
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.profile-outdoor-252-grid .outdoor-table-252-signoffs {
+  gap: 5px;
+}
+
 .profile-outdoor-252-grid .outdoor-table-252-signoff-row {
-  grid-template-columns: 56px minmax(0, 1fr);
-  gap: 6px;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 5px;
+}
+
+.profile-outdoor-252-grid .outdoor-table-252-signoff-row span {
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 .profile-outdoor-card-actions {
@@ -2257,8 +2288,7 @@ button:disabled {
     width: 100%;
   }
 
-  .profile-outdoor-achievement-grid,
-  .profile-outdoor-252-grid {
+  .profile-outdoor-achievement-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -8091,12 +8121,44 @@ button:disabled {
 }
 
 .beginners-course-attendance-table {
+  width: max-content;
   min-width: 760px;
+}
+
+.beginners-course-page:is([data-course-type="beginners"], [data-course-type="taster-session"]) .equipment-inventory-table {
+  width: max-content;
+  min-width: 0;
+}
+
+.beginners-course-page:is([data-course-type="beginners"], [data-course-type="taster-session"]) .equipment-inventory-table th,
+.beginners-course-page:is([data-course-type="beginners"], [data-course-type="taster-session"]) .equipment-inventory-table td {
+  padding: 7px 10px;
+  vertical-align: middle;
+}
+
+.beginners-course-attendance-table th,
+.beginners-course-attendance-table td {
+  padding: 7px 10px;
+  vertical-align: middle;
+}
+
+.beginners-course-attendance-table th:first-child,
+.beginners-course-attendance-table td:first-child {
+  min-width: 170px;
+}
+
+.beginners-course-attendance-table th:not(:first-child),
+.beginners-course-attendance-table td:not(:first-child) {
+  min-width: 135px;
 }
 
 .beginners-course-attendance-table th:not(:first-child),
 .beginners-course-attendance-cell {
   text-align: center;
+}
+
+.beginners-course-attendance-action {
+  font-size: 0.78rem;
 }
 
 .beginners-course-attendance-check {
@@ -8106,8 +8168,8 @@ button:disabled {
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  background: var(--success-bg);
-  color: var(--success);
+  background: var(--accent-bg-strong);
+  color: var(--accent);
   font-weight: 800;
 }
 
@@ -10001,6 +10063,32 @@ button:disabled {
   font-size: 0.9rem;
 }
 
+.outdoor-table-252-card-status {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.outdoor-table-252-info-button {
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-h);
+  cursor: help;
+}
+
+.outdoor-table-252-info-button:hover,
+.outdoor-table-252-info-button:focus-visible {
+  background: transparent;
+}
+
 .outdoor-table-status-pill {
   display: inline-flex;
   align-items: center;
@@ -10013,13 +10101,8 @@ button:disabled {
 }
 
 .outdoor-table-status-pill.is-complete {
-  background: var(--success-bg);
-  color: var(--success);
-}
-
-.outdoor-table-status-pill.is-pending {
-  background: var(--surface-raised);
-  color: var(--text-soft);
+  background: var(--accent);
+  color: #000;
 }
 
 .outdoor-table-252-signoffs {
@@ -10864,6 +10947,15 @@ button:disabled {
   padding: 6px 8px;
   border-radius: 8px;
   font-size: 0.9rem;
+}
+
+.profile-outdoor-252-grid input[type="date"] {
+  width: min(100%, 7.5rem);
+  justify-self: start;
+  height: 34px;
+  min-height: 34px;
+  padding: 4px 6px;
+  font-size: 0.8rem;
 }
 
 .profile-indoor-awards-heading {

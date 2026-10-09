@@ -24,16 +24,14 @@ export type CoachingSessionDetailData = {
 
 export function CoachingSessionDetail({
   lesson,
-  onWithdraw,
-  withdrawing = false,
-  busyParticipantId,
-  onSetAttendance,
+  onCannotAttend,
+  reportingUnavailable = false,
+  onOpenNotes,
 }: {
   lesson: CoachingSessionDetailData;
-  onWithdraw: () => void;
-  withdrawing?: boolean;
-  busyParticipantId?: number | null;
-  onSetAttendance?: (participant: CoachingParticipant, attended: boolean) => void;
+  onCannotAttend: () => void;
+  reportingUnavailable?: boolean;
+  onOpenNotes?: (participant: CoachingParticipant) => void;
 }) {
   const statusLabel = lesson.status === "in-progress" ? "In progress" : lesson.status === "completed" ? "Completed" : "Upcoming";
   return <div className="coaching-session-detail">
@@ -56,7 +54,7 @@ export function CoachingSessionDetail({
     <section aria-labelledby="coaching-session-coaches-heading">
       <div className="coaching-session-section-heading">
         <h3 id="coaching-session-coaches-heading">Coaches</h3>
-        {lesson.status !== "completed" ? <Button variant="secondary" disabled={withdrawing} onClick={onWithdraw}>I can’t attend</Button> : null}
+        {lesson.status !== "completed" ? <Button variant="secondary" disabled={reportingUnavailable} onClick={onCannotAttend}>I can’t attend</Button> : null}
       </div>
       {lesson.coaches.length ? <ul className="coaching-session-coaches">
         {lesson.coaches.map((coach) => <li key={coach.username}>{coach.fullName}{coach.isCoordinator ? <span className="coaching-session-coordinator">Coordinator</span> : null}</li>)}
@@ -65,7 +63,7 @@ export function CoachingSessionDetail({
 
     <section aria-labelledby="coaching-session-participants-heading">
       <h3 id="coaching-session-participants-heading">Participants</h3>
-      <CoachingParticipantsList participants={lesson.participants} canRecordAttendance={lesson.status !== "upcoming"} busyParticipantId={busyParticipantId} onSetAttendance={onSetAttendance} />
+      <CoachingParticipantsList participants={lesson.participants} showNotes={lesson.courseType === "beginners"} onOpenNotes={onOpenNotes} />
     </section>
   </div>;
 }

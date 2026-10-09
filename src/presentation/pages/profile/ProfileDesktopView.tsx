@@ -218,9 +218,11 @@ export function ProfileDesktopView({
                               <span className="profile-distance-signoff-cell">
                                 <strong>{formatDate(signOff.signedOffAt)}</strong>
                                 <span>
-                                  {signOff.source === "golden-records"
-                                    ? "Imported from Golden Records"
-                                    : signOff.signedOffByName}
+                                  {signOff.source === "inferred"
+                                    ? `Inferred from ${signOff.inferredFromDistanceYards} yds`
+                                    : signOff.source === "golden-records"
+                                      ? "Imported from Golden Records"
+                                      : signOff.signedOffByName}
                                 </span>
                               </span>
                             ) : canSignOffSelectedMember ? (
@@ -312,6 +314,7 @@ export function ProfileDesktopView({
         <ProfileOutdoorAchievementsSection
           canManageOutdoorAchievements={canManageOutdoorAchievements}
           canManageMembers={canManageMembers}
+          distanceSignOffs={editableProfile.distanceSignOffs ?? []}
           entries={outdoorTableBowEntries}
           error={outdoorTableError}
           goldenRecordsFetchedAt={goldenRecordsFetchedAt}

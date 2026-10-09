@@ -4,9 +4,12 @@ import { ApiError } from "../../api/client";
 import { MemberProfileApi } from "../../api/memberProfileApi";
 import type { GoldenRecordsCandidateMatch } from "../../domain/entities/MemberProfile";
 import {
+  applyGoldenRecordsBowDisciplineImport,
   getGoldenRecordsAdminSummary,
+  previewGoldenRecordsBowDisciplineImport,
   syncGoldenRecordsLookups,
   testGoldenRecordsHealth,
+  type GoldenRecordsBowDisciplineImportPlan,
 } from "../../api/goldenRecordsApi";
 import { getGoldenRecordsMemberSyncJob, triggerGoldenRecordsOutdoorTableSync } from "../../api/outdoorTableApi";
 import { formatDateTime } from "../../utils/dateTime";
@@ -66,6 +69,7 @@ export function GoldenRecordsAdminPage({
     (currentUserProfile as { auth?: { username?: string | null } } | null)?.auth?.username ?? "";
   const actorRole = getActorRole(currentUserProfile).toLowerCase();
   const canManageGoldenRecords = actorRole === "admin" || actorRole === "developer";
+  const canImportBowDisciplines = actorRole === "developer";
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
@@ -73,6 +77,8 @@ export function GoldenRecordsAdminPage({
   const [candidateMatches, setCandidateMatches] = useState<GoldenRecordsCandidateMatch[]>([]);
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [isMatchConfirmOpen, setIsMatchConfirmOpen] = useState(false);
+  const [bowImportPlan, setBowImportPlan] = useState<GoldenRecordsBowDisciplineImportPlan | null>(null);
+  const [isBowImportConfirmOpen, setIsBowImportConfirmOpen] = useState(false);
   const lastHandledJobId = useRef("");
 
   const jobQuery = useQuery({
@@ -206,6 +212,27 @@ export function GoldenRecordsAdminPage({
     onError: (error: Error) => setActionError(error.message),
   });
 
+  const bowImportPreviewMutation = useMutation({
+    mutationFn: () => previewGoldenRecordsBowDisciplineImport(currentUserProfile),
+    onMutate: () => { setActionError(""); setActionSuccess(""); setBowImportPlan(null); },
+    onSuccess: (result) => setBowImportPlan(result.plan),
+    onError: (error: Error) => setActionError(error.message),
+  });
+  const bowImportApplyMutation = useMutation({
+    mutationFn: (planHash: string) => applyGoldenRecordsBowDisciplineImport(currentUserProfile, planHash),
+    onMutate: () => { setActionError(""); setActionSuccess(""); },
+    onSuccess: async (result) => {
+      setIsBowImportConfirmOpen(false);
+      setBowImportPlan(null);
+      setActionSuccess(result.message);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["member-profiles"] }),
+        queryClient.invalidateQueries({ queryKey: ["golden-records-admin-members", actorUsername] }),
+      ]);
+    },
+    onError: (error: Error) => { setIsBowImportConfirmOpen(false); setBowImportPlan(null); setActionError(error.message); },
+  });
+
   if (!canManageGoldenRecords) {
     return <p>You do not have permission to view Golden Records settings.</p>;
   }
@@ -233,9 +260,13 @@ export function GoldenRecordsAdminPage({
 
         <StatusMessagePanel
           error={actionError || (actionSuccess ? "" : jobError)}
-          loading={isLoading || connectionTestMutation.isPending || lookupSyncMutation.isPending || memberSyncMutation.isPending || individualSyncMutation.isPending || assignMatchMutation.isPending}
+          loading={isLoading || connectionTestMutation.isPending || lookupSyncMutation.isPending || memberSyncMutation.isPending || individualSyncMutation.isPending || assignMatchMutation.isPending || bowImportPreviewMutation.isPending || bowImportApplyMutation.isPending}
           loadingLabel={
-            connectionTestMutation.isPending
+            bowImportPreviewMutation.isPending
+              ? "Checking bow disciplines against Golden Records..."
+              : bowImportApplyMutation.isPending
+                ? "Adding bow disciplines..."
+                : connectionTestMutation.isPending
               ? "Testing Golden Records connection..."
               : memberSyncMutation.isPending
                 ? "Syncing Golden Records members and achievements..."
@@ -342,6 +373,24 @@ export function GoldenRecordsAdminPage({
           ) : null}
         </GoldenRecordsSlice>
 
+        {canImportBowDisciplines ? <GoldenRecordsSlice title="Bow Discipline Import">
+          <p>Compare active portal members with Golden Records, then review the proposed additions before applying them. Existing disciplines are kept.</p>
+          <Button onClick={() => bowImportPreviewMutation.mutate()} disabled={bowImportPreviewMutation.isPending || bowImportApplyMutation.isPending}>
+            {bowImportPreviewMutation.isPending ? "Preparing preview..." : "Preview Bow Disciplines"}
+          </Button>
+          {bowImportPlan ? <div className="golden-records-bow-import-preview">
+            <p role="status">{bowImportPlan.counts.add} to add · {bowImportPlan.counts.unchanged} already present · {bowImportPlan.counts.skip} skipped.</p>
+            <p>{bowImportPlan.portalMemberCount} active portal members; {bowImportPlan.goldenRecordsMemberCount} Golden Records members checked.</p>
+            <ul className="golden-records-bow-import-list" aria-label="Bow discipline import preview">
+              {bowImportPlan.records.map((record) => <li key={record.username}>
+                <strong>{record.firstName} {record.surname} ({record.username})</strong>
+                <span>{record.status === "add" ? `Add ${record.discipline}` : record.status === "unchanged" ? `${record.discipline} already present` : `Skipped: ${record.reason}`}</span>
+              </li>)}
+            </ul>
+            {bowImportPlan.counts.add > 0 ? <Button onClick={() => setIsBowImportConfirmOpen(true)} disabled={bowImportApplyMutation.isPending}>Apply {bowImportPlan.counts.add} additions</Button> : null}
+          </div> : null}
+        </GoldenRecordsSlice> : null}
+
         <GoldenRecordsSlice title="Individual Member Sync">
           <p>Refresh one member from Golden Records, including their outdoor achievements and indoor handicaps.</p>
           <div className="golden-records-admin-member-actions">
@@ -419,6 +468,15 @@ export function GoldenRecordsAdminPage({
           )}
         </GoldenRecordsSlice>
       </SectionPanel>
+      <Modal open={isBowImportConfirmOpen} onClose={() => !bowImportApplyMutation.isPending && setIsBowImportConfirmOpen(false)} title="Apply Bow Discipline Import">
+        <p>Add {bowImportPlan?.counts.add ?? 0} bow disciplines to active members? This will update the live database and retain their existing disciplines.</p>
+        <div className="profile-card-issue-actions">
+          <Button variant="secondary" disabled={bowImportApplyMutation.isPending} onClick={() => setIsBowImportConfirmOpen(false)}>Cancel</Button>
+          <Button disabled={!bowImportPlan || bowImportApplyMutation.isPending} onClick={() => { if (bowImportPlan) bowImportApplyMutation.mutate(bowImportPlan.planHash); }}>
+            {bowImportApplyMutation.isPending ? "Applying..." : "Apply Import"}
+          </Button>
+        </div>
+      </Modal>
       <Modal open={isMatchConfirmOpen} onClose={() => !assignMatchMutation.isPending && setIsMatchConfirmOpen(false)} title="Confirm Golden Records Assignment">
         <div className="profile-card-issue-modal">
           <p>Assign <strong>{selectedCandidate?.name}</strong> to <strong>{selectedMember?.fullName || selectedUsername}</strong>?</p>

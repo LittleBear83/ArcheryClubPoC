@@ -5,6 +5,18 @@ to `user_disciplines`. It is additive: other existing disciplines are kept.
 It does not update archived/inactive portal accounts, and it never guesses a
 member match by name or email.
 
+## Run from the live app
+
+Sign in with a Developer account and open **Golden Records Admin**. Under
+**Bow Discipline Import**, select **Preview Bow Disciplines**. Review the
+additions, unchanged members and skipped members, then select **Apply additions**
+and confirm. The server fetches current Golden Records and portal data again
+before writing. If either source has changed, preview again.
+
+The control is visible only to Developers, and both server endpoints require
+the Developer role. It runs against the cloud PostgreSQL database using the
+live app's existing Golden Records credentials. The local Pi cannot run it.
+
 ## Matching and mapping
 
 - Match by stored Golden Records member ID first.
@@ -15,6 +27,9 @@ member match by name or email.
   Bare Bow, and Long Bow respectively.
 
 ## Preview and apply
+
+The command-line importer remains available for maintenance. It uses the same
+import service as the live app.
 
 Run from the repository root in an environment configured with the portal's
 PostgreSQL and Golden Records runtime settings. Do not put credentials in the

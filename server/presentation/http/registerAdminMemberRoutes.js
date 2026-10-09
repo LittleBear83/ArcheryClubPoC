@@ -15,6 +15,7 @@ export function registerAdminMemberRoutes({
   DISTANCE_SIGN_OFF_YARDS,
   goldenRecordsCurrentHandicapService,
   goldenRecordsIntegrationService,
+  goldenRecordsBowDisciplineImportService,
   goldenRecordsMemberSyncService,
   goldenRecordsSyncJob,
   getActorUser,
@@ -58,6 +59,45 @@ export function registerAdminMemberRoutes({
       String(actor?.user_type ?? "").trim().toLowerCase(),
     );
   }
+
+  function canImportGoldenRecordsBowDisciplines(actor) {
+    return String(actor?.user_type ?? "").trim().toLowerCase() === "developer";
+  }
+
+  app.get("/api/golden-records/bow-disciplines/import-preview", async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor) return res.status(401).json({ success: false, message: "An authenticated member is required." });
+    if (!canImportGoldenRecordsBowDisciplines(actor)) return res.status(403).json({ success: false, message: "Developer access is required." });
+    if (syncNodeMode === "local-pi") return res.status(409).json({ success: false, message: "Run this import on the cloud server." });
+    try {
+      const plan = await goldenRecordsBowDisciplineImportService.preview();
+      return res.json({ success: true, plan });
+    } catch (error) {
+      return res.status(502).json({ success: false, message: error instanceof Error ? error.message : "Bow discipline preview failed." });
+    }
+  });
+
+  app.post("/api/golden-records/bow-disciplines/import", async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor) return res.status(401).json({ success: false, message: "An authenticated member is required." });
+    if (!canImportGoldenRecordsBowDisciplines(actor)) return res.status(403).json({ success: false, message: "Developer access is required." });
+    if (syncNodeMode === "local-pi") return res.status(409).json({ success: false, message: "Run this import on the cloud server." });
+    if (!/^[a-f0-9]{64}$/u.test(String(req.body?.planHash ?? ""))) return res.status(400).json({ success: false, message: "Preview this import before applying it." });
+    try {
+      const result = await goldenRecordsBowDisciplineImportService.apply({ planHash: req.body.planHash, actorUsername: actor.username });
+      if (result.inserted > 0) {
+        try {
+          serverEventBus?.broadcastToAll("members.updated", { changedAt: new Date().toISOString(), scope: "golden-records-bow-disciplines" });
+        } catch (error) {
+          console.error("Failed to publish bow discipline import update", error);
+        }
+      }
+      return res.json({ success: true, inserted: result.inserted, message: `${result.inserted} bow discipline${result.inserted === 1 ? "" : "s"} added.` });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Bow discipline import failed.";
+      return res.status(message.includes("changed since the preview") ? 409 : 502).json({ success: false, message });
+    }
+  });
 
   async function listUsernamesByRoleKey(roleKey) {
     return (await memberDirectoryGateway.listAllUsers())

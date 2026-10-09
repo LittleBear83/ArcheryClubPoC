@@ -9858,6 +9858,10 @@ button:disabled {
   background: var(--surface);
 }
 
+.golden-records-bow-import-preview { margin-top: 1rem; }
+.golden-records-bow-import-list { display: grid; gap: .5rem; max-height: 360px; overflow-y: auto; list-style: none; padding: 0; margin: 1rem 0; }
+.golden-records-bow-import-list li { display: flex; flex-wrap: wrap; gap: .4rem 1rem; padding: .65rem .8rem; border: 1px solid var(--panel-border); border-radius: .6rem; background: var(--surface); }
+
 .range-rules-editor-card {
   display: grid;
   gap: 0.9rem;

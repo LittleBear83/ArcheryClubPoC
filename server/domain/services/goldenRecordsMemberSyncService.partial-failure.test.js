@@ -162,7 +162,7 @@ test("unchanged snapshots and distance sign-offs cause no writes on rerun", asyn
     },
     memberDirectoryGateway: { findDisciplinesByUsername: async () => [{ discipline: "Recurve Bow" }] },
     memberDistanceSignOffRepository: {
-      listByUsername: async () => [{ discipline: "Recurve Bow", distanceYards: 20, source: "golden-records", signedOffByUsername: "robin", signedOffAt: "2026-06-01" }],
+      listByUsername: async () => [{ discipline: "Recurve Bow", distanceYards: 20, source: "golden-records", signedOffByUsername: "robin", signedOffAt: "2026-06-01", signedOffAtTime: "09:00:00" }],
       replaceForDiscipline: async () => { signOffWrites++; },
     },
     outdoorTableGateway: { listEntriesByYear: async () => [] },

@@ -839,7 +839,8 @@ export function createGoldenRecordsMemberSyncService({
       const existing = existingSignOffs.filter((row) => row.discipline === discipline);
       if (skipUnchanged && existing.length === signOffs.length && existing.every((row) => signOffs.some((next) =>
         row.distanceYards === next.distanceYards && row.source === next.source &&
-        row.signedOffByUsername === next.signedOffByUsername && row.signedOffAt === next.signedOffAtDate))) {
+        row.signedOffByUsername === next.signedOffByUsername && row.signedOffAt === next.signedOffAtDate &&
+        row.signedOffAtTime === next.signedOffAtTime))) {
         continue;
       }
 

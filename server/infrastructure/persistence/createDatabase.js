@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import pg from "pg";
 import { mkdirSync } from "node:fs";
+import process from "node:process";
 
 const { Pool } = pg;
 
@@ -19,10 +20,16 @@ function createSqliteDatabase({
 
 export function createPostgresPool(runtime) {
   const { databaseUrl, postgres } = runtime;
+  // The private sync worker must not hold its advisory lock indefinitely on a
+  // stalled Cloud SQL operation. Keep other services' existing pool behavior.
+  const workerTimeouts = process.env.K_SERVICE && process.env.K_SERVICE === process.env.GOLDEN_RECORDS_WORKER_SERVICE_NAME
+    ? { connectionTimeoutMillis: 10_000, statement_timeout: 60_000 }
+    : {};
 
   if (databaseUrl) {
     return new Pool({
       connectionString: databaseUrl,
+      ...workerTimeouts,
     });
   }
 
@@ -37,6 +44,7 @@ export function createPostgresPool(runtime) {
     password: postgres.password || undefined,
     port: postgres.port,
     user: postgres.user,
+    ...workerTimeouts,
   };
 
   if (postgres.socketDirectory) {

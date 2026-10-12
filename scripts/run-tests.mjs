@@ -272,6 +272,11 @@ await import(new URL("../server/infrastructure/golden-records/goldenRecordsInteg
 await import("../server/domain/services/tournamentPairings.test.js");
 await import("../server/presentation/http/workflowEnhancements.test.js");
 await import("../server/domain/services/goldenRecordsSyncJob.test.js");
+await import("../server/domain/services/goldenRecordsNightlySchedule.test.js");
+await import("../server/infrastructure/golden-records/goldenRecordsHttpClient.retry.test.js");
+await import("../server/infrastructure/golden-records/goldenRecordsManualTaskQueue.test.js");
 await import("../server/presentation/http/goldenRecordsSyncJobRoutes.test.js");
+await import("../server/presentation/http/registerGoldenRecordsNightlySyncRoute.test.js");
+await import("../server/presentation/http/registerGoldenRecordsManualSyncRoute.test.js");
 await import("../server/presentation/http/goldenRecordsProfileWiring.test.js");
 await import("../server/presentation/http/registerEquipmentRoutes.expectedReturn.test.js");

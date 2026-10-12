@@ -18,6 +18,8 @@ export function registerAdminMemberRoutes({
   goldenRecordsBowDisciplineImportService,
   goldenRecordsMemberSyncService,
   goldenRecordsSyncJob,
+  goldenRecordsManualTaskQueue,
+  isCloudRun = false,
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,
@@ -1875,8 +1877,22 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    const result = await goldenRecordsSyncJob.start({ actorUsername: actor.username });
-    if (result.started) {
+    if (isCloudRun && !goldenRecordsManualTaskQueue) {
+      return res.status(503).json({ success: false, message: "Golden Records manual sync queue is not configured." });
+    }
+    let result;
+    try {
+      result = goldenRecordsManualTaskQueue
+        ? await goldenRecordsSyncJob.queueManual({
+          actorUsername: actor.username,
+          enqueue: (task) => goldenRecordsManualTaskQueue.enqueue(task),
+        })
+        : await goldenRecordsSyncJob.start({ actorUsername: actor.username });
+    } catch (error) {
+      console.error("Failed to queue Golden Records member sync", error);
+      return res.status(502).json({ success: false, message: "Could not queue Golden Records member sync. Review the job status." });
+    }
+    if (result.queued || result.started) {
       try {
         serverEventBus?.broadcastToAll("golden-records.updated", {
           changedAt: new Date().toISOString(), scope: "member-sync-job-started",
@@ -1885,14 +1901,20 @@ export function registerAdminMemberRoutes({
         console.error("Failed to publish Golden Records sync start event", error);
       }
     }
-    res.status(result.started ? 202 : result.unavailable ? 503 : 409).json({
-      success: result.started,
-      job: result.status,
-      message: result.started
-        ? "Golden Records member sync started."
-        : result.unavailable
-          ? "Golden Records member sync is unavailable: Cloud Run background CPU has not been confirmed."
+    if (!result.queued && !result.started) {
+      res.status(result.unavailable ? 503 : 409).json({
+        success: false,
+        job: result.status,
+        message: result.unavailable
+          ? "Golden Records member sync is unavailable."
           : "A Golden Records member sync is already running.",
+      });
+      return;
+    }
+    res.status(202).json({
+      success: true,
+      job: result.status,
+      message: "Golden Records member sync queued. You can leave this page; progress appears here when you return.",
     });
   });
 

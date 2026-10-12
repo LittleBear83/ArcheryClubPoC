@@ -280,16 +280,17 @@ export function createGoldenRecordsCurrentHandicapService({
     return rows;
   }
 
-  async function listPagedRows(path, query, buildErrorMessage, { allowNullEmpty = false } = {}) {
+  async function listPagedRows(path, query, buildErrorMessage, { allowNullEmpty = false, signal } = {}) {
     const rows = [];
 
     for (let pageNumber = 1; ; pageNumber += 1) {
+      signal?.throwIfAborted();
       await waitForQuotaWindow();
       const result = await client.getJson(path, {
         ...query,
         pageNumber,
         pageSize: DEFAULT_PAGE_SIZE,
-      });
+      }, { signal });
 
       if (!result.ok) {
         throw new Error(buildErrorMessage(result.status));
@@ -315,25 +316,25 @@ export function createGoldenRecordsCurrentHandicapService({
     return rows;
   }
 
-  async function getCurrentHandicapsByMemberId(memberId) {
+  async function getCurrentHandicapsByMemberId(memberId, signal) {
     const rows = await listPagedRows(
       "/api/currenthandicaps",
       { id: memberId },
       (status) =>
         `Golden Records returned ${status} while loading current handicaps.`,
-      { allowNullEmpty: true },
+      { allowNullEmpty: true, signal },
     );
 
     return rows.map(normalizeHandicapRow).filter((entry) => String(entry.memberId) === String(memberId));
   }
 
-  async function getAchievementsByMemberId(memberId) {
+  async function getAchievementsByMemberId(memberId, signal) {
     const achievementRows = await listPagedRows(
       "/api/achievements",
       { filter_id: memberId },
       (status) =>
         `Golden Records returned ${status} while loading achievements.`,
-      { allowNullEmpty: true },
+      { allowNullEmpty: true, signal },
     );
 
     return achievementRows
@@ -342,13 +343,13 @@ export function createGoldenRecordsCurrentHandicapService({
       .sort((left, right) => right.achieved.localeCompare(left.achieved));
   }
 
-  async function getCurrentClassificationsByMemberId(memberId) {
+  async function getCurrentClassificationsByMemberId(memberId, signal) {
     const rows = await listPagedRows(
       "/api/currentclassifications",
       { id: memberId },
       (status) =>
         `Golden Records returned ${status} while loading current classifications.`,
-      { allowNullEmpty: true },
+      { allowNullEmpty: true, signal },
     );
 
     return rows
@@ -362,12 +363,13 @@ export function createGoldenRecordsCurrentHandicapService({
     matchSource,
     memberId,
     clubData,
+    signal,
   }) {
     const fetchedAt = new Date().toISOString();
-    const handicapRows = await getCurrentHandicapsByMemberId(memberId);
+    const handicapRows = await getCurrentHandicapsByMemberId(memberId, signal);
     const rawAchievements = clubData?.achievementsByMember.get(String(memberId)) ?? (clubData ? [] : undefined);
-    const achievementRows = rawAchievements ? rawAchievements.map(normalizeAchievementRow) : await getAchievementsByMemberId(memberId);
-    const classificationRows = await getCurrentClassificationsByMemberId(memberId);
+    const achievementRows = rawAchievements ? rawAchievements.map(normalizeAchievementRow) : await getAchievementsByMemberId(memberId, signal);
+    const classificationRows = await getCurrentClassificationsByMemberId(memberId, signal);
     const handicaps = handicapRows.sort((left, right) => {
       const byType = left.type.localeCompare(right.type);
 
@@ -405,6 +407,7 @@ export function createGoldenRecordsCurrentHandicapService({
     goldenRecordsId,
     surname,
     username,
+    signal,
   }) {
     const cacheKey = JSON.stringify({
       email: String(email ?? "").trim().toLowerCase(),
@@ -502,6 +505,7 @@ export function createGoldenRecordsCurrentHandicapService({
                 : "name",
           clubData,
           memberId: matchedMember.memberId,
+          signal,
         });
       } else if (matchedMembers.length > 1) {
         snapshot = {
@@ -570,10 +574,10 @@ export function createGoldenRecordsCurrentHandicapService({
         memberId: selectedId,
       });
     },
-    async fetchClubData() {
+    async fetchClubData({ signal } = {}) {
       try {
-        const members = (await listPagedRows("/api/members", {}, (status) => "Golden Records members API returned " + status)).map(normalizeMemberRow);
-        const achievements = await listPagedRows("/api/Achievements", {}, (status) => "Golden Records achievements API returned " + status);
+        const members = (await listPagedRows("/api/members", {}, (status) => "Golden Records members API returned " + status, { signal })).map(normalizeMemberRow);
+        const achievements = await listPagedRows("/api/Achievements", {}, (status) => "Golden Records achievements API returned " + status, { signal });
         const achievementsByMember = new Map();
         for (const row of achievements) {
           const key = String(row.member_id ?? "");

@@ -145,6 +145,15 @@ function createDefaultSnapshot(isEnabled) {
   };
 }
 
+function comparableSnapshot(value) {
+  const sort = (entry) => Array.isArray(entry)
+    ? entry.map(sort)
+    : entry && typeof entry === "object"
+      ? Object.fromEntries(Object.keys(entry).sort().map((key) => [key, sort(entry[key])]))
+      : entry;
+  return JSON.stringify(sort({ ...value, fetchedAt: "" }));
+}
+
 function getGoldenRecords252AwardKey({ achievementName, roundName }) {
   const directRoundMatch = GOLDEN_RECORDS_252_ROUND_TO_FIELD.get(roundName);
 
@@ -461,6 +470,8 @@ export function createGoldenRecordsMemberSyncService({
   }
 
   async function persistSnapshot(user, snapshot, updatedByUsername) {
+    const existing = await goldenRecordsSyncGateway.findByUsername?.(user.username);
+    if (existing && comparableSnapshot(existing) === comparableSnapshot(snapshot)) return false;
     const [syncedAtDate, syncedAtTime] = getUtcTimestampParts();
 
     await goldenRecordsSyncGateway.upsertSnapshot({
@@ -471,9 +482,10 @@ export function createGoldenRecordsMemberSyncService({
       updatedByUsername,
       username: user.username,
     });
+    return true;
   }
 
-  async function buildLiveSnapshotForUser(user, clubData) {
+  async function buildLiveSnapshotForUser(user, clubData, signal) {
     if (!goldenRecordsCurrentHandicapService?.isEnabled || !user) {
       return createDefaultSnapshot(false);
     }
@@ -486,7 +498,9 @@ export function createGoldenRecordsMemberSyncService({
       goldenRecordsId: user.golden_records_member_id ?? user.gr_id ?? "",
       surname: user.surname,
       username: user.username,
+      signal,
     });
+    signal?.throwIfAborted();
 
     if (
       String(user.golden_records_member_id ?? user.gr_id ?? "").trim() !== String(snapshot?.matchedMemberId ?? "").trim() &&
@@ -770,6 +784,7 @@ export function createGoldenRecordsMemberSyncService({
     transactionClient,
     updatedByUsername,
     user,
+    skipUnchanged = false,
   }) {
     const matchedMemberId = String(goldenRecordsSnapshot?.matchedMemberId ?? "").trim();
     const allowedDisciplineSet = new Set(disciplines);
@@ -808,6 +823,7 @@ export function createGoldenRecordsMemberSyncService({
     }
 
     let replacedCount = 0;
+    const existingSignOffs = skipUnchanged ? await memberDistanceSignOffRepository.listByUsername?.(user.username) ?? [] : [];
 
     for (const discipline of disciplines) {
       const signOffs = (signOffsByDiscipline.get(discipline) ?? [])
@@ -819,6 +835,13 @@ export function createGoldenRecordsMemberSyncService({
 
           return next;
         }, []);
+
+      const existing = existingSignOffs.filter((row) => row.discipline === discipline);
+      if (skipUnchanged && existing.length === signOffs.length && existing.every((row) => signOffs.some((next) =>
+        row.distanceYards === next.distanceYards && row.source === next.source &&
+        row.signedOffByUsername === next.signedOffByUsername && row.signedOffAt === next.signedOffAtDate))) {
+        continue;
+      }
 
       await memberDistanceSignOffRepository.replaceForDiscipline(
         user.username,
@@ -834,7 +857,7 @@ export function createGoldenRecordsMemberSyncService({
     };
   }
 
-  async function syncMember(user, { updatedByUsername, clubData } = {}) {
+  async function syncMember(user, { updatedByUsername, clubData, signal } = {}) {
     if (!user) {
       throw new Error("A member is required before Golden Records can be synced.");
     }
@@ -844,9 +867,11 @@ export function createGoldenRecordsMemberSyncService({
     const disciplines = (await memberDirectoryGateway.findDisciplinesByUsername(user.username)).map(
       (discipline) => discipline.discipline,
     );
-    const snapshot = await buildLiveSnapshotForUser(user, clubData);
+    const snapshot = await buildLiveSnapshotForUser(user, clubData, signal);
+    signal?.throwIfAborted();
 
-    await persistSnapshot(user, snapshot, safeUpdatedByUsername);
+    // A transient upstream error must not replace the last good snapshot.
+    if (!snapshot.error) await persistSnapshot(user, snapshot, safeUpdatedByUsername);
 
     if (!snapshot.enabled || snapshot.error) {
       return {
@@ -888,6 +913,7 @@ export function createGoldenRecordsMemberSyncService({
         goldenRecordsSnapshot: snapshot,
         updatedByUsername: safeUpdatedByUsername,
         user,
+        skipUnchanged: true,
       });
     } catch (error) {
       signOffError =
@@ -982,9 +1008,14 @@ export function createGoldenRecordsMemberSyncService({
     };
   }
 
-  async function syncAllMembers({ updatedByUsername, onProgress } = {}) {
+  async function syncAllMembers({ updatedByUsername, onProgress, maxDurationMs } = {}) {
+    const startedAtMs = Date.now();
+    const overallSignal = maxDurationMs ? AbortSignal.timeout(maxDurationMs) : undefined;
+    if (!goldenRecordsCurrentHandicapService?.isEnabled) {
+      throw new Error("Golden Records API is not configured for full-club sync.");
+    }
     const clubData = goldenRecordsCurrentHandicapService?.isEnabled && goldenRecordsCurrentHandicapService.fetchClubData
-      ? await goldenRecordsCurrentHandicapService.fetchClubData() : undefined;
+      ? await goldenRecordsCurrentHandicapService.fetchClubData({ signal: overallSignal }) : undefined;
     const users = await memberDirectoryGateway.listAllUsers();
     if (clubData) clubData.portalMembers = users;
     const summary = {
@@ -998,10 +1029,17 @@ export function createGoldenRecordsMemberSyncService({
     };
 
     for (const user of users) {
+      if (maxDurationMs && Date.now() - startedAtMs >= maxDurationMs) {
+        throw new Error("Golden Records sync exceeded its request time budget; retry to continue.");
+      }
       summary.attemptedCount += 1;
 
       try {
-        const result = await syncMember(user, { updatedByUsername, clubData });
+        const memberSignal = overallSignal
+          ? AbortSignal.any([overallSignal, AbortSignal.timeout(120_000)])
+          : AbortSignal.timeout(120_000);
+        const result = await syncMember(user, { updatedByUsername, clubData, signal: memberSignal });
+        memberSignal.throwIfAborted();
         if (result.goldenRecords.error) throw new Error(result.goldenRecords.error);
         if (result.goldenRecords.matchedMemberId) {
           summary.matchedCount += 1;
@@ -1009,6 +1047,10 @@ export function createGoldenRecordsMemberSyncService({
           summary.achievementCount += result.goldenRecords.achievements.length;
         } else {
           summary.unmatchedCount += 1;
+        }
+        if (result.signOffError) {
+          summary.errorCount += 1;
+          summary.errors.push({ username: user.username, message: result.signOffError });
         }
       } catch (error) {
         summary.errorCount += 1;
@@ -1028,6 +1070,10 @@ export function createGoldenRecordsMemberSyncService({
         achievementCount: summary.achievementCount,
         errorCount: summary.errorCount,
       });
+      overallSignal?.throwIfAborted();
+      if (maxDurationMs && Date.now() - startedAtMs >= maxDurationMs) {
+        throw new Error("Golden Records sync exceeded its request time budget; retry to continue.");
+      }
     }
 
     logger.info?.("Golden Records club sync complete", summary);

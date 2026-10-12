@@ -85,12 +85,12 @@ export function GoldenRecordsAdminPage({
     queryKey: ["golden-records-sync-job", actorUsername],
     queryFn: () => getGoldenRecordsMemberSyncJob(currentUserProfile),
     enabled: canManageGoldenRecords && Boolean(actorUsername),
-    refetchInterval: (query) => query.state.data?.job?.state === "running" ? 2000 : false,
+    refetchInterval: (query) => ["queued", "running"].includes(query.state.data?.job?.state ?? "") ? 2000 : false,
   });
   const memberSyncJob = jobQuery.data?.job;
 
   useEffect(() => {
-    if (!memberSyncJob || memberSyncJob.state === "running" || lastHandledJobId.current === memberSyncJob.id) return;
+    if (!memberSyncJob || ["queued", "running"].includes(memberSyncJob.state) || lastHandledJobId.current === memberSyncJob.id) return;
     lastHandledJobId.current = memberSyncJob.id;
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: ["outdoor-table"] }),
@@ -167,7 +167,10 @@ export function GoldenRecordsAdminPage({
       setActionSuccess(result.message);
       await jobQuery.refetch();
     },
-    onError: (error: Error) => setActionError(error.message),
+    onError: async (error: Error) => {
+      setActionError(error.message);
+      await jobQuery.refetch();
+    },
   });
 
   const individualSyncMutation = useMutation({
@@ -242,7 +245,7 @@ export function GoldenRecordsAdminPage({
   const lastSyncStatus = summary?.lastSyncStatus ?? null;
   const selectedMember = memberOptionsQuery.data?.members.find((member) => member.username === selectedUsername);
   const selectedCandidate = candidateMatches.find((candidate) => candidate.memberId === selectedCandidateId);
-  const finishedJob = memberSyncJob && memberSyncJob.state !== "running" ? memberSyncJob : null;
+  const finishedJob = memberSyncJob && !["queued", "running"].includes(memberSyncJob.state) ? memberSyncJob : null;
   const jobError = finishedJob && (finishedJob.state === "failed" || finishedJob.state === "interrupted")
     ? finishedJob.failureMessage || "Golden Records member sync failed."
     : "";
@@ -354,14 +357,15 @@ export function GoldenRecordsAdminPage({
           <Button
             title="Sync all portal members from Golden Records, including outdoor achievements and indoor handicaps."
             onClick={() => memberSyncMutation.mutate()}
-            disabled={memberSyncJob?.state === "running" || memberSyncMutation.isPending || connectionTestMutation.isPending || lookupSyncMutation.isPending}
+            disabled={memberSyncJob?.state === "running" || memberSyncJob?.state === "queued" || memberSyncMutation.isPending || connectionTestMutation.isPending || lookupSyncMutation.isPending}
           >
             {memberSyncJob?.state === "running" ? "Sync in progress" : "Sync Members and Achievements"}
           </Button>
           {memberSyncJob ? (
             <div role="status">
               <p>
-                <strong>Status:</strong> {memberSyncJob.state}. {memberSyncJob.attemptedCount} members attempted; {memberSyncJob.matchedCount} matched, {memberSyncJob.unmatchedCount} unmatched, {memberSyncJob.errorCount} errors.
+                <strong>Status:</strong> {memberSyncJob.state}. {memberSyncJob.attemptedCount} members attempted; {memberSyncJob.matchedCount} matched, {memberSyncJob.unmatchedCount} unmatched, {memberSyncJob.achievementCount} achievements, {memberSyncJob.errorCount} errors.
+                {memberSyncJob.durationMs !== undefined ? ` Duration: ${Math.round(memberSyncJob.durationMs / 1000)} seconds.` : ""}
                 {memberSyncJob.failureMessage ? ` ${memberSyncJob.failureMessage}` : ""}
               </p>
               {memberSyncJob.errors?.length ? (

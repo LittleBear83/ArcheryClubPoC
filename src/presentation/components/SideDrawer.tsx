@@ -193,7 +193,6 @@ const adminGroups = [
       "committee-admin",
       "range-rules-admin",
       "general-info-admin",
-      "golden-records-admin",
     ],
   },
   {
@@ -205,6 +204,7 @@ const adminGroups = [
       "beginners-courses",
       "have-a-go-sessions",
       "tournament-setup",
+      "golden-records-admin",
     ],
   },
   {

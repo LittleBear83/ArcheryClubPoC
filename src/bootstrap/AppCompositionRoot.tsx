@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { BrowserRouter } from "react-router-dom";
 import App from "../App";
 import { createAppDependencies } from "./createAppDependencies";
 
@@ -7,5 +8,9 @@ export function AppCompositionRoot() {
   // factory changes during development hot reload.
   const dependencies = useMemo(() => createAppDependencies(), [createAppDependencies]);
 
-  return <App dependencies={dependencies} />;
+  return (
+    <BrowserRouter>
+      <App dependencies={dependencies} />
+    </BrowserRouter>
+  );
 }

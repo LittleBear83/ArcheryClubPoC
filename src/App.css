@@ -5304,6 +5304,11 @@ button:disabled {
 .reporting-table-wrap {
   width: 100%;
   overflow-x: auto;
+}
+
+.reporting-page .reporting-table-wrap {
+  min-width: 0;
+  overflow-x: hidden;
   scrollbar-gutter: auto;
 }
 
@@ -5616,6 +5621,18 @@ button:disabled {
   white-space: nowrap;
 }
 
+.reporting-page .reporting-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.reporting-page .reporting-table th,
+.reporting-page .reporting-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding-inline: 8px;
+}
+
 .reporting-table-note {
   margin: 12px 0 0;
   color: var(--muted);
@@ -5661,8 +5678,7 @@ button:disabled {
 }
 
 .member-range-attendance .reporting-table-wrap {
-  overflow-x: visible;
-  scrollbar-gutter: auto;
+  overflow-x: hidden;
 }
 
 .member-range-attendance .reporting-table {
@@ -5782,6 +5798,37 @@ button:disabled {
   align-content: start;
   gap: 8px;
   padding: 20px;
+}
+
+.reporting-page .profile-accordion,
+.reporting-dashboard-accordion .profile-accordion {
+  min-width: 0;
+}
+
+.reporting-page .profile-accordion-content,
+.reporting-dashboard-accordion .profile-accordion-content {
+  min-width: 0;
+}
+
+.reporting-summary-cards > .profile-accordion {
+  align-self: start;
+}
+
+.reporting-summary-cards > .profile-accordion .profile-accordion-content {
+  display: grid;
+  gap: 8px;
+}
+
+.reporting-summary-cards > .profile-accordion .reporting-table-note {
+  margin: 0;
+}
+
+.reporting-dashboard-accordion {
+  margin-top: 16px;
+}
+
+.reporting-dashboard-accordion .reporting-dashboard {
+  margin: 0;
 }
 
 .reporting-summary-cards .usage-card-title,

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { Routes, Route, useNavigate } from "react-router-dom";
 import lawnmower from "./assets/lawnmower.svg";
 import { subscribeToServerEvent } from "./lib/serverEvents";
 import { Button } from "./presentation/components/Button";
@@ -300,6 +300,8 @@ function AppLoadingFallback() {
 }
 
 function App({ dependencies }: { dependencies: AppDependencies }) {
+  const navigate = useNavigate();
+
   // The app keeps a local session snapshot for fast reloads, then verifies it
   // against the server and refreshes the canonical member profile after login.
   const inactivityTimeoutRef = useRef<number | null>(null);
@@ -431,6 +433,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       );
 
       markFreshSignIn();
+      navigate("/", { replace: true });
       persistAuthenticatedUser(result.userProfile);
 
       return { success: true, username: result.userProfile.auth.username };
@@ -477,6 +480,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       const result = await loginWithRfid(rfidTag, scan);
 
       markFreshSignIn();
+      navigate("/", { replace: true });
       persistAuthenticatedUser(result.userProfile);
 
       return {
@@ -494,7 +498,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         message,
       };
     }
-  }, []);
+  }, [navigate]);
 
   const handleGuestLogin = async ({
     firstName,
@@ -872,25 +876,23 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   return (
     <>
       <Suspense fallback={<AppLoadingFallback />}>
-        <Router>
-          <Routes>
-            <Route
-              path="/*"
-              element={
-                <HomePage
-                  currentUserProfile={currentUserProfile}
-                  onGuestLogin={handleGuestLogin}
-                  onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
-                  onLogout={handleLogout}
-                  memberProfileCrud={dependencies}
-                  roleCrud={dependencies}
-                  tournamentCrud={dependencies}
-                  equipmentCrud={dependencies}
-                />
-              }
-            />
-          </Routes>
-        </Router>
+        <Routes>
+          <Route
+            path="/*"
+            element={
+              <HomePage
+                currentUserProfile={currentUserProfile}
+                onGuestLogin={handleGuestLogin}
+                onCurrentUserProfileUpdate={handleCurrentUserProfileUpdate}
+                onLogout={handleLogout}
+                memberProfileCrud={dependencies}
+                roleCrud={dependencies}
+                tournamentCrud={dependencies}
+                equipmentCrud={dependencies}
+              />
+            }
+          />
+        </Routes>
       </Suspense>
       <PaymentCardModal
         open={paymentCardModal.open}

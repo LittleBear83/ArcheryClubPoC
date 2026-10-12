@@ -4,6 +4,7 @@ import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { formatDate } from "../../../utils/dateTime";
 import type { useReportingPageState } from "./useReportingPageState";
 import { formatMemberType } from "./reportingUtils";
+import { ProfileAccordion } from "../profile/ProfileAccordion";
 
 type AttendanceState = ReturnType<typeof useReportingPageState>["memberRangeAttendance"];
 
@@ -27,11 +28,7 @@ export function MemberRangeAttendanceSection({
   if (!attendance.canView) return null;
 
   return (
-    <section className="usage-hourly-panel reporting-panel member-range-attendance">
-      <div className="usage-hourly-header">
-        <h3>Member range attendance and follow-up</h3>
-        <p>Find members without a recorded range visit in the selected window.</p>
-      </div>
+    <ProfileAccordion className="member-range-attendance" title="Member range attendance and follow-up" detail="Find members without a recorded range visit in the selected window.">
       <div className="member-range-attendance-controls">
         <label>
           Look back
@@ -114,6 +111,6 @@ export function MemberRangeAttendanceSection({
           )}
         </>
       ) : null}
-    </section>
+    </ProfileAccordion>
   );
 }

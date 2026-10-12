@@ -139,3 +139,82 @@ test("Cloud Run without confirmed background CPU refuses to start a detached job
   assert.deepEqual(await job.start({ actorUsername: "admin" }), { started: false, unavailable: true, status: null });
   assert.equal(calls, 0);
 });
+
+test("request-bound run completes without background CPU and persists nightly idempotency", async () => {
+  const statuses = new Map();
+  let calls = 0;
+  let releases = 0;
+  const job = createGoldenRecordsSyncJob({
+    backgroundExecutionAvailable: false,
+    goldenRecordsIntegrationGateway: {
+      findStatus: async (key) => statuses.get(key) ?? null,
+      upsertStatus: async (key, value) => { statuses.set(key, structuredClone(value)); },
+      tryAcquireMemberSyncLock: async () => async () => { releases++; },
+    },
+    goldenRecordsMemberSyncService: {
+      syncAllMembers: async () => { calls++; return { attemptedCount: 3, matchedCount: 2, unmatchedCount: 1, achievementCount: 4, errorCount: 0, errors: [] }; },
+    },
+    logger: { info() {}, error() {} },
+  });
+  const first = await job.start({ actorUsername: "scheduler", scheduledDate: "2026-07-12", waitForCompletion: true });
+  assert.equal((await first.completion).state, "completed");
+  assert.equal(statuses.get("member-sync-nightly-2026-07-12").achievementCount, 4);
+  assert.equal((await job.start({ actorUsername: "scheduler", scheduledDate: "2026-07-12", waitForCompletion: true })).alreadyCompleted, true);
+  assert.equal(calls, 1);
+  assert.equal(releases, 2);
+});
+
+test("failed nightly run remains visible and can be retried", async () => {
+  const statuses = new Map();
+  let calls = 0;
+  const job = createGoldenRecordsSyncJob({
+    backgroundExecutionAvailable: false,
+    goldenRecordsIntegrationGateway: {
+      findStatus: async (key) => statuses.get(key) ?? null,
+      upsertStatus: async (key, value) => { statuses.set(key, structuredClone(value)); },
+      tryAcquireMemberSyncLock: async () => async () => {},
+    },
+    goldenRecordsMemberSyncService: {
+      syncAllMembers: async () => {
+        calls++;
+        if (calls === 1) throw new Error("rate limited");
+        return { attemptedCount: 1, matchedCount: 1, unmatchedCount: 0, achievementCount: 1, errorCount: 0, errors: [] };
+      },
+    },
+    logger: { info() {}, error() {} },
+  });
+  const failed = await job.start({ actorUsername: "scheduler", scheduledDate: "2026-07-12", waitForCompletion: true });
+  assert.equal((await failed.completion).state, "failed");
+  assert.equal(statuses.get("member-sync-job").failureMessage, "rate limited");
+  const retry = await job.start({ actorUsername: "scheduler", scheduledDate: "2026-07-12", waitForCompletion: true });
+  assert.equal((await retry.completion).state, "completed");
+  assert.equal(calls, 2);
+});
+
+test("manual queue survives browser disconnect, blocks nightly overlap, and deduplicates task retry", async () => {
+  const statuses = new Map();
+  let releaseCount = 0;
+  let syncCount = 0;
+  const job = createGoldenRecordsSyncJob({
+    backgroundExecutionAvailable: false,
+    goldenRecordsIntegrationGateway: {
+      findStatus: async (key) => statuses.get(key) ?? null,
+      upsertStatus: async (key, value) => { statuses.set(key, structuredClone(value)); },
+      tryAcquireMemberSyncLock: async () => async () => { releaseCount++; },
+    },
+    goldenRecordsMemberSyncService: { syncAllMembers: async () => {
+      syncCount++;
+      return { attemptedCount: 1, matchedCount: 1, unmatchedCount: 0, achievementCount: 1, errorCount: 0 };
+    } },
+    logger: { info() {}, error() {} },
+  });
+  const queued = await job.queueManual({ actorUsername: "admin", enqueue: async () => {} });
+  assert.equal(queued.status.state, "queued");
+  assert.equal((await job.queueManual({ actorUsername: "admin", enqueue: async () => { throw Error("duplicate"); } })).queued, false);
+  assert.equal((await job.start({ actorUsername: "scheduler", scheduledDate: "2026-07-12", waitForCompletion: true })).started, false);
+  const worker = await job.start({ actorUsername: "admin", jobId: queued.status.id, waitForCompletion: true });
+  assert.equal((await worker.completion).state, "completed");
+  assert.equal((await job.start({ actorUsername: "admin", jobId: queued.status.id, waitForCompletion: true })).alreadyCompleted, true);
+  assert.equal(syncCount, 1);
+  assert.equal(releaseCount, 5);
+});

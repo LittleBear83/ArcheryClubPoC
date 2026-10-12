@@ -2,18 +2,25 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { registerAdminMemberRoutes } from "./registerAdminMemberRoutes.js";
 
-test("admin sync authorizes the start, returns immediately and publishes job invalidation", async () => {
+test("admin sync queues durable worker execution and returns before the scan completes", async () => {
   const routes = new Map();
   const events = [];
   let starts = 0;
   let actor = { username: "admin", user_type: "admin" };
-  const job = { id: "job-1", state: "running", attemptedCount: 0 };
+  const job = { id: "job-1", state: "queued", attemptedCount: 0 };
   registerAdminMemberRoutes({
     app: { get: (path, fn) => routes.set(`GET ${path}`, fn), post: (path, fn) => routes.set(`POST ${path}`, fn), put() {}, delete() {} },
     PERMISSIONS: { MANAGE_MEMBERS: "manage_members" },
     getActorUser: () => actor,
+    goldenRecordsManualTaskQueue: { enqueue: async () => {} },
+    isCloudRun: true,
     goldenRecordsSyncJob: {
-      start: async () => { starts += 1; return { started: true, status: job }; },
+      queueManual: async ({ actorUsername, enqueue }) => {
+        assert.equal(actorUsername, "admin");
+        await enqueue({ id: job.id, actorUsername });
+        starts += 1;
+        return { queued: true, status: job };
+      },
       getStatus: async () => job,
     },
     serverEventBus: { broadcastToAll: (...args) => events.push(args) },
@@ -39,14 +46,14 @@ test("admin sync authorizes the start, returns immediately and publishes job inv
   assert.equal((await call("GET", "/api/golden-records/member-sync-job")).body.job.id, "job-1");
 });
 
-test("admin sync reports unavailable background execution without publishing a start event", async () => {
+test("admin sync reports a concurrent run without publishing a start event", async () => {
   const routes = new Map();
   const events = [];
   registerAdminMemberRoutes({
     app: { get: (path, fn) => routes.set(`GET ${path}`, fn), post: (path, fn) => routes.set(`POST ${path}`, fn), put() {}, delete() {} },
     PERMISSIONS: { MANAGE_MEMBERS: "manage_members" },
     getActorUser: () => ({ username: "admin", user_type: "admin" }),
-    goldenRecordsSyncJob: { start: async () => ({ started: false, unavailable: true, status: null }) },
+    goldenRecordsSyncJob: { start: async () => ({ started: false, status: { state: "running" } }) },
     serverEventBus: { broadcastToAll: (...args) => events.push(args) },
   });
   let status;
@@ -55,7 +62,7 @@ test("admin sync reports unavailable background execution without publishing a s
     status(value) { status = value; return this; },
     json(value) { body = value; },
   });
-  assert.equal(status, 503);
-  assert.match(body.message, /background CPU/);
+  assert.equal(status, 409);
+  assert.match(body.message, /already running/);
   assert.deepEqual(events, []);
 });

@@ -48,17 +48,47 @@ export function createGoldenRecordsSyncJob({
     return running ? currentStatus : await interruptOrphanedStatus();
   }
 
-  async function start({ actorUsername }) {
-    if (!backgroundExecutionAvailable) return { started: false, unavailable: true, status: await getStatus() };
+  async function queueManual({ actorUsername, enqueue }) {
+    const release = await goldenRecordsIntegrationGateway.tryAcquireMemberSyncLock();
+    if (!release) return { queued: false, status: await getStatus() };
+    try {
+      const previous = await goldenRecordsIntegrationGateway.findStatus(STATUS_KEY);
+      if (previous?.state === "running" || (previous?.state === "queued" && Date.now() - Date.parse(previous.queuedAt) < 2 * 60 * 60 * 1000)) {
+        return { queued: false, status: previous };
+      }
+      const status = {
+        id: randomUUID(), state: "queued", queuedAt: new Date().toISOString(),
+        startedByUsername: actorUsername, attemptedCount: 0, matchedCount: 0,
+        unmatchedCount: 0, achievementCount: 0, errorCount: 0,
+      };
+      await saveStatus(status);
+      try {
+        await enqueue({ id: status.id, actorUsername });
+      } catch (error) {
+        await saveStatus({ ...status, state: "failed", completedAt: new Date().toISOString(), failureMessage: "Could not queue Golden Records sync." });
+        throw error;
+      }
+      return { queued: true, status };
+    } finally {
+      await release();
+    }
+  }
+
+  async function start({ actorUsername, scheduledDate = null, jobId = null, waitForCompletion = false }) {
+    if (!waitForCompletion && !backgroundExecutionAvailable) return { started: false, unavailable: true, status: await getStatus() };
     if (running) return { started: false, status: await getStatus() };
     const release = await goldenRecordsIntegrationGateway.tryAcquireMemberSyncLock();
     if (!release) return { started: false, status: await getStatus() };
 
+    const scheduleStatusKey = scheduledDate ? `member-sync-nightly-${scheduledDate}` : null;
+    const manualStatusKey = jobId ? `member-sync-manual-${jobId}` : null;
+
     const status = {
-      id: randomUUID(),
+      id: jobId ?? randomUUID(),
       state: "running",
       startedAt: new Date().toISOString(),
       startedByUsername: actorUsername ?? "scheduler",
+      ...(scheduledDate ? { scheduledDate } : {}),
       attemptedCount: 0,
       matchedCount: 0,
       unmatchedCount: 0,
@@ -66,6 +96,29 @@ export function createGoldenRecordsSyncJob({
       errorCount: 0,
     };
     try {
+      if (scheduleStatusKey) {
+        const previousRun = await goldenRecordsIntegrationGateway.findStatus(scheduleStatusKey);
+        if (previousRun?.state === "completed") {
+          await release();
+          return { started: false, alreadyCompleted: true, status: previousRun };
+        }
+      }
+      if (manualStatusKey) {
+        const previousRun = await goldenRecordsIntegrationGateway.findStatus(manualStatusKey);
+        if (previousRun?.state === "completed") {
+          await release();
+          return { started: false, alreadyCompleted: true, status: previousRun };
+        }
+      }
+      const latest = await goldenRecordsIntegrationGateway.findStatus(STATUS_KEY);
+      if (jobId && (latest?.id !== jobId || !["queued", "failed", "completed-with-errors", "interrupted"].includes(latest.state))) {
+        await release();
+        return { started: false, stale: true, status: latest };
+      }
+      if (!jobId && latest?.state === "queued" && Date.now() - Date.parse(latest.queuedAt) < 2 * 60 * 60 * 1000) {
+        await release();
+        return { started: false, status: latest };
+      }
       await interruptOrphanedStatusWithLock();
       await saveStatus(status);
     } catch (error) {
@@ -73,11 +126,12 @@ export function createGoldenRecordsSyncJob({
       throw error;
     }
 
-    // Own the promise here, beyond the lifetime of the HTTP request and session.
+    logger.info?.("Golden Records member sync job started", { id: status.id, scheduledDate, startedByUsername: status.startedByUsername });
     running = Promise.resolve().then(async () => {
       try {
         const summary = await goldenRecordsMemberSyncService.syncAllMembers({
           updatedByUsername: actorUsername,
+          maxDurationMs: waitForCompletion ? 26 * 60 * 1000 : undefined,
           onProgress: async (progress) => {
             try {
               await saveStatus({ ...status, ...progress });
@@ -91,33 +145,48 @@ export function createGoldenRecordsSyncJob({
           ...summary,
           state: summary.errorCount > 0 ? "completed-with-errors" : "completed",
           completedAt: new Date().toISOString(),
+          durationMs: Date.now() - Date.parse(status.startedAt),
         };
         await saveStatus(completed);
+        if (scheduleStatusKey) await goldenRecordsIntegrationGateway.upsertStatus(scheduleStatusKey, completed);
+        if (manualStatusKey) await goldenRecordsIntegrationGateway.upsertStatus(manualStatusKey, completed);
+        logger.info?.("Golden Records member sync job finished", completed);
         try { onFinished(completed); } catch (error) {
           logger.error?.("Failed to publish Golden Records sync completion", error);
         }
+        return completed;
       } catch (error) {
         const failed = {
           ...currentStatus,
           state: "failed",
           completedAt: new Date().toISOString(),
+          durationMs: Date.now() - Date.parse(status.startedAt),
           failureMessage: error instanceof Error ? error.message : "Golden Records sync failed.",
         };
         logger.error?.("Golden Records member sync job failed", failed);
         try { await saveStatus(failed); } catch (persistError) {
           logger.error?.("Failed to save Golden Records sync job failure", persistError);
         }
+        if (scheduleStatusKey) {
+          try { await goldenRecordsIntegrationGateway.upsertStatus(scheduleStatusKey, failed); }
+          catch (persistError) { logger.error?.("Failed to save Golden Records nightly sync failure", persistError); }
+        }
+        if (manualStatusKey) {
+          try { await goldenRecordsIntegrationGateway.upsertStatus(manualStatusKey, failed); }
+          catch (persistError) { logger.error?.("Failed to save Golden Records manual sync failure", persistError); }
+        }
         try { onFinished(failed); } catch (publishError) {
           logger.error?.("Failed to publish Golden Records sync failure", publishError);
         }
+        return failed;
       } finally {
         try { await release(); } catch (error) {
           logger.error?.("Failed to release Golden Records sync lock", error);
         } finally { running = null; }
       }
     });
-    return { started: true, status };
+    return { started: true, status, completion: running };
   }
 
-  return { getStatus, start };
+  return { getStatus, queueManual, start };
 }

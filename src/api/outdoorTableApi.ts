@@ -123,9 +123,12 @@ export function triggerGoldenRecordsOutdoorTableSync(actor: unknown) {
 
 export type GoldenRecordsMemberSyncJob = {
   id: string;
-  state: "running" | "completed" | "completed-with-errors" | "failed" | "interrupted";
+  state: "queued" | "running" | "completed" | "completed-with-errors" | "failed" | "interrupted";
+  queuedAt?: string;
   startedAt: string;
   completedAt?: string;
+  durationMs?: number;
+  scheduledDate?: string;
   startedByUsername: string;
   attemptedCount: number;
   matchedCount: number;

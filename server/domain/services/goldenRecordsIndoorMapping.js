@@ -18,7 +18,24 @@ const classifications = new Map([
   ["indoor bowman 1st class", "bowman1st"],
   ["indoor mb", "indoorMasterBowman"],
 ]);
-const scores = new Set([300, 325, 350, 375, 400, 425, 450, 475, 500, 525, 550, 575, 580, 585, 590, 595, 600]);
+const scoreLevels = [300, 325, 350, 375, 400, 425, 450, 475, 500, 525, 550, 575, 580, 585, 590, 595, 600];
+const scores = new Set(scoreLevels);
+
+export function completeIndoorScoreAwards(value = {}, seasonYear = null) {
+  const completed = { ...value };
+  const earned = scoreLevels
+    .filter((score) => {
+      const year = indoorSeasonYear(value[String(score)]);
+      return year !== null && (seasonYear === null || year === seasonYear);
+    })
+    .map((score) => ({ score, date: value[String(score)] }));
+  for (const score of scoreLevels) {
+    if (completed[String(score)]) continue;
+    const qualifyingDates = earned.filter((award) => award.score > score).map((award) => award.date);
+    if (qualifyingDates.length) completed[String(score)] = qualifyingDates.sort()[0];
+  }
+  return completed;
+}
 
 export function mapIndoorEvidence(snapshot, memberId, mapBowClass, allowedBowTypes) {
   const bySeason = new Map();
@@ -66,5 +83,6 @@ export function mapIndoorEvidence(snapshot, memberId, mapBowClass, allowedBowTyp
     }
     add(row, "score", String(score));
   }
+  for (const group of bySeason.values()) group.scores = completeIndoorScoreAwards(group.scores, group.seasonYear);
   return { bySeason, unmapped: [...unmapped.values()] };
 }

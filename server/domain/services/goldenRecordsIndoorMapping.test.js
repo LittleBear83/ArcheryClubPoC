@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { indoorSeasonYear, mapIndoorEvidence } from "./goldenRecordsIndoorMapping.js";
+import { completeIndoorScoreAwards, indoorSeasonYear, mapIndoorEvidence } from "./goldenRecordsIndoorMapping.js";
 
 const scores = [300, 325, 350, 375, 400, 425, 450, 475, 500, 525, 550, 575, 580, 585, 590, 595, 600];
 const classes = [
@@ -21,6 +21,30 @@ test("indoor seasons start in July and all explicit Portsmouth score labels map"
   })) };
   const result = mapIndoorEvidence(snapshot, "gr-1", bow, new Set(["Rec"]));
   assert.deepEqual(Object.keys(result.bySeason.get("2026:Rec").scores).map(Number).sort((a, b) => a - b), scores);
+});
+
+test("a higher indoor award fills lower scores without changing recorded dates or seasons", () => {
+  const completed = completeIndoorScoreAwards({
+    400: "2026-08-02", 500: "2026-09-03", 550: "2026-07-20",
+  }, 2026);
+  assert.equal(completed[300], "2026-07-20");
+  assert.equal(completed[400], "2026-08-02");
+  assert.equal(completed[475], "2026-07-20");
+  assert.equal(completed[500], "2026-09-03");
+  assert.equal(completed[550], "2026-07-20");
+  assert.equal(completed[575], undefined);
+  assert.equal(completeIndoorScoreAwards({ 500: "2026-06-30" }, 2026)[300], undefined);
+});
+
+test("one verified Portsmouth 500 award populates every lower score in its bow and season", () => {
+  const result = mapIndoorEvidence({ achievements: [{
+    memberId: "gr-1", bowClass: "Recurve", achievement: "Portsmouth 500",
+    round: "Portsmouth", achieved: "2026-10-01",
+  }] }, "gr-1", bow, new Set(["Rec", "Comp"]));
+  const awarded = result.bySeason.get("2026:Rec").scores;
+  for (const score of scores.filter((value) => value <= 500)) assert.equal(awarded[score], "2026-10-01");
+  for (const score of scores.filter((value) => value > 500)) assert.equal(awarded[score], undefined);
+  assert.equal(result.bySeason.has("2026:Comp"), false);
 });
 
 test("verified indoor classifications map by bow, member and achieved season", () => {

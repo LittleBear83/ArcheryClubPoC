@@ -16,6 +16,8 @@ The Golden Records [API documentation](https://api2.archery-records.net/help) de
 
 Every imported record must match the selected Golden Records member ID and an eligible, matching bow class (`Recurve`, `Compound`, `Barebow`, `Longbow`). Ambiguous member matches remain unlinked. Earlier dated achievements stay in their historical season; the nightly and individual member sync write only the current indoor season. Repeated runs fill empty fields only. Existing manually entered dates are retained, and a manually edited handicap is retained. Empty or incomplete API responses do not clear cells.
 
+A verified higher Portsmouth award also awards every lower score column for that same member, bow style and indoor season. Newly filled lower columns use the earliest qualifying higher-award date. A lower score with its own recorded date keeps that date. The same progression is applied when an authorised member saves indoor score dates from a profile; dates from another season do not unlock current-season awards. Raw score records still never award a column.
+
 ## Historical preview
 
 Golden Records Admin provides a read-only **Preview Indoor Backfill** action. It compares stored snapshots with existing indoor rows and lists proposed inserts, updates, skipped rows and unmapped values. It does not apply a historical backfill. Stored snapshots may not contain all historical classifications until members have been refreshed with the updated sync; the preview identifies its `stored-snapshots` source.

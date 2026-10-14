@@ -1,5 +1,5 @@
 import { deriveGoldenRecordsAchievements } from "./goldenRecordsAchievements.js";
-import { indoorSeasonYear, mapIndoorEvidence } from "./goldenRecordsIndoorMapping.js";
+import { completeIndoorScoreAwards, indoorSeasonYear, mapIndoorEvidence } from "./goldenRecordsIndoorMapping.js";
 
 function mapGoldenRecordsBowClassToOutdoorBowType(bowClass) {
   switch (String(bowClass ?? "").trim().toLowerCase()) {
@@ -730,7 +730,7 @@ export function createGoldenRecordsMemberSyncService({
       if (!previous || String(handicap.achieved ?? handicap.updated ?? "") >
         String(previous.achieved ?? previous.updated ?? "")) newestByBow.set(bowType, handicap);
     }
-    const targetBowTypes = new Set([...newestByBow.keys(),
+    const targetBowTypes = new Set([...existing.keys(), ...newestByBow.keys(),
       ...[...evidence.bySeason.values()].filter((group) => group.seasonYear === seasonYear).map((group) => group.bowType)]);
     for (const bowType of targetBowTypes) {
       const handicap = newestByBow.get(bowType);
@@ -745,6 +745,9 @@ export function createGoldenRecordsMemberSyncService({
           if (!classifications[key]) { classifications[key] = value; addedDate = true; }
         }
         for (const [key, value] of Object.entries(group?.scores ?? {})) {
+          if (!scores[key]) { scores[key] = value; addedDate = true; }
+        }
+        for (const [key, value] of Object.entries(completeIndoorScoreAwards(scores, seasonYear))) {
           if (!scores[key]) { scores[key] = value; addedDate = true; }
         }
         // Manual profile edits are signed by another member; retain their handicap.

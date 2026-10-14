@@ -162,7 +162,7 @@ test("nightly and manual member sync add only missing verified indoor dates and 
   const first = await service.syncMember(user);
   assert.equal(first.createdCount, 2);
   assert.equal(indoor.find((row) => row.bowType === "Rec").scores[500], `${year}-10-03`);
-  assert.equal(indoor.find((row) => row.bowType === "Rec").scores[475], undefined);
+  assert.equal(indoor.find((row) => row.bowType === "Rec").scores[475], `${year}-10-03`);
   assert.equal(indoor.find((row) => row.bowType === "B/bow").classifications.archer1st, `${year}-09-03`);
   const second = await service.syncMember(user);
   assert.equal(second.updatedCount, 0);
@@ -178,6 +178,23 @@ test("nightly and manual member sync add only missing verified indoor dates and 
   assert.equal(edited.scores[500], `${year}-10-01`);
   assert.equal(edited.scores[550], `${year}-10-04`);
   assert.equal(edited.updatedByUsername, "captain");
+  assert.equal((await service.syncMember(user)).updatedCount, 0);
+});
+
+test("an existing manually entered high award fills lower scores once", async () => {
+  const year = new Date().getUTCFullYear();
+  const snapshot = { enabled: true, matchSource: "gr-id", matchedMemberId: "gr-1",
+    achievements: [], classifications: [], handicaps: [] };
+  const { indoor, service } = harness(snapshot);
+  indoor.push({ id: 1, seasonYear: year, archerUsername: "archer", bowType: "Rec",
+    handicap: 34, classifications: {}, scores: { 575: `${year}-10-02`, 400: `${year}-09-01` },
+    updatedByUsername: "captain" });
+  assert.equal((await service.syncMember(user)).updatedCount, 1);
+  assert.equal(indoor[0].scores[300], `${year}-09-01`);
+  assert.equal(indoor[0].scores[400], `${year}-09-01`);
+  assert.equal(indoor[0].scores[550], `${year}-10-02`);
+  assert.equal(indoor[0].scores[600], undefined);
+  assert.equal(indoor[0].updatedByUsername, "captain");
   assert.equal((await service.syncMember(user)).updatedCount, 0);
 });
 

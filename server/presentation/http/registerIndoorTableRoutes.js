@@ -1,4 +1,4 @@
-import { indoorSeasonYear } from "../../domain/services/goldenRecordsIndoorMapping.js";
+import { completeIndoorScoreAwards, indoorSeasonYear } from "../../domain/services/goldenRecordsIndoorMapping.js";
 
 export const INDOOR_CLASSIFICATIONS = [
   "archer3rd", "archer2nd", "archer1st", "bowman3rd", "bowman2nd", "bowman1st",
@@ -29,7 +29,8 @@ function normalize(body) {
     !archerUsername || archerUsername.length > 64 || !BOW_DISCIPLINES[bowType] ||
     (handicap !== null && (!Number.isInteger(handicap) || handicap < 0 || handicap > 150)) ||
     !classifications || !scores) return null;
-  return { seasonYear, archerUsername, bowType, handicap, classifications, scores };
+  return { seasonYear, archerUsername, bowType, handicap, classifications,
+    scores: completeIndoorScoreAwards(scores, seasonYear) };
 }
 
 export function registerIndoorTableRoutes({ app, actorHasPermission, auditChangeLogger, getActorUser,

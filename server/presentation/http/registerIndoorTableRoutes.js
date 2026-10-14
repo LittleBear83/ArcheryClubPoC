@@ -1,3 +1,5 @@
+import { indoorSeasonYear } from "../../domain/services/goldenRecordsIndoorMapping.js";
+
 export const INDOOR_CLASSIFICATIONS = [
   "archer3rd", "archer2nd", "archer1st", "bowman3rd", "bowman2nd", "bowman1st",
   "indoorMasterBowman", "indoorGrandMasterBowman",
@@ -68,8 +70,9 @@ export function registerIndoorTableRoutes({ app, actorHasPermission, auditChange
   app.get("/api/indoor-table", async (req, res) => {
     if (!getActorUser(req)) { res.status(401).json({ success: false, message: "An authenticated member is required." }); return; }
     const year = Number(req.query?.year);
-    const seasonYear = Number.isInteger(year) && year >= 2020 && year <= 2100 ? year : new Date().getUTCFullYear();
-    if (seasonYear === new Date().getUTCFullYear() && syncNodeMode !== "local-pi" &&
+    const currentSeasonYear = indoorSeasonYear(new Date().toISOString());
+    const seasonYear = Number.isInteger(year) && year >= 2020 && year <= 2100 ? year : currentSeasonYear;
+    if (seasonYear === currentSeasonYear && syncNodeMode !== "local-pi" &&
       goldenRecordsMemberSyncService?.backfillIndoorTableFromStoredSnapshots && backfilledYear !== seasonYear) {
       if (!backfillPromise) {
         backfillPromise = goldenRecordsMemberSyncService.backfillIndoorTableFromStoredSnapshots()

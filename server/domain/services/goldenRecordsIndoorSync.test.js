@@ -19,6 +19,7 @@ function harness(snapshot, storedSnapshots = []) {
     memberDistanceSignOffRepository: { replaceForDiscipline: async () => {} },
     indoorTableGateway: {
       listEntriesByYear: async () => [...indoor],
+      listAvailableYears: async () => [...new Set(indoor.map((row) => row.seasonYear))],
       createEntry: async (entry) => { const result = { id: indoor.length + 1, ...entry }; indoor.push(result); return result; },
       createEntryIfAbsent: async (entry) => {
         if (indoor.some((row) => row.seasonYear === entry.seasonYear &&
@@ -141,4 +142,56 @@ test("full-club remote sync creates indoor row through the member sync path", as
   assert.equal(indoor.length, 1);
   assert.equal(indoor[0].seasonYear, new Date().getUTCFullYear());
   assert.equal(indoor[0].handicap, 71);
+});
+
+test("nightly and manual member sync add only missing verified indoor dates and repeat without writes", async () => {
+  const year = new Date().getUTCFullYear();
+  const snapshot = { enabled: true, matchSource: "gr-id", matchedMemberId: "gr-1",
+    handicaps: [{ memberId: "gr-1", bowClass: "Recurve", type: "Indoor", handicap: 31 }],
+    classifications: [],
+    indoorClassifications: [
+      { memberId: "gr-1", bowClass: "Recurve", type: "Indoor", classification: "Indoor Bowman 2nd Class", achieved: `${year}-09-02` },
+      { memberId: "gr-1", bowClass: "Barebow", type: "Indoor", classification: "Indoor Archer 1st Class", achieved: `${year}-09-03` },
+    ],
+    achievements: [
+      { memberId: "gr-1", bowClass: "Recurve", achievement: "Portsmouth 500", round: "Portsmouth", achieved: `${year}-10-03` },
+      { memberId: "gr-1", bowClass: "Recurve", achievement: "Portsmouth 525", round: "Vegas 300", achieved: `${year}-10-03` },
+      { memberId: "gr-1", bowClass: "Recurve", achievement: "Portsmouth 475", round: "Portsmouth", achieved: `${year - 1}-10-03` },
+    ] };
+  const { indoor, service } = harness(snapshot);
+  const first = await service.syncMember(user);
+  assert.equal(first.createdCount, 2);
+  assert.equal(indoor.find((row) => row.bowType === "Rec").scores[500], `${year}-10-03`);
+  assert.equal(indoor.find((row) => row.bowType === "Rec").scores[475], undefined);
+  assert.equal(indoor.find((row) => row.bowType === "B/bow").classifications.archer1st, `${year}-09-03`);
+  const second = await service.syncMember(user);
+  assert.equal(second.updatedCount, 0);
+  const recurve = indoor.find((row) => row.bowType === "Rec");
+  recurve.scores[500] = `${year}-10-01`;
+  recurve.updatedByUsername = "captain";
+  snapshot.handicaps[0].handicap = 22;
+  snapshot.achievements.push({ memberId: "gr-1", bowClass: "Recurve", achievement: "Portsmouth 550", round: "Portsmouth", achieved: `${year}-10-04` });
+  const third = await service.syncMember(user);
+  const edited = indoor.find((row) => row.bowType === "Rec");
+  assert.equal(third.updatedCount, 1);
+  assert.equal(edited.handicap, 31);
+  assert.equal(edited.scores[500], `${year}-10-01`);
+  assert.equal(edited.scores[550], `${year}-10-04`);
+  assert.equal(edited.updatedByUsername, "captain");
+  assert.equal((await service.syncMember(user)).updatedCount, 0);
+});
+
+test("historical preview reports inserts, skips and unmapped source values without writing", async () => {
+  const snapshot = { enabled: true, matchSource: "gr-id", matchedMemberId: "gr-1",
+    achievements: [{ memberId: "gr-1", bowClass: "Recurve", achievement: "Portsmouth 400", round: "Portsmouth", achieved: "2024-11-01" }],
+    indoorClassifications: [{ memberId: "gr-1", bowClass: "Recurve", type: "Indoor", classification: "Indoor GMB", achieved: "2024-11-01" }],
+  };
+  const { indoor, service } = harness(null, [{ username: "archer", snapshot }]);
+  // The harness gateway is deliberately read only for this preview.
+  const plan = await service.previewIndoorHistoricalBackfill();
+  assert.equal(plan.inserts.length, 1);
+  assert.equal(plan.inserts[0].seasonYear, 2024);
+  assert.equal(plan.inserts[0].scores[400], "2024-11-01");
+  assert.ok(plan.unmapped.some((row) => row.label === "Indoor GMB"));
+  assert.equal(indoor.length, 0);
 });

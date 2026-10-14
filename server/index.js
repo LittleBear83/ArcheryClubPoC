@@ -1139,10 +1139,10 @@ const goldenRecordsSyncJob = createGoldenRecordsSyncJob({
   // Cloud Run requests await completion and hold CPU for the full sync.
   backgroundExecutionAvailable: !process.env.K_SERVICE,
   onFinished: (status) => {
-    serverEventBus.broadcastToAll("outdoor-table.updated", {
+    if (status.outdoorChangeCount > 0) serverEventBus.broadcastToAll("outdoor-table.updated", {
       changedAt: new Date().toISOString(), scope: "golden-records-sync-all",
     });
-    serverEventBus.broadcastToAll("indoor-table.updated", {
+    if (status.indoorChangeCount > 0) serverEventBus.broadcastToAll("indoor-table.updated", {
       changedAt: new Date().toISOString(), scope: "golden-records-sync-all",
     });
     broadcastMembersUpdated("members.golden-records-sync-all", status.startedByUsername === "scheduler" ? null : status.startedByUsername);

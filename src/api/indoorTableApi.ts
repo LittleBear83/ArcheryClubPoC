@@ -1,5 +1,9 @@
 import { buildActorHeaders, fetchApi } from "./client";
 
+export function currentIndoorSeasonYear(now = new Date()) {
+  return now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
 export type IndoorTableEntry = {
   id: number;
   seasonYear: number;

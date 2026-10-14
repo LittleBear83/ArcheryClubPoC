@@ -43,8 +43,16 @@ const payload = { seasonYear: 2026, archerUsername: "archer", bowType: "Rec", ha
 test("indoor routes create, read, update and delete with audit and SSE", async () => {
   const h = setup();
   assert.equal((await h.call("POST", "/api/indoor-table", { body: payload })).statusCode, 201);
+  assert.equal(h.entries[0].scores[300], "2026-09-02");
+  assert.equal(h.entries[0].scores[475], "2026-09-02");
+  assert.equal(h.entries[0].scores[525], undefined);
   assert.equal((await h.call("GET", "/api/indoor-table")).body.rows.length, 1);
-  assert.equal((await h.call("PUT", "/api/indoor-table/:id", { body: { ...payload, handicap: 25 } })).body.entry.handicap, 25);
+  const updated = (await h.call("PUT", "/api/indoor-table/:id", {
+    body: { ...payload, handicap: 25, scores: { 400: "2026-08-20", 500: "2026-09-02" } },
+  })).body.entry;
+  assert.equal(updated.handicap, 25);
+  assert.equal(updated.scores[400], "2026-08-20");
+  assert.equal(updated.scores[375], "2026-08-20");
   assert.equal((await h.call("DELETE", "/api/indoor-table/:id")).statusCode, 200);
   assert.equal(h.entries.length, 0);
   assert.deepEqual(h.events, ["indoor-table.updated", "indoor-table.updated", "indoor-table.updated"]);

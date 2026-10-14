@@ -1971,6 +1971,24 @@ export function registerAdminMemberRoutes({
     }
   });
 
+  app.post("/api/golden-records/indoor-backfill", async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor) return res.status(401).json({ success: false, message: "An authenticated member is required." });
+    if (!canAccessGoldenRecordsAdmin(actor)) return res.status(403).json({ success: false, message: "Admin access is required." });
+    if (syncNodeMode === "local-pi") return res.status(409).json({ success: false, message: "Run this backfill on the cloud server." });
+    try {
+      const result = await goldenRecordsMemberSyncService.applyIndoorHistoricalBackfill(req.body?.planHash);
+      if (result.inserted + result.updated > 0) {
+        serverEventBus?.broadcastToAll("indoor-table.updated", { changedAt: new Date().toISOString(), scope: "historical-backfill" });
+      }
+      return res.json({ success: true, ...result,
+        message: `Indoor backfill applied: ${result.inserted} inserted, ${result.updated} updated.` });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Indoor backfill failed.";
+      return res.status(message.includes("changed since the preview") ? 409 : 502).json({ success: false, message });
+    }
+  });
+
   app.get("/api/golden-records/health", async (req, res) => {
     const actor = getActorUser(req);
 

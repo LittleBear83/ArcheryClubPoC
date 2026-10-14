@@ -4,6 +4,7 @@ import { ApiError } from "../../api/client";
 import { MemberProfileApi } from "../../api/memberProfileApi";
 import type { GoldenRecordsCandidateMatch } from "../../domain/entities/MemberProfile";
 import {
+  applyGoldenRecordsIndoorBackfill,
   applyGoldenRecordsBowDisciplineImport,
   getGoldenRecordsAdminSummary,
   previewGoldenRecordsBowDisciplineImport,
@@ -82,6 +83,7 @@ export function GoldenRecordsAdminPage({
   const [bowImportPlan, setBowImportPlan] = useState<GoldenRecordsBowDisciplineImportPlan | null>(null);
   const [indoorBackfillPlan, setIndoorBackfillPlan] = useState<GoldenRecordsIndoorBackfillPlan | null>(null);
   const [isBowImportConfirmOpen, setIsBowImportConfirmOpen] = useState(false);
+  const [isIndoorBackfillConfirmOpen, setIsIndoorBackfillConfirmOpen] = useState(false);
   const lastHandledJobId = useRef("");
 
   const jobQuery = useQuery({
@@ -229,6 +231,17 @@ export function GoldenRecordsAdminPage({
     onMutate: () => { setActionError(""); setIndoorBackfillPlan(null); },
     onSuccess: (result) => setIndoorBackfillPlan(result.plan),
     onError: (error: Error) => setActionError(error.message),
+  });
+  const indoorBackfillApplyMutation = useMutation({
+    mutationFn: (planHash: string) => applyGoldenRecordsIndoorBackfill(currentUserProfile, planHash),
+    onMutate: () => { setActionError(""); setActionSuccess(""); },
+    onSuccess: async (result) => {
+      setIsIndoorBackfillConfirmOpen(false);
+      setIndoorBackfillPlan(null);
+      setActionSuccess(result.message);
+      await queryClient.invalidateQueries({ queryKey: ["indoor-table"] });
+    },
+    onError: (error: Error) => { setIsIndoorBackfillConfirmOpen(false); setIndoorBackfillPlan(null); setActionError(error.message); },
   });
   const bowImportApplyMutation = useMutation({
     mutationFn: (planHash: string) => applyGoldenRecordsBowDisciplineImport(currentUserProfile, planHash),
@@ -389,7 +402,7 @@ export function GoldenRecordsAdminPage({
         </GoldenRecordsSlice>
 
         <GoldenRecordsSlice title="Indoor Historical Backfill Preview">
-          <p>Review dated indoor results from stored Golden Records snapshots. This preview makes no database changes. Historical rows require a separate approved backfill.</p>
+          <p>Review dated indoor results from stored Golden Records snapshots, then apply the proposed additions. Existing achievement dates are kept.</p>
           <Button onClick={() => indoorBackfillPreviewMutation.mutate()} disabled={indoorBackfillPreviewMutation.isPending}>
             {indoorBackfillPreviewMutation.isPending ? "Preparing preview..." : "Preview Indoor Backfill"}
           </Button>
@@ -407,6 +420,8 @@ export function GoldenRecordsAdminPage({
             <details><summary>Unmapped source values ({indoorBackfillPlan.unmapped.length})</summary>
               <ul>{indoorBackfillPlan.unmapped.map((record, index) => <li key={`unmapped-${index}`}>{record.username}: {record.kind} “{record.label}” — {record.reason} ({record.count})</li>)}</ul>
             </details>
+            {indoorBackfillPlan.inserts.length + indoorBackfillPlan.updates.length > 0 ?
+              <Button onClick={() => setIsIndoorBackfillConfirmOpen(true)} disabled={indoorBackfillApplyMutation.isPending}>Apply Indoor Backfill</Button> : null}
           </div> : null}
         </GoldenRecordsSlice>
 
@@ -505,6 +520,15 @@ export function GoldenRecordsAdminPage({
           )}
         </GoldenRecordsSlice>
       </SectionPanel>
+      <Modal open={isIndoorBackfillConfirmOpen} onClose={() => !indoorBackfillApplyMutation.isPending && setIsIndoorBackfillConfirmOpen(false)} title="Apply Indoor Backfill">
+        <p>Apply {indoorBackfillPlan?.inserts.length ?? 0} inserts and {indoorBackfillPlan?.updates.length ?? 0} updates from the preview? Existing achievement dates will be kept.</p>
+        <div className="profile-card-issue-actions">
+          <Button variant="secondary" disabled={indoorBackfillApplyMutation.isPending} onClick={() => setIsIndoorBackfillConfirmOpen(false)}>Cancel</Button>
+          <Button disabled={!indoorBackfillPlan || indoorBackfillApplyMutation.isPending} onClick={() => { if (indoorBackfillPlan) indoorBackfillApplyMutation.mutate(indoorBackfillPlan.planHash); }}>
+            {indoorBackfillApplyMutation.isPending ? "Applying..." : "Apply Backfill"}
+          </Button>
+        </div>
+      </Modal>
       <Modal open={isBowImportConfirmOpen} onClose={() => !bowImportApplyMutation.isPending && setIsBowImportConfirmOpen(false)} title="Apply Bow Discipline Import">
         <p>Add {bowImportPlan?.counts.add ?? 0} bow disciplines to active members? This will update the live database and retain their existing disciplines.</p>
         <div className="profile-card-issue-actions">

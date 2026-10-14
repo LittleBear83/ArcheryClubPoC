@@ -212,3 +212,52 @@ test("historical preview reports inserts, skips and unmapped source values witho
   assert.ok(plan.unmapped.some((row) => row.label === "Indoor GMB"));
   assert.equal(indoor.length, 0);
 });
+
+test("reviewed historical backfill applies once and preserves manual dates", async () => {
+  const snapshot = { enabled: true, matchSource: "gr-id", matchedMemberId: "gr-1",
+    achievements: [{ memberId: "gr-1", bowClass: "Recurve", achievement: "Portsmouth 500",
+      round: "Portsmouth", achieved: "2024-11-01" }], classifications: [] };
+  const { indoor, service } = harness(null, [{ username: "archer", snapshot }]);
+  indoor.push({ id: 1, seasonYear: 2024, archerUsername: "archer", bowType: "Rec",
+    handicap: 30, classifications: {}, scores: { 400: "2024-10-01" }, updatedByUsername: "captain" });
+  const plan = await service.previewIndoorHistoricalBackfill();
+  assert.equal(plan.updates.length, 1);
+  assert.equal(indoor[0].scores[300], undefined);
+  assert.deepEqual(await service.applyIndoorHistoricalBackfill(plan.planHash), { inserted: 0, updated: 1 });
+  assert.equal(indoor[0].scores[400], "2024-10-01");
+  assert.equal(indoor[0].scores[300], "2024-10-01");
+  assert.equal(indoor[0].updatedByUsername, "captain");
+  assert.deepEqual(await service.applyIndoorHistoricalBackfill((await service.previewIndoorHistoricalBackfill()).planHash),
+    { inserted: 0, updated: 0 });
+  await assert.rejects(service.applyIndoorHistoricalBackfill(plan.planHash), /changed since the preview/);
+});
+
+test("stored snapshots fill missing scores on existing current-season rows once", async () => {
+  const year = new Date().getUTCFullYear();
+  const snapshot = { enabled: true, matchSource: "gr-id", matchedMemberId: "gr-1",
+    achievements: [{ memberId: "gr-1", bowClass: "Recurve", achievement: "Portsmouth 500",
+      round: "Portsmouth", achieved: `${year}-10-01` }], classifications: [], handicaps: [] };
+  const { indoor, service } = harness(null, [{ username: "archer", snapshot }]);
+  indoor.push({ id: 1, seasonYear: year, archerUsername: "archer", bowType: "Rec",
+    handicap: 30, classifications: {}, scores: { 400: `${year}-09-01` }, updatedByUsername: "captain" });
+  assert.equal(await service.backfillIndoorTableFromStoredSnapshots(), 1);
+  assert.equal(indoor[0].scores[300], `${year}-09-01`);
+  assert.equal(indoor[0].scores[400], `${year}-09-01`);
+  assert.equal(indoor[0].scores[500], `${year}-10-01`);
+  assert.equal(await service.backfillIndoorTableFromStoredSnapshots(), 0);
+});
+
+test("manual high awards appear in backfill without a Golden Records snapshot", async () => {
+  const year = new Date().getUTCFullYear();
+  const { indoor, service } = harness(null);
+  indoor.push({ id: 1, seasonYear: year, archerUsername: "archer", bowType: "Rec",
+    handicap: 30, classifications: {}, scores: { 575: `${year}-10-02`, 400: `${year}-09-01` },
+    updatedByUsername: "captain" });
+  const plan = await service.previewIndoorHistoricalBackfill();
+  assert.equal(plan.updates.length, 1);
+  assert.equal(plan.updates[0].scores[300], `${year}-09-01`);
+  assert.equal(plan.updates[0].scores[550], `${year}-10-02`);
+  assert.deepEqual(await service.applyIndoorHistoricalBackfill(plan.planHash), { inserted: 0, updated: 1 });
+  assert.equal(indoor[0].scores[400], `${year}-09-01`);
+  assert.equal((await service.previewIndoorHistoricalBackfill()).updates.length, 0);
+});

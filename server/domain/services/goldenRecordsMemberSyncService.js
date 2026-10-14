@@ -1,5 +1,6 @@
 import { deriveGoldenRecordsAchievements } from "./goldenRecordsAchievements.js";
 import { completeIndoorScoreAwards, indoorSeasonYear, mapIndoorEvidence } from "./goldenRecordsIndoorMapping.js";
+import { createHash } from "node:crypto";
 
 function mapGoldenRecordsBowClassToOutdoorBowType(bowClass) {
   switch (String(bowClass ?? "").trim().toLowerCase()) {
@@ -737,14 +738,13 @@ export function createGoldenRecordsMemberSyncService({
       const group = evidence.bySeason.get(`${seasonYear}:${bowType}`);
       const current = existing.get(bowType);
       if (current) {
-        if (createMissingOnly) continue;
         const classifications = { ...current.classifications };
         const scores = { ...current.scores };
         let addedDate = false;
         for (const [key, value] of Object.entries(group?.classifications ?? {})) {
           if (!classifications[key]) { classifications[key] = value; addedDate = true; }
         }
-        for (const [key, value] of Object.entries(group?.scores ?? {})) {
+        for (const [key, value] of Object.entries(group?.explicitScores ?? {})) {
           if (!scores[key]) { scores[key] = value; addedDate = true; }
         }
         for (const [key, value] of Object.entries(completeIndoorScoreAwards(scores, seasonYear))) {
@@ -754,7 +754,7 @@ export function createGoldenRecordsMemberSyncService({
         const manualEditor = current.updatedByUsername &&
           ![user.username.toLowerCase(), "scheduler"].includes(current.updatedByUsername.toLowerCase());
         const canUpdateHandicap = !manualEditor || current.handicap == null;
-        const nextHandicap = canUpdateHandicap ? (handicap?.handicap ?? current.handicap) : current.handicap;
+        const nextHandicap = !createMissingOnly && canUpdateHandicap ? (handicap?.handicap ?? current.handicap) : current.handicap;
         if (current.handicap === nextHandicap && !addedDate) continue;
         await indoorGateway.updateEntry({ ...current, handicap: nextHandicap, classifications, scores,
           updatedAtDate: date, updatedAtTime: time,
@@ -786,22 +786,31 @@ export function createGoldenRecordsMemberSyncService({
       indoorTableGateway.listEntriesByYear(indoorSeasonYear(new Date().toISOString())),
     ]);
     const usersByName = new Map(users.map((user) => [user.username.toLowerCase(), user]));
-    let createdCount = 0;
+    let changedCount = 0;
     for (const { username, snapshot } of stored) {
       const user = usersByName.get(username.toLowerCase());
       if (!user || !snapshot?.enabled || snapshot.error || !snapshot.matchedMemberId ||
         ["ambiguous", "not-found", "disabled"].includes(snapshot.matchSource)) continue;
-      if (!(snapshot.handicaps ?? []).some((entry) =>
-        normalizeGoldenRecordsHandicapType(entry.type) === "indoor")) continue;
+      if (!(snapshot.handicaps ?? []).some((entry) => normalizeGoldenRecordsHandicapType(entry.type) === "indoor") &&
+        !(snapshot.achievements ?? []).length && !(snapshot.indoorClassifications ?? snapshot.classifications ?? []).length) continue;
       const disciplines = (await memberDirectoryGateway.findDisciplinesByUsername(user.username))
         .map((row) => row.discipline);
       const result = await syncIndoorTableFromGoldenRecords({
         disciplines, goldenRecordsSnapshot: snapshot, updatedByUsername: user.username,
         user, createMissingOnly: true, existingRows,
       });
-      createdCount += result.createdCount;
+      changedCount += result.syncedCount;
     }
-    return createdCount;
+    // Manual high awards can exist without a Golden Records snapshot.
+    for (const row of await indoorTableGateway.listEntriesByYear(indoorSeasonYear(new Date().toISOString()))) {
+      const completed = completeIndoorScoreAwards(row.scores, row.seasonYear);
+      if (JSON.stringify(completed) === JSON.stringify(row.scores)) continue;
+      const [date, time] = getUtcTimestampParts();
+      await indoorTableGateway.updateEntry({ ...row, scores: completed,
+        updatedAtDate: date, updatedAtTime: time });
+      changedCount += 1;
+    }
+    return changedCount;
   }
 
   async function previewIndoorHistoricalBackfill() {
@@ -842,7 +851,8 @@ export function createGoldenRecordsMemberSyncService({
         const fields = {
           classifications: Object.fromEntries(Object.entries(group.classifications)
             .filter(([key]) => !existing?.classifications?.[key])),
-          scores: Object.fromEntries(Object.entries(group.scores)
+          scores: Object.fromEntries(Object.entries(completeIndoorScoreAwards({
+            ...group.explicitScores, ...existing?.scores }, group.seasonYear))
             .filter(([key]) => !existing?.scores?.[key])),
         };
         const record = { username, seasonYear: group.seasonYear, bowType: group.bowType, ...fields };
@@ -852,7 +862,58 @@ export function createGoldenRecordsMemberSyncService({
           reason: "All verified dates already present or manually recorded" });
       }
     }
+    for (const seasonYear of availableYears) {
+      if (!rowsByYear.has(seasonYear)) rowsByYear.set(seasonYear, await indoorTableGateway.listEntriesByYear(seasonYear));
+      for (const row of rowsByYear.get(seasonYear)) {
+        const completed = completeIndoorScoreAwards(row.scores, seasonYear);
+        const missing = Object.fromEntries(Object.entries(completed).filter(([key]) => !row.scores?.[key]));
+        if (!Object.keys(missing).length) continue;
+        const proposed = plan.updates.find((entry) => entry.username.toLowerCase() === row.archerUsername.toLowerCase() &&
+          entry.bowType === row.bowType && entry.seasonYear === seasonYear);
+        if (proposed) proposed.scores = { ...missing, ...proposed.scores };
+        else plan.updates.push({ username: row.archerUsername, seasonYear, bowType: row.bowType,
+          classifications: {}, scores: missing });
+      }
+    }
+    plan.planHash = createHash("sha256").update(JSON.stringify(plan)).digest("hex");
     return plan;
+  }
+
+  async function applyIndoorHistoricalBackfill(planHash) {
+    if (!/^[a-f0-9]{64}$/.test(String(planHash ?? ""))) throw new Error("Preview the indoor backfill before applying it.");
+    const plan = await previewIndoorHistoricalBackfill();
+    if (plan.planHash !== planHash) throw new Error("Indoor backfill data changed since the preview. Preview again; no changes were made.");
+    const [date, time] = getUtcTimestampParts();
+    let inserted = 0;
+    let updated = 0;
+    for (const record of [...plan.inserts, ...plan.updates]) {
+      const rows = await indoorTableGateway.listEntriesByYear(record.seasonYear);
+      const current = rows.find((row) => row.archerUsername.toLowerCase() === record.username.toLowerCase() && row.bowType === record.bowType);
+      if (current) {
+        const classifications = { ...current.classifications };
+        const scores = { ...current.scores };
+        let changed = false;
+        for (const [key, value] of Object.entries(record.classifications)) {
+          if (!classifications[key]) { classifications[key] = value; changed = true; }
+        }
+        for (const [key, value] of Object.entries(record.scores)) {
+          if (!scores[key]) { scores[key] = value; changed = true; }
+        }
+        if (!changed) continue;
+        await indoorTableGateway.updateEntry({ ...current, classifications, scores,
+          updatedAtDate: date, updatedAtTime: time });
+        updated += 1;
+      } else {
+        const created = await indoorTableGateway.createEntryIfAbsent({
+          seasonYear: record.seasonYear, archerUsername: record.username, bowType: record.bowType,
+          handicap: null, classifications: record.classifications, scores: record.scores,
+          createdAtDate: date, createdAtTime: time, updatedAtDate: date, updatedAtTime: time,
+          updatedByUsername: null,
+        });
+        if (created) inserted += 1;
+      }
+    }
+    return { inserted, updated };
   }
 
   async function syncDistanceSignOffsFromGoldenRecords({
@@ -1171,6 +1232,7 @@ export function createGoldenRecordsMemberSyncService({
     getStoredSnapshotForUser,
     backfillIndoorTableFromStoredSnapshots,
     previewIndoorHistoricalBackfill,
+    applyIndoorHistoricalBackfill,
     syncAllMembers,
     syncMember,
   };

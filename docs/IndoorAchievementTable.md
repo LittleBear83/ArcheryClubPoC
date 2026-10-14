@@ -20,7 +20,9 @@ A verified higher Portsmouth award also awards every lower score column for that
 
 ## Historical preview
 
-Golden Records Admin provides a read-only **Preview Indoor Backfill** action. It compares stored snapshots with existing indoor rows and lists proposed inserts, updates, skipped rows and unmapped values. It does not apply a historical backfill. Stored snapshots may not contain all historical classifications until members have been refreshed with the updated sync; the preview identifies its `stored-snapshots` source.
+Golden Records Admin provides **Preview Indoor Backfill** and a separate **Apply Indoor Backfill** action. The preview compares stored snapshots with existing indoor rows and lists proposed inserts, updates, skipped rows and unmapped values. Apply rechecks the plan hash before writing; a changed plan must be previewed again. Apply fills missing dated fields and preserves existing achievement dates. A repeated preview and apply produces no changes. Stored snapshots may not contain all historical classifications until members have been refreshed with the updated sync; the preview identifies its `stored-snapshots` source.
+
+The current-season stored-snapshot pass also fills missing dates on existing rows, including lower awards earned through a higher dated score. The preview and current-season pass include existing manual high awards even if no Golden Records snapshot exists. Profile saves merge only edited dates against the latest row, so a profile opened before a sync does not replace newly imported dates.
 
 ## Fields without confirmed source records
 

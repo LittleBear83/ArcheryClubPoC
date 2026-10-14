@@ -48,7 +48,8 @@ export function ProfileIndoorAchievementsSection({ currentUserProfile, username,
     const draft = drafts[bowType]; if (!draft) return;
     setSaving(bowType); setMessage("");
     try {
-      if (row) await updateIndoorTableEntry(currentUserProfile, row.id, draft);
+      if (row) await updateIndoorTableEntry(currentUserProfile, row.id, { ...draft,
+        originalClassifications: row.classifications, originalScores: row.scores });
       else await createIndoorTableEntry(currentUserProfile, draft);
       await queryClient.invalidateQueries({ queryKey: ["indoor-table"] });
       setMessage(`${bowType} indoor achievements saved.`);

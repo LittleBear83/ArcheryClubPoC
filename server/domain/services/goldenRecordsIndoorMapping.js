@@ -83,6 +83,9 @@ export function mapIndoorEvidence(snapshot, memberId, mapBowClass, allowedBowTyp
     }
     add(row, "score", String(score));
   }
-  for (const group of bySeason.values()) group.scores = completeIndoorScoreAwards(group.scores, group.seasonYear);
+  for (const group of bySeason.values()) {
+    group.explicitScores = { ...group.scores };
+    group.scores = completeIndoorScoreAwards(group.scores, group.seasonYear);
+  }
   return { bySeason, unmapped: [...unmapped.values()] };
 }

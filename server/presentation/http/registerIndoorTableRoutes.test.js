@@ -52,7 +52,7 @@ test("indoor routes create, read, update and delete with audit and SSE", async (
   })).body.entry;
   assert.equal(updated.handicap, 25);
   assert.equal(updated.scores[400], "2026-08-20");
-  assert.equal(updated.scores[375], "2026-08-20");
+  assert.equal(updated.scores[375], "2026-09-02");
   assert.equal((await h.call("DELETE", "/api/indoor-table/:id")).statusCode, 200);
   assert.equal(h.entries.length, 0);
   assert.deepEqual(h.events, ["indoor-table.updated", "indoor-table.updated", "indoor-table.updated"]);
@@ -77,4 +77,18 @@ test("current-year GET backfills stored snapshots once before returning rows", a
   assert.equal((await h.call("GET", "/api/indoor-table", { year })).body.rows[0].handicap, 78);
   assert.equal((await h.call("GET", "/api/indoor-table", { year })).body.rows.length, 1);
   assert.equal(calls, 1);
+});
+
+test("stale profile save retains newly synced scores and fills lower awards", async () => {
+  const h = setup();
+  h.entries.push({ id: 1, seasonYear: 2026, archerUsername: "archer", bowType: "Rec", handicap: 30,
+    classifications: {}, scores: { 500: "2026-10-02", 550: "2026-10-03" } });
+  const response = await h.call("PUT", "/api/indoor-table/:id", { body: {
+    ...payload, scores: { 500: "2026-10-02", 475: "2026-10-01" },
+    originalScores: { 500: "2026-10-02" }, originalClassifications: {},
+  } });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.entry.scores[550], "2026-10-03");
+  assert.equal(response.body.entry.scores[475], "2026-10-01");
+  assert.equal(response.body.entry.scores[300], "2026-10-01");
 });

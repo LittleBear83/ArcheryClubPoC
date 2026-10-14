@@ -1,11 +1,29 @@
-# Indoor Achievement Table
+# Indoor achievement table and Golden Records mapping
 
-The Achievement Tables page uses the existing `/outdoor-table` route. `?tab=outdoor` is the default; `?tab=indoor` shows the separate indoor matrix. Members' indoor progress is edited from their profiles by users with `manage_members`; self sign-off is blocked.
+The existing Indoor Table and member profile retain the same 8 classification keys and 17 score keys. Dates are shown as ticks with achievement dates in tooltips and remain editable by authorised members. Each row belongs to a portal member, bow style and indoor season starting year. Golden Records' published indoor seasons run from 1 July through 30 June; for example, a result on 30 June 2026 belongs to portal season `2025`, and one on 1 July 2026 belongs to `2026`.
 
-Indoor rows are stored in `indoor_table_entries` for one member, bow style and season. The forward-only PostgreSQL migration is `017_indoor_table`; SQLite creates the equivalent table during bootstrap. The API is `GET/POST /api/indoor-table` and `PUT/DELETE /api/indoor-table/:id`. Changes emit `indoor-table.updated` and audit as `indoor_table_entry`.
+## Verified source fields
 
-The existing Golden Records member sync imports only current handicaps whose normalized `type` is `indoor`, matching by Golden Records member ID and bow class. A cached test snapshot confirms the source label `Indoor Handicap`. It keeps indoor and outdoor rows separate and updates indoor handicaps during member refresh, manual match and full-club sync. Manual matches use the same database transaction for both tables.
+The Golden Records [API documentation](https://api2.archery-records.net/help) defines dated `achievements`, `classifications`, `currentclassifications`, `currenthandicaps`, `rounds`, `scores`, `seasons` and `achievementslist`. The sync reads achievements and classification history; it does not derive an award from a raw score. A read-only check of the club API on 14 October 2026 found the following source labels:
 
-On the first cloud request for the current year's Indoor table, the server also creates missing rows from valid stored Golden Records snapshots. This one-time backfill uses only indoor handicaps and never overwrites an existing row or calls the remote API. Local Pi nodes receive the cloud rows through database sync.
+| Golden Records source | Portal field | Condition |
+| --- | --- | --- |
+| `Indoor Archer 3rd Class`, `Indoor Archer 2nd Class`, `Indoor Archer 1st Class` | `archer3rd`, `archer2nd`, `archer1st` | `classifications.type = Indoor` and a valid `achieved` date |
+| `Indoor Bowman 3rd Class`, `Indoor Bowman 2nd Class`, `Indoor Bowman 1st Class` | `bowman3rd`, `bowman2nd`, `bowman1st` | Same |
+| `Indoor MB` | `indoorMasterBowman` | Same |
+| `Portsmouth 300`, `325`, `350`, `375`, `400`, `425`, `450`, `475`, `500`, `525`, `550`, `575`, `580`, `585`, `590`, `595` | Matching numeric score key | Explicit achievement label, `round = Portsmouth`, valid `achieved` date |
+| `Portsmouth 600` | `600` | Same exact-label rule if an explicit award appears in future source data |
 
-The current cached snapshots and API tests have no indoor classification examples or score/award records for the paper table's 300–600 columns. The known snapshot format contains `classification`, `type`, `bow_class` and `achieved`, while achievements contain `achievement`, `round`, `bow_class` and `achieved`; neither establishes how the paper's indoor columns correspond to source records. The app therefore does **not** infer indoor classification or score award status from Golden Records. Those dated cells can be entered manually on the member profile. No false achievement states are created during sync. Confirm live source labels and semantics before adding automatic mappings.
+Every imported record must match the selected Golden Records member ID and an eligible, matching bow class (`Recurve`, `Compound`, `Barebow`, `Longbow`). Ambiguous member matches remain unlinked. Earlier dated achievements stay in their historical season; the nightly and individual member sync write only the current indoor season. Repeated runs fill empty fields only. Existing manually entered dates are retained, and a manually edited handicap is retained. Empty or incomplete API responses do not clear cells.
+
+## Historical preview
+
+Golden Records Admin provides a read-only **Preview Indoor Backfill** action. It compares stored snapshots with existing indoor rows and lists proposed inserts, updates, skipped rows and unmapped values. It does not apply a historical backfill. Stored snapshots may not contain all historical classifications until members have been refreshed with the updated sync; the preview identifies its `stored-snapshots` source.
+
+## Fields without confirmed source records
+
+No `Indoor Grand Master Bowman` or equivalent verified indoor classification was present in the checked source classifications. `indoorGrandMasterBowman` remains manual. No `Portsmouth 600` achievement was present; the exact explicit award would map if it appears later. Historical `A`–`H`, `Archer`, and `Unclassified` source values have no verified mapping to the portal's eight classifications and are reported as unmapped. The `achievementslist` master list did not contain the club's `Portsmouth N` labels; the mapping uses the explicit member achievement text and its `Portsmouth` round instead.
+
+## Worker budget
+
+The existing nightly job keeps its 26-minute time limit and 1.1-second minimum Golden Records request gap. Full-club sync fetches classification history (955 records) and current classifications (199 records) club-wide, one page each at the time of inspection, rather than per member. Manual single-member refresh adds one member-specific history request. The current Golden Records member list returned 593 records; with one member-specific handicap endpoint per matched member, the throttling floor is about 11 minutes in a worst-case 593-member match, leaving time for database work, network variability and retries within the 26-minute budget. Monitor job duration and retry counts as club size changes.

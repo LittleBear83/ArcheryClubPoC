@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { listIndoorTable, INDOOR_CLASSIFICATION_COLUMNS, INDOOR_SCORE_COLUMNS } from "../../api/indoorTableApi";
+import { currentIndoorSeasonYear, listIndoorTable, INDOOR_CLASSIFICATION_COLUMNS, INDOOR_SCORE_COLUMNS } from "../../api/indoorTableApi";
 import { SectionPanel } from "../components/SectionPanel";
 import type { UserProfile } from "../../types/app";
 
 export function IndoorTablePage({ currentUserProfile }: { currentUserProfile: UserProfile | null }) {
-  const year = new Date().getFullYear();
+  const year = currentIndoorSeasonYear();
   const [sort, setSort] = useState<"name" | "bow">("name");
   const [descending, setDescending] = useState(false);
   const query = useQuery({ queryKey: ["indoor-table", year, currentUserProfile?.auth?.username],

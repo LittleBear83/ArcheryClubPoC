@@ -7,9 +7,11 @@ import {
   applyGoldenRecordsBowDisciplineImport,
   getGoldenRecordsAdminSummary,
   previewGoldenRecordsBowDisciplineImport,
+  previewGoldenRecordsIndoorBackfill,
   syncGoldenRecordsLookups,
   testGoldenRecordsHealth,
   type GoldenRecordsBowDisciplineImportPlan,
+  type GoldenRecordsIndoorBackfillPlan,
 } from "../../api/goldenRecordsApi";
 import { getGoldenRecordsMemberSyncJob, triggerGoldenRecordsOutdoorTableSync } from "../../api/outdoorTableApi";
 import { formatDateTime } from "../../utils/dateTime";
@@ -78,6 +80,7 @@ export function GoldenRecordsAdminPage({
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [isMatchConfirmOpen, setIsMatchConfirmOpen] = useState(false);
   const [bowImportPlan, setBowImportPlan] = useState<GoldenRecordsBowDisciplineImportPlan | null>(null);
+  const [indoorBackfillPlan, setIndoorBackfillPlan] = useState<GoldenRecordsIndoorBackfillPlan | null>(null);
   const [isBowImportConfirmOpen, setIsBowImportConfirmOpen] = useState(false);
   const lastHandledJobId = useRef("");
 
@@ -221,6 +224,12 @@ export function GoldenRecordsAdminPage({
     onSuccess: (result) => setBowImportPlan(result.plan),
     onError: (error: Error) => setActionError(error.message),
   });
+  const indoorBackfillPreviewMutation = useMutation({
+    mutationFn: () => previewGoldenRecordsIndoorBackfill(currentUserProfile),
+    onMutate: () => { setActionError(""); setIndoorBackfillPlan(null); },
+    onSuccess: (result) => setIndoorBackfillPlan(result.plan),
+    onError: (error: Error) => setActionError(error.message),
+  });
   const bowImportApplyMutation = useMutation({
     mutationFn: (planHash: string) => applyGoldenRecordsBowDisciplineImport(currentUserProfile, planHash),
     onMutate: () => { setActionError(""); setActionSuccess(""); },
@@ -263,10 +272,12 @@ export function GoldenRecordsAdminPage({
 
         <StatusMessagePanel
           error={actionError || (actionSuccess ? "" : jobError)}
-          loading={isLoading || connectionTestMutation.isPending || lookupSyncMutation.isPending || memberSyncMutation.isPending || individualSyncMutation.isPending || assignMatchMutation.isPending || bowImportPreviewMutation.isPending || bowImportApplyMutation.isPending}
+          loading={isLoading || connectionTestMutation.isPending || lookupSyncMutation.isPending || memberSyncMutation.isPending || individualSyncMutation.isPending || assignMatchMutation.isPending || bowImportPreviewMutation.isPending || bowImportApplyMutation.isPending || indoorBackfillPreviewMutation.isPending}
           loadingLabel={
             bowImportPreviewMutation.isPending
               ? "Checking bow disciplines against Golden Records..."
+              : indoorBackfillPreviewMutation.isPending
+                ? "Preparing indoor backfill preview..."
               : bowImportApplyMutation.isPending
                 ? "Adding bow disciplines..."
                 : connectionTestMutation.isPending
@@ -352,7 +363,7 @@ export function GoldenRecordsAdminPage({
             Sync existing portal members using their Golden Records ID, AGB number, email,
             or a unique exact full-name match. Ambiguous names remain unmatched; add an
             AGB number or email to their portal profile, then rerun the sync. The sync
-            refreshes outdoor achievements and indoor handicaps.
+            refreshes outdoor achievements and verified indoor results.
           </p>
           <Button
             title="Sync all portal members from Golden Records, including outdoor achievements and indoor handicaps."
@@ -375,6 +386,28 @@ export function GoldenRecordsAdminPage({
               ) : null}
             </div>
           ) : null}
+        </GoldenRecordsSlice>
+
+        <GoldenRecordsSlice title="Indoor Historical Backfill Preview">
+          <p>Review dated indoor results from stored Golden Records snapshots. This preview makes no database changes. Historical rows require a separate approved backfill.</p>
+          <Button onClick={() => indoorBackfillPreviewMutation.mutate()} disabled={indoorBackfillPreviewMutation.isPending}>
+            {indoorBackfillPreviewMutation.isPending ? "Preparing preview..." : "Preview Indoor Backfill"}
+          </Button>
+          {indoorBackfillPlan ? <div className="golden-records-bow-import-preview">
+            <p role="status">{indoorBackfillPlan.inserts.length} proposed inserts; {indoorBackfillPlan.updates.length} proposed updates; {indoorBackfillPlan.skipped.length} skipped; {indoorBackfillPlan.unmapped.length} unmapped source values.</p>
+            {(["inserts", "updates"] as const).map((kind) => <details key={kind}>
+              <summary>{kind === "inserts" ? "Proposed inserts" : "Proposed updates"} ({indoorBackfillPlan[kind].length})</summary>
+              <ul>{indoorBackfillPlan[kind].map((record, index) => <li key={`${kind}-${record.username}-${record.seasonYear}-${record.bowType}-${index}`}>
+                {record.username}, {record.bowType}, indoor season {record.seasonYear}/{record.seasonYear + 1}: {Object.entries({ ...record.classifications, ...record.scores }).map(([key, date]) => `${key} ${date}`).join(", ")}
+              </li>)}</ul>
+            </details>)}
+            <details><summary>Skipped ({indoorBackfillPlan.skipped.length})</summary>
+              <ul>{indoorBackfillPlan.skipped.map((record, index) => <li key={`skip-${index}`}>{record.username}: {record.reason}</li>)}</ul>
+            </details>
+            <details><summary>Unmapped source values ({indoorBackfillPlan.unmapped.length})</summary>
+              <ul>{indoorBackfillPlan.unmapped.map((record, index) => <li key={`unmapped-${index}`}>{record.username}: {record.kind} “{record.label}” — {record.reason} ({record.count})</li>)}</ul>
+            </details>
+          </div> : null}
         </GoldenRecordsSlice>
 
         {canImportBowDisciplines ? <GoldenRecordsSlice title="Bow Discipline Import">

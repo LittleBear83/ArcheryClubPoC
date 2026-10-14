@@ -91,6 +91,7 @@ function normalizeClassificationRow(row) {
     bowClass,
     classification: row?.classification ?? "",
     classificationId: row?.classification_id ?? "",
+    seasonId: row?.season_id ?? "",
     discipline: mapGoldenRecordsBowClassToDiscipline(bowClass),
     memberId: row?.member_id ?? "",
     name: row?.name ?? "",
@@ -358,6 +359,16 @@ export function createGoldenRecordsCurrentHandicapService({
       .sort((left, right) => right.achieved.localeCompare(left.achieved));
   }
 
+  async function getIndoorClassificationsByMemberId(memberId, signal) {
+    const rows = await listPagedRows(
+      "/api/classifications", { id: memberId },
+      (status) => `Golden Records returned ${status} while loading classification history.`,
+      { allowNullEmpty: true, signal },
+    );
+    return rows.map(normalizeClassificationRow).filter((row) =>
+      String(row.memberId) === String(memberId) && String(row.type).toLowerCase() === "indoor");
+  }
+
   async function buildSnapshotFromMemberId({
     fallbackName,
     matchSource,
@@ -369,7 +380,12 @@ export function createGoldenRecordsCurrentHandicapService({
     const handicapRows = await getCurrentHandicapsByMemberId(memberId, signal);
     const rawAchievements = clubData?.achievementsByMember.get(String(memberId)) ?? (clubData ? [] : undefined);
     const achievementRows = rawAchievements ? rawAchievements.map(normalizeAchievementRow) : await getAchievementsByMemberId(memberId, signal);
-    const classificationRows = await getCurrentClassificationsByMemberId(memberId, signal);
+    const classificationRows = clubData?.currentClassificationsByMember
+      ? (clubData.currentClassificationsByMember.get(String(memberId)) ?? []).map(normalizeClassificationRow)
+      : await getCurrentClassificationsByMemberId(memberId, signal);
+    const indoorClassificationRows = clubData?.classificationsByMember
+      ? (clubData.classificationsByMember.get(String(memberId)) ?? []).map(normalizeClassificationRow)
+      : await getIndoorClassificationsByMemberId(memberId, signal);
     const handicaps = handicapRows.sort((left, right) => {
       const byType = left.type.localeCompare(right.type);
 
@@ -390,6 +406,7 @@ export function createGoldenRecordsCurrentHandicapService({
       achievements: achievementRows,
       candidateMatches: [],
       classifications: classificationRows,
+      indoorClassifications: indoorClassificationRows,
       enabled: true,
       fetchedAt,
       handicaps,
@@ -458,6 +475,7 @@ export function createGoldenRecordsCurrentHandicapService({
         achievements: [],
         candidateMatches,
         classifications: [],
+        indoorClassifications: [],
         enabled: true,
         fetchedAt: new Date().toISOString(),
         handicaps: [],
@@ -512,6 +530,7 @@ export function createGoldenRecordsCurrentHandicapService({
           achievements: [],
           candidateMatches: matchedMembers.slice(0, 3).map(toCandidateMatch),
           classifications: [],
+          indoorClassifications: [],
           enabled: true,
           fetchedAt: new Date().toISOString(),
           handicaps: [],
@@ -536,6 +555,7 @@ export function createGoldenRecordsCurrentHandicapService({
         achievements: [],
         candidateMatches: [],
         classifications: [],
+        indoorClassifications: [],
         enabled: true,
         error:
           message.includes("while loading members")
@@ -578,15 +598,33 @@ export function createGoldenRecordsCurrentHandicapService({
       try {
         const members = (await listPagedRows("/api/members", {}, (status) => "Golden Records members API returned " + status, { signal })).map(normalizeMemberRow);
         const achievements = await listPagedRows("/api/Achievements", {}, (status) => "Golden Records achievements API returned " + status, { signal });
+        const classifications = await listPagedRows("/api/classifications", {}, (status) => "Golden Records classifications API returned " + status, { signal });
+        const currentClassifications = await listPagedRows("/api/currentclassifications", {},
+          (status) => "Golden Records current classifications API returned " + status, { signal });
         const achievementsByMember = new Map();
+        const classificationsByMember = new Map();
+        const currentClassificationsByMember = new Map();
         for (const row of achievements) {
           const key = String(row.member_id ?? "");
           const rows = achievementsByMember.get(key) ?? [];
           rows.push(row);
           achievementsByMember.set(key, rows);
         }
+        for (const row of classifications) {
+          if (String(row.type ?? "").toLowerCase() !== "indoor") continue;
+          const key = String(row.member_id ?? "");
+          const rows = classificationsByMember.get(key) ?? [];
+          rows.push(row);
+          classificationsByMember.set(key, rows);
+        }
+        for (const row of currentClassifications) {
+          const key = String(row.member_id ?? "");
+          const rows = currentClassificationsByMember.get(key) ?? [];
+          rows.push(row);
+          currentClassificationsByMember.set(key, rows);
+        }
         logger.info?.("Golden Records club data fetched", { members: members.length, activeMembers: members.filter((row) => !row.memberArchived).length, achievements: achievements.length });
-        return { members, achievementsByMember };
+        return { members, achievementsByMember, classificationsByMember, currentClassificationsByMember };
       } catch (error) {
         logger.error?.("Golden Records club API error", { error: error.message });
         throw error;

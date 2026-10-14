@@ -1,4 +1,5 @@
 import { deriveGoldenRecordsAchievements } from "./goldenRecordsAchievements.js";
+import { indoorSeasonYear, mapIndoorEvidence } from "./goldenRecordsIndoorMapping.js";
 
 function mapGoldenRecordsBowClassToOutdoorBowType(bowClass) {
   switch (String(bowClass ?? "").trim().toLowerCase()) {
@@ -700,17 +701,21 @@ export function createGoldenRecordsMemberSyncService({
     };
   }
 
-  // The current snapshot identifies indoor handicaps by type and bow class.
-  // Its classification and achievement labels have no verified indoor mapping yet.
-  async function syncIndoorTableFromGoldenRecords({ disciplines, goldenRecordsSnapshot, indoorGateway = indoorTableGateway, updatedByUsername, user, createMissingOnly = false, existingRows }) {
+  async function syncIndoorTableFromGoldenRecords({ disciplines, goldenRecordsSnapshot, indoorGateway = indoorTableGateway, user, createMissingOnly = false, existingRows }) {
     if (!indoorGateway) return { createdCount: 0, updatedCount: 0, syncedCount: 0 };
     const memberId = String(goldenRecordsSnapshot?.matchedMemberId ?? "").trim();
+    if (!memberId) return { createdCount: 0, updatedCount: 0, syncedCount: 0 };
+    const allowedBowTypes = new Set(disciplines.map((discipline) => {
+      const name = String(discipline ?? "").replace(/ Bow$/, "");
+      return mapGoldenRecordsBowClassToOutdoorBowType(name === "Bare" ? "Barebow" : name === "Long" ? "Longbow" : name);
+    }).filter(Boolean));
+    const evidence = mapIndoorEvidence(goldenRecordsSnapshot, memberId,
+      mapGoldenRecordsBowClassToOutdoorBowType, allowedBowTypes);
     const handicaps = (goldenRecordsSnapshot?.handicaps ?? []).filter((entry) =>
       normalizeGoldenRecordsHandicapType(entry.type) === "indoor" &&
       Number.isInteger(entry.handicap) && entry.handicap >= 0 && entry.handicap <= 150 &&
-      (!memberId || String(entry.memberId ?? "").trim() === memberId));
-    if (!handicaps.length) return { createdCount: 0, updatedCount: 0, syncedCount: 0 };
-    const seasonYear = new Date().getUTCFullYear();
+      String(entry.memberId ?? "").trim() === memberId);
+    const seasonYear = indoorSeasonYear(new Date().toISOString());
     const existing = new Map((existingRows ?? await indoorGateway.listEntriesByYear(seasonYear))
       .filter((row) => row.archerUsername?.toLowerCase() === user.username.toLowerCase())
       .map((row) => [row.bowType, row]));
@@ -720,26 +725,44 @@ export function createGoldenRecordsMemberSyncService({
     const newestByBow = new Map();
     for (const handicap of handicaps) {
       const bowType = mapGoldenRecordsBowClassToOutdoorBowType(handicap.bowClass);
-      if (!bowType) continue;
+      if (!bowType || !allowedBowTypes.has(bowType)) continue;
       const previous = newestByBow.get(bowType);
       if (!previous || String(handicap.achieved ?? handicap.updated ?? "") >
         String(previous.achieved ?? previous.updated ?? "")) newestByBow.set(bowType, handicap);
     }
-    for (const handicap of newestByBow.values()) {
-      const bowType = mapGoldenRecordsBowClassToOutdoorBowType(handicap.bowClass);
-      if (!bowType || !disciplines.includes(mapGoldenRecordsBowClassToDiscipline(handicap.bowClass))) continue;
+    const targetBowTypes = new Set([...newestByBow.keys(),
+      ...[...evidence.bySeason.values()].filter((group) => group.seasonYear === seasonYear).map((group) => group.bowType)]);
+    for (const bowType of targetBowTypes) {
+      const handicap = newestByBow.get(bowType);
+      const group = evidence.bySeason.get(`${seasonYear}:${bowType}`);
       const current = existing.get(bowType);
       if (current) {
         if (createMissingOnly) continue;
-        if (current.handicap === handicap.handicap) continue;
-        await indoorGateway.updateEntry({ ...current, handicap: handicap.handicap,
-          updatedAtDate: date, updatedAtTime: time, updatedByUsername });
+        const classifications = { ...current.classifications };
+        const scores = { ...current.scores };
+        let addedDate = false;
+        for (const [key, value] of Object.entries(group?.classifications ?? {})) {
+          if (!classifications[key]) { classifications[key] = value; addedDate = true; }
+        }
+        for (const [key, value] of Object.entries(group?.scores ?? {})) {
+          if (!scores[key]) { scores[key] = value; addedDate = true; }
+        }
+        // Manual profile edits are signed by another member; retain their handicap.
+        const manualEditor = current.updatedByUsername &&
+          ![user.username.toLowerCase(), "scheduler"].includes(current.updatedByUsername.toLowerCase());
+        const canUpdateHandicap = !manualEditor || current.handicap == null;
+        const nextHandicap = canUpdateHandicap ? (handicap?.handicap ?? current.handicap) : current.handicap;
+        if (current.handicap === nextHandicap && !addedDate) continue;
+        await indoorGateway.updateEntry({ ...current, handicap: nextHandicap, classifications, scores,
+          updatedAtDate: date, updatedAtTime: time,
+          updatedByUsername: manualEditor ? current.updatedByUsername : null });
         updatedCount += 1;
       } else {
         const payload = { seasonYear, archerUsername: user.username,
-          bowType, handicap: handicap.handicap, classifications: {}, scores: {},
+          bowType, handicap: handicap?.handicap ?? null,
+          classifications: { ...group?.classifications }, scores: { ...group?.scores },
           createdAtDate: date, createdAtTime: time, updatedAtDate: date, updatedAtTime: time,
-          updatedByUsername };
+          updatedByUsername: null };
         const created = createMissingOnly
           ? await indoorGateway.createEntryIfAbsent(payload)
           : await indoorGateway.createEntry(payload);
@@ -757,7 +780,7 @@ export function createGoldenRecordsMemberSyncService({
     const [stored, users, existingRows] = await Promise.all([
       goldenRecordsSyncGateway.listStoredSnapshots(),
       memberDirectoryGateway.listAllUsers(),
-      indoorTableGateway.listEntriesByYear(new Date().getUTCFullYear()),
+      indoorTableGateway.listEntriesByYear(indoorSeasonYear(new Date().toISOString())),
     ]);
     const usersByName = new Map(users.map((user) => [user.username.toLowerCase(), user]));
     let createdCount = 0;
@@ -776,6 +799,57 @@ export function createGoldenRecordsMemberSyncService({
       createdCount += result.createdCount;
     }
     return createdCount;
+  }
+
+  async function previewIndoorHistoricalBackfill() {
+    const [stored, users, availableYears] = await Promise.all([
+      goldenRecordsSyncGateway.listStoredSnapshots(), memberDirectoryGateway.listAllUsers(),
+      indoorTableGateway.listAvailableYears(),
+    ]);
+    const usersByName = new Map(users.map((user) => [user.username.toLowerCase(), user]));
+    const rowsByYear = new Map();
+    const plan = { source: "stored-snapshots", inserts: [], updates: [], skipped: [], unmapped: [] };
+    for (const { username, snapshot } of stored) {
+      const user = usersByName.get(username.toLowerCase());
+      if (!user || !snapshot?.enabled || snapshot.error || !snapshot.matchedMemberId ||
+        ["ambiguous", "not-found", "disabled"].includes(snapshot.matchSource)) {
+        plan.skipped.push({ username, reason: "No uniquely matched, complete stored snapshot" });
+        continue;
+      }
+      const disciplines = (await memberDirectoryGateway.findDisciplinesByUsername(user.username))
+        .map((row) => row.discipline);
+      const allowedBowTypes = new Set(disciplines.map((discipline) => {
+        const name = discipline.replace(/ Bow$/, "");
+        return mapGoldenRecordsBowClassToOutdoorBowType(name === "Bare" ? "Barebow" : name === "Long" ? "Longbow" : name);
+      }).filter(Boolean));
+      const evidence = mapIndoorEvidence(snapshot, snapshot.matchedMemberId,
+        mapGoldenRecordsBowClassToOutdoorBowType, allowedBowTypes);
+      for (const row of evidence.unmapped) plan.unmapped.push({ username, ...row });
+      if (evidence.bySeason.size === 0) {
+        plan.skipped.push({ username, reason: "No mapped, dated indoor achievements" });
+      }
+      for (const group of evidence.bySeason.values()) {
+        if (!rowsByYear.has(group.seasonYear)) {
+          rowsByYear.set(group.seasonYear,
+            availableYears.includes(group.seasonYear)
+              ? await indoorTableGateway.listEntriesByYear(group.seasonYear) : []);
+        }
+        const existing = rowsByYear.get(group.seasonYear).find((row) =>
+          row.archerUsername.toLowerCase() === username.toLowerCase() && row.bowType === group.bowType);
+        const fields = {
+          classifications: Object.fromEntries(Object.entries(group.classifications)
+            .filter(([key]) => !existing?.classifications?.[key])),
+          scores: Object.fromEntries(Object.entries(group.scores)
+            .filter(([key]) => !existing?.scores?.[key])),
+        };
+        const record = { username, seasonYear: group.seasonYear, bowType: group.bowType, ...fields };
+        if (!existing) plan.inserts.push(record);
+        else if (Object.keys(fields.classifications).length || Object.keys(fields.scores).length) plan.updates.push(record);
+        else plan.skipped.push({ username, seasonYear: group.seasonYear, bowType: group.bowType,
+          reason: "All verified dates already present or manually recorded" });
+      }
+    }
+    return plan;
   }
 
   async function syncDistanceSignOffsFromGoldenRecords({
@@ -928,6 +1002,8 @@ export function createGoldenRecordsMemberSyncService({
     return {
       createdCount: outdoorSyncSummary.createdCount + indoorSyncSummary.createdCount,
       goldenRecords: snapshot,
+      indoorChangeCount: indoorSyncSummary.syncedCount,
+      outdoorChangeCount: outdoorSyncSummary.syncedCount,
       signOffError,
       signOffCount: signOffSummary.replacedCount,
       syncedCount: outdoorSyncSummary.syncedCount + indoorSyncSummary.syncedCount,
@@ -1003,6 +1079,8 @@ export function createGoldenRecordsMemberSyncService({
     return {
       createdCount: outdoorSummary.createdCount + indoorSummary.createdCount,
       goldenRecords: snapshot,
+      indoorChangeCount: indoorSummary.syncedCount,
+      outdoorChangeCount: outdoorSummary.syncedCount,
       signOffCount: signOffSummary.replacedCount,
       syncedCount: outdoorSummary.syncedCount + indoorSummary.syncedCount,
       updatedCount: outdoorSummary.updatedCount + indoorSummary.updatedCount,
@@ -1025,6 +1103,8 @@ export function createGoldenRecordsMemberSyncService({
       achievementCount: 0,
       attemptedCount: 0,
       syncedCount: 0,
+      indoorChangeCount: 0,
+      outdoorChangeCount: 0,
       errorCount: 0,
       errors: [],
     };
@@ -1045,6 +1125,8 @@ export function createGoldenRecordsMemberSyncService({
         if (result.goldenRecords.matchedMemberId) {
           summary.matchedCount += 1;
           summary.syncedCount += 1;
+          summary.indoorChangeCount += result.indoorChangeCount ?? 0;
+          summary.outdoorChangeCount += result.outdoorChangeCount ?? 0;
           summary.achievementCount += result.goldenRecords.achievements.length;
         } else {
           summary.unmatchedCount += 1;
@@ -1085,6 +1167,7 @@ export function createGoldenRecordsMemberSyncService({
     assignMemberMatch,
     getStoredSnapshotForUser,
     backfillIndoorTableFromStoredSnapshots,
+    previewIndoorHistoricalBackfill,
     syncAllMembers,
     syncMember,
   };

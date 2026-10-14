@@ -19,6 +19,7 @@ test("manual member fetch accepts member-specific JSON null as no classification
         ],
         "/api/achievements": [{ member_id: "gr-j", achievement: "Archer 3rd", bow_class: "Recurve" }],
         "/api/currentclassifications": null,
+        "/api/classifications": null,
       }[url.pathname];
       return { ok: true, status: 200, text: async () => JSON.stringify(body) };
     };
@@ -29,7 +30,7 @@ test("manual member fetch accepts member-specific JSON null as no classification
     assert.equal(snapshot.handicaps.length, 1);
     assert.equal(snapshot.achievements.length, 1);
     assert.deepEqual(snapshot.classifications, []);
-    assert.deepEqual(paths, ["/api/members", "/api/currenthandicaps", "/api/achievements", "/api/currentclassifications"]);
+    assert.deepEqual(paths, ["/api/members", "/api/currenthandicaps", "/api/achievements", "/api/currentclassifications", "/api/classifications"]);
   } finally { globalThis.fetch = originalFetch; globalThis.setTimeout = originalSetTimeout; }
 });
 
@@ -44,12 +45,17 @@ test("manual member fetch loads classifications when the API returns an array", 
         ? [{ member_id: "gr-j", name: "J Geldeart" }]
         : path === "/api/currentclassifications"
           ? [{ member_id: "gr-j", classification: "Bowman 3rd", type: "Outdoor", bow_class: "Recurve" }]
+          : path === "/api/classifications"
+            ? [{ member_id: "gr-j", classification: "Indoor Archer 2nd Class", type: "Indoor", bow_class: "Compound", achieved: "2025-11-01", season_id: "season-2025" },
+              { member_id: "other", classification: "Indoor MB", type: "Indoor", bow_class: "Recurve", achieved: "2025-11-01" }]
           : [];
       return { ok: true, status: 200, text: async () => JSON.stringify(rows) };
     };
     const service = createGoldenRecordsCurrentHandicapService({ apiKey: "test-key", baseUrl: "https://api2.archery-records.net" });
     const snapshot = await service.getSnapshotForMemberById("gr-j");
     assert.equal(snapshot.classifications[0].classification, "Bowman 3rd");
+    assert.equal(snapshot.indoorClassifications.length, 1);
+    assert.equal(snapshot.indoorClassifications[0].seasonId, "season-2025");
   } finally { globalThis.fetch = originalFetch; globalThis.setTimeout = originalSetTimeout; }
 });
 
@@ -110,6 +116,10 @@ test("Golden Records achievements pagination continues until a partial page is r
           statusText: "OK",
           text: async () => JSON.stringify([]),
         };
+      }
+
+      if (url.pathname === "/api/classifications") {
+        return { ok: true, status: 200, statusText: "OK", text: async () => JSON.stringify([]) };
       }
 
       if (url.pathname === "/api/achievements") {

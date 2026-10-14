@@ -1800,12 +1800,12 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    serverEventBus?.broadcastToAll("outdoor-table.updated", {
+    if (syncSummary.outdoorChangeCount > 0) serverEventBus?.broadcastToAll("outdoor-table.updated", {
       changedAt: new Date().toISOString(),
       scope: "golden-records-sync",
       username: user.username,
     });
-    serverEventBus?.broadcastToAll("indoor-table.updated", {
+    if (syncSummary.indoorChangeCount > 0) serverEventBus?.broadcastToAll("indoor-table.updated", {
       changedAt: new Date().toISOString(), scope: "golden-records-sync", username: user.username,
     });
     const [refreshedAtDate, refreshedAtTime] = getUtcTimestampParts();
@@ -1958,6 +1958,19 @@ export function registerAdminMemberRoutes({
     });
   });
 
+  app.get("/api/golden-records/indoor-backfill-preview", async (req, res) => {
+    const actor = getActorUser(req);
+    if (!actor) return res.status(401).json({ success: false, message: "An authenticated member is required." });
+    if (!canAccessGoldenRecordsAdmin(actor)) return res.status(403).json({ success: false, message: "Admin access is required." });
+    if (syncNodeMode === "local-pi") return res.status(409).json({ success: false, message: "Run this preview on the cloud server." });
+    try {
+      const plan = await goldenRecordsMemberSyncService.previewIndoorHistoricalBackfill();
+      return res.json({ success: true, plan });
+    } catch (error) {
+      return res.status(502).json({ success: false, message: error instanceof Error ? error.message : "Indoor backfill preview failed." });
+    }
+  });
+
   app.get("/api/golden-records/health", async (req, res) => {
     const actor = getActorUser(req);
 
@@ -2099,12 +2112,12 @@ export function registerAdminMemberRoutes({
       return;
     }
 
-    serverEventBus?.broadcastToAll("outdoor-table.updated", {
+    if (syncSummary.outdoorChangeCount > 0) serverEventBus?.broadcastToAll("outdoor-table.updated", {
       changedAt: new Date().toISOString(),
       scope: "golden-records-match-assigned",
       username: user.username,
     });
-    serverEventBus?.broadcastToAll("indoor-table.updated", {
+    if (syncSummary.indoorChangeCount > 0) serverEventBus?.broadcastToAll("indoor-table.updated", {
       changedAt: new Date().toISOString(), scope: "golden-records-match-assigned", username: user.username,
     });
     broadcastMembersUpdated("members.golden-records-match-assigned", user.username);

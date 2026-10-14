@@ -725,7 +725,7 @@ export function BeginnersAndTasterReportingPage({
                       <p>Step-by-step movement from taster attendee to member.</p>
                     </div>
                     <div className="reporting-table-wrap">
-                      <table className="committee-roles-table reporting-table reporting-table--compact">
+                      <table className="committee-roles-table reporting-table reporting-table--compact reporting-table--conversion-funnel">
                         <thead>
                           <tr>
                             <th>Stage</th>
@@ -754,7 +754,7 @@ export function BeginnersAndTasterReportingPage({
                       <p>People who joined a Beginners Course without a taster route.</p>
                     </div>
                     <div className="reporting-table-wrap">
-                      <table className="committee-roles-table reporting-table reporting-table--compact">
+                      <table className="committee-roles-table reporting-table reporting-table--compact reporting-table--conversion-funnel">
                         <thead>
                           <tr>
                             <th>Stage</th>
@@ -785,7 +785,7 @@ export function BeginnersAndTasterReportingPage({
                       <p>All Beginners Course attendees, combining direct and taster-fed routes.</p>
                     </div>
                     <div className="reporting-table-wrap">
-                      <table className="committee-roles-table reporting-table reporting-table--compact">
+                      <table className="committee-roles-table reporting-table reporting-table--compact reporting-table--combined-funnel">
                         <thead>
                           <tr>
                             <th>Stage</th>
@@ -812,7 +812,7 @@ export function BeginnersAndTasterReportingPage({
                       <p>See which Beginners route is producing the stronger member conversion.</p>
                     </div>
                     <div className="reporting-table-wrap">
-                      <table className="committee-roles-table reporting-table reporting-table--compact">
+                      <table className="committee-roles-table reporting-table reporting-table--compact reporting-table--route-comparison">
                         <thead>
                           <tr>
                             <th>Route</th>

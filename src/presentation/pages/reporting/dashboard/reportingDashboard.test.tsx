@@ -18,6 +18,7 @@ test("chart renders all categories as keyboard/touch-accessible text, including 
   assert.equal((html.match(/aria-pressed="false"/g) ?? []).length, 3);
   assert.match(html, /aria-describedby=/);
   assert.match(html, /not unique people or range visits/);
+  assert.match(html, /Mobile includes phone sign-ins and on-site check-ins/);
 });
 
 test("zero totals show the empty state and retain all textual categories", () => {

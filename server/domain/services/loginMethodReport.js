@@ -1,9 +1,5 @@
 const PERIODS = { "7d": 7, "30d": 30, "90d": 90 };
-const METHODS = [
-  { method: "rfid", label: "RFID", values: ["rfid"] },
-  { method: "mobile", label: "Mobile", values: ["mobile-app"] },
-  { method: "website", label: "Website", values: ["password", "password-mobile"] },
-];
+import { LOGIN_METHOD_GROUPS } from "../../../shared/loginActivity.js";
 
 export function resolveDashboardPeriod(period = "30d", now = new Date()) {
   if (![...Object.keys(PERIODS), "year", "all"].includes(period)) {
@@ -25,13 +21,14 @@ export function resolveDashboardPeriod(period = "30d", now = new Date()) {
 
 export function buildLoginMethodReport(rows, period) {
   const counts = new Map(rows.map((row) => [row.login_method, Number(row.count)]));
-  const methods = METHODS.map(({ method, label, values }) => ({
+  const methods = LOGIN_METHOD_GROUPS.map(({ method, label, values }) => ({
     method, label, count: values.reduce((sum, value) => sum + (counts.get(value) ?? 0), 0),
   }));
+  const knownValues = new Set(LOGIN_METHOD_GROUPS.flatMap(({ values }) => values));
+  const otherCount = rows.reduce((sum, row) => sum + (knownValues.has(row.login_method) ? 0 : Number(row.count)), 0);
+  if (otherCount > 0) methods.push({ method: "other", label: "Other", count: otherCount });
   const total = methods.reduce((sum, entry) => sum + entry.count, 0);
-  const knownValues = new Set(METHODS.flatMap(({ values }) => values));
-  const excludedOtherCount = rows.reduce((sum, row) => sum + (knownValues.has(row.login_method) ? 0 : Number(row.count)), 0);
-  return { period, total, excludedOtherCount, methods: methods.map((entry) => ({
+  return { period, total, excludedOtherCount: 0, methods: methods.map((entry) => ({
     ...entry, percentage: total === 0 ? 0 : Math.round(entry.count / total * 10000) / 100,
   })) };
 }

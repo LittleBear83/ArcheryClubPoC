@@ -233,7 +233,7 @@ export function createSqliteReportingStatements(db) {
   const listReportingMemberLogins = db.prepare(`
     SELECT
       login_events.id,
-      users.username,
+      COALESCE(users.username, login_events.username) AS username,
       users.first_name,
       users.surname,
       users.membership_status,
@@ -243,9 +243,9 @@ export function createSqliteReportingStatements(db) {
       login_events.logged_in_date,
       login_events.logged_in_time
     FROM login_events
-    INNER JOIN users
+    LEFT JOIN users
       ON users.id = login_events.user_id
-    INNER JOIN user_types
+    LEFT JOIN user_types
       ON user_types.user_id = users.id
     WHERE login_events.logged_in_date || 'T' || login_events.logged_in_time >= ?
       AND login_events.logged_in_date || 'T' || login_events.logged_in_time < ?

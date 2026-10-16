@@ -8,6 +8,7 @@ import { formatShortDateTime } from "../../utils/dateTime";
 import { hasPermission } from "../../utils/userProfile";
 import { useIsMobile } from "../hooks/useIsMobile";
 import type { UserProfile } from "../../types/app";
+import { loginMethodGroup } from "../../../shared/loginActivity.js";
 
 type AuditLogPageProps = {
   currentUserProfile: UserProfile | null;
@@ -85,6 +86,8 @@ function formatAuditAction(event: AuditEventRecord) {
       if (activityType === "login_failed") {
         return method === "rfid"
           ? "failed rfid sign-in"
+          : method === "password-mobile"
+            ? "failed mobile sign-in"
           : "failed member sign-in";
       }
     }
@@ -224,32 +227,26 @@ function getActivitySourceLabel(metadata: EntityChangeAuditMetadata) {
   const activityType = changes.find((change) => change.path === "activityType")?.after;
   const method = changes.find((change) => change.path === "method")?.after;
 
-  if (activityType === "login_failed" && method === "rfid") {
+  const source = loginMethodGroup(method);
+
+  if (activityType === "login_failed" && source === "rfid") {
     return "Source: RFID";
   }
 
-  if (activityType === "login_failed" && method === "password") {
-    return "Source: Website";
-  }
-
-  if (activityType === "mobile_check_in" || method === "mobile-app") {
+  if (source === "mobile") {
     return "Source: Mobile";
   }
 
-  if (method === "rfid") {
+  if (source === "rfid") {
     const machine = getActivityChangeValue(metadata, "sourceMachineId");
     return typeof machine === "string" && machine ? `Source: RFID · ${machine}` : "Source: RFID";
   }
 
-  if (method === "password-mobile") {
-    return "Source: Mobile";
-  }
-
-  if (method === "password") {
+  if (source === "website") {
     return "Source: Website";
   }
 
-  return "";
+  return typeof method === "string" && method ? "Source: Other" : "";
 }
 
 function getActivityChangeValue(
@@ -786,6 +783,7 @@ export function AuditLogPage({ currentUserProfile }: AuditLogPageProps) {
   return (
     <div className="range-usage-dashboard audit-log-page">
       <p className="range-usage-title">Audit Log</p>
+      <p className="reporting-table-note">Audit shows actions, including failed attempts, and displays at most 250 recent records. Dates are UTC. For complete successful access totals, use Reporting or its Dashboard with matching dates.</p>
 
       <section className="usage-filter-panel audit-log-filter-panel">
         <div className="audit-log-filter-header">

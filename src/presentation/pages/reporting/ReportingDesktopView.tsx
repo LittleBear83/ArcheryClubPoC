@@ -145,6 +145,7 @@ export function ReportingDesktopView({
   return (
     <div className="range-usage-dashboard reporting-page">
       <p className="range-usage-title">Reporting</p>
+      <p className="reporting-table-note">Access event totals include every successful member sign-in and on-site check-in, plus guest sign-ins. Match the Dashboard by selecting the same UTC dates and comparing member events; range visits use a separate two-hour rule.</p>
 
       <section className="usage-filter-panel reporting-filter-panel">
         <form className="usage-filter-form reporting-filter-form">
@@ -225,7 +226,7 @@ export function ReportingDesktopView({
               <p className="usage-card-range">{rangeLabel}</p>
               <div className="usage-card-stats">
                 <div>
-                  <span className="usage-stat-label">Member logins</span>
+                  <span className="usage-stat-label">Member access events</span>
                   <strong>{data.members}</strong>
                 </div>
                 <div>
@@ -233,7 +234,7 @@ export function ReportingDesktopView({
                   <strong>{data.guests}</strong>
                 </div>
                 <div>
-                  <span className="usage-stat-label">Total logins</span>
+                  <span className="usage-stat-label">Total access events</span>
                   <strong>{data.total}</strong>
                 </div>
               </div>

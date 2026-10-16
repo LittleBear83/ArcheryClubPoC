@@ -40,7 +40,8 @@ test("successful manual selection broadcasts profile and outdoor invalidation af
   const h = createHarness(async (user, options) => {
     calls.push({ user, options });
     return { goldenRecords: { enabled: true, matchedMemberId: "gr-selected" },
-      createdCount: 1, updatedCount: 0, syncedCount: 1, signOffCount: 1 };
+      createdCount: 1, updatedCount: 0, syncedCount: 1,
+      outdoorChangeCount: 1, indoorChangeCount: 0, signOffCount: 1 };
   });
   const response = await h.invoke();
   assert.equal(response.statusCode, 200);
@@ -48,6 +49,7 @@ test("successful manual selection broadcasts profile and outdoor invalidation af
   assert.equal(calls[0].options.goldenRecordsId, "gr-selected");
   assert.equal(calls[0].options.updatedByUsername, "admin");
   assert.ok(h.events.includes("outdoor-table.updated"));
+  assert.ok(!h.events.includes("indoor-table.updated"));
   assert.ok(h.events.includes("members.updated"));
 });
 

@@ -15,14 +15,14 @@ export function LoginMethodChartCard({ report, periodLabel }: { report: LoginMet
     background: { paper: theme.variables["--bg-elevated"] },
     text: { primary: theme.variables["--text"], secondary: theme.variables["--text-muted"] },
   } }), [theme]);
-  const colors = [theme.variables["--accent"], theme.variables["--info"], theme.variables["--success"]];
+  const colors = [theme.variables["--accent"], theme.variables["--info"], theme.variables["--success"], theme.variables["--text-muted"]];
   const describe = (index: number) => {
     const method = report.methods[index];
     return `${method.label}: ${method.count.toLocaleString("en-GB")} · ${method.percentage.toLocaleString("en-GB", { maximumFractionDigits: 2 })}% of displayed total`;
   };
 
   return <DashboardCard title="Member login methods" periodLabel={periodLabel}>
-    <p id={descriptionId} className="reporting-dashboard-caption">Successful access events, not unique people or range visits. Website includes password logins from phones.</p>
+    <p id={descriptionId} className="reporting-dashboard-caption">Successful member access events, not unique people or range visits. Mobile includes phone sign-ins and on-site check-ins; Website is desktop password sign-ins.</p>
     <div className="login-method-visual">
       <div className="login-method-chart">
         {report.total === 0 ? <p className="usage-empty-state" role="status">No recorded login activity for this period.</p> : <ThemeProvider theme={muiTheme}>
@@ -51,6 +51,5 @@ export function LoginMethodChartCard({ report, periodLabel }: { report: LoginMet
       </ul>
     </div>
     <p className="reporting-dashboard-caption" aria-live="polite">{selected === null ? report.total === 0 ? "Select a category to inspect its values." : "Hover a slice, or tap a slice or category to inspect its values." : describe(selected)}</p>
-    {report.excludedOtherCount > 0 ? <p className="reporting-dashboard-caption">{report.excludedOtherCount.toLocaleString("en-GB")} legacy/other method events are excluded from this total and its percentages.</p> : null}
   </DashboardCard>;
 }

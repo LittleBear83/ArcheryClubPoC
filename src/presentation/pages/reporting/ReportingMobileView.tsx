@@ -65,6 +65,7 @@ export function ReportingMobileView({
   return (
     <div className="range-usage-dashboard reporting-page reporting-page--mobile">
       <p className="range-usage-title">Reporting</p>
+      <p className="reporting-table-note">Member access events include sign-ins and on-site check-ins. Match Dashboard totals using the same UTC dates; range visits use a two-hour rule.</p>
 
       <section className="usage-filter-panel reporting-filter-panel reporting-filter-panel--mobile">
         <form className="usage-filter-form reporting-filter-form reporting-filter-form--mobile">
@@ -150,7 +151,7 @@ export function ReportingMobileView({
               <p className="usage-card-range">{rangeLabel}</p>
               <div className="usage-card-stats">
                 <div>
-                  <span className="usage-stat-label">Member logins</span>
+                  <span className="usage-stat-label">Member access events</span>
                   <strong>{data.members}</strong>
                 </div>
                 <div>
@@ -158,7 +159,7 @@ export function ReportingMobileView({
                   <strong>{data.guests}</strong>
                 </div>
                 <div>
-                  <span className="usage-stat-label">Total logins</span>
+                  <span className="usage-stat-label">Total access events</span>
                   <strong>{data.total}</strong>
                 </div>
               </div>

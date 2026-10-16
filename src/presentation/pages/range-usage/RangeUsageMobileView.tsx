@@ -30,6 +30,7 @@ export function RangeUsageMobileView({
   return (
     <div className="range-usage-dashboard range-usage-dashboard--mobile">
       <p className="range-usage-title">Range Usage Dashboard</p>
+      <p className="reporting-table-note">Range visits from RFID and on-site mobile check-ins, grouped into two-hour visits. Password sign-ins do not record a range visit. Dates are UTC.</p>
 
       <form className="usage-filter-form usage-filter-panel range-usage-filter-form--mobile">
         <label>

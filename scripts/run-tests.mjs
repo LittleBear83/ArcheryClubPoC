@@ -5,6 +5,7 @@ import ts from "typescript";
 
 const root = process.cwd();
 await import("../server/domain/services/loginMethodReport.test.js");
+await import("../src/presentation/pages/achievementTableSelection.test.js");
 await import("../server/presentation/http/tournamentTemplateCapability.test.js");
 await import("../server/presentation/http/tournamentRegistration.test.js");
 await import("../server/presentation/http/registerTournamentRoutes.templateUpdate.test.js");

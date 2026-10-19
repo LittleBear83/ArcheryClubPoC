@@ -10371,6 +10371,7 @@ button:disabled {
   position: sticky;
   top: 0;
   z-index: 2;
+  background: var(--input-option-bg);
 }
 
 .outdoor-table-matrix th,

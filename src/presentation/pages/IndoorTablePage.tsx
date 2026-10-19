@@ -3,13 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { currentIndoorSeasonYear, listIndoorTable, INDOOR_CLASSIFICATION_COLUMNS, INDOOR_SCORE_COLUMNS } from "../../api/indoorTableApi";
 import { SectionPanel } from "../components/SectionPanel";
 import type { UserProfile } from "../../types/app";
+import { useAchievementRowSelection } from "./achievementTableSelection";
 
 export function IndoorTablePage({ currentUserProfile }: { currentUserProfile: UserProfile | null }) {
   const year = currentIndoorSeasonYear();
+  const actorUsername = currentUserProfile?.auth?.username ?? "";
+  const rowSelectionProps = useAchievementRowSelection(actorUsername);
   const [sort, setSort] = useState<"name" | "bow">("name");
   const [descending, setDescending] = useState(false);
-  const query = useQuery({ queryKey: ["indoor-table", year, currentUserProfile?.auth?.username],
-    queryFn: () => listIndoorTable(currentUserProfile, year), enabled: Boolean(currentUserProfile?.auth?.username) });
+  const query = useQuery({ queryKey: ["indoor-table", year, actorUsername],
+    queryFn: () => listIndoorTable(currentUserProfile, year), enabled: Boolean(actorUsername) });
   const rows = useMemo(() => [...(query.data?.rows ?? [])].sort((a, b) => {
     const left = sort === "name" ? `${a.archerSurname} ${a.archerFirstName}` : a.bowType;
     const right = sort === "name" ? `${b.archerSurname} ${b.archerFirstName}` : b.bowType;
@@ -24,7 +27,7 @@ export function IndoorTablePage({ currentUserProfile }: { currentUserProfile: Us
         : rows.length === 0 ? <p>No indoor table rows have been added for {year} yet.</p> : <>
           <p className="outdoor-table-scroll-hint">Scroll sideways to view the full table on smaller screens.</p>
           <div className="outdoor-table-scroll">
-            <table className="outdoor-table-matrix indoor-table-matrix">
+            <table className="outdoor-table-matrix indoor-table-matrix" role="grid" aria-multiselectable="true" aria-label={`Indoor achievement table ${year}`}>
               <thead><tr>
                 <th className="outdoor-table-title-cell" colSpan={3}>Indoor Table {year}</th>
                 <th className="outdoor-table-legend-cell" colSpan={INDOOR_CLASSIFICATION_COLUMNS.length}>Indoor Classifications</th>
@@ -36,7 +39,7 @@ export function IndoorTablePage({ currentUserProfile }: { currentUserProfile: Us
                 {INDOOR_CLASSIFICATION_COLUMNS.map((column) => <th key={column.key} className={`outdoor-table-head outdoor-table-head--vertical outdoor-table-head--${column.key.startsWith("archer") ? "archer" : column.key.startsWith("bowman") ? "bowman" : "master"}`}><span>{column.label}</span></th>)}
                 {INDOOR_SCORE_COLUMNS.map((score) => <th key={score} className="outdoor-table-head outdoor-table-head--distance">{score}</th>)}
               </tr></thead><tbody>
-                {rows.map((row) => <tr key={row.id} className="outdoor-table-row">
+                {rows.map((row) => <tr key={row.id} {...rowSelectionProps(row)}>
                   <td>{row.archerName}</td><td>{row.bowType}</td><td>{row.handicap ?? ""}</td>
                   {INDOOR_CLASSIFICATION_COLUMNS.map((column) => <td key={column.key} title={row.classifications[column.key] || undefined} className={`outdoor-table-mark outdoor-table-mark--${column.key.startsWith("archer") ? "archer" : column.key.startsWith("bowman") ? "bowman" : "master"} ${row.classifications[column.key] ? "is-active" : ""}`}>{row.classifications[column.key] ? "✓" : ""}</td>)}
                   {INDOOR_SCORE_COLUMNS.map((score) => <td key={score} title={row.scores[String(score)] || undefined} className={`outdoor-table-mark outdoor-table-mark--252 ${row.scores[String(score)] ? "is-active" : ""}`}>{row.scores[String(score)] ? "✓" : ""}</td>)}

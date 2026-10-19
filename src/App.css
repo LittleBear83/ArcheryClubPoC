@@ -10349,7 +10349,8 @@ button:disabled {
   width: 100%;
   min-width: 0;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: auto;
+  max-height: min(75vh, 48rem);
   padding-bottom: 0.5rem;
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
@@ -10364,6 +10365,12 @@ button:disabled {
   table-layout: fixed;
   background: var(--input-option-bg);
   color: var(--input-option-text);
+}
+
+.outdoor-table-matrix thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .outdoor-table-matrix th,
@@ -10504,6 +10511,15 @@ button:disabled {
 }
 
 .outdoor-table-row.is-selected {
+  outline: 2px solid var(--accent-border);
+  outline-offset: -2px;
+}
+
+.outdoor-table-row.is-selected td:not(.outdoor-table-mark) {
+  background-color: color-mix(in srgb, var(--accent) 9%, #fff);
+}
+
+.outdoor-table-row:focus-visible {
   outline: 3px solid var(--accent-border);
   outline-offset: -3px;
 }
@@ -10515,7 +10531,7 @@ button:disabled {
 }
 
 .outdoor-table-row td {
-  cursor: default;
+  cursor: pointer;
   border-color: #aaa;
 }
 

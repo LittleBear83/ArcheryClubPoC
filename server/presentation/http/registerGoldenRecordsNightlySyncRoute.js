@@ -12,14 +12,29 @@ export function registerGoldenRecordsNightlySyncRoute({
     // This route must be enabled only on a private Cloud Run service. IAM verifies
     // the OIDC token before the request reaches this application.
     if (!enabled) return res.status(404).json({ success: false });
-    if (!expectedJobName || req.get("X-CloudScheduler-JobName") !== expectedJobName) {
-      return res.status(403).json({ success: false, message: "Unexpected scheduler job." });
+    const jobName = req.get("X-CloudScheduler-JobName");
+    const scheduleTime = req.get("X-CloudScheduler-ScheduleTime");
+    const reject = (reason, message) => {
+      logger.warn?.(JSON.stringify({
+        severity: "WARNING",
+        event: "golden_records.nightly_sync.rejected",
+        reason,
+        jobNameHeaderPresent: Boolean(jobName),
+        scheduleTimeHeaderPresent: Boolean(scheduleTime),
+      }));
+      return res.status(403).json({ success: false, message });
+    };
+
+    if (!expectedJobName || jobName !== expectedJobName) {
+      return reject(!expectedJobName ? "job_name_not_configured" : !jobName ? "job_name_missing" : "job_name_mismatch", "Unexpected scheduler job.");
     }
 
-    const scheduleTime = req.get("X-CloudScheduler-ScheduleTime");
     const scheduledAtMs = Date.parse(scheduleTime ?? "");
-    if (!Number.isFinite(scheduledAtMs) || Math.abs(now() - scheduledAtMs) > 4 * 60 * 60 * 1000) {
-      return res.status(403).json({ success: false, message: "Stale scheduler request." });
+    if (!Number.isFinite(scheduledAtMs)) {
+      return reject(scheduleTime ? "schedule_time_invalid" : "schedule_time_missing", "Invalid scheduler request time.");
+    }
+    if (Math.abs(now() - scheduledAtMs) > 4 * 60 * 60 * 1000) {
+      return reject("schedule_time_out_of_window", "Stale scheduler request.");
     }
     const scheduledDate = getGoldenRecordsNightlyDate(scheduleTime);
     if (!scheduledDate) {

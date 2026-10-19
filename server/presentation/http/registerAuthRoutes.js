@@ -144,6 +144,7 @@ export function registerAuthRoutes({
 
   app.post("/api/auth/login", async (req, res) => {
     const { username, password, deviceType } = req.body ?? {};
+    const loginMethod = deviceType === "mobile" ? "password-mobile" : "password";
 
     if (!username || !password) {
       recordFailedAuthAttempt({
@@ -153,7 +154,7 @@ export function registerAuthRoutes({
           ...(!username ? ["username"] : []),
           ...(!password ? ["password"] : []),
         ],
-        method: "password",
+        method: loginMethod,
         req,
         statusCode: 400,
         target: "/api/auth/login",
@@ -174,7 +175,7 @@ export function registerAuthRoutes({
         attemptedUsername: username,
         failureReason: loginUser ? "password_incorrect" : "username_not_found",
         incorrectFields: [loginUser ? "password" : "username"],
-        method: "password",
+        method: loginMethod,
         req,
         statusCode: 401,
         target: "/api/auth/login",
@@ -192,7 +193,7 @@ export function registerAuthRoutes({
         attemptedUsername: user.username,
         failureReason: "account_inactive",
         incorrectFields: [],
-        method: "password",
+        method: loginMethod,
         req,
         statusCode: 403,
         target: "/api/auth/login",
@@ -213,8 +214,6 @@ export function registerAuthRoutes({
     }
 
     const timestampParts = getUtcTimestampParts();
-    const loginMethod = deviceType === "mobile" ? "password-mobile" : "password";
-
     await memberAuthGateway.recordLoginEvent({
       method: loginMethod,
       timestampParts,

@@ -5,7 +5,7 @@ export type LoginMethodReport = {
   period: { key: DashboardPeriod; startDate: string | null; endDate: string; endDateExclusive: string };
   total: number;
   excludedOtherCount: number;
-  methods: Array<{ method: "rfid" | "mobile" | "website"; label: string; count: number; percentage: number }>;
+  methods: Array<{ method: "rfid" | "mobile" | "website" | "other"; label: string; count: number; percentage: number }>;
 };
 
 export async function getLoginMethodReport(actorUsername: string, period: DashboardPeriod, signal?: AbortSignal) {

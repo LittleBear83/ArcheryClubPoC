@@ -61,6 +61,29 @@ export type GoldenRecordsBowDisciplineImportPlan = {
   }>;
 };
 
+export type GoldenRecordsIndoorBackfillPlan = {
+  source: string;
+  planHash: string;
+  inserts: Array<{ username: string; seasonYear: number; bowType: string; classifications: Record<string, string>; scores: Record<string, string> }>;
+  updates: Array<{ username: string; seasonYear: number; bowType: string; classifications: Record<string, string>; scores: Record<string, string> }>;
+  skipped: Array<{ username: string; seasonYear?: number; bowType?: string; reason: string }>;
+  unmapped: Array<{ username: string; kind: string; label: string; reason: string; count: number }>;
+};
+
+export function previewGoldenRecordsIndoorBackfill(actor: unknown) {
+  return fetchApi<{ success: true; plan: GoldenRecordsIndoorBackfillPlan }>(
+    "/api/golden-records/indoor-backfill-preview",
+    { headers: buildActorHeaders(actor), cache: "no-store" },
+  );
+}
+
+export function applyGoldenRecordsIndoorBackfill(actor: unknown, planHash: string) {
+  return fetchApi<{ success: true; inserted: number; updated: number; message: string }>(
+    "/api/golden-records/indoor-backfill",
+    { method: "POST", headers: buildActorHeaders(actor, true), cache: "no-store", body: JSON.stringify({ planHash }) },
+  );
+}
+
 export async function previewGoldenRecordsBowDisciplineImport(actor: unknown) {
   return fetchApi<{ success: true; plan: GoldenRecordsBowDisciplineImportPlan }>(
     "/api/golden-records/bow-disciplines/import-preview",

@@ -4,13 +4,13 @@ import { MobileActionBar } from "../../components/mobile/MobileActionBar";
 import { MobileCardList } from "../../components/mobile/MobileCardList";
 import { MobileEmptyState } from "../../components/mobile/MobileEmptyState";
 import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
-import { MobileSectionHeader } from "../../components/mobile/MobileSectionHeader";
 import { formatClockTime, formatDate } from "../../../utils/dateTime";
 import type { MemberJourneyReportRow } from "../../../api/reportingApi";
 import { ReportingGraph } from "./ReportingGraph";
 import { MemberRangeAttendanceSection } from "./MemberRangeAttendanceSection";
 import { formatMemberType } from "./reportingUtils";
 import type { useReportingPageState } from "./useReportingPageState";
+import { ProfileAccordion } from "../profile/ProfileAccordion";
 
 type ReportingPageState = ReturnType<typeof useReportingPageState>;
 
@@ -65,6 +65,7 @@ export function ReportingMobileView({
   return (
     <div className="range-usage-dashboard reporting-page reporting-page--mobile">
       <p className="range-usage-title">Reporting</p>
+      <p className="reporting-table-note">Member access events include sign-ins and on-site check-ins. Match Dashboard totals using the same UTC dates; range visits use a two-hour rule.</p>
 
       <section className="usage-filter-panel reporting-filter-panel reporting-filter-panel--mobile">
         <form className="usage-filter-form reporting-filter-form reporting-filter-form--mobile">
@@ -146,12 +147,11 @@ export function ReportingMobileView({
       {data ? (
         <>
           <div className="usage-cards reporting-summary-cards">
-            <div className="usage-card reporting-summary-card">
-              <p className="usage-card-title">Selected Range</p>
+            <ProfileAccordion title="Selected Range" detail={rangeLabel}>
               <p className="usage-card-range">{rangeLabel}</p>
               <div className="usage-card-stats">
                 <div>
-                  <span className="usage-stat-label">Member logins</span>
+                  <span className="usage-stat-label">Member access events</span>
                   <strong>{data.members}</strong>
                 </div>
                 <div>
@@ -163,28 +163,22 @@ export function ReportingMobileView({
                   <strong>{data.guests}</strong>
                 </div>
                 <div>
-                  <span className="usage-stat-label">Total logins</span>
+                  <span className="usage-stat-label">Total access events</span>
                   <strong>{data.total}</strong>
                 </div>
               </div>
-            </div>
-            <div className="usage-card reporting-summary-card">
-              <p className="usage-card-title">Member Type Breakdown</p>
+            </ProfileAccordion>
+            <ProfileAccordion title="Member Type Breakdown">
               <p className="reporting-table-note">Current active profiles, including people with no visits.</p>
               <BreakdownList items={attendanceBreakdown.membershipStatuses} />
-            </div>
-            <div className="usage-card reporting-summary-card">
-              <p className="usage-card-title">Programme Breakdown</p>
+            </ProfileAccordion>
+            <ProfileAccordion title="Programme Breakdown">
               <p className="reporting-table-note">Logins in the selected range.</p>
               <BreakdownList items={attendanceBreakdown.programmeTypes} />
-            </div>
+            </ProfileAccordion>
           </div>
 
-          <section className="usage-hourly-panel reporting-panel">
-            <MobileSectionHeader
-              title="Usage By Date"
-              description={`Fixed day-of-month view across ${rangeLabel}.`}
-            />
+          <ProfileAccordion title="Usage By Date" detail={`Fixed day-of-month view across ${rangeLabel}.`}>
             <div className="usage-graph-legend">
               <span className="usage-legend-item">
                 <span className="usage-legend-swatch usage-graph-members" />
@@ -202,15 +196,9 @@ export function ReportingMobileView({
             <div className="reporting-mobile-graph-wrap">
               <ReportingGraph rows={aggregatedMonthRows} />
             </div>
-          </section>
+          </ProfileAccordion>
 
-          <section className="usage-hourly-panel reporting-panel reporting-journey-panel">
-            <MobileSectionHeader
-              title="New Member Journey Funnel"
-              description={`Participants who started between ${formatDate(
-                memberJourneyData?.startDate ?? startDate,
-              )} and ${formatDate(memberJourneyData?.endDate ?? endDate)}.`}
-            />
+          <ProfileAccordion title="New Member Journey Funnel" detail={`Participants who started between ${formatDate(memberJourneyData?.startDate ?? startDate)} and ${formatDate(memberJourneyData?.endDate ?? endDate)}.`}>
             {isLoadingMemberJourneys && !memberJourneyData ? (
               <p>Loading member journey reporting...</p>
             ) : memberJourneyData?.rows.length === 0 ? (
@@ -274,13 +262,9 @@ export function ReportingMobileView({
                 </MobileCardList>
               </>
             ) : null}
-          </section>
+          </ProfileAccordion>
 
-          <section className="usage-hourly-panel reporting-panel">
-            <MobileSectionHeader
-              title="Report Rows"
-              description={`Showing ${Math.min(data.rows.length, 25)} of ${data.rows.length} row${data.rows.length === 1 ? "" : "s"}.`}
-            />
+          <ProfileAccordion title="Report Rows" detail={`Showing ${Math.min(data.rows.length, 25)} of ${data.rows.length} row${data.rows.length === 1 ? "" : "s"}.`}>
             {data.rows.length > 0 ? (
               <MobileCardList className="reporting-mobile-row-list">
                 {data.rows.slice(0, 25).map((row) => (
@@ -310,7 +294,7 @@ export function ReportingMobileView({
             ) : (
               <MobileEmptyState message="No rows match the selected data." />
             )}
-          </section>
+          </ProfileAccordion>
         </>
       ) : null}
     </div>

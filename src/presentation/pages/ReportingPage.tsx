@@ -5,6 +5,7 @@ import { useReportingPageState } from "./reporting/useReportingPageState";
 import type { UserProfile } from "../../types/app";
 import { ReportingDashboard } from "./reporting/dashboard/ReportingDashboard";
 import "./reporting/dashboard/reportingDashboard.css";
+import { ProfileAccordion } from "./profile/ProfileAccordion";
 
 export function ReportingPage({
   currentUserProfile,
@@ -21,6 +22,10 @@ export function ReportingPage({
   return <>{isMobile
     ? <ReportingMobileView {...reportingPageState} />
     : <ReportingDesktopView {...reportingPageState} />}
-    <ReportingDashboard actorUsername={currentUserProfile?.auth?.username ?? ""} />
+    <div className="reporting-dashboard-accordion">
+      <ProfileAccordion title="Dashboard" detail="Member login methods">
+        <ReportingDashboard actorUsername={currentUserProfile?.auth?.username ?? ""} />
+      </ProfileAccordion>
+    </div>
   </>;
 }

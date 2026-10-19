@@ -1,3 +1,5 @@
+import { completeIndoorScoreAwards, indoorSeasonYear } from "../../domain/services/goldenRecordsIndoorMapping.js";
+
 export const INDOOR_CLASSIFICATIONS = [
   "archer3rd", "archer2nd", "archer1st", "bowman3rd", "bowman2nd", "bowman1st",
   "indoorMasterBowman", "indoorGrandMasterBowman",
@@ -27,7 +29,8 @@ function normalize(body) {
     !archerUsername || archerUsername.length > 64 || !BOW_DISCIPLINES[bowType] ||
     (handicap !== null && (!Number.isInteger(handicap) || handicap < 0 || handicap > 150)) ||
     !classifications || !scores) return null;
-  return { seasonYear, archerUsername, bowType, handicap, classifications, scores };
+  return { seasonYear, archerUsername, bowType, handicap, classifications,
+    scores: completeIndoorScoreAwards(scores, seasonYear) };
 }
 
 export function registerIndoorTableRoutes({ app, actorHasPermission, auditChangeLogger, getActorUser,
@@ -68,8 +71,9 @@ export function registerIndoorTableRoutes({ app, actorHasPermission, auditChange
   app.get("/api/indoor-table", async (req, res) => {
     if (!getActorUser(req)) { res.status(401).json({ success: false, message: "An authenticated member is required." }); return; }
     const year = Number(req.query?.year);
-    const seasonYear = Number.isInteger(year) && year >= 2020 && year <= 2100 ? year : new Date().getUTCFullYear();
-    if (seasonYear === new Date().getUTCFullYear() && syncNodeMode !== "local-pi" &&
+    const currentSeasonYear = indoorSeasonYear(new Date().toISOString());
+    const seasonYear = Number.isInteger(year) && year >= 2020 && year <= 2100 ? year : currentSeasonYear;
+    if (seasonYear === currentSeasonYear && syncNodeMode !== "local-pi" &&
       goldenRecordsMemberSyncService?.backfillIndoorTableFromStoredSnapshots && backfilledYear !== seasonYear) {
       if (!backfillPromise) {
         backfillPromise = goldenRecordsMemberSyncService.backfillIndoorTableFromStoredSnapshots()
@@ -103,6 +107,25 @@ export function registerIndoorTableRoutes({ app, actorHasPermission, auditChange
     if (actor.username.toLowerCase() === payload.archerUsername.toLowerCase()) { res.status(403).json({ success: false, message: "Members cannot sign off their own achievements." }); return; }
     const before = await indoorTableGateway.findEntryById(id);
     if (!before) { res.status(404).json({ success: false, message: "Indoor row not found." }); return; }
+    // A profile may have been opened before the nightly sync. Apply only fields
+    // changed in that draft so a stale save cannot remove newly imported dates.
+    const mergeDates = (incoming, original, stored) => {
+      const merged = { ...stored };
+      for (const [key, value] of Object.entries(incoming)) {
+        if (original && (original[key] ?? "") === value) continue;
+        if (value) merged[key] = value;
+        else if (original && original[key]) delete merged[key];
+      }
+      return merged;
+    };
+    const originalClassifications = normalizeDates(req.body?.originalClassifications, INDOOR_CLASSIFICATIONS);
+    const originalScores = normalizeDates(req.body?.originalScores, INDOOR_SCORES.map(String));
+    if (originalClassifications === null || originalScores === null) {
+      res.status(400).json({ success: false, message: "Invalid original indoor achievement dates." }); return;
+    }
+    payload.classifications = mergeDates(req.body?.classifications ?? {}, req.body?.originalClassifications ? originalClassifications : null, before.classifications);
+    payload.scores = completeIndoorScoreAwards(
+      mergeDates(req.body?.scores ?? {}, req.body?.originalScores ? originalScores : null, before.scores), payload.seasonYear);
     if (!await validMember(payload, res)) return;
     if (await indoorTableGateway.findDuplicate({ ...payload, excludeId: id })) { res.status(409).json({ success: false, message: "This member already has an indoor row for this bow and year." }); return; }
     const [date, time] = getUtcTimestampParts();

@@ -5304,6 +5304,11 @@ button:disabled {
 .reporting-table-wrap {
   width: 100%;
   overflow-x: auto;
+}
+
+.reporting-page .reporting-table-wrap {
+  min-width: 0;
+  overflow-x: hidden;
   scrollbar-gutter: auto;
 }
 
@@ -5616,6 +5621,18 @@ button:disabled {
   white-space: nowrap;
 }
 
+.reporting-page .reporting-table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.reporting-page .reporting-table th,
+.reporting-page .reporting-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding-inline: 8px;
+}
+
 .reporting-table-note {
   margin: 12px 0 0;
   color: var(--muted);
@@ -5661,8 +5678,7 @@ button:disabled {
 }
 
 .member-range-attendance .reporting-table-wrap {
-  overflow-x: visible;
-  scrollbar-gutter: auto;
+  overflow-x: hidden;
 }
 
 .member-range-attendance .reporting-table {
@@ -5764,6 +5780,66 @@ button:disabled {
   padding: 9px 10px;
 }
 
+.beginners-journey-reporting-page .reporting-detail-grid .reporting-table-wrap {
+  overflow-x: visible;
+  scrollbar-gutter: auto;
+}
+
+.beginners-journey-reporting-page .reporting-detail-grid .reporting-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+
+.beginners-journey-reporting-page .reporting-detail-grid .reporting-table th,
+.beginners-journey-reporting-page .reporting-detail-grid .reporting-table td {
+  padding-inline: 6px;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.reporting-table--conversion-funnel th:first-child {
+  width: 47%;
+}
+
+.reporting-table--conversion-funnel th:nth-child(2) {
+  width: 13%;
+}
+
+.reporting-table--conversion-funnel th:nth-child(3) {
+  width: 15%;
+}
+
+.reporting-table--conversion-funnel th:nth-child(4) {
+  width: 25%;
+}
+
+.reporting-table--combined-funnel th:first-child {
+  width: 68%;
+}
+
+.reporting-table--route-comparison th:first-child {
+  width: 49%;
+}
+
+.reporting-table--route-comparison th:nth-child(2) {
+  width: 15%;
+}
+
+.reporting-table--route-comparison th:nth-child(3) {
+  width: 20%;
+}
+
+.reporting-table--route-comparison th:nth-child(4) {
+  width: 16%;
+}
+
+@media (max-width: 1100px) {
+  .beginners-journey-reporting-page .reporting-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .reporting-mobile-flow-list,
 .reporting-mobile-row-list,
 .reporting-mobile-row-card .mobile-card-list {
@@ -5782,6 +5858,37 @@ button:disabled {
   align-content: start;
   gap: 8px;
   padding: 20px;
+}
+
+.reporting-page .profile-accordion,
+.reporting-dashboard-accordion .profile-accordion {
+  min-width: 0;
+}
+
+.reporting-page .profile-accordion-content,
+.reporting-dashboard-accordion .profile-accordion-content {
+  min-width: 0;
+}
+
+.reporting-summary-cards > .profile-accordion {
+  align-self: start;
+}
+
+.reporting-summary-cards > .profile-accordion .profile-accordion-content {
+  display: grid;
+  gap: 8px;
+}
+
+.reporting-summary-cards > .profile-accordion .reporting-table-note {
+  margin: 0;
+}
+
+.reporting-dashboard-accordion {
+  margin-top: 16px;
+}
+
+.reporting-dashboard-accordion .reporting-dashboard {
+  margin: 0;
 }
 
 .reporting-summary-cards .usage-card-title,
@@ -10246,7 +10353,8 @@ button:disabled {
   width: 100%;
   min-width: 0;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: auto;
+  max-height: min(75vh, 48rem);
   padding-bottom: 0.5rem;
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
@@ -10261,6 +10369,12 @@ button:disabled {
   table-layout: fixed;
   background: var(--input-option-bg);
   color: var(--input-option-text);
+}
+
+.outdoor-table-matrix thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .outdoor-table-matrix th,
@@ -10401,6 +10515,15 @@ button:disabled {
 }
 
 .outdoor-table-row.is-selected {
+  outline: 2px solid var(--accent-border);
+  outline-offset: -2px;
+}
+
+.outdoor-table-row.is-selected td:not(.outdoor-table-mark) {
+  background-color: color-mix(in srgb, var(--accent) 9%, #fff);
+}
+
+.outdoor-table-row:focus-visible {
   outline: 3px solid var(--accent-border);
   outline-offset: -3px;
 }
@@ -10412,7 +10535,7 @@ button:disabled {
 }
 
 .outdoor-table-row td {
-  cursor: default;
+  cursor: pointer;
   border-color: #aaa;
 }
 

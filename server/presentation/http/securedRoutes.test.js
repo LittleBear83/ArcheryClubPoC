@@ -705,6 +705,29 @@ test("failed password login audit records an incorrect password attempt", async 
   }
 });
 
+test("failed mobile password login audit retains the mobile method", async () => {
+  const app = express();
+  app.use(express.json());
+  const recordedAuditEvents = [];
+  registerAuthTestRoutes(app, () => null, {
+    auditChangeLogger: { recordEntityChange: async (payload) => recordedAuditEvents.push(payload) },
+    memberAuthGateway: { findUserByCredentials: async () => null },
+    verifyPassword: () => false,
+  });
+  const { baseUrl, server } = await startTestServer(app);
+  try {
+    const response = await requestJson(baseUrl, "/api/auth/login", {
+      body: { username: "unknown-member", password: "wrong", deviceType: "mobile" },
+      method: "POST",
+    });
+    assert.equal(response.status, 401);
+    assert.equal(recordedAuditEvents[0].after.method, "password-mobile");
+    assert.equal(recordedAuditEvents[0].after.failureReason, "username_not_found");
+  } finally {
+    server.close();
+  }
+});
+
 test("failed password login audit records an incorrect username attempt", async () => {
   const app = express();
   app.use(express.json());

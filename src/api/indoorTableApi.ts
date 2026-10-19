@@ -1,5 +1,9 @@
 import { buildActorHeaders, fetchApi } from "./client";
 
+export function currentIndoorSeasonYear(now = new Date()) {
+  return now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
 export type IndoorTableEntry = {
   id: number;
   seasonYear: number;
@@ -25,7 +29,8 @@ export function createIndoorTableEntry(actor: unknown, payload: IndoorTablePaylo
     method: "POST", headers: buildActorHeaders(actor, true), body: JSON.stringify(payload),
   });
 }
-export function updateIndoorTableEntry(actor: unknown, id: number, payload: IndoorTablePayload) {
+export function updateIndoorTableEntry(actor: unknown, id: number, payload: IndoorTablePayload & {
+  originalClassifications?: Record<string, string>; originalScores?: Record<string, string> }) {
   return fetchApi<{ success: true; entry: IndoorTableEntry }>(`/api/indoor-table/${id}`, {
     method: "PUT", headers: buildActorHeaders(actor, true), body: JSON.stringify(payload),
   });

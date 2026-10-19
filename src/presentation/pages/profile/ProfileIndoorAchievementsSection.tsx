@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../../components/Button";
 import { SectionPanel } from "../../components/SectionPanel";
 import { formatDate } from "../../../utils/dateTime";
-import { createIndoorTableEntry, INDOOR_CLASSIFICATION_COLUMNS, INDOOR_SCORE_COLUMNS,
+import { createIndoorTableEntry, currentIndoorSeasonYear, INDOOR_CLASSIFICATION_COLUMNS, INDOOR_SCORE_COLUMNS,
   listIndoorTable, updateIndoorTableEntry, type IndoorTableEntry, type IndoorTablePayload } from "../../../api/indoorTableApi";
 import type { UserProfile } from "../../../types/app";
 
@@ -17,7 +17,7 @@ const BOWS = [
 export function ProfileIndoorAchievementsSection({ currentUserProfile, username, disciplines, canManage,
   goldenRecordsHandicaps }: { currentUserProfile: UserProfile | null; username: string; disciplines: string[];
     canManage: boolean; goldenRecordsHandicaps: Record<string, { achieved: string; handicap: number | null }> }) {
-  const year = new Date().getFullYear();
+  const year = currentIndoorSeasonYear();
   const queryClient = useQueryClient();
   const query = useQuery({ queryKey: ["indoor-table", year, currentUserProfile?.auth?.username],
     queryFn: () => listIndoorTable(currentUserProfile, year), enabled: Boolean(username && currentUserProfile?.auth?.username) });
@@ -48,7 +48,8 @@ export function ProfileIndoorAchievementsSection({ currentUserProfile, username,
     const draft = drafts[bowType]; if (!draft) return;
     setSaving(bowType); setMessage("");
     try {
-      if (row) await updateIndoorTableEntry(currentUserProfile, row.id, draft);
+      if (row) await updateIndoorTableEntry(currentUserProfile, row.id, { ...draft,
+        originalClassifications: row.classifications, originalScores: row.scores });
       else await createIndoorTableEntry(currentUserProfile, draft);
       await queryClient.invalidateQueries({ queryKey: ["indoor-table"] });
       setMessage(`${bowType} indoor achievements saved.`);

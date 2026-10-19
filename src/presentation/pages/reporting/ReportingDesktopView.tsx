@@ -6,6 +6,7 @@ import { ReportingGraph } from "./ReportingGraph";
 import { MemberRangeAttendanceSection } from "./MemberRangeAttendanceSection";
 import { formatMemberType } from "./reportingUtils";
 import type { useReportingPageState } from "./useReportingPageState";
+import { ProfileAccordion } from "../profile/ProfileAccordion";
 
 function ReportingTable({ rows }: { rows: AttendanceReportRow[] }) {
   if (!rows.length) {
@@ -144,6 +145,7 @@ export function ReportingDesktopView({
   return (
     <div className="range-usage-dashboard reporting-page">
       <p className="range-usage-title">Reporting</p>
+      <p className="reporting-table-note">Access event totals include every successful member sign-in and on-site check-in, plus guest sign-ins. Match the Dashboard by selecting the same UTC dates and comparing member events; range visits use a separate two-hour rule.</p>
 
       <section className="usage-filter-panel reporting-filter-panel">
         <form className="usage-filter-form reporting-filter-form">
@@ -220,12 +222,11 @@ export function ReportingDesktopView({
       {data ? (
         <>
           <div className="usage-cards reporting-summary-cards">
-            <div className="usage-card reporting-summary-card">
-              <p className="usage-card-title">Selected Range</p>
+            <ProfileAccordion title="Selected Range" detail={rangeLabel}>
               <p className="usage-card-range">{rangeLabel}</p>
               <div className="usage-card-stats">
                 <div>
-                  <span className="usage-stat-label">Member logins</span>
+                  <span className="usage-stat-label">Member access events</span>
                   <strong>{data.members}</strong>
                 </div>
                 <div>
@@ -237,31 +238,22 @@ export function ReportingDesktopView({
                   <strong>{data.guests}</strong>
                 </div>
                 <div>
-                  <span className="usage-stat-label">Total logins</span>
+                  <span className="usage-stat-label">Total access events</span>
                   <strong>{data.total}</strong>
                 </div>
               </div>
-            </div>
-            <div className="usage-card reporting-summary-card">
-              <p className="usage-card-title">Member Type Breakdown</p>
+            </ProfileAccordion>
+            <ProfileAccordion title="Member Type Breakdown">
               <p className="reporting-table-note">Current active profiles, including people with no visits.</p>
               <BreakdownList items={attendanceBreakdown.membershipStatuses} />
-            </div>
-            <div className="usage-card reporting-summary-card">
-              <p className="usage-card-title">Programme Breakdown</p>
+            </ProfileAccordion>
+            <ProfileAccordion title="Programme Breakdown">
               <p className="reporting-table-note">Logins in the selected range.</p>
               <BreakdownList items={attendanceBreakdown.programmeTypes} />
-            </div>
+            </ProfileAccordion>
           </div>
 
-          <section className="usage-hourly-panel reporting-panel">
-            <div className="usage-hourly-header">
-              <h3>Usage By Date In Month</h3>
-              <p>
-                Fixed day-of-month view from 1 to 31, aggregated across{" "}
-                {rangeLabel}
-              </p>
-            </div>
+          <ProfileAccordion title="Usage By Date In Month" detail={`Fixed day-of-month view from 1 to 31, aggregated across ${rangeLabel}`}>
             <div className="usage-graph-legend">
               <span className="usage-legend-item">
                 <span className="usage-legend-swatch usage-graph-members" />
@@ -277,25 +269,13 @@ export function ReportingDesktopView({
               </span>
             </div>
             <ReportingGraph rows={aggregatedMonthRows} />
-          </section>
+          </ProfileAccordion>
 
-          <section className="usage-hourly-panel reporting-panel">
-            <div className="usage-hourly-header">
-              <h3>Report Rows</h3>
-              <p>Rows now include member type, programme type, role, and guest attendance details.</p>
-            </div>
+          <ProfileAccordion title="Report Rows" detail="Member type, programme, role, and guest attendance details">
             <ReportingTable rows={data.rows} />
-          </section>
+          </ProfileAccordion>
 
-          <section className="usage-hourly-panel reporting-panel reporting-journey-panel">
-            <div className="usage-hourly-header">
-              <h3>New Member Journey Funnel</h3>
-              <p>
-                Participants who started between {formatDate(
-                  memberJourneyData?.startDate ?? startDate,
-                )} and {formatDate(memberJourneyData?.endDate ?? endDate)}.
-              </p>
-            </div>
+          <ProfileAccordion title="New Member Journey Funnel" detail={`Participants who started between ${formatDate(memberJourneyData?.startDate ?? startDate)} and ${formatDate(memberJourneyData?.endDate ?? endDate)}.`}>
             {isLoadingMemberJourneys && !memberJourneyData ? (
               <p>Loading member journey reporting...</p>
             ) : memberJourneyData?.rows.length === 0 ? (
@@ -337,7 +317,7 @@ export function ReportingDesktopView({
                 <MemberJourneyTable rows={memberJourneyData.rows} />
               </>
             ) : null}
-          </section>
+          </ProfileAccordion>
         </>
       ) : null}
     </div>

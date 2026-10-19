@@ -16,6 +16,7 @@ import {
   get252InferredFromSightMarks,
   isAward252Complete,
 } from "./profile/outdoorTableProfileUtils";
+import { useAchievementRowSelection } from "./achievementTableSelection";
 
 type OutdoorTablePageProps = {
   currentUserProfile: UserProfile | null;
@@ -55,6 +56,7 @@ export function OutdoorTablePage({
   currentUserProfile,
 }: OutdoorTablePageProps) {
   const actorUsername = currentUserProfile?.auth?.username ?? "";
+  const rowSelectionProps = useAchievementRowSelection(actorUsername);
   const canManageOutdoorTable = hasPermission(
     currentUserProfile,
     "manage_members",
@@ -188,7 +190,7 @@ export function OutdoorTablePage({
               Scroll sideways to view the full table on smaller screens.
             </p>
             <div className="outdoor-table-scroll">
-            <table className="outdoor-table-matrix">
+            <table className="outdoor-table-matrix" role="grid" aria-multiselectable="true" aria-label={`Outdoor achievement table ${CURRENT_YEAR}`}>
               <thead>
                 <tr>
                   <th className="outdoor-table-title-cell" colSpan={3}>
@@ -274,7 +276,7 @@ export function OutdoorTablePage({
               </thead>
               <tbody>
                 {rows.map((entry) => (
-                  <tr key={entry.id} className="outdoor-table-row">
+                  <tr key={entry.id} {...rowSelectionProps(entry)}>
                     <td>{entry.archerSurname}</td>
                     <td>{entry.archerFirstName}</td>
                     <td>{entry.bowType}</td>

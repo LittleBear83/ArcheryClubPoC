@@ -5,15 +5,15 @@ import { buildLoginMethodReport, resolveDashboardPeriod } from "./loginMethodRep
 import { createLoginMethodReportingGateway } from "../../infrastructure/persistence/loginMethodReportingGateway.js";
 import { registerReportingDashboardRoutes } from "../../presentation/http/registerReportingDashboardRoutes.js";
 
-test("login methods group phone password logins as Website, calculate percentages and disclose unknown history", () => {
+test("login methods group phone password logins as Mobile and include unknown history", () => {
   const report = buildLoginMethodReport([
     { login_method: "rfid", count: "4" }, { login_method: "mobile-app", count: "1" },
     { login_method: "password", count: "2" }, { login_method: "password-mobile", count: "1" },
     { login_method: "legacy", count: "3" },
   ], resolveDashboardPeriod("all"));
-  assert.equal(report.total, 8);
-  assert.deepEqual(report.methods.map(({ count, percentage }) => [count, percentage]), [[4, 50], [1, 12.5], [3, 37.5]]);
-  assert.equal(report.excludedOtherCount, 3);
+  assert.equal(report.total, 11);
+  assert.deepEqual(report.methods.map(({ count, percentage }) => [count, percentage]), [[4, 36.36], [2, 18.18], [2, 18.18], [3, 27.27]]);
+  assert.equal(report.excludedOtherCount, 0);
 });
 
 test("empty and zero-category reports keep all three methods and finite percentages", () => {
@@ -51,8 +51,8 @@ test("SQLite aggregates successful history only, respects boundaries and does no
   const period = resolveDashboardPeriod("7d", new Date("2026-10-05T12:00:00Z"));
   const report = buildLoginMethodReport(await gateway.countByMethod(period), period);
   assert.equal(report.total, 3);
-  assert.deepEqual(report.methods.map((entry) => entry.count), [1, 1, 1]);
-  assert.deepEqual(report.methods.map((entry) => entry.percentage), [33.33, 33.33, 33.33]);
+  assert.deepEqual(report.methods.map((entry) => entry.count), [1, 2, 0]);
+  assert.deepEqual(report.methods.map((entry) => entry.percentage), [33.33, 66.67, 0]);
   const all = resolveDashboardPeriod("all", new Date("2026-10-05T12:00:00Z"));
   assert.equal(buildLoginMethodReport(await gateway.countByMethod(all), all).total, 4);
 });

@@ -21,7 +21,9 @@ import { loanAssignedCaseForBeginnerConversion, validateAssignedCaseForBeginnerC
 import { validateBeginnerConversionDate } from "./domain/services/beginnerConversionDate.js";
 import { BeginnerConversionFailure, runBeginnerConversion } from "./domain/services/runBeginnerConversion.js";
 import { withBeginnerConversionTransaction } from "./infrastructure/persistence/beginnerConversionTransaction.js";
-import { startGoldenRecordsSyncScheduler } from "./domain/services/goldenRecordsSyncScheduler.js";
+import { registerGoldenRecordsNightlySyncRoute } from "./presentation/http/registerGoldenRecordsNightlySyncRoute.js";
+import { registerGoldenRecordsManualSyncRoute } from "./presentation/http/registerGoldenRecordsManualSyncRoute.js";
+import { createGoldenRecordsManualTaskQueue } from "./infrastructure/golden-records/goldenRecordsManualTaskQueue.js";
 import { createServerEventBus } from "./domain/services/serverEventBus.js";
 import { startLocalSyncBrowserBridge } from "./infrastructure/persistence/localSyncBrowserBridge.js";
 import { startRfidBridgeConsumer } from "./infrastructure/rfidBridgeConsumer.js";
@@ -185,6 +187,8 @@ const CSRF_EXCLUDED_PATHS = new Set([
   "/api/sync/v1/push",
   "/api/sync/v2/pull",
   "/api/sync/v2/snapshot",
+  "/api/internal/golden-records/nightly-sync",
+  "/api/internal/golden-records/manual-sync",
 ]);
 const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/login",
@@ -1131,14 +1135,14 @@ const goldenRecordsMemberSyncService = createGoldenRecordsMemberSyncService({
 const goldenRecordsSyncJob = createGoldenRecordsSyncJob({
   goldenRecordsIntegrationGateway,
   goldenRecordsMemberSyncService,
-  // Cloud Run defaults to request-based CPU. Opt in only after configuring
-  // instance-based billing and minimum instances on the deployed service.
-  backgroundExecutionAvailable: !process.env.K_SERVICE || process.env.GOLDEN_RECORDS_ALWAYS_ALLOCATED_CPU === "true",
+  // Detached execution remains available for non-Cloud environments only.
+  // Cloud Run requests await completion and hold CPU for the full sync.
+  backgroundExecutionAvailable: !process.env.K_SERVICE,
   onFinished: (status) => {
-    serverEventBus.broadcastToAll("outdoor-table.updated", {
+    if (status.outdoorChangeCount > 0) serverEventBus.broadcastToAll("outdoor-table.updated", {
       changedAt: new Date().toISOString(), scope: "golden-records-sync-all",
     });
-    serverEventBus.broadcastToAll("indoor-table.updated", {
+    if (status.indoorChangeCount > 0) serverEventBus.broadcastToAll("indoor-table.updated", {
       changedAt: new Date().toISOString(), scope: "golden-records-sync-all",
     });
     broadcastMembersUpdated("members.golden-records-sync-all", status.startedByUsername === "scheduler" ? null : status.startedByUsername);
@@ -1150,14 +1154,16 @@ const goldenRecordsSyncJob = createGoldenRecordsSyncJob({
     });
   },
 });
-
-if (serverRuntime.sync.nodeMode !== "local-pi") {
-  startGoldenRecordsSyncScheduler({
-    hour: 1,
-    minute: 0,
-    syncAllMembers: () => goldenRecordsSyncJob.start({ actorUsername: null }),
-  });
-}
+const isGoldenRecordsWorker = Boolean(process.env.K_SERVICE) &&
+  process.env.K_SERVICE === process.env.GOLDEN_RECORDS_WORKER_SERVICE_NAME &&
+  serverRuntime.databaseEngine === "postgres" && serverRuntime.sync.nodeMode !== "local-pi";
+const goldenRecordsManualTaskQueue = process.env.K_SERVICE && process.env.GOLDEN_RECORDS_MANUAL_TASK_QUEUE &&
+  process.env.GOLDEN_RECORDS_WORKER_URL && process.env.GOLDEN_RECORDS_TASK_INVOKER_SERVICE_ACCOUNT
+  ? createGoldenRecordsManualTaskQueue({
+    queueName: process.env.GOLDEN_RECORDS_MANUAL_TASK_QUEUE,
+    workerUrl: process.env.GOLDEN_RECORDS_WORKER_URL,
+    invokerServiceAccount: process.env.GOLDEN_RECORDS_TASK_INVOKER_SERVICE_ACCOUNT,
+  }) : null;
 
 const beginnersCourseReadGateway = createBeginnersCourseReadGateway({
   databaseEngine: serverRuntime.databaseEngine,
@@ -1244,6 +1250,18 @@ app.use("/api/sync", express.json({ limit: GENERAL_JSON_BODY_LIMIT }));
 app.use(express.json({ limit: GENERAL_JSON_BODY_LIMIT }));
 app.use(csrfProtection.middleware);
 app.use(authRateLimiter.middleware);
+registerGoldenRecordsNightlySyncRoute({
+  app,
+  enabled: isGoldenRecordsWorker,
+  expectedJobName: process.env.GOLDEN_RECORDS_SCHEDULER_JOB_NAME,
+  goldenRecordsSyncJob,
+});
+registerGoldenRecordsManualSyncRoute({
+  app,
+  enabled: isGoldenRecordsWorker,
+  expectedQueueName: process.env.GOLDEN_RECORDS_MANUAL_TASK_QUEUE,
+  goldenRecordsSyncJob,
+});
 
 function buildMemberUserProfile(user, disciplines = [], meta = {}) {
   // Server-facing rows are converted to the normalized profile contract used by
@@ -5072,6 +5090,8 @@ registerAdminMemberRoutes({
   goldenRecordsBowDisciplineImportService,
   goldenRecordsMemberSyncService,
   goldenRecordsSyncJob,
+  goldenRecordsManualTaskQueue,
+  isCloudRun: Boolean(process.env.K_SERVICE),
   getActorUser,
   getUtcTimestampParts,
   getPermissionsForRole,

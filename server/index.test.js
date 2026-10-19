@@ -12,6 +12,13 @@ test("generic audit middleware excludes machine sync infrastructure", async () =
   assert.match(source, /AUDIT_EXCLUDED_PATH_PREFIXES = \[\s*"\/api\/sync\/"/);
 });
 
+test("the OIDC-protected nightly route bypasses browser CSRF middleware", async () => {
+  const source = await readFile(path.join(__dirname, "index.js"), "utf8");
+  const exclusions = source.slice(source.indexOf("const CSRF_EXCLUDED_PATHS"), source.indexOf("const AUDIT_EXCLUDED_PATHS"));
+  assert.match(exclusions, /"\/api\/internal\/golden-records\/nightly-sync"/);
+  assert.ok(source.indexOf("app.use(csrfProtection.middleware)") < source.indexOf("registerGoldenRecordsNightlySyncRoute({"));
+});
+
 test("persistent nightly timer invokes full reconciliation with retry", async () => {
   const timer = await readFile(path.join(__dirname, "../deploy/systemd/selby-db-sync.timer"), "utf8");
   const service = await readFile(path.join(__dirname, "../deploy/systemd/selby-db-sync.service"), "utf8");

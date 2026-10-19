@@ -3,6 +3,9 @@ import { test } from "node:test";
 import Database from "better-sqlite3";
 import { createActivityReportingGateway } from "./activityReportingGateway.js";
 import { createSqliteReportingStatements } from "./createSqliteReportingStatements.js";
+import { createLoginMethodReportingGateway } from "./loginMethodReportingGateway.js";
+import { createAuditLogGateway } from "./auditLogGateway.js";
+import { buildLoginMethodReport, resolveDashboardPeriod } from "../../domain/services/loginMethodReport.js";
 
 function seedBaseSchema(db) {
   db.exec(`
@@ -107,6 +110,53 @@ function createInsertLogin(db) {
     ) VALUES (?, ?, ?, ?, ?)`,
   );
 }
+
+test("seven-day mobile activity reconciles across dashboard, reporting and successful audit actions", async (t) => {
+  const db = new Database(":memory:");
+  t.after(() => db.close());
+  seedBaseSchema(db);
+  insertMember(db, 1, "member-one");
+  db.exec(`CREATE TABLE audit_events (
+    id INTEGER PRIMARY KEY, actor_username TEXT, action TEXT, target TEXT,
+    status_code INTEGER, ip_address TEXT, user_agent TEXT, metadata_json TEXT,
+    created_at_date TEXT, created_at_time TEXT
+  )`);
+  const login = createInsertLogin(db);
+  const audit = db.prepare(`INSERT INTO audit_events
+    (actor_username, action, target, status_code, created_at_date, created_at_time)
+    VALUES ('member-one', ?, '/api/auth/login', ?, ?, '12:00:00')`);
+  for (const [method, date] of [
+    ["rfid", "2026-09-29"], ["mobile-app", "2026-10-05"],
+    ["password-mobile", "2026-10-05"], ["password", "2026-10-05"],
+  ]) {
+    login.run(1, "member-one", method, date, "12:00:00");
+    audit.run("created", 200, date);
+  }
+  login.run(1, "member-one", "mobile-app", "2026-09-28", "23:59:59");
+  login.run(1, "member-one", "mobile-app", "2026-10-06", "00:00:00");
+  audit.run("login_failed", 401, "2026-10-05");
+  const period = resolveDashboardPeriod("7d", new Date("2026-10-05T23:59:59Z"));
+  const report = buildLoginMethodReport(await createLoginMethodReportingGateway({ databaseEngine: "sqlite", db }).countByMethod(period), period);
+  const statements = createSqliteReportingStatements(db);
+  const reportingRows = statements.listReportingMemberLogins.all(`${period.startDate}T00:00:00`, `${period.endDateExclusive}T00:00:00`);
+  const audits = await createAuditLogGateway({ databaseEngine: "sqlite", db }).listAuditEvents({ dateFrom: period.startDate, dateTo: period.endDate });
+  assert.equal(report.total, reportingRows.length);
+  assert.equal(report.total, audits.filter((event) => event.statusCode === 200).length);
+  assert.equal(report.total, 4);
+  assert.deepEqual(report.methods.map(({ count }) => count), [1, 2, 1]);
+  assert.equal(report.methods.find(({ method }) => method === "mobile").count,
+    reportingRows.filter((row) => ["mobile-app", "password-mobile"].includes(row.login_method)).length);
+  assert.equal(audits.length, 5); // Audit also records the failed attempt.
+
+  // A historical event survives deletion of its profile; audit history need not
+  // contain a matching action, while both metric views still count the event.
+  login.run(999, "former-member", "password-mobile", "2026-10-05", "13:00:00");
+  const historicReport = buildLoginMethodReport(await createLoginMethodReportingGateway({ databaseEngine: "sqlite", db }).countByMethod(period), period);
+  const historicRows = statements.listReportingMemberLogins.all(`${period.startDate}T00:00:00`, `${period.endDateExclusive}T00:00:00`);
+  assert.equal(historicReport.total, 5);
+  assert.equal(historicRows.length, historicReport.total);
+  assert.equal(historicRows.find((row) => row.username === "former-member")?.login_method, "password-mobile");
+});
 
 test("recent range members only include RFID and mobile app check-ins", () => {
   const db = new Database(":memory:");

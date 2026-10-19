@@ -9,6 +9,7 @@ function buildDistanceSignOff(row) {
       `${row.signed_off_by_first_name ?? ""} ${row.signed_off_by_surname ?? ""}`.trim() ||
       row.signed_off_by_username,
     signedOffAt: row.signed_off_at_date,
+    signedOffAtTime: row.signed_off_at_time,
   };
 }
 

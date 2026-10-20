@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { listHandicapTables } from "../../../api/handicapTablesApi";
+import { MemberProfileApi } from "../../../api/memberProfileApi";
+import { currentIndoorSeasonYear, listIndoorTable } from "../../../api/indoorTableApi";
+import { listOutdoorTableDashboard } from "../../../api/outdoorTableApi";
+import type { UserProfile } from "../../../types/app";
+import { findKnownHandicap, getMemberBowOptions, tableMatchesMemberBow } from "./handicapMemberDefaults";
+import { groupHandicapRounds } from "./groupHandicapRounds";
 import {
   CLUB_RECORD_ROUNDS,
   DISCIPLINE_OPTIONS,
@@ -14,6 +20,7 @@ const EXPOSED_HANDICAP_FAMILY_KEYS = new Set([
   "metric-allowances",
   "indoor-allowances",
 ]);
+const memberProfileApi = new MemberProfileApi();
 
 function getBowDiscipline(tableTitle: string) {
   const normalizedTitle = tableTitle.trim().toLowerCase();
@@ -37,32 +44,6 @@ function getBowDiscipline(tableTitle: string) {
   return "general";
 }
 
-function normalizeRoundGroupingTitle(tableTitle: string) {
-  const segments = tableTitle
-    .split("/")
-    .map((segment) => segment.trim())
-    .filter(Boolean);
-  const preferredSegment = segments[segments.length - 1] ?? tableTitle.trim();
-
-  return preferredSegment
-    .replace(/\s+\(([^)]+)\)/g, " ($1)")
-    .replace(/\s+\d+[my]?$/i, "")
-    .replace(/\s+(i|ii|iii|iv|v)$/i, "")
-    .replace(/\s+[-/]\s+\d+$/i, "")
-    .trim();
-}
-
-function getRoundSeriesKey(tableTitle: string) {
-  return normalizeRoundGroupingTitle(tableTitle)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function buildRoundSeriesLabel(tableTitle: string) {
-  return normalizeRoundGroupingTitle(tableTitle) || tableTitle.trim();
-}
-
 type BowDiscipline = ReturnType<typeof getBowDiscipline>;
 
 const BOW_DISCIPLINE_LABELS: Record<BowDiscipline, string> = {
@@ -73,21 +54,37 @@ const BOW_DISCIPLINE_LABELS: Record<BowDiscipline, string> = {
   "non-compound": "Non-Compound",
 };
 
-export function useRecordsPageState() {
+export function useRecordsPageState(currentUserProfile: UserProfile | null) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [form, setForm] = useState(INITIAL_FORM);
   const [missingFields, setMissingFields] = useState<FieldKey[]>([]);
   const [submitMessage, setSubmitMessage] = useState("");
   const [selectedFamilyKey, setSelectedFamilyKey] = useState("");
-  const [selectedTableKey, setSelectedTableKey] = useState("");
-  const [selectedBowDiscipline, setSelectedBowDiscipline] = useState("all");
-  const [handicapFilter, setHandicapFilter] = useState("");
+  const [selectedRoundKey, setSelectedRoundKey] = useState("");
+  const [chosenBowDiscipline, setChosenBowDiscipline] = useState("");
+  const [handicapOverride, setHandicapOverride] = useState<string | null>(null);
+  const username = currentUserProfile?.auth?.username ?? "";
   const fieldRefs = useRef<Partial<Record<FieldKey, HTMLInputElement | HTMLSelectElement | null>>>(
     {},
   );
   const handicapTablesQuery = useQuery({
     queryKey: ["handicap-tables"],
     queryFn: listHandicapTables,
+  });
+  const memberProfileQuery = useQuery({
+    queryKey: ["records-member-profile", username],
+    queryFn: () => memberProfileApi.getProfilePageData(username, username),
+    enabled: Boolean(username),
+  });
+  const indoorRowsQuery = useQuery({
+    queryKey: ["indoor-table", currentIndoorSeasonYear(), username],
+    queryFn: () => listIndoorTable(currentUserProfile, currentIndoorSeasonYear()),
+    enabled: Boolean(username),
+  });
+  const outdoorRowsQuery = useQuery({
+    queryKey: ["outdoor-table", new Date().getFullYear(), username],
+    queryFn: () => listOutdoorTableDashboard(currentUserProfile, new Date().getFullYear()),
+    enabled: Boolean(username),
   });
 
   const roundOptions = useMemo(() => CLUB_RECORD_ROUNDS, []);
@@ -99,18 +96,18 @@ export function useRecordsPageState() {
     [handicapTablesQuery.data?.families],
   );
 
-  useEffect(() => {
-    if (!selectedFamilyKey && handicapFamilies.length > 0) {
-      setSelectedFamilyKey(handicapFamilies[0].familyKey);
-    }
-  }, [handicapFamilies, selectedFamilyKey]);
-
   const selectedFamily =
     handicapFamilies.find((family) => family.familyKey === selectedFamilyKey) ??
     handicapFamilies[0] ??
     null;
+  const memberDisciplines = memberProfileQuery.data?.editableProfile?.disciplines
+    ?? currentUserProfile?.membership?.disciplines;
+  const memberBowOptions = useMemo(() => getMemberBowOptions(memberDisciplines), [memberDisciplines]);
 
   const bowDisciplineOptions = useMemo(() => {
+    if (memberBowOptions.length) {
+      return memberBowOptions;
+    }
     if (!selectedFamily) {
       return [{ value: "all", label: "All disciplines" }];
     }
@@ -130,7 +127,10 @@ export function useRecordsPageState() {
     }
 
     return options;
-  }, [selectedFamily]);
+  }, [selectedFamily, memberBowOptions]);
+
+  const selectedBowDiscipline = bowDisciplineOptions.some((option) => option.value === chosenBowDiscipline)
+    ? chosenBowDiscipline : bowDisciplineOptions[0]?.value ?? "all";
 
   const visibleTables = useMemo(() => {
     if (!selectedFamily) {
@@ -141,93 +141,29 @@ export function useRecordsPageState() {
       return selectedFamily.tables;
     }
 
-    return selectedFamily.tables.filter(
-      (table) => getBowDiscipline(table.title) === selectedBowDiscipline,
-    );
-  }, [selectedBowDiscipline, selectedFamily]);
+    return selectedFamily.tables.filter((table) => memberBowOptions.length
+      ? tableMatchesMemberBow(table.title, selectedBowDiscipline)
+      : getBowDiscipline(table.title) === selectedBowDiscipline);
+  }, [selectedBowDiscipline, selectedFamily, memberBowOptions]);
 
-  const groupedVisibleTables = useMemo(() => {
-    const groups = new Map<
-      string,
-      { groupKey: string; label: string; tables: typeof visibleTables }
-    >();
+  const groupedVisibleTables = useMemo(
+    () => groupHandicapRounds(visibleTables, selectedFamily?.familyKey),
+    [visibleTables, selectedFamily?.familyKey],
+  );
 
-    for (const table of visibleTables) {
-      const groupKey = getRoundSeriesKey(table.title);
-      const existingGroup = groups.get(groupKey);
-
-      if (existingGroup) {
-        existingGroup.tables.push(table);
-        continue;
-      }
-
-      groups.set(groupKey, {
-        groupKey,
-        label: buildRoundSeriesLabel(table.title),
-        tables: [table],
-      });
-    }
-
-    return Array.from(groups.values());
-  }, [visibleTables]);
-
-  useEffect(() => {
-    const hasSelectedBowDiscipline = bowDisciplineOptions.some(
-      (option) => option.value === selectedBowDiscipline,
-    );
-
-    if (!hasSelectedBowDiscipline) {
-      setSelectedBowDiscipline("all");
-    }
-  }, [bowDisciplineOptions, selectedBowDiscipline]);
-
-  useEffect(() => {
-    if (!selectedFamily) {
-      if (selectedTableKey) {
-        setSelectedTableKey("");
-      }
-      return;
-    }
-
-    const hasSelectedTable = visibleTables.some((table) => table.tableKey === selectedTableKey);
-    if (!hasSelectedTable) {
-      setSelectedTableKey(visibleTables[0]?.tableKey ?? "");
-    }
-  }, [selectedFamily, selectedTableKey, visibleTables]);
-
-  const selectedTable =
-    visibleTables.find((table) => table.tableKey === selectedTableKey) ??
-    visibleTables[0] ??
-    null;
-  const comparisonTables = useMemo(() => {
-    if (!selectedTable) {
-      return [];
-    }
-
-    const selectedSeriesKey = getRoundSeriesKey(selectedTable.title);
-    const relatedTables =
-      groupedVisibleTables.find((group) => group.groupKey === selectedSeriesKey)?.tables ?? [];
-
-    return relatedTables.length > 0 ? relatedTables : [selectedTable];
-  }, [groupedVisibleTables, selectedTable]);
-  const normalizedHandicapFilter = handicapFilter.trim();
-  const filteredHandicapRows = useMemo(() => {
-    if (!selectedTable) {
-      return [];
-    }
-
-    if (!normalizedHandicapFilter) {
-      return selectedTable.rows;
-    }
-
-    const handicapValue = Number.parseInt(normalizedHandicapFilter, 10);
-    if (Number.isNaN(handicapValue)) {
-      return [];
-    }
-
-    return selectedTable.rows.filter((row) => row.handicapValue === handicapValue);
-  }, [normalizedHandicapFilter, selectedTable]);
-
+  const selectedRound = groupedVisibleTables.find((group) => group.groupKey === selectedRoundKey)
+    ?? groupedVisibleTables[0] ?? null;
+  const selectedTable = selectedRound?.tables[0] ?? null;
+  const knownHandicap = findKnownHandicap({
+    bow: selectedBowDiscipline,
+    familyKey: selectedFamily?.familyKey ?? "",
+    handicaps: memberProfileQuery.data?.goldenRecords?.handicaps,
+    indoorRows: indoorRowsQuery.data?.rows,
+    outdoorRows: outdoorRowsQuery.data?.rows,
+    username,
+  });
+  const handicapFilter = handicapOverride ?? (knownHandicap === null ? "" : String(knownHandicap));
+  const comparisonTables = selectedRound?.tables ?? [];
   const requiredFieldOrder: FieldKey[] = [
     "location",
     "dateShoot",
@@ -292,7 +228,6 @@ export function useRecordsPageState() {
   return {
     assignFieldRef,
     disciplineOptions: DISCIPLINE_OPTIONS,
-    filteredHandicapRows,
     form,
     bowDisciplineOptions,
     comparisonTables,
@@ -307,12 +242,12 @@ export function useRecordsPageState() {
     handicapTablesLoaded: handicapFamilies.length > 0,
     handicapTablesLoading: handicapTablesQuery.isLoading,
     handleCloseModal,
-    handleBowDisciplineChange: setSelectedBowDiscipline,
-    handleFamilyChange: setSelectedFamilyKey,
+    handleBowDisciplineChange: (value: string) => { setChosenBowDiscipline(value); setSelectedRoundKey(""); setHandicapOverride(null); },
+    handleFamilyChange: (value: string) => { setSelectedFamilyKey(value); setSelectedRoundKey(""); setHandicapOverride(null); },
     handleOpenModal,
     handleSubmit,
-    handleTableChange: setSelectedTableKey,
-    handleHandicapFilterChange: setHandicapFilter,
+    handleTableChange: setSelectedRoundKey,
+    handleHandicapFilterChange: setHandicapOverride,
     isFieldMissing,
     isFormComplete,
     isModalOpen,
@@ -323,7 +258,8 @@ export function useRecordsPageState() {
     selectedFamily,
     selectedFamilyKey,
     selectedTable,
-    selectedTableKey,
+    selectedRound,
+    selectedRoundKey,
     sourceDocument: handicapTablesQuery.data?.sourceDocument ?? "",
     sourceRevision: handicapTablesQuery.data?.sourceRevision ?? "",
     sourceTitle: handicapTablesQuery.data?.sourceTitle ?? "",

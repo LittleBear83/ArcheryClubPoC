@@ -70,10 +70,11 @@ export function registerIndoorTableRoutes({ app, actorHasPermission, auditChange
   }
   app.get("/api/indoor-table", async (req, res) => {
     if (!getActorUser(req)) { res.status(401).json({ success: false, message: "An authenticated member is required." }); return; }
+    const allSeasons = req.query?.year === "all";
     const year = Number(req.query?.year);
     const currentSeasonYear = indoorSeasonYear(new Date().toISOString());
     const seasonYear = Number.isInteger(year) && year >= 2020 && year <= 2100 ? year : currentSeasonYear;
-    if (seasonYear === currentSeasonYear && syncNodeMode !== "local-pi" &&
+    if ((allSeasons || seasonYear === currentSeasonYear) && syncNodeMode !== "local-pi" &&
       goldenRecordsMemberSyncService?.backfillIndoorTableFromStoredSnapshots && backfilledYear !== seasonYear) {
       if (!backfillPromise) {
         backfillPromise = goldenRecordsMemberSyncService.backfillIndoorTableFromStoredSnapshots()
@@ -84,8 +85,10 @@ export function registerIndoorTableRoutes({ app, actorHasPermission, auditChange
       }
       await backfillPromise;
     }
-    const [rows, availableYears] = await Promise.all([indoorTableGateway.listEntriesByYear(seasonYear), indoorTableGateway.listAvailableYears()]);
-    res.json({ success: true, seasonYear, availableYears, rows });
+    const availableYears = await indoorTableGateway.listAvailableYears();
+    const years = allSeasons ? [...new Set([currentSeasonYear, ...availableYears])].sort((a, b) => b - a) : [seasonYear];
+    const rows = (await Promise.all(years.map((requestedYear) => indoorTableGateway.listEntriesByYear(requestedYear)))).flat();
+    res.json({ success: true, seasonYear: allSeasons ? null : seasonYear, availableYears, rows });
   });
   app.post("/api/indoor-table", async (req, res) => {
     const actor = canManage(req, res); if (!actor) return;

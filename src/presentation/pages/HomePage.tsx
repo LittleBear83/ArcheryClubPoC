@@ -318,7 +318,7 @@ const pageTitleMap = {
   "feedback-form": "Suggestion Box",
   "question-inbox": "Question Inbox",
   tournaments: "Tournaments",
-  records: "Records",
+  records: "Handicap Lookup",
   "outdoor-table": "Achievement Tables",
   "range-rules": "Range Rules",
   "range-rules-admin": "Range Rules Admin",
@@ -1183,7 +1183,7 @@ export function HomePage({
             />
             <Route
               path="/records"
-              element={renderProgrammeRestrictedRoute("records", <RecordsPage />)}
+              element={renderProgrammeRestrictedRoute("records", <RecordsPage key={currentUserProfile?.auth?.username ?? ""} currentUserProfile={currentUserProfile} />)}
             />
             <Route
               path="/outdoor-table"

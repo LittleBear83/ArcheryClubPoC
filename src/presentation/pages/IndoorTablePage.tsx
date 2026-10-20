@@ -1,35 +1,35 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { currentIndoorSeasonYear, listIndoorTable, INDOOR_CLASSIFICATION_COLUMNS, INDOOR_SCORE_COLUMNS } from "../../api/indoorTableApi";
+import { listAllIndoorTable, INDOOR_CLASSIFICATION_COLUMNS, INDOOR_SCORE_COLUMNS } from "../../api/indoorTableApi";
 import { SectionPanel } from "../components/SectionPanel";
 import type { UserProfile } from "../../types/app";
 import { useAchievementRowSelection } from "./achievementTableSelection";
+import { aggregateIndoorTableRows } from "./aggregateIndoorTableRows";
 
 export function IndoorTablePage({ currentUserProfile }: { currentUserProfile: UserProfile | null }) {
-  const year = currentIndoorSeasonYear();
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const rowSelectionProps = useAchievementRowSelection(actorUsername);
   const [sort, setSort] = useState<"name" | "bow">("name");
   const [descending, setDescending] = useState(false);
-  const query = useQuery({ queryKey: ["indoor-table", year, actorUsername],
-    queryFn: () => listIndoorTable(currentUserProfile, year), enabled: Boolean(actorUsername) });
-  const rows = useMemo(() => [...(query.data?.rows ?? [])].sort((a, b) => {
+  const query = useQuery({ queryKey: ["indoor-table", "all", actorUsername],
+    queryFn: () => listAllIndoorTable(currentUserProfile), enabled: Boolean(actorUsername) });
+  const rows = useMemo(() => aggregateIndoorTableRows(query.data?.rows ?? []).sort((a, b) => {
     const left = sort === "name" ? `${a.archerSurname} ${a.archerFirstName}` : a.bowType;
     const right = sort === "name" ? `${b.archerSurname} ${b.archerFirstName}` : b.bowType;
     return left.localeCompare(right) * (descending ? -1 : 1);
   }), [query.data?.rows, sort, descending]);
   const toggle = (column: "name" | "bow") => { if (sort === column) setDescending(!descending); else { setSort(column); setDescending(false); } };
   return <div className="profile-page outdoor-table-page">
-    <p>Indoor handicaps, classifications and score awards for the current season.</p>
+    <p>Indoor handicaps, classifications and dated score awards.</p>
     <SectionPanel className="outdoor-table-sheet-panel" title="Indoor Table">
       <p>Indoor progress is managed from each member profile.</p>
       {query.isLoading ? <p>Loading indoor table...</p> : query.isError ? <p role="alert">Could not load indoor achievements.</p>
-        : rows.length === 0 ? <p>No indoor table rows have been added for {year} yet.</p> : <>
+        : rows.length === 0 ? <p>No indoor table rows have been added yet.</p> : <>
           <p className="outdoor-table-scroll-hint">Scroll sideways to view the full table on smaller screens.</p>
           <div className="outdoor-table-scroll">
-            <table className="outdoor-table-matrix indoor-table-matrix" role="grid" aria-multiselectable="true" aria-label={`Indoor achievement table ${year}`}>
+            <table className="outdoor-table-matrix indoor-table-matrix" role="grid" aria-multiselectable="true" aria-label="Indoor achievement table">
               <thead><tr>
-                <th className="outdoor-table-title-cell" colSpan={3}>Indoor Table {year}</th>
+                <th className="outdoor-table-title-cell" colSpan={3}>Indoor Table</th>
                 <th className="outdoor-table-legend-cell" colSpan={INDOOR_CLASSIFICATION_COLUMNS.length}>Indoor Classifications</th>
                 <th className="outdoor-table-group-cell outdoor-table-group-cell--252" colSpan={INDOOR_SCORE_COLUMNS.length}>Indoor Scores / Awards</th>
               </tr><tr>
@@ -41,8 +41,8 @@ export function IndoorTablePage({ currentUserProfile }: { currentUserProfile: Us
               </tr></thead><tbody>
                 {rows.map((row) => <tr key={row.id} {...rowSelectionProps(row)}>
                   <td>{row.archerName}</td><td>{row.bowType}</td><td>{row.handicap ?? ""}</td>
-                  {INDOOR_CLASSIFICATION_COLUMNS.map((column) => <td key={column.key} title={row.classifications[column.key] || undefined} className={`outdoor-table-mark outdoor-table-mark--${column.key.startsWith("archer") ? "archer" : column.key.startsWith("bowman") ? "bowman" : "master"} ${row.classifications[column.key] ? "is-active" : ""}`}>{row.classifications[column.key] ? "✓" : ""}</td>)}
-                  {INDOOR_SCORE_COLUMNS.map((score) => <td key={score} title={row.scores[String(score)] || undefined} className={`outdoor-table-mark outdoor-table-mark--252 ${row.scores[String(score)] ? "is-active" : ""}`}>{row.scores[String(score)] ? "✓" : ""}</td>)}
+                  {INDOOR_CLASSIFICATION_COLUMNS.map((column) => <td key={column.key} title={row.classificationDates[column.key]?.join(", ") || undefined} className={`outdoor-table-mark outdoor-table-mark--${column.key.startsWith("archer") ? "archer" : column.key.startsWith("bowman") ? "bowman" : "master"} ${row.classifications[column.key] ? "is-active" : ""}`}>{row.classifications[column.key] ? "✓" : ""}</td>)}
+                  {INDOOR_SCORE_COLUMNS.map((score) => <td key={score} title={row.scoreDates[String(score)]?.join(", ") || undefined} className={`outdoor-table-mark outdoor-table-mark--252 ${row.scores[String(score)] ? "is-active" : ""}`}>{row.scores[String(score)] ? "✓" : ""}</td>)}
                 </tr>)}
               </tbody></table>
           </div>

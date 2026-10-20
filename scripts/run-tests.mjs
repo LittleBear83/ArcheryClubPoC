@@ -6,6 +6,11 @@ import ts from "typescript";
 const root = process.cwd();
 await import("../server/domain/services/loginMethodReport.test.js");
 await import("../src/presentation/pages/achievementTableSelection.test.js");
+await import("../src/presentation/pages/aggregateIndoorTableRows.test.js");
+await import("../src/presentation/pages/records/handicapLookup.test.js");
+await import("../src/presentation/pages/records/handicapMemberDefaults.test.js");
+await import("../src/presentation/pages/records/groupHandicapRounds.test.js");
+await import("../src/presentation/pages/goldenRecordsReferenceRefresh.test.js");
 await import("../server/presentation/http/tournamentTemplateCapability.test.js");
 await import("../server/presentation/http/tournamentRegistration.test.js");
 await import("../server/presentation/http/registerTournamentRoutes.templateUpdate.test.js");
@@ -40,6 +45,8 @@ const files = [
   "src/presentation/pages/CoachingParticipantsList.tsx",
   "src/presentation/components/Button.tsx",
   "src/utils/dateTime.js",
+  "src/presentation/pages/range-usage/rangeUsageUtils.ts",
+  "src/presentation/pages/range-usage/rangeUsageUtils.test.ts",
   "src/api/reportingDashboardApi.ts",
   "src/theme/themes.ts",
   "src/theme/ThemeContext.ts",
@@ -111,6 +118,7 @@ await copyFile(
 );
 
 await import(pathToFileURL(path.join(outDir, "src/api/client.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/range-usage/rangeUsageUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/dashboard/reportingDashboard.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/rolePermissionsUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/coachingHubModel.test.js")));

@@ -35,7 +35,7 @@ const pages = [
   },
   {
     id: "records",
-    label: "Records",
+    label: "Handicap Lookup",
     path: "/records",
     restrictedForProgrammeUsers: true,
   },

@@ -16,6 +16,12 @@ export function getTodayString() {
   return getUtcDateString(new Date());
 }
 
+export function shiftUtcDateString(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return getUtcDateString(date);
+}
+
 export function getCurrentWeekStartString() {
   const today = new Date();
   const dayOfWeek = today.getUTCDay();

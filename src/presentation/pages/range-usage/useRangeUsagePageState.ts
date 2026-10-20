@@ -8,6 +8,7 @@ import {
   getSelectedRangeLengthInDays,
   getTodayString,
   normalizeUsageWindow,
+  shiftUtcDateString,
 } from "./rangeUsageUtils";
 
 export function useRangeUsagePageState(currentUserProfile) {
@@ -15,6 +16,8 @@ export function useRangeUsagePageState(currentUserProfile) {
   const [endDate, setEndDate] = useState(getTodayString());
   const [activeView, setActiveView] = useState("currentWeek");
   const actorUsername = currentUserProfile?.auth?.username ?? "";
+  const minStartDate = shiftUtcDateString(endDate, -365);
+  const maxEndDate = [getTodayString(), shiftUtcDateString(startDate, 365)].sort()[0];
 
   const queryResult = useQuery({
     queryKey: ["range-usage-dashboard", actorUsername, startDate, endDate],
@@ -80,6 +83,16 @@ export function useRangeUsagePageState(currentUserProfile) {
     () => (activeData ? aggregateMonthDayRows(activeData.daily) : []),
     [activeData],
   );
+  const dailyGraphConfig = useMemo(() => {
+    if (!activeData) return { rows: [], subtitle: "" };
+    const aggregate = getSelectedRangeLengthInDays(activeData) > 31;
+    return {
+      rows: aggregate ? aggregatedMonthRows : activeData.daily,
+      subtitle: aggregate
+        ? "Across the selected period, grouped by day of month."
+        : "Daily visits for the selected period.",
+    };
+  }, [activeData, aggregatedMonthRows]);
   const aggregatedPersonalMonthRows = useMemo(
     () =>
       activePersonalData ? aggregateMonthDayRows(activePersonalData.daily) : [],
@@ -96,10 +109,10 @@ export function useRangeUsagePageState(currentUserProfile) {
 
     if (activeView === "currentMonth") {
       return {
-        rows: aggregatedPersonalMonthRows,
+        rows: activePersonalData.daily,
         keyField: "usageDate",
         className: "usage-graph-date",
-        subtitle: activePersonalData.label,
+        subtitle: `${activePersonalData.label} by day`,
       };
     }
 
@@ -140,9 +153,12 @@ export function useRangeUsagePageState(currentUserProfile) {
     activeView,
     aggregatedMonthRows,
     dashboard: queryResult.data,
+    dailyGraphConfig,
     endDate,
     error: queryResult.error,
-    getTodayString,
+    isLoading: queryResult.isLoading,
+    maxEndDate,
+    minStartDate,
     myRangeGraphConfig,
     setActiveView,
     setEndDate,

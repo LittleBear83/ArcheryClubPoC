@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getRangeRules } from "../../api/rangeRulesApi";
 import { getDefaultRangeRulesContent } from "../../../shared/rangeRulesDefaults.js";
@@ -8,8 +9,8 @@ import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { formatShortDateTime } from "../../utils/dateTime";
 
 const TAB_OPTIONS = [
-  { id: "indoor", label: "Indoor Range" },
-  { id: "outdoor", label: "Outdoor Range" },
+  { id: "indoor", label: "Indoor" },
+  { id: "outdoor", label: "Outdoor" },
 ] as const;
 
 type TabId = (typeof TAB_OPTIONS)[number]["id"];
@@ -26,7 +27,15 @@ export function RangeRulesPage({ currentUserProfile }: RangeRulesPageProps) {
   const actorUsername =
     (currentUserProfile as { auth?: { username?: string | null } } | null)?.auth
       ?.username ?? "";
-  const [selectedTab, setSelectedTab] = useState<TabId>("indoor");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requested = searchParams.get("tab");
+  const selectedTab: TabId = requested === "outdoor" ? "outdoor" : "indoor";
+  useEffect(() => {
+    if (requested === selectedTab) return;
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", selectedTab);
+    setSearchParams(next, { replace: true });
+  }, [requested, searchParams, selectedTab, setSearchParams]);
 
   const { data, isLoading } = useQuery({
     queryKey: rangeRulesQueryKeys.detail(actorUsername),
@@ -54,43 +63,21 @@ export function RangeRulesPage({ currentUserProfile }: RangeRulesPageProps) {
 
   return (
     <div className="profile-page range-rules-page">
-      <SectionPanel className="profile-form" title="Range Rules">
-        <p>
-          Use this page as a quick in-app reference for the club&apos;s core
-          range expectations. Switch between indoor and outdoor guidance using
-          the tabs below.
-        </p>
-
-        <StatusMessagePanel
-          loading={isLoading}
-          loadingLabel="Loading range rules..."
-        />
-
-        <div
-          className="range-rules-tabs"
-          role="tablist"
-          aria-label="Range rule categories"
-        >
-          {TAB_OPTIONS.map((tab) => {
-            const isActive = tab.id === selectedTab;
-
-            return (
-              <Button
-                key={tab.id}
-                aria-selected={isActive}
-                className={`range-rules-tab ${isActive ? "is-active" : ""}`}
-                onClick={() => setSelectedTab(tab.id)}
-                role="tab"
-                variant={isActive ? "primary" : "ghost"}
-              >
-                {tab.label}
-              </Button>
-            );
-          })}
-        </div>
-      </SectionPanel>
+      <div className="committee-tabs beginners-course-tabs" role="tablist" aria-label="Range rule categories">
+        {TAB_OPTIONS.map((tab) => <Button key={tab.id} type="button" role="tab"
+          aria-selected={selectedTab === tab.id}
+          className={`committee-tab beginners-course-tab ${selectedTab === tab.id ? "is-active" : ""}`}
+          variant="ghost" onClick={() => {
+            const next = new URLSearchParams(searchParams);
+            next.set("tab", tab.id);
+            setSearchParams(next);
+          }}>
+          {tab.label}
+        </Button>)}
+      </div>
 
       <SectionPanel className="home-panel" title={activeTitle}>
+        <StatusMessagePanel loading={isLoading} loadingLabel="Loading range rules..." />
         <p className="range-rules-panel-copy">
           {selectedTab === "indoor"
             ? "Indoor guidance covers target-face use, shared shooting rhythm, and basic range housekeeping."

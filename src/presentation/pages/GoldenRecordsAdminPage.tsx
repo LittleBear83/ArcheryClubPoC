@@ -21,6 +21,7 @@ import { MemberAutocomplete } from "../components/MemberAutocomplete";
 import { Modal } from "../components/Modal";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
+import { refreshGoldenRecordsReferenceData } from "./goldenRecordsReferenceRefresh";
 
 type GoldenRecordsAdminPageProps = {
   currentUserProfile: unknown;
@@ -32,11 +33,20 @@ const goldenRecordsQueryKeys = {
 
 const memberProfileApi = new MemberProfileApi();
 
-function GoldenRecordsSlice({ children, title }: { children: ReactNode; title: string }) {
+function GoldenRecordsSlice({ children, description, status, title }: {
+  children: ReactNode;
+  description: string;
+  status?: string;
+  title: string;
+}) {
   return (
-    <details className="golden-records-admin-card" open>
-      <summary className="golden-records-admin-card-summary" title={`Show or hide ${title}`}>
-        <span>{title}</span>
+    <details className="golden-records-admin-card">
+      <summary className="golden-records-admin-card-summary">
+        <span className="golden-records-admin-card-heading">
+          <span className="golden-records-admin-card-title">{title}</span>
+          <span className="golden-records-admin-card-description">{description}</span>
+        </span>
+        {status ? <span className="golden-records-admin-card-status">{status}</span> : null}
         <span className="profile-accordion-icon" aria-hidden="true" />
       </summary>
       <div className="golden-records-admin-card-content">{children}</div>
@@ -130,24 +140,11 @@ export function GoldenRecordsAdminPage({
     });
   };
 
-  const connectionTestMutation = useMutation({
-    mutationFn: () => testGoldenRecordsHealth(currentUserProfile),
-    onMutate: () => {
-      setActionError("");
-      setActionSuccess("");
-    },
-    onSuccess: async (result) => {
-      setActionSuccess(result.message);
-      await refreshSummary();
-    },
-    onError: async (error: Error) => {
-      setActionError(error.message);
-      await refreshSummary();
-    },
-  });
-
-  const lookupSyncMutation = useMutation({
-    mutationFn: () => syncGoldenRecordsLookups(currentUserProfile),
+  const referenceRefreshMutation = useMutation({
+    mutationFn: () => refreshGoldenRecordsReferenceData(
+      () => testGoldenRecordsHealth(currentUserProfile),
+      () => syncGoldenRecordsLookups(currentUserProfile),
+    ),
     onMutate: () => {
       setActionError("");
       setActionSuccess("");
@@ -271,7 +268,8 @@ export function GoldenRecordsAdminPage({
   const jobError = finishedJob && (finishedJob.state === "failed" || finishedJob.state === "interrupted")
     ? finishedJob.failureMessage || "Golden Records member sync failed."
     : "";
-  const jobSuccess = finishedJob && !jobError
+  const jobNeedsReview = finishedJob?.state === "completed-with-errors";
+  const jobSuccess = finishedJob && !jobError && !jobNeedsReview
     ? `Golden Records member sync finished: ${finishedJob.matchedCount} matched, ${finishedJob.unmatchedCount} unmatched, ${finishedJob.achievementCount} achievements, ${finishedJob.errorCount} errors.`
     : "";
 
@@ -279,13 +277,14 @@ export function GoldenRecordsAdminPage({
     <div className="profile-page range-rules-page">
       <SectionPanel className="profile-form golden-records-admin-panel" title="Golden Records Admin">
         <p>
-          Test the Golden Records connection, sync existing portal members and
-          achievements, and refresh cached reference data.
+          For a missing member result, sync that member. For a wider issue, check the club sync.
+          Maintenance tools are for occasional checks and imports.
         </p>
 
         <StatusMessagePanel
           error={actionError || (actionSuccess ? "" : jobError)}
-          loading={isLoading || connectionTestMutation.isPending || lookupSyncMutation.isPending || memberSyncMutation.isPending || individualSyncMutation.isPending || assignMatchMutation.isPending || bowImportPreviewMutation.isPending || bowImportApplyMutation.isPending || indoorBackfillPreviewMutation.isPending}
+          info={jobNeedsReview && !actionError && !actionSuccess ? `Club sync finished with ${finishedJob?.errorCount ?? 0} errors. Open Sync all members to review them.` : ""}
+          loading={isLoading || referenceRefreshMutation.isPending || memberSyncMutation.isPending || individualSyncMutation.isPending || assignMatchMutation.isPending || bowImportPreviewMutation.isPending || bowImportApplyMutation.isPending || indoorBackfillPreviewMutation.isPending}
           loadingLabel={
             bowImportPreviewMutation.isPending
               ? "Checking bow disciplines against Golden Records..."
@@ -293,157 +292,20 @@ export function GoldenRecordsAdminPage({
                 ? "Preparing indoor backfill preview..."
               : bowImportApplyMutation.isPending
                 ? "Adding bow disciplines..."
-                : connectionTestMutation.isPending
-              ? "Testing Golden Records connection..."
+                : referenceRefreshMutation.isPending
+              ? "Checking connection and refreshing reference data..."
               : memberSyncMutation.isPending
                 ? "Syncing Golden Records members and achievements..."
               : individualSyncMutation.isPending
                 ? `Syncing ${selectedMember?.fullName || selectedUsername}...`
               : assignMatchMutation.isPending
                 ? "Assigning Golden Records account..."
-              : lookupSyncMutation.isPending
-                ? "Syncing Golden Records lookup data..."
-                : "Loading Golden Records settings..."
+              : "Loading Golden Records settings..."
           }
           success={actionError ? "" : actionSuccess || jobSuccess}
         />
 
-        <div className="golden-records-admin-grid">
-          <GoldenRecordsSlice title="Connection">
-            <p>
-              <strong>Enabled:</strong> {summary?.enabled ? "Yes" : "No"}
-            </p>
-            <p>
-              <strong>Auth mode:</strong> {summary?.authMode || "Not configured"}
-            </p>
-            <p>
-              <strong>Endpoint:</strong> {summary?.maskedBaseUrl || "Not configured"}
-            </p>
-            <p>
-              <strong>Last successful connection test:</strong>{" "}
-              {lastConnectionTest?.ok && lastConnectionTest.testedAt
-                ? formatDateTime(lastConnectionTest.testedAt)
-                : "None recorded"}
-            </p>
-            <p>
-              <strong>Last response:</strong>{" "}
-              {lastConnectionTest?.diagnostics?.status
-                ? `${lastConnectionTest.diagnostics.status} ${lastConnectionTest.diagnostics.statusText ?? ""}`.trim()
-                : "No diagnostics yet"}
-            </p>
-            <div className="range-rules-editor-actions">
-              <Button
-                title="Check whether this portal can connect to the Golden Records API."
-                onClick={() => connectionTestMutation.mutate()}
-                disabled={connectionTestMutation.isPending || lookupSyncMutation.isPending}
-              >
-                Run Connection Test
-              </Button>
-            </div>
-          </GoldenRecordsSlice>
-
-          <GoldenRecordsSlice title="Lookup Sync">
-            <p>
-              <strong>Last sync status:</strong>{" "}
-              {lastSyncStatus?.status ? String(lastSyncStatus.status) : "Not run yet"}
-            </p>
-            <p>
-              <strong>Last sync time:</strong>{" "}
-              {lastSyncStatus?.fetchedAt ? formatDateTime(lastSyncStatus.fetchedAt) : "Never"}
-            </p>
-            <p>
-              <strong>Last sync summary:</strong>{" "}
-              {lastSyncStatus?.summary || "No lookup sync has been run yet."}
-            </p>
-            <p>
-              <strong>Last failure summary:</strong>{" "}
-              {summary?.lastFailureSummary || "None"}
-            </p>
-            <div className="range-rules-editor-actions">
-              <Button
-                title="Refresh cached Golden Records reference lists used by the portal."
-                onClick={() => lookupSyncMutation.mutate()}
-                disabled={lookupSyncMutation.isPending || connectionTestMutation.isPending}
-              >
-                Sync Lookup Data
-              </Button>
-            </div>
-          </GoldenRecordsSlice>
-        </div>
-
-        <GoldenRecordsSlice title="Member and Achievement Sync">
-          <p>
-            Sync existing portal members using their Golden Records ID, AGB number, email,
-            or a unique exact full-name match. Ambiguous names remain unmatched; add an
-            AGB number or email to their portal profile, then rerun the sync. The sync
-            refreshes outdoor achievements and verified indoor results.
-          </p>
-          <Button
-            title="Sync all portal members from Golden Records, including outdoor achievements and indoor handicaps."
-            onClick={() => memberSyncMutation.mutate()}
-            disabled={memberSyncJob?.state === "running" || memberSyncJob?.state === "queued" || memberSyncMutation.isPending || connectionTestMutation.isPending || lookupSyncMutation.isPending}
-          >
-            {memberSyncJob?.state === "running" ? "Sync in progress" : "Sync Members and Achievements"}
-          </Button>
-          {memberSyncJob ? (
-            <div role="status">
-              <p>
-                <strong>Status:</strong> {memberSyncJob.state}. {memberSyncJob.attemptedCount} members attempted; {memberSyncJob.matchedCount} matched, {memberSyncJob.unmatchedCount} unmatched, {memberSyncJob.achievementCount} achievements, {memberSyncJob.errorCount} errors.
-                {memberSyncJob.durationMs !== undefined ? ` Duration: ${Math.round(memberSyncJob.durationMs / 1000)} seconds.` : ""}
-                {memberSyncJob.failureMessage ? ` ${memberSyncJob.failureMessage}` : ""}
-              </p>
-              {memberSyncJob.errors?.length ? (
-                <ul>{memberSyncJob.errors.slice(0, 10).map((error, index) => (
-                  <li key={`${error.username}-${index}`}>{error.username}: {error.message}</li>
-                ))}</ul>
-              ) : null}
-            </div>
-          ) : null}
-        </GoldenRecordsSlice>
-
-        <GoldenRecordsSlice title="Indoor Historical Backfill Preview">
-          <p>Review dated indoor results from stored Golden Records snapshots, then apply the proposed additions. Existing achievement dates are kept.</p>
-          <Button onClick={() => indoorBackfillPreviewMutation.mutate()} disabled={indoorBackfillPreviewMutation.isPending}>
-            {indoorBackfillPreviewMutation.isPending ? "Preparing preview..." : "Preview Indoor Backfill"}
-          </Button>
-          {indoorBackfillPlan ? <div className="golden-records-bow-import-preview">
-            <p role="status">{indoorBackfillPlan.inserts.length} proposed inserts; {indoorBackfillPlan.updates.length} proposed updates; {indoorBackfillPlan.skipped.length} skipped; {indoorBackfillPlan.unmapped.length} unmapped source values.</p>
-            {(["inserts", "updates"] as const).map((kind) => <details key={kind}>
-              <summary>{kind === "inserts" ? "Proposed inserts" : "Proposed updates"} ({indoorBackfillPlan[kind].length})</summary>
-              <ul>{indoorBackfillPlan[kind].map((record, index) => <li key={`${kind}-${record.username}-${record.seasonYear}-${record.bowType}-${index}`}>
-                {record.username}, {record.bowType}, indoor season {record.seasonYear}/{record.seasonYear + 1}: {Object.entries({ ...record.classifications, ...record.scores }).map(([key, date]) => `${key} ${date}`).join(", ")}
-              </li>)}</ul>
-            </details>)}
-            <details><summary>Skipped ({indoorBackfillPlan.skipped.length})</summary>
-              <ul>{indoorBackfillPlan.skipped.map((record, index) => <li key={`skip-${index}`}>{record.username}: {record.reason}</li>)}</ul>
-            </details>
-            <details><summary>Unmapped source values ({indoorBackfillPlan.unmapped.length})</summary>
-              <ul>{indoorBackfillPlan.unmapped.map((record, index) => <li key={`unmapped-${index}`}>{record.username}: {record.kind} “{record.label}” — {record.reason} ({record.count})</li>)}</ul>
-            </details>
-            {indoorBackfillPlan.inserts.length + indoorBackfillPlan.updates.length > 0 ?
-              <Button onClick={() => setIsIndoorBackfillConfirmOpen(true)} disabled={indoorBackfillApplyMutation.isPending}>Apply Indoor Backfill</Button> : null}
-          </div> : null}
-        </GoldenRecordsSlice>
-
-        {canImportBowDisciplines ? <GoldenRecordsSlice title="Bow Discipline Import">
-          <p>Compare active portal members with Golden Records, then review the proposed additions before applying them. Existing disciplines are kept.</p>
-          <Button onClick={() => bowImportPreviewMutation.mutate()} disabled={bowImportPreviewMutation.isPending || bowImportApplyMutation.isPending}>
-            {bowImportPreviewMutation.isPending ? "Preparing preview..." : "Preview Bow Disciplines"}
-          </Button>
-          {bowImportPlan ? <div className="golden-records-bow-import-preview">
-            <p role="status">{bowImportPlan.counts.add} to add · {bowImportPlan.counts.unchanged} already present · {bowImportPlan.counts.skip} skipped.</p>
-            <p>{bowImportPlan.portalMemberCount} active portal members; {bowImportPlan.goldenRecordsMemberCount} Golden Records members checked.</p>
-            <ul className="golden-records-bow-import-list" aria-label="Bow discipline import preview">
-              {bowImportPlan.records.map((record) => <li key={record.username}>
-                <strong>{record.firstName} {record.surname} ({record.username})</strong>
-                <span>{record.status === "add" ? `Add ${record.discipline}` : record.status === "unchanged" ? `${record.discipline} already present` : `Skipped: ${record.reason}`}</span>
-              </li>)}
-            </ul>
-            {bowImportPlan.counts.add > 0 ? <Button onClick={() => setIsBowImportConfirmOpen(true)} disabled={bowImportApplyMutation.isPending}>Apply {bowImportPlan.counts.add} additions</Button> : null}
-          </div> : null}
-        </GoldenRecordsSlice> : null}
-
-        <GoldenRecordsSlice title="Individual Member Sync">
+        <GoldenRecordsSlice title="Sync one member" description="Refresh one member's achievements and handicap." status={selectedMember?.fullName || undefined}>
           <p>Refresh one member from Golden Records, including their outdoor achievements and indoor handicaps.</p>
           <div className="golden-records-admin-member-actions">
             <MemberAutocomplete
@@ -467,7 +329,7 @@ export function GoldenRecordsAdminPage({
               onClick={() => individualSyncMutation.mutate()}
               disabled={!selectedUsername || individualSyncMutation.isPending || assignMatchMutation.isPending || memberSyncJob?.state === "running"}
             >
-              {individualSyncMutation.isPending ? "Syncing member..." : "Sync Selected Member"}
+              {individualSyncMutation.isPending ? "Refreshing member..." : "Refresh this member"}
             </Button>
           </div>
           {memberOptionsQuery.isError ? <p role="alert">Could not load members for individual sync.</p> : null}
@@ -497,27 +359,114 @@ export function GoldenRecordsAdminPage({
           ) : null}
         </GoldenRecordsSlice>
 
-        <GoldenRecordsSlice title="Cached Lookup Collections">
-          {summary?.lookupCounts?.length ? (
-            <div className="golden-records-admin-list">
-              {summary.lookupCounts.map((lookup) => (
-                <article key={lookup.lookupType} className="golden-records-admin-list-item">
-                  <strong>{formatLookupLabel(lookup.lookupType)}</strong>
-                  <span>{lookup.itemCount} records</span>
-                  <span>
-                    {lookup.fetchedAt ? `Fetched ${formatDateTime(lookup.fetchedAt)}` : "Not fetched yet"}
-                  </span>
-                  <span>
-                    {lookup.updatedByUsername
-                      ? `Last updated by ${lookup.updatedByUsername}`
-                      : "No update actor recorded"}
-                  </span>
-                </article>
-              ))}
+        <GoldenRecordsSlice title="Sync all members" description="Refresh member achievements across the club." status={jobQuery.isLoading ? "Checking..." : memberSyncJob?.state ?? "Not run"}>
+          <p>
+            Use this for widespread missing results or when a club-wide update is needed sooner.
+            It refreshes outdoor achievements and verified indoor results for matched members.
+            Matching uses Golden Records ID, AGB number, email, or an exact name.
+            Ambiguous matches are skipped; add an AGB number or email to their profile before retrying.
+          </p>
+          <Button
+            title="Sync all portal members from Golden Records, including outdoor achievements and indoor handicaps."
+            onClick={() => memberSyncMutation.mutate()}
+            disabled={memberSyncJob?.state === "running" || memberSyncJob?.state === "queued" || memberSyncMutation.isPending || referenceRefreshMutation.isPending}
+          >
+            {memberSyncJob?.state === "running" ? "Sync in progress" : "Run club sync now"}
+          </Button>
+          {memberSyncJob ? (
+            <div role="status">
+              <p>
+                <strong>Status:</strong> {memberSyncJob.state}. {memberSyncJob.attemptedCount} members attempted; {memberSyncJob.matchedCount} matched, {memberSyncJob.unmatchedCount} unmatched, {memberSyncJob.achievementCount} achievements, {memberSyncJob.errorCount} errors.
+                {memberSyncJob.durationMs !== undefined ? ` Duration: ${Math.round(memberSyncJob.durationMs / 1000)} seconds.` : ""}
+                {memberSyncJob.failureMessage ? ` ${memberSyncJob.failureMessage}` : ""}
+              </p>
+              {memberSyncJob.errors?.length ? (
+                <ul>{memberSyncJob.errors.slice(0, 10).map((error, index) => (
+                  <li key={`${error.username}-${index}`}>{error.username}: {error.message}</li>
+                ))}</ul>
+              ) : null}
             </div>
-          ) : (
-            <p>No Golden Records lookup data has been cached yet.</p>
-          )}
+          ) : null}
+        </GoldenRecordsSlice>
+
+        <GoldenRecordsSlice title="Maintenance tools" description="Connection checks, reference data, and one-off imports.">
+          <GoldenRecordsSlice title="Reference data and connection" description="Check access and refresh cached lookup lists in one step." status={isLoading ? "Checking..." : lastSyncStatus?.fetchedAt ? `Last refreshed ${formatDateTime(lastSyncStatus.fetchedAt)}` : "Never refreshed"}>
+            <p>Use this when Golden Records reference lists need updating. The portal checks the connection first, then refreshes the lists.</p>
+            <Button
+              title="Check the Golden Records connection, then refresh cached reference lists."
+              onClick={() => referenceRefreshMutation.mutate()}
+              disabled={referenceRefreshMutation.isPending || memberSyncMutation.isPending || memberSyncJob?.state === "running" || memberSyncJob?.state === "queued"}
+            >
+              {referenceRefreshMutation.isPending ? "Refreshing reference data..." : "Check and refresh reference data"}
+            </Button>
+            <div className="golden-records-admin-facts">
+              <p><strong>Configured:</strong> {summary?.enabled ? "Yes" : "No"}</p>
+              <p><strong>Endpoint:</strong> {summary?.maskedBaseUrl || "Not configured"}</p>
+              <p><strong>Auth mode:</strong> {summary?.authMode || "Not configured"}</p>
+              <p><strong>Last connection check:</strong> {lastConnectionTest?.testedAt ? formatDateTime(lastConnectionTest.testedAt) : "Never"}</p>
+              <p><strong>Last response:</strong> {lastConnectionTest?.diagnostics?.status ? `${lastConnectionTest.diagnostics.status} ${lastConnectionTest.diagnostics.statusText ?? ""}`.trim() : "None recorded"}</p>
+              <p><strong>Last reference refresh:</strong> {lastSyncStatus?.fetchedAt ? formatDateTime(lastSyncStatus.fetchedAt) : "Never"}</p>
+              <p><strong>Refresh status:</strong> {lastSyncStatus?.status ? String(lastSyncStatus.status) : "Not run"}</p>
+              {summary?.lastFailureSummary ? <p><strong>Last issue:</strong> {summary.lastFailureSummary}</p> : null}
+            </div>
+            {summary?.lookupCounts?.length ? (
+              <details className="golden-records-admin-lookup-details">
+                <summary>View cached lists ({summary.lookupCounts.length})</summary>
+                <div className="golden-records-admin-list">
+                  {summary.lookupCounts.map((lookup) => (
+                    <article key={lookup.lookupType} className="golden-records-admin-list-item">
+                      <strong>{formatLookupLabel(lookup.lookupType)}</strong>
+                      <span>{lookup.itemCount} records</span>
+                      <span>{lookup.fetchedAt ? `Fetched ${formatDateTime(lookup.fetchedAt)}` : "Not fetched yet"}</span>
+                    </article>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+          </GoldenRecordsSlice>
+
+        <GoldenRecordsSlice title="Historical indoor results" description="Preview additions from stored Golden Records snapshots." status={indoorBackfillPlan ? `${indoorBackfillPlan.inserts.length + indoorBackfillPlan.updates.length} changes to review` : undefined}>
+          <p>Review dated indoor results from stored Golden Records snapshots, then apply the proposed additions. Existing achievement dates are kept.</p>
+          <Button onClick={() => indoorBackfillPreviewMutation.mutate()} disabled={indoorBackfillPreviewMutation.isPending}>
+            {indoorBackfillPreviewMutation.isPending ? "Preparing preview..." : "Preview Indoor Backfill"}
+          </Button>
+          {indoorBackfillPlan ? <div className="golden-records-bow-import-preview">
+            <p role="status">{indoorBackfillPlan.inserts.length} proposed inserts; {indoorBackfillPlan.updates.length} proposed updates; {indoorBackfillPlan.skipped.length} skipped; {indoorBackfillPlan.unmapped.length} unmapped source values.</p>
+            {(["inserts", "updates"] as const).map((kind) => <details key={kind}>
+              <summary>{kind === "inserts" ? "Proposed inserts" : "Proposed updates"} ({indoorBackfillPlan[kind].length})</summary>
+              <ul>{indoorBackfillPlan[kind].map((record, index) => <li key={`${kind}-${record.username}-${record.seasonYear}-${record.bowType}-${index}`}>
+                {record.username}, {record.bowType}, indoor season {record.seasonYear}/{record.seasonYear + 1}: {Object.entries({ ...record.classifications, ...record.scores }).map(([key, date]) => `${key} ${date}`).join(", ")}
+              </li>)}</ul>
+            </details>)}
+            <details><summary>Skipped ({indoorBackfillPlan.skipped.length})</summary>
+              <ul>{indoorBackfillPlan.skipped.map((record, index) => <li key={`skip-${index}`}>{record.username}: {record.reason}</li>)}</ul>
+            </details>
+            <details><summary>Unmapped source values ({indoorBackfillPlan.unmapped.length})</summary>
+              <ul>{indoorBackfillPlan.unmapped.map((record, index) => <li key={`unmapped-${index}`}>{record.username}: {record.kind} “{record.label}” — {record.reason} ({record.count})</li>)}</ul>
+            </details>
+            {indoorBackfillPlan.inserts.length + indoorBackfillPlan.updates.length > 0 ?
+              <Button onClick={() => setIsIndoorBackfillConfirmOpen(true)} disabled={indoorBackfillApplyMutation.isPending}>Apply Indoor Backfill</Button> : null}
+          </div> : null}
+        </GoldenRecordsSlice>
+
+        {canImportBowDisciplines ? <GoldenRecordsSlice title="Import bow disciplines" description="Review bowstyles missing from member profiles." status={bowImportPlan ? `${bowImportPlan.counts.add} additions to review` : undefined}>
+          <p>Compare active portal members with Golden Records, then review the proposed additions before applying them. Existing disciplines are kept.</p>
+          <Button onClick={() => bowImportPreviewMutation.mutate()} disabled={bowImportPreviewMutation.isPending || bowImportApplyMutation.isPending}>
+            {bowImportPreviewMutation.isPending ? "Preparing preview..." : "Preview Bow Disciplines"}
+          </Button>
+          {bowImportPlan ? <div className="golden-records-bow-import-preview">
+            <p role="status">{bowImportPlan.counts.add} to add · {bowImportPlan.counts.unchanged} already present · {bowImportPlan.counts.skip} skipped.</p>
+            <p>{bowImportPlan.portalMemberCount} active portal members; {bowImportPlan.goldenRecordsMemberCount} Golden Records members checked.</p>
+            <ul className="golden-records-bow-import-list" aria-label="Bow discipline import preview">
+              {bowImportPlan.records.map((record) => <li key={record.username}>
+                <strong>{record.firstName} {record.surname} ({record.username})</strong>
+                <span>{record.status === "add" ? `Add ${record.discipline}` : record.status === "unchanged" ? `${record.discipline} already present` : `Skipped: ${record.reason}`}</span>
+              </li>)}
+            </ul>
+            {bowImportPlan.counts.add > 0 ? <Button onClick={() => setIsBowImportConfirmOpen(true)} disabled={bowImportApplyMutation.isPending}>Apply {bowImportPlan.counts.add} additions</Button> : null}
+          </div> : null}
+        </GoldenRecordsSlice> : null}
+
         </GoldenRecordsSlice>
       </SectionPanel>
       <Modal open={isIndoorBackfillConfirmOpen} onClose={() => !indoorBackfillApplyMutation.isPending && setIsIndoorBackfillConfirmOpen(false)} title="Apply Indoor Backfill">

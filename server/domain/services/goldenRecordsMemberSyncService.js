@@ -775,6 +775,45 @@ export function createGoldenRecordsMemberSyncService({
         createdCount += 1;
       }
     }
+    // Current handicaps belong to the current row, but dated awards retain their
+    // original indoor season. Fill historical rows without changing manual data.
+    if (!createMissingOnly) {
+      const historicalRowsByYear = new Map();
+      for (const group of evidence.bySeason.values()) {
+        if (group.seasonYear >= seasonYear) continue;
+        if (!historicalRowsByYear.has(group.seasonYear)) {
+          historicalRowsByYear.set(group.seasonYear, await indoorGateway.listEntriesByYear(group.seasonYear));
+        }
+        const historicalRows = historicalRowsByYear.get(group.seasonYear);
+        const current = historicalRows.find((row) =>
+          row.archerUsername?.toLowerCase() === user.username.toLowerCase() && row.bowType === group.bowType);
+        if (current) {
+          const classifications = { ...current.classifications };
+          const scores = { ...current.scores };
+          let changed = false;
+          for (const [key, value] of Object.entries(group.classifications)) {
+            if (!classifications[key]) { classifications[key] = value; changed = true; }
+          }
+          for (const [key, value] of Object.entries(group.explicitScores)) {
+            if (!scores[key]) { scores[key] = value; changed = true; }
+          }
+          const completed = completeIndoorScoreAwards(scores, group.seasonYear);
+          if (Object.keys(completed).some((key) => !scores[key])) changed = true;
+          if (!changed) continue;
+          await indoorGateway.updateEntry({ ...current, classifications, scores: completed,
+            updatedAtDate: date, updatedAtTime: time });
+          updatedCount += 1;
+        } else {
+          const created = await indoorGateway.createEntry({ seasonYear: group.seasonYear,
+            archerUsername: user.username, bowType: group.bowType, handicap: null,
+            classifications: { ...group.classifications }, scores: { ...group.scores },
+            createdAtDate: date, createdAtTime: time, updatedAtDate: date, updatedAtTime: time,
+            updatedByUsername: null });
+          historicalRows.push(created);
+          createdCount += 1;
+        }
+      }
+    }
     return { createdCount, updatedCount, syncedCount: createdCount + updatedCount };
   }
 

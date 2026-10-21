@@ -1,8 +1,9 @@
-const PERIODS = { "7d": 7, "30d": 30, "90d": 90 };
 import { LOGIN_METHOD_GROUPS } from "../../../shared/loginActivity.js";
+import { DASHBOARD_PERIODS, DEFAULT_DASHBOARD_PERIOD } from "../../../shared/attendancePolicy.js";
 
-export function resolveDashboardPeriod(period = "30d", now = new Date()) {
-  if (![...Object.keys(PERIODS), "year", "all"].includes(period)) {
+export function resolveDashboardPeriod(period = DEFAULT_DASHBOARD_PERIOD, now = new Date()) {
+  const selectedPeriod = DASHBOARD_PERIODS.find(({ value }) => value === period);
+  if (!selectedPeriod) {
     throw new Error("Choose Last 7 days, Last 30 days, Last 90 days, This year or All time.");
   }
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -10,7 +11,7 @@ export function resolveDashboardPeriod(period = "30d", now = new Date()) {
   end.setUTCDate(end.getUTCDate() + 1);
   const start = new Date(today);
   if (period === "year") start.setUTCMonth(0, 1);
-  else if (PERIODS[period]) start.setUTCDate(start.getUTCDate() - PERIODS[period] + 1);
+  else if (selectedPeriod.days) start.setUTCDate(start.getUTCDate() - selectedPeriod.days + 1);
   return {
     key: period,
     startDate: period === "all" ? null : start.toISOString().slice(0, 10),

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { DEFAULT_MEMBER_RANGE_ATTENDANCE_DAYS, getAttendanceRangeDateBounds } from "../../../../shared/attendancePolicy.js";
 import { getAttendanceReport, getMemberJourneyReport, getMemberRangeAttendanceReport } from "../../../api/reportingApi";
 import { hasPermission } from "../../../utils/userProfile";
 import type { UserProfile } from "../../../types/app";
@@ -21,9 +22,10 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
   const [includeMembers, setIncludeMembers] = useState(true);
   const [includeGuests, setIncludeGuests] = useState(true);
   const [exportError, setExportError] = useState("");
-  const [memberRangeDays, setMemberRangeDays] = useState(90);
+  const [memberRangeDays, setMemberRangeDays] = useState(DEFAULT_MEMBER_RANGE_ATTENDANCE_DAYS);
   const [memberRangeFilter, setMemberRangeFilter] = useState<"no-visit" | "attended" | "all">("no-visit");
   const [memberRangeExportError, setMemberRangeExportError] = useState("");
+  const { minStartDate, maxEndDate } = getAttendanceRangeDateBounds(startDate, endDate, getTodayString());
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const canViewReports = hasPermission(currentUserProfile, "view_reports");
   const canViewMemberRangeAttendance = canViewReports &&
@@ -144,7 +146,6 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
     endDate,
     error: queryResult.error,
     exportError,
-    getTodayString,
     handleExport,
     hasDataSource,
     includeGuests,
@@ -166,6 +167,8 @@ export function useReportingPageState(currentUserProfile: UserProfile | null) {
       setDays: setMemberRangeDays,
       setFilter: setMemberRangeFilter,
     },
+    maxEndDate,
+    minStartDate,
     rangeLabel,
     setEndDate,
     setIncludeGuests,

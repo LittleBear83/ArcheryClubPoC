@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getAttendanceRangeDateBounds } from "../../../../shared/attendancePolicy.js";
 import { formatDateRangeLabel } from "../../../utils/dateTime";
 import { getRangeUsageDashboard } from "../../../api/rangeUsageApi";
 import {
@@ -8,7 +9,6 @@ import {
   getSelectedRangeLengthInDays,
   getTodayString,
   normalizeUsageWindow,
-  shiftUtcDateString,
 } from "./rangeUsageUtils";
 
 export function useRangeUsagePageState(currentUserProfile) {
@@ -16,8 +16,7 @@ export function useRangeUsagePageState(currentUserProfile) {
   const [endDate, setEndDate] = useState(getTodayString());
   const [activeView, setActiveView] = useState("currentWeek");
   const actorUsername = currentUserProfile?.auth?.username ?? "";
-  const minStartDate = shiftUtcDateString(endDate, -365);
-  const maxEndDate = [getTodayString(), shiftUtcDateString(startDate, 365)].sort()[0];
+  const { minStartDate, maxEndDate } = getAttendanceRangeDateBounds(startDate, endDate, getTodayString());
 
   const queryResult = useQuery({
     queryKey: ["range-usage-dashboard", actorUsername, startDate, endDate],

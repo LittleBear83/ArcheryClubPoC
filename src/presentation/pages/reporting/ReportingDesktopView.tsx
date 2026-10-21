@@ -125,7 +125,6 @@ export function ReportingDesktopView({
   endDate,
   error,
   exportError,
-  getTodayString,
   handleExport,
   hasDataSource,
   includeGuests,
@@ -135,6 +134,8 @@ export function ReportingDesktopView({
   memberJourneyData,
   memberJourneyError,
   memberRangeAttendance,
+  maxEndDate,
+  minStartDate,
   rangeLabel,
   setEndDate,
   setIncludeGuests,
@@ -154,6 +155,7 @@ export function ReportingDesktopView({
               label="Date from"
               value={startDate}
               onChange={setStartDate}
+              min={minStartDate}
               max={endDate}
             />
           </label>
@@ -164,7 +166,7 @@ export function ReportingDesktopView({
               value={endDate}
               onChange={setEndDate}
               min={startDate}
-              max={getTodayString()}
+              max={maxEndDate}
             />
           </label>
 

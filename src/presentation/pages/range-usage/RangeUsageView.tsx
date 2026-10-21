@@ -1,5 +1,6 @@
 import { Button } from "../../components/Button";
 import { DatePicker } from "../../components/DatePicker";
+import { ATTENDANCE_MAX_RANGE_DAYS } from "../../../../shared/attendancePolicy.js";
 import {
   DailyUsageGraph,
   HourlyUsageGraph,
@@ -59,7 +60,7 @@ export function RangeUsageView({
         <div className="usage-filter-form usage-filter-panel range-usage-filter-form">
           <DatePicker label="From" value={startDate} onChange={setStartDate} min={minStartDate} max={endDate} />
           <DatePicker label="To" value={endDate} onChange={setEndDate} min={startDate} max={maxEndDate} />
-          <p className="range-usage-date-note">Choose up to 366 days. The summary updates when you change a date.</p>
+          <p className="range-usage-date-note">Choose up to {ATTENDANCE_MAX_RANGE_DAYS} days. The summary updates when you change a date.</p>
         </div>
       ) : null}
 

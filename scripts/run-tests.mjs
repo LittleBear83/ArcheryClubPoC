@@ -5,6 +5,7 @@ import ts from "typescript";
 
 await import("./check-test-registrations.mjs");
 const root = process.cwd();
+await import("../shared/attendancePolicy.test.js");
 await import("../shared/membershipClassification.test.js");
 await import("../src/utils/userProfile.test.js");
 await import("../src/api/beginnersCourseTypeSupport.test.js");
@@ -14,6 +15,7 @@ await import("../server/domain/services/goldenRecordsIndoorMapping.test.js");
 await import("../server/domain/services/feedbackSync.test.js");
 await import("../server/presentation/http/goldenRecordsIndoorBackfillRoutes.test.js");
 await import("../server/presentation/http/registerCourseDateCancellationRoutes.test.js");
+await import("../server/infrastructure/golden-records/goldenRecordsPagination.test.js");
 await import("../server/domain/services/loginMethodReport.test.js");
 await import("../src/presentation/pages/achievementTableSelection.test.js");
 await import("../src/presentation/pages/aggregateIndoorTableRows.test.js");
@@ -58,6 +60,7 @@ const files = [
   "src/presentation/pages/reporting/reportingUtils.test.ts",
   "shared/membershipClassification.js",
   "shared/membershipClassificationRules.js",
+  "shared/attendancePolicy.js",
   "src/presentation/pages/coachingHubModel.ts",
   "src/presentation/pages/coachingHubModel.test.ts",
   "src/presentation/pages/courseCoachRequirements.ts",

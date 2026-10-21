@@ -45,7 +45,6 @@ export function ReportingMobileView({
   endDate,
   error,
   exportError,
-  getTodayString,
   handleExport,
   hasDataSource,
   includeGuests,
@@ -55,6 +54,8 @@ export function ReportingMobileView({
   memberJourneyData,
   memberJourneyError,
   memberRangeAttendance,
+  maxEndDate,
+  minStartDate,
   rangeLabel,
   setEndDate,
   setIncludeGuests,
@@ -74,6 +75,7 @@ export function ReportingMobileView({
               label="Date from"
               value={startDate}
               onChange={setStartDate}
+              min={minStartDate}
               max={endDate}
             />
           </label>
@@ -84,7 +86,7 @@ export function ReportingMobileView({
               value={endDate}
               onChange={setEndDate}
               min={startDate}
-              max={getTodayString()}
+              max={maxEndDate}
             />
           </label>
 

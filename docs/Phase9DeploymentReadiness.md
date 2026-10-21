@@ -9,17 +9,25 @@ connect to production or staging, change infrastructure, run a sync, or deploy.
 | --- | --- | --- |
 | Merge-triggered GitHub Actions | The remote `main` branch has one workflow, `phase2a1-postgres-integration.yml`. It runs tests/builds on three named feature branches or manual dispatch; it has no `main` trigger or deployment step. | No deployment by repository GitHub Actions on merge to `main`. |
 | Cloud Build, Cloud Run, other triggers | No GCP CLI, Cloud Run/Build connection, or usable project credentials are available in this workspace. Repository search found no Cloud Build configuration. | External triggers, revision, image, and deployed environment are **unverified**. A merge could still deploy through a trigger outside the repository. |
-| Active Pi watcher/feed | Repository `sync:watch` starts v1 unless `--v2` is supplied. The checked-in nightly unit runs `sync:local -- --reconcile`, selecting v2 only if a valid `local_machine_publication_sync_v2` state exists. SSH access to the Pi is unavailable in this environment. | The deployed watcher command and v2 baseline are **unverified**. Repository defaults do not establish deployed state. |
+| Active Pi watcher/feed | The operator reports `selby-live-sync.service` active and running, described as V2 Live Database Sync. A read-only query of `local_machine_publication_sync_v2` returned `valid`. The actual watcher `ExecStart` was not included. | A valid v2 baseline is **confirmed by operator output**; the active watcher feed remains **unverified** until its untruncated command is seen. |
+| Pi revision and nightly reconciliation | The operator reports Pi Git SHA `82ecbf7f` and no active `selby*` timers. `git status --short` warned that `server/data/` could not be read. The `selby-db-sync.service` command was truncated in terminal output. | The deployed Pi is on a divergent, older revision; cleanliness and the installed nightly schedule are **unverified**. No active systemd timer appeared in the supplied output. |
 | v1 late commit | Isolated PostgreSQL tests reproduce a lower-ID transaction committing after a higher-ID transaction and being omitted by a v1 cursor. The v2 publication tests deliver both transactions. | Confirmed v1 defect; production exposure depends on the unverified Pi feed. Nightly full reconciliation may repair drift later but cannot guarantee timely delivery. |
 | Proposed application compatibility | Isolated PostgreSQL integration tests exercise v1 push, v2 snapshot/pull, SSE reconnect, offline/nightly CLI recovery, retries, idempotency, conflicts, and rollback. Machine-authenticated routes support both feeds in the proposed code. | Code-level compatibility passed. Deployed Pi/Cloud versions, migrations, network behaviour, and actual data volume are **unverified**. |
 | Staging Pi ↔ Cloud Run | No staging endpoint, Pi, credentials, or Cloud Run access was provided. | No live staging checks executed. |
 
+The Pi SHA is not an ancestor of `bug/refactor`: its headless RFID consumer
+commit was merged separately as `b2e6728f` (PR #64), which is an ancestor of
+this branch. The RFID consumer files match that merged version; the divergent
+SHA does not by itself establish a missing RFID feature. Other changes since
+the Pi revision still require staging compatibility checks.
+
 The v1 feed should be treated as a deployment blocker if the Pi watcher still
-uses it and timely cloud-to-Pi updates matter. The safer resolution is a
-planned v2 rollout: update Cloud first, verify v2 endpoints and migrations,
-then update the Pi, perform a guarded v2 rebaseline, and start the watcher
-with `--v2`. Keep the v1 state separate. Do not edit or reset either cursor,
-clear the outbox, or use production as a test environment.
+uses it and timely cloud-to-Pi updates matter. The valid v2 baseline supports
+using v2 but does not prove that the running watcher has `--v2`. If it does,
+the v1 late-commit omission does not affect that watcher; if it does not, the
+watcher can still miss committed changes until a full reconciliation. Confirm
+the service command before choosing any rollout. Do not edit or reset either
+cursor, clear the outbox, or use production as a test environment.
 
 ## Read-only evidence required before release
 
@@ -33,14 +41,14 @@ secrets or member records into a shared log:
 2. **Cloud Run:** record the portal and sync service names, latest ready
    revision, image digests, deployment source, and whether the authenticated
    v1/v2 endpoints are enabled. Compare the deployed SHA to `bug/refactor`.
-3. **Pi:** record the deployed Git SHA and dirty state, installed watcher and
-   nightly unit commands, watcher health, timer timezone, and recent redacted
-   sync status. Confirm whether the watcher command includes `--v2`.
-4. **Pi database:** read only the presence and validity of
-   `local_machine_publication_sync_v2`: `feedVersion` must be
-   `sync-publication-v2` and `publicationCheckpoint` a non-negative decimal
-   string. Check pending outbox count and last successful sync without
-   exporting rows or secrets.
+3. **Pi:** obtain untruncated `selby-live-sync.service` `ExecStart` and confirm
+   `--v2`; inspect `selby-db-sync.service` and `.timer` load/enabled/active
+   states, plus any cron replacement. Check watcher health and recent redacted
+   sync status. Resolve the `server/data/` permission warning before claiming
+   the worktree is clean.
+4. **Pi database:** the v2 baseline validity query returned `valid` in operator
+   output. Check pending outbox count and last successful sync without
+   exporting rows or secrets; do not repeat a rebaseline merely to verify it.
 5. **Schema and compatibility:** compare Cloud and Pi migration versions and
    deployed SHA; verify the proposed migration path on disposable copies.
    Confirm backups and restore procedures before any approved rollout.

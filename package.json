@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "node --watch-path=server/index.js --watch-path=server/bootstrap --watch-path=server/config --watch-path=server/domain --watch-path=server/infrastructure --watch-path=server/observability --watch-path=server/presentation --watch-path=server/security --watch-path=shared server/index.js",
+    "dev:server": "node --watch-path=server/index.js --watch-path=server/application --watch-path=server/bootstrap --watch-path=server/config --watch-path=server/domain --watch-path=server/infrastructure --watch-path=server/observability --watch-path=server/presentation --watch-path=server/security --watch-path=shared server/index.js",
     "dev:full": "node scripts/dev-full.mjs",
     "build": "vite build",
     "lint": "eslint .",

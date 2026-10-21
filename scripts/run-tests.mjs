@@ -3,7 +3,17 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
+await import("./check-test-registrations.mjs");
 const root = process.cwd();
+await import("../shared/membershipClassification.test.js");
+await import("../src/utils/userProfile.test.js");
+await import("../src/api/beginnersCourseTypeSupport.test.js");
+await import("../src/presentation/navigation/memberPageAccess.test.js");
+await import("../server/domain/services/tournamentHandicapService.test.js");
+await import("../server/domain/services/goldenRecordsIndoorMapping.test.js");
+await import("../server/domain/services/feedbackSync.test.js");
+await import("../server/presentation/http/goldenRecordsIndoorBackfillRoutes.test.js");
+await import("../server/presentation/http/registerCourseDateCancellationRoutes.test.js");
 await import("../server/domain/services/loginMethodReport.test.js");
 await import("../src/presentation/pages/achievementTableSelection.test.js");
 await import("../src/presentation/pages/aggregateIndoorTableRows.test.js");
@@ -37,7 +47,17 @@ await import("../server/presentation/http/beginnersCourseCoachRequirements.test.
 const outDir = path.join(root, ".test-dist");
 const files = [
   "src/utils/userProfile.js",
+  "src/utils/mobileInstall.ts",
+  "src/utils/mobileInstall.test.ts",
+  "src/utils/memberClassification.ts",
+  "src/utils/memberClassification.test.ts",
+  "src/utils/joiningRoutes.ts",
+  "src/presentation/pages/home/committeeApprovalSummaryUtils.ts",
+  "src/presentation/pages/home/committeeApprovalSummaryUtils.test.ts",
+  "src/presentation/pages/reporting/reportingUtils.ts",
+  "src/presentation/pages/reporting/reportingUtils.test.ts",
   "shared/membershipClassification.js",
+  "shared/membershipClassificationRules.js",
   "src/presentation/pages/coachingHubModel.ts",
   "src/presentation/pages/coachingHubModel.test.ts",
   "src/presentation/pages/courseCoachRequirements.ts",
@@ -118,10 +138,15 @@ await copyFile(
 );
 
 await import(pathToFileURL(path.join(outDir, "src/api/client.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/utils/mobileInstall.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/utils/memberClassification.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/home/committeeApprovalSummaryUtils.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/reportingUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/range-usage/rangeUsageUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/dashboard/reportingDashboard.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/rolePermissionsUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/coachingHubModel.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/courseCoachRequirements.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/beginnersCoursesApi.test.js")));
 await import(

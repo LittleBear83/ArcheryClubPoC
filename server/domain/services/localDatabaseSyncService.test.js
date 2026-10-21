@@ -108,6 +108,63 @@ function createClientDouble() {
   };
 }
 
+test("publication snapshot orders data, checkpoint and notification around one transaction", async () => {
+  const { client, queries } = createClientDouble();
+  const events = [];
+  const recordingClient = {
+    async query(sql, values) {
+      const result = await client.query(sql, values);
+      events.push(String(sql).trim().replace(/\s+/g, " "));
+      return result;
+    },
+  };
+  await applyPublicationSnapshot({
+    client: recordingClient,
+    deactivatedRfidSuffix: "-deactivated",
+    snapshotResponse: {
+      checkpoint: "12",
+      feedVersion: PUBLICATION_FEED_VERSION,
+      mode: "snapshot",
+      snapshot: emptyPublicationSnapshot(),
+    },
+    syncGateway: {
+      async writeLocalState({ client: stateClient, state, stateKey }) {
+        assert.equal(stateClient, recordingClient);
+        assert.equal(stateKey, PUBLICATION_SYNC_STATE_KEY);
+        assert.equal(state.publicationCheckpoint, "12");
+        events.push("CHECKPOINT");
+      },
+    },
+    async onSnapshotApplied() { events.push("NOTIFY"); },
+  });
+  assert.equal(events[0], "BEGIN");
+  assert.ok(events.some((entry) => entry.startsWith("DELETE FROM ")));
+  assert.ok(events.findIndex((entry) => entry.startsWith("DELETE FROM ")) < events.indexOf("CHECKPOINT"));
+  assert.deepEqual(events.slice(-3), ["CHECKPOINT", "COMMIT", "NOTIFY"]);
+  assert.equal(queries.some((entry) => entry.sql === "ROLLBACK"), false);
+});
+
+test("publication snapshot rolls back and never notifies when checkpoint persistence fails", async () => {
+  const { client, queries } = createClientDouble();
+  let notified = false;
+  await assert.rejects(applyPublicationSnapshot({
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+    snapshotResponse: {
+      checkpoint: "12",
+      feedVersion: PUBLICATION_FEED_VERSION,
+      mode: "snapshot",
+      snapshot: emptyPublicationSnapshot(),
+    },
+    syncGateway: { async writeLocalState() { throw new Error("checkpoint failed"); } },
+    onSnapshotApplied() { notified = true; },
+  }), /checkpoint failed/);
+  assert.equal(queries[0].sql, "BEGIN");
+  assert.equal(queries.at(-1).sql, "ROLLBACK");
+  assert.equal(queries.some((entry) => entry.sql === "COMMIT"), false);
+  assert.equal(notified, false);
+});
+
 test("applyAuthChanges upserts dependencies before dependent user role rows", async () => {
   const { client, queries } = createClientDouble();
 

@@ -1,9 +1,11 @@
-.reporting-filter-form {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 16px;
-  min-width: max-content;
+@media (min-width: 901px) {
+  .usage-filter-form.reporting-filter-form {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 16px;
+    min-width: max-content;
+  }
 }
 
 .reporting-filter-panel {

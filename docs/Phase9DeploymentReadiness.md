@@ -9,9 +9,9 @@ connect to production or staging, change infrastructure, run a sync, or deploy.
 | --- | --- | --- |
 | Merge-triggered GitHub Actions | The remote `main` branch has one workflow, `phase2a1-postgres-integration.yml`. It runs tests/builds on three named feature branches or manual dispatch; it has no `main` trigger or deployment step. | No deployment by repository GitHub Actions on merge to `main`. |
 | Cloud Build, Cloud Run, other triggers | No GCP CLI, Cloud Run/Build connection, or usable project credentials are available in this workspace. Repository search found no Cloud Build configuration. | External triggers, revision, image, and deployed environment are **unverified**. A merge could still deploy through a trigger outside the repository. |
-| Active Pi watcher/feed | The operator reports `selby-live-sync.service` active and running, described as V2 Live Database Sync. A read-only query of `local_machine_publication_sync_v2` returned `valid`. The actual watcher `ExecStart` was not included. | A valid v2 baseline is **confirmed by operator output**; the active watcher feed remains **unverified** until its untruncated command is seen. |
-| Pi revision and nightly reconciliation | The operator reports Pi Git SHA `82ecbf7f` and no active `selby*` timers. `git status --short` warned that `server/data/` could not be read. The `selby-db-sync.service` command was truncated in terminal output. | The deployed Pi is on a divergent, older revision; cleanliness and the installed nightly schedule are **unverified**. No active systemd timer appeared in the supplied output. |
-| v1 late commit | Isolated PostgreSQL tests reproduce a lower-ID transaction committing after a higher-ID transaction and being omitted by a v1 cursor. The v2 publication tests deliver both transactions. | Confirmed v1 defect; production exposure depends on the unverified Pi feed. Nightly full reconciliation may repair drift later but cannot guarantee timely delivery. |
+| Active Pi watcher/feed | The operator reports `selby-live-sync.service` active with `ExecStart=/usr/bin/node /opt/selby-portal/scripts/watchSyncEvents.mjs --v2`. A read-only query of `local_machine_publication_sync_v2` returned `valid`. | The active watcher uses v2 with a valid v2 baseline. The v1 late-commit defect does **not** affect this active watcher. |
+| Pi revision and nightly reconciliation | The operator reports Pi Git SHA `82ecbf7f`; `git status --short` warned that `server/data/` could not be read. Both `selby-db-sync.service` and `.timer` are disabled and inactive. At the deployed SHA, the service runs ordinary `sync:local` without `--reconcile`. | The deployed Pi is on a divergent, older revision; cleanliness is unverified. **Scheduled full reconciliation is absent from these systemd units.** A separate cron or other scheduler has not been ruled out. |
+| v1 late commit | Isolated PostgreSQL tests reproduce a lower-ID transaction committing after a higher-ID transaction and being omitted by a v1 cursor. The v2 publication tests deliver both transactions. | The defect is confirmed but does not affect the running v2 watcher. Any other v1 client remains unverified. The disabled nightly timer provides no scheduled full repair through these units. |
 | Proposed application compatibility | Isolated PostgreSQL integration tests exercise v1 push, v2 snapshot/pull, SSE reconnect, offline/nightly CLI recovery, retries, idempotency, conflicts, and rollback. Machine-authenticated routes support both feeds in the proposed code. | Code-level compatibility passed. Deployed Pi/Cloud versions, migrations, network behaviour, and actual data volume are **unverified**. |
 | Staging Pi ↔ Cloud Run | No staging endpoint, Pi, credentials, or Cloud Run access was provided. | No live staging checks executed. |
 
@@ -21,13 +21,14 @@ this branch. The RFID consumer files match that merged version; the divergent
 SHA does not by itself establish a missing RFID feature. Other changes since
 the Pi revision still require staging compatibility checks.
 
-The v1 feed should be treated as a deployment blocker if the Pi watcher still
-uses it and timely cloud-to-Pi updates matter. The valid v2 baseline supports
-using v2 but does not prove that the running watcher has `--v2`. If it does,
-the v1 late-commit omission does not affect that watcher; if it does not, the
-watcher can still miss committed changes until a full reconciliation. Confirm
-the service command before choosing any rollout. Do not edit or reset either
-cursor, clear the outbox, or use production as a test environment.
+The running Pi watcher explicitly uses `--v2`, and its baseline is valid. Its
+deployed version has no periodic fallback; it relies on SSE, reconnect, and
+local outbox wakeups. The proposed branch adds a 60-second fallback, but this
+has not been deployed to the Pi. Both nightly systemd units are disabled, and
+the deployed service command is an incremental sync, not a full reconcile.
+This is a recovery-coverage gap that requires staging validation and an
+approved Pi rollout. Do not edit or reset either cursor, clear the outbox,
+repeat the v2 rebaseline, or use production as a test environment.
 
 ## Read-only evidence required before release
 
@@ -41,11 +42,11 @@ secrets or member records into a shared log:
 2. **Cloud Run:** record the portal and sync service names, latest ready
    revision, image digests, deployment source, and whether the authenticated
    v1/v2 endpoints are enabled. Compare the deployed SHA to `bug/refactor`.
-3. **Pi:** obtain untruncated `selby-live-sync.service` `ExecStart` and confirm
-   `--v2`; inspect `selby-db-sync.service` and `.timer` load/enabled/active
-   states, plus any cron replacement. Check watcher health and recent redacted
-   sync status. Resolve the `server/data/` permission warning before claiming
-   the worktree is clean.
+3. **Pi:** the active watcher `--v2` and disabled nightly units are confirmed.
+   Check for any cron replacement, recent redacted sync status, and pending
+   outbox count. Resolve the `server/data/` permission warning before claiming
+   the worktree is clean. Stage the proposed 60-second fallback and nightly
+   reconciliation before enabling either in production with approval.
 4. **Pi database:** the v2 baseline validity query returned `valid` in operator
    output. Check pending outbox count and last successful sync without
    exporting rows or secrets; do not repeat a rebaseline merely to verify it.
@@ -90,6 +91,7 @@ commands and history before considering the incident closed.
 
 - **Merge: NO-GO** until external deployment triggers are inspected. The
   repository alone cannot rule out an automatic Cloud Build deployment.
-- **Deploy: NO-GO** until the active Pi feed, Cloud/Pi revisions, migration
-  compatibility, and staging recovery tests are verified. No live staging
+- **Deploy: NO-GO** until Cloud/Pi revisions, migration compatibility, and
+  staging recovery tests are verified. The disabled nightly timer and absent
+  deployed periodic fallback need an approved recovery plan. No live staging
   validation was available for this review.

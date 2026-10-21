@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { createBeginnerCourseViews } from "./domain/services/beginnerCourseViews.js";
+import { normalizeCourseType } from "./domain/services/beginnerCourseRules.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,11 +32,6 @@ test("persistent nightly timer invokes full reconciliation with retry", async ()
 });
 
 test("calendar retains simultaneous course identities and labels taster sessions correctly", async () => {
-  const source = await readFile(path.join(__dirname, "index.js"), "utf8");
-  const functionSource = source.slice(
-    source.indexOf("async function buildBeginnersCourseCalendarLessons("),
-    source.indexOf("async function buildEventBookingsMap("),
-  );
   const courses = ["beginners", "have-a-go", "taster-session"].map((course_type, index) => ({
     id: index + 1, course_type, approval_status: "approved", beginner_capacity: 8,
   }));
@@ -52,9 +49,14 @@ test("calendar retains simultaneous course identities and labels taster sessions
     for (const row of rows) groups.set(key(row), [...(groups.get(key(row)) ?? []), row]);
     return groups;
   };
-  // Exercise the actual builder without booting the server or accessing a database.
-  const build = new Function("beginnersCourseReadGateway", "normalizeCourseType", "groupRowsBy", "getUserDisplayName",
-    `${functionSource}; return buildBeginnersCourseCalendarLessons;`)(gateway, (type) => type, groupRowsBy, () => "Coordinator");
+  const { buildBeginnersCourseCalendarLessons: build } = createBeginnerCourseViews({
+    LEGACY_NON_MEMBER_ROLE_KEYS: new Set(["prospect"]),
+    beginnersCourseReadGateway: gateway,
+    getUserDisplayName: () => "Coordinator",
+    groupRowsBy,
+    manualLessonAttendanceGateway: { listAll: async () => [] },
+    normalizeCourseType,
+  });
   const lessons = await build();
   assert.equal(lessons.length, 3);
   assert.equal(new Set(lessons.map((lesson) => lesson.id)).size, 3);

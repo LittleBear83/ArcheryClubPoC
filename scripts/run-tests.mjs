@@ -6,6 +6,7 @@ import ts from "typescript";
 await import("./check-test-registrations.mjs");
 const root = process.cwd();
 await import("../shared/attendancePolicy.test.js");
+await import("../shared/handicapAllowance.test.js");
 await import("../shared/membershipClassification.test.js");
 await import("../src/utils/userProfile.test.js");
 await import("../src/api/beginnersCourseTypeSupport.test.js");
@@ -68,6 +69,8 @@ const files = [
   "src/presentation/pages/reporting/reportingPresentation.test.ts",
   "src/presentation/pages/reporting/ReportingSharedSections.tsx",
   "src/presentation/pages/reporting/ReportingSharedSections.test.tsx",
+  "src/presentation/pages/records/HandicapReferencePanel.tsx",
+  "src/presentation/pages/records/HandicapReferencePanel.test.tsx",
   "shared/membershipClassification.js",
   "shared/membershipClassificationRules.js",
   "shared/attendancePolicy.js",
@@ -156,6 +159,10 @@ await copyFile(
   path.join(root, "src/api/beginnersCourseTypeSupport.js"),
   path.join(outDir, "src/api/beginnersCourseTypeSupport.js"),
 );
+await mkdir(path.join(outDir, "shared"), { recursive: true });
+await copyFile(path.join(root, "shared/handicapAllowance.js"), path.join(outDir, "shared/handicapAllowance.js"));
+await copyFile(path.join(root, "src/presentation/pages/records/handicapLookup.js"),
+  path.join(outDir, "src/presentation/pages/records/handicapLookup.js"));
 
 await import(pathToFileURL(path.join(outDir, "src/api/client.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/utils/mobileInstall.test.js")));
@@ -164,6 +171,7 @@ await import(pathToFileURL(path.join(outDir, "src/presentation/pages/home/commit
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/reportingUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/reportingPresentation.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/ReportingSharedSections.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/records/HandicapReferencePanel.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/home/HomeTickers.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/range-usage/rangeUsageUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/dashboard/reportingDashboard.test.js")));

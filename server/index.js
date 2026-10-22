@@ -89,6 +89,10 @@ import { createAnnouncementGateway } from "./infrastructure/persistence/announce
 import { createAuditLogGateway } from "./infrastructure/persistence/auditLogGateway.js";
 import { createEquipmentGateway } from "./infrastructure/persistence/equipmentGateway.js";
 import { createMemberAuthGateway } from "./infrastructure/persistence/memberAuthGateway.js";
+import { createRememberedDeviceGateway } from "./infrastructure/persistence/rememberedDeviceGateway.js";
+import { createRememberedDeviceService } from "./domain/services/rememberedDeviceService.js";
+import { REMEMBERED_DEVICE_COOKIE_NAME, createRememberedDeviceCookie,
+  clearRememberedDeviceCookie } from "./security/rememberedDeviceCookie.js";
 import { createMemberProfileGateway } from "./infrastructure/persistence/memberProfileGateway.js";
 import { createLostArrowGateway } from "./infrastructure/persistence/lostArrowGateway.js";
 import { createOutdoorTableGateway } from "./infrastructure/persistence/outdoorTableGateway.js";
@@ -184,6 +188,7 @@ const GENERAL_JSON_BODY_LIMIT = "256kb";
 const COMMITTEE_PHOTO_JSON_BODY_LIMIT = "5mb";
 const AUTH_RATE_LIMIT_PATHS = new Set([
   "/api/auth/login",
+  "/api/auth/remembered-session",
   "/api/auth/rfid",
   "/api/auth/guest-login",
 ]);
@@ -204,6 +209,7 @@ const AUDIT_EXCLUDED_PATHS = new Set([
   "/api/auth/rfid",
   "/api/auth/rfid/check-in",
   "/api/auth/logout",
+  "/api/auth/session/end",
   "/api/auth/guest-login",
   "/api/range-rules",
   "/api/lost-arrows",
@@ -341,12 +347,12 @@ function signSessionPayload(encodedPayload) {
     .digest("base64url");
 }
 
-function createSessionToken(username) {
+function createSessionToken(username, maxAgeSeconds = SESSION_MAX_AGE_SECONDS) {
   // Session tokens are signed JSON payloads stored in HttpOnly cookies, so the
   // browser cannot edit usernames without failing signature verification.
   const payload = encodeSessionPayload({
     username,
-    exp: Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS,
+    exp: Math.floor(Date.now() / 1000) + maxAgeSeconds,
   });
 
   return `${payload}.${signSessionPayload(payload)}`;
@@ -383,10 +389,11 @@ function verifySessionToken(token) {
   }
 }
 
-function createSessionCookie(username) {
+function createSessionCookie(username, maxAgeSeconds = SESSION_MAX_AGE_SECONDS) {
   const secureFlag = serverRuntime.isLive ? "; Secure" : "";
 
-  return `${SESSION_COOKIE_NAME}=${createSessionToken(username)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MAX_AGE_SECONDS}${secureFlag}`;
+  const age = Math.min(SESSION_MAX_AGE_SECONDS, Math.max(0, Math.floor(maxAgeSeconds)));
+  return `${SESSION_COOKIE_NAME}=${createSessionToken(username, age)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${age}${secureFlag}`;
 }
 
 function clearSessionCookie() {
@@ -1074,6 +1081,14 @@ const memberAuthGateway = createMemberAuthGateway({
   updateGoldenRecordsId,
   updateUserMembershipStatus,
   updateUserPassword,
+});
+const rememberedDeviceService = createRememberedDeviceService({
+  gateway: createRememberedDeviceGateway({
+    databaseEngine: serverRuntime.databaseEngine,
+    db,
+    pool: db.pool,
+  }),
+  secret: SESSION_SECRET,
 });
 
 const memberProfileGateway = createMemberProfileGateway({
@@ -4806,9 +4821,11 @@ const { processRfidCheckIn } = registerAuthRoutes({
   buildMemberUserProfile,
   getDeactivatedRfidTag,
   getSessionUsername,
+  getRememberedDeviceToken: (req) => parseCookies(req)[REMEMBERED_DEVICE_COOKIE_NAME],
   getUtcTimestampParts,
   hashPassword,
   memberAuthGateway,
+  rememberedDeviceService,
   rfidMachineId: serverRuntime.sync.isLocalPiNode
     ? (serverRuntime.sync.machineId || os.hostname()) : null,
   rfidReaderStatus,
@@ -4817,8 +4834,10 @@ const { processRfidCheckIn } = registerAuthRoutes({
     memberPersistenceService.syncMemberStatusWithFees(...args),
   clearCsrfCookie: csrfProtection.clearCookie,
   clearSessionCookie,
+  clearRememberedDeviceCookie: () => clearRememberedDeviceCookie({ isLive: serverRuntime.isLive }),
   createCsrfCookie: csrfProtection.createCookie,
   createSessionCookie,
+  createRememberedDeviceCookie: (token) => createRememberedDeviceCookie(token, { isLive: serverRuntime.isLive }),
   getCsrfToken: csrfProtection.getToken,
   verifyPassword,
 });

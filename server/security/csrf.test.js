@@ -25,6 +25,12 @@ async function startTestServer() {
   app.post("/api/protected", (_req, res) => {
     res.json({ success: true });
   });
+  app.post("/api/auth/remembered-session", (_req, res) => {
+    res.json({ success: true });
+  });
+  app.post("/api/auth/session/end", (_req, res) => {
+    res.json({ success: true });
+  });
 
   const server = await new Promise((resolve) => {
     const listener = app.listen(0, () => resolve(listener));
@@ -77,6 +83,18 @@ test("CSRF middleware rejects mutating API requests without a token", async () =
 
     assert.equal(response.status, 403);
     assert.equal(response.body.success, false);
+  } finally {
+    server.close();
+  }
+});
+
+test("remembered sign-in and session-only logout retain CSRF protection", async () => {
+  const { baseUrl, server } = await startTestServer();
+  try {
+    for (const path of ["/api/auth/remembered-session", "/api/auth/session/end"]) {
+      const response = await requestJson(baseUrl, path, { method: "POST" });
+      assert.equal(response.status, 403);
+    }
   } finally {
     server.close();
   }

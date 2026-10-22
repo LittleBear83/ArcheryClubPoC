@@ -1,8 +1,6 @@
 import { createGoldenRecordsHttpClient } from "./goldenRecordsHttpClient.js";
+import { collectGoldenRecordsPages, GOLDEN_RECORDS_REQUEST_GAP_MS } from "./goldenRecordsPagination.js";
 import { createGoldenRecordsBowDisciplineImportPlan } from "../../domain/services/goldenRecordsBowDisciplineImport.js";
-
-const PAGE_SIZE = 1000;
-const MIN_REQUEST_GAP_MS = 1100;
 
 function targetScope(runtime) {
   let databaseName = runtime.postgres.databaseName || "";
@@ -37,19 +35,18 @@ export function createGoldenRecordsBowDisciplineImportService({
 
   async function fetchGoldenRecordsMembers() {
     const client = httpClient ?? createGoldenRecordsHttpClient(runtime.goldenRecords);
-    const members = [];
     let lastRequestAt = 0;
-    for (let pageNumber = 1; ; pageNumber += 1) {
-      const gap = MIN_REQUEST_GAP_MS - (Date.now() - lastRequestAt);
-      if (gap > 0) await wait(gap);
-      lastRequestAt = Date.now();
-      const response = await client.getJson("/api/members", { pageNumber, pageSize: PAGE_SIZE });
-      if (!response.ok) throw new Error(`Golden Records members request failed (${response.status} ${response.statusText}).`);
-      if (!Array.isArray(response.body)) throw new Error("Golden Records members response was not an array; no changes were made.");
-      members.push(...response.body);
-      if (response.body.length < PAGE_SIZE) break;
-    }
-    return members;
+    return collectGoldenRecordsPages({
+      path: "/api/members",
+      beforePage: async () => {
+        const gap = GOLDEN_RECORDS_REQUEST_GAP_MS - (Date.now() - lastRequestAt);
+        if (gap > 0) await wait(gap);
+        lastRequestAt = Date.now();
+      },
+      fetchPage: ({ pageNumber, pageSize }) => client.getJson("/api/members", { pageNumber, pageSize }),
+      errorMessage: (response) => `Golden Records members request failed (${response.status} ${response.statusText}).`,
+      invalidResponseMessage: "Golden Records members response was not an array; no changes were made.",
+    });
   }
 
   async function readActivePortalMembers() {

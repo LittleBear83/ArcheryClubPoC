@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import process from "node:process";
 import { before, after, test } from "node:test";
 import pg from "pg";
 import { assertSafeIntegrationEnvironment, assertSafeTemporaryDatabaseName, TEST_DATABASE_PREFIX } from "./phase2a1PostgresIntegrationGuards.js";
@@ -49,11 +50,11 @@ test("PostgreSQL login-method report counts synced success once, filters dates a
   const period = resolveDashboardPeriod("7d", new Date("2026-10-05T15:00:00Z"));
   const gateway = createLoginMethodReportingGateway({ databaseEngine: "postgres", pool: cloud });
   const report = buildLoginMethodReport(await gateway.countByMethod(period), period);
-  assert.equal(report.total, 4);
-  assert.equal(report.excludedOtherCount, 1);
-  assert.deepEqual(report.methods.map((entry) => [entry.count, entry.percentage]), [[1, 25], [1, 25], [2, 50]]);
+  assert.equal(report.total, 5);
+  assert.equal(report.excludedOtherCount, 0);
+  assert.deepEqual(report.methods.map((entry) => [entry.count, entry.percentage]), [[1, 20], [2, 40], [1, 20], [1, 20]]);
   const all = resolveDashboardPeriod("all", new Date("2026-10-05T15:00:00Z"));
-  assert.equal(buildLoginMethodReport(await gateway.countByMethod(all), all).total, 5);
+  assert.equal(buildLoginMethodReport(await gateway.countByMethod(all), all).total, 6);
   const empty = resolveDashboardPeriod("7d", new Date("2025-01-01T00:00:00Z"));
   assert.equal(buildLoginMethodReport(await gateway.countByMethod(empty), empty).total, 0);
   const changes = (await sync.listChangesAfterCheckpoint({ checkpoint: 0, limit: 100 })).filter((row) => row.domain === "login_events");

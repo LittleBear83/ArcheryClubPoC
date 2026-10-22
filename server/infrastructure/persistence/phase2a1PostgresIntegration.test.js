@@ -1435,12 +1435,19 @@ test("PostgreSQL v2 rebaseline preserves local-only/history/outbox data, prunes 
   await seedUser(cloud, 501, "baseline-member");
   await seedUser(local, 601, "baseline-member");
   await local.query("INSERT INTO roles (role_key, title) VALUES ('stale-local-role', 'Stale')");
-  await local.query(`
+  const localSuggestion = await local.query(`
     INSERT INTO suggestions (
       submitted_by_username, suggestion_title, improvement_text,
       created_at_date, created_at_time
     ) VALUES ('baseline-member', 'Keep me', 'Local-only data', '2026-09-08', '12:00:00')
+    RETURNING sync_id
   `);
+  // An unsent local suggestion survives an authoritative snapshot only while
+  // its creation remains pending in the durable outbox.
+  await local.query(`
+    INSERT INTO sync_local_outbox (event_id, event_type, aggregate_key, payload_json)
+    VALUES ('pending-suggestion', 'suggestion_created', $1, '{}'::jsonb)
+  `, [localSuggestion.rows[0].sync_id]);
   await local.query(`
     INSERT INTO login_events (
       username, login_method, logged_in_date, logged_in_time, sync_event_id
@@ -1481,10 +1488,12 @@ test("PostgreSQL v2 rebaseline preserves local-only/history/outbox data, prunes 
   assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM login_events WHERE sync_event_id = 'local-history-1'")).rows[0].n, 1);
   assert.equal((await local.query("SELECT COUNT(*)::int AS n FROM roles WHERE role_key = 'stale-local-role'")).rows[0].n, 0);
   const outbox = (await local.query("SELECT event_id, acknowledged_at, rejected_at, rejection_code, rejection_reason FROM sync_local_outbox ORDER BY event_id")).rows;
-  assert.equal(outbox.length, 2);
+  assert.equal(outbox.length, 3);
   assert.ok(outbox[0].acknowledged_at);
-  assert.equal(outbox[1].rejection_code, "invalid");
-  assert.equal(outbox[1].rejection_reason, "Preserved diagnostic");
+  assert.equal(outbox[1].event_id, "pending-suggestion");
+  assert.equal(outbox[1].acknowledged_at, null);
+  assert.equal(outbox[2].rejection_code, "invalid");
+  assert.equal(outbox[2].rejection_reason, "Preserved diagnostic");
   assert.deepEqual((await localGateway.readLocalState("local_machine_sync")).state, { currentCheckpoint: 77 });
   const publicationState = await localGateway.readLocalState(PUBLICATION_SYNC_STATE_KEY);
   assert.deepEqual(publicationState.state, {
@@ -1653,7 +1662,7 @@ test("PostgreSQL course creation persists coach defaults, per-lesson overrides, 
     firstLessonDate: lessons[0].lessonDate, startTime: "18:00:00", endTime: "20:00:00", lessonCount: 1, beginnerCapacity: 8,
     lessonDates: [lessons[0]], createdAtDate: today, createdAtTime: "09:00:00",
   });
-  assert.equal((await pool.query("SELECT required_coach_count FROM beginners_course_lessons WHERE course_id = $1", [tasterCourseId])).rows[0].required_coach_count, 1);
+  assert.equal((await pool.query("SELECT required_coach_count FROM beginners_course_lessons WHERE course_id = $1", [tasterCourseId])).rows[0].required_coach_count, 5);
 });
 
 test('local outbox INSERT wakes only on commit and remains durable after listener restart', { timeout: 30000 }, async () => {

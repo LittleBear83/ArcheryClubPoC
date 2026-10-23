@@ -42,7 +42,7 @@ test("keyboard arrows move row focus without changing selection", () => {
 test("both tables keep horizontal scrolling and sticky grouped headings on mobile", async () => {
   const css = await readFile(new URL("../../App.css", import.meta.url), "utf8");
   assert.match(css, /\.outdoor-table-scroll\s*\{[^}]*overflow-x: auto;[^}]*overflow-y: auto;[^}]*max-height:/s);
-  assert.match(css, /\.outdoor-table-matrix thead\s*\{[^}]*position: sticky;[^}]*top: 0;/s);
+  assert.match(css, /\.outdoor-table-matrix thead\s*\{[^}]*position: sticky;[^}]*top: 0;[^}]*z-index: 2;[^}]*background: var\(--input-option-bg\);/s);
   assert.match(css, /@media \(max-width: 960px\)\s*\{[\s\S]*?\.outdoor-table-scroll\s*\{\s*overflow-x: scroll;/);
   assert.match(css, /@media \(max-width: 640px\)\s*\{[\s\S]*?\.outdoor-table-matrix\s*\{\s*min-width: 1060px;/);
 });

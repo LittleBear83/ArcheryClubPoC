@@ -1,3 +1,9 @@
+import {
+  ATTENDANCE_MAX_RANGE_DAYS,
+  DEFAULT_MEMBER_RANGE_ATTENDANCE_DAYS,
+  MEMBER_RANGE_ATTENDANCE_PERIOD_DAYS,
+} from "../../../shared/attendancePolicy.js";
+
 export function registerMemberActivityRoutes({
   activityReportingGateway,
   addUtcDays,
@@ -68,8 +74,6 @@ export function registerMemberActivityRoutes({
     return Math.round((numerator / denominator) * 1000) / 10;
   }
 
-  const RANGE_USAGE_MAX_DAYS = 366;
-  const REPORTING_MAX_DAYS = 366;
   const RANGE_PRESENCE_DEFAULT_WINDOW_MS = 2 * 60 * 60 * 1000;
   const RANGE_PRESENCE_MIN_EXTENSION_HOURS = 2;
   const RANGE_PRESENCE_MAX_EXTENSION_HOURS = 12;
@@ -592,7 +596,7 @@ export function registerMemberActivityRoutes({
         res,
         filteredStart,
         filteredEndDay,
-        RANGE_USAGE_MAX_DAYS,
+        ATTENDANCE_MAX_RANGE_DAYS,
       )
     ) {
       return;
@@ -670,8 +674,8 @@ export function registerMemberActivityRoutes({
       return;
     }
 
-    const days = Number(req.query.days ?? 90);
-    if (![30, 60, 90, 180, 365].includes(days)) {
+    const days = Number(req.query.days ?? DEFAULT_MEMBER_RANGE_ATTENDANCE_DAYS);
+    if (!MEMBER_RANGE_ATTENDANCE_PERIOD_DAYS.includes(days)) {
       res.status(400).json({ success: false, message: "Choose a valid attendance window." });
       return;
     }
@@ -758,7 +762,7 @@ export function registerMemberActivityRoutes({
         res,
         filteredStart,
         filteredEndDay,
-        REPORTING_MAX_DAYS,
+        ATTENDANCE_MAX_RANGE_DAYS,
       )
     ) {
       return;
@@ -930,7 +934,7 @@ export function registerMemberActivityRoutes({
         res,
         filteredStart,
         filteredEndDay,
-        REPORTING_MAX_DAYS,
+        ATTENDANCE_MAX_RANGE_DAYS,
       )
     ) {
       return;

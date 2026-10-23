@@ -4,12 +4,9 @@ import { test } from "node:test";
 
 import { REPLICATED_DOMAINS } from "./localDatabaseSyncService.js";
 
-const serviceUrl = new URL(
-  "./localDatabaseSyncService.js",
-  import.meta.url,
-);
-
-const source = await readFile(serviceUrl, "utf8");
+const source = await readFile(new URL("../../application/localDatabaseSyncService.js", import.meta.url), "utf8");
+const committeeGatewaySource = await readFile(new URL("../../infrastructure/persistence/localSyncCommitteeGateway.js", import.meta.url), "utf8");
+const changeGatewaySource = await readFile(new URL("../../infrastructure/persistence/localSyncChangeGateway.js", import.meta.url), "utf8");
 
 test("committee meeting minutes are a replicated Pi domain", () => {
   assert.ok(
@@ -18,19 +15,13 @@ test("committee meeting minutes are a replicated Pi domain", () => {
 });
 
 test("committee minutes upsert uses sync_id and rebuilds local user id", () => {
-  const start = source.indexOf(
+  const start = committeeGatewaySource.indexOf(
     "async function upsertCommitteeMeetingMinuteRows",
   );
 
-  const end = source.indexOf(
-    "async function upsertBeginnersCourses",
-    start,
-  );
-
   assert.notEqual(start, -1);
-  assert.notEqual(end, -1);
 
-  const helper = source.slice(start, end);
+  const helper = committeeGatewaySource.slice(start);
 
   assert.match(
     helper,
@@ -82,17 +73,17 @@ test("committee minutes are optionally reconciled from snapshots", () => {
 
 test("committee minutes incremental changes use sync_id", () => {
   assert.match(
-    source,
+    changeGatewaySource,
     /case "committee_meeting_minutes":/,
   );
 
   assert.match(
-    source,
+    changeGatewaySource,
     /DELETE FROM committee_meeting_minutes WHERE sync_id = \$1/,
   );
 
   assert.match(
-    source,
+    changeGatewaySource,
     /upsertCommitteeMeetingMinuteRows\(client, \[change\.payload\]\)/,
   );
 });

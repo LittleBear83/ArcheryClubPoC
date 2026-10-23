@@ -22,6 +22,7 @@ import { migration as lessonRequiredCoachesMigration } from "./020_lesson_requir
 import { migration as manualLessonAttendanceMigration } from "./021_manual_lesson_attendance.js";
 import { migration as coachingAssignmentNotificationsMigration } from "./022_coaching_assignment_notifications.js";
 import { migration as coachingParticipantNotesMigration } from "./023_coaching_participant_notes.js";
+import { migration as rememberedDevicesMigration } from "./024_remembered_devices.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -46,4 +47,5 @@ export const postgresMigrations = [
   manualLessonAttendanceMigration,
   coachingAssignmentNotificationsMigration,
   coachingParticipantNotesMigration,
+  rememberedDevicesMigration,
 ];

@@ -1269,6 +1269,31 @@ test("reporting attendance route rejects authenticated members without report pe
   }
 });
 
+test("attendance endpoints accept 366 inclusive UTC days and reject 367", async () => {
+  const app = express();
+  registerMemberActivityTestRoutes(
+    app,
+    () => ({ id: 2, username: "reporter", user_type: "admin" }),
+    (_actor, permission) => permission === "view_reports",
+  );
+  const { baseUrl, server } = await startTestServer(app);
+  try {
+    for (const path of [
+      "/api/range-usage-dashboard",
+      "/api/reporting/attendance",
+      "/api/reporting/member-journeys",
+    ]) {
+      const valid = await requestJson(baseUrl, `${path}?start=2023-03-02&end=2024-03-01`);
+      assert.equal(valid.status, 200, path);
+      const invalid = await requestJson(baseUrl, `${path}?start=2023-03-01&end=2024-03-01`);
+      assert.equal(invalid.status, 400, path);
+      assert.match(invalid.body.message, /366 days/);
+    }
+  } finally {
+    server.close();
+  }
+});
+
 test("reporting attendance keeps associate member type and unchanged role", async () => {
   const app = express();
   registerMemberActivityTestRoutes(app,

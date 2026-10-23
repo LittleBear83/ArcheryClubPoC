@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getAttendanceRangeDateBounds } from "../../../../shared/attendancePolicy.js";
 import { formatDateRangeLabel } from "../../../utils/dateTime";
 import { getRangeUsageDashboard } from "../../../api/rangeUsageApi";
 import {
@@ -15,6 +16,7 @@ export function useRangeUsagePageState(currentUserProfile) {
   const [endDate, setEndDate] = useState(getTodayString());
   const [activeView, setActiveView] = useState("currentWeek");
   const actorUsername = currentUserProfile?.auth?.username ?? "";
+  const { minStartDate, maxEndDate } = getAttendanceRangeDateBounds(startDate, endDate, getTodayString());
 
   const queryResult = useQuery({
     queryKey: ["range-usage-dashboard", actorUsername, startDate, endDate],
@@ -80,6 +82,16 @@ export function useRangeUsagePageState(currentUserProfile) {
     () => (activeData ? aggregateMonthDayRows(activeData.daily) : []),
     [activeData],
   );
+  const dailyGraphConfig = useMemo(() => {
+    if (!activeData) return { rows: [], subtitle: "" };
+    const aggregate = getSelectedRangeLengthInDays(activeData) > 31;
+    return {
+      rows: aggregate ? aggregatedMonthRows : activeData.daily,
+      subtitle: aggregate
+        ? "Across the selected period, grouped by day of month."
+        : "Daily visits for the selected period.",
+    };
+  }, [activeData, aggregatedMonthRows]);
   const aggregatedPersonalMonthRows = useMemo(
     () =>
       activePersonalData ? aggregateMonthDayRows(activePersonalData.daily) : [],
@@ -96,10 +108,10 @@ export function useRangeUsagePageState(currentUserProfile) {
 
     if (activeView === "currentMonth") {
       return {
-        rows: aggregatedPersonalMonthRows,
+        rows: activePersonalData.daily,
         keyField: "usageDate",
         className: "usage-graph-date",
-        subtitle: activePersonalData.label,
+        subtitle: `${activePersonalData.label} by day`,
       };
     }
 
@@ -140,9 +152,12 @@ export function useRangeUsagePageState(currentUserProfile) {
     activeView,
     aggregatedMonthRows,
     dashboard: queryResult.data,
+    dailyGraphConfig,
     endDate,
     error: queryResult.error,
-    getTodayString,
+    isLoading: queryResult.isLoading,
+    maxEndDate,
+    minStartDate,
     myRangeGraphConfig,
     setActiveView,
     setEndDate,

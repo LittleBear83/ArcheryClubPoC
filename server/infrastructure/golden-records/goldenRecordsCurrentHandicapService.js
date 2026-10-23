@@ -1,9 +1,8 @@
 import { createGoldenRecordsHttpClient } from "./goldenRecordsHttpClient.js";
+import { collectGoldenRecordsPages, GOLDEN_RECORDS_REQUEST_GAP_MS } from "./goldenRecordsPagination.js";
 
 const DEFAULT_CACHE_TTL_MS = 60_000;
 const DEFAULT_MEMBER_LIST_CACHE_TTL_MS = 10 * 60_000;
-const DEFAULT_PAGE_SIZE = 1000;
-const MIN_REQUEST_GAP_MS = 1_100;
 
 function mapGoldenRecordsBowClassToDiscipline(bowClass) {
   switch (String(bowClass ?? "").trim().toLowerCase()) {
@@ -267,8 +266,8 @@ export function createGoldenRecordsCurrentHandicapService({
   async function waitForQuotaWindow() {
     const elapsedMs = Date.now() - lastRequestAt;
 
-    if (elapsedMs < MIN_REQUEST_GAP_MS) {
-      await new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_GAP_MS - elapsedMs));
+    if (elapsedMs < GOLDEN_RECORDS_REQUEST_GAP_MS) {
+      await new Promise((resolve) => setTimeout(resolve, GOLDEN_RECORDS_REQUEST_GAP_MS - elapsedMs));
     }
 
     lastRequestAt = Date.now();
@@ -282,39 +281,15 @@ export function createGoldenRecordsCurrentHandicapService({
   }
 
   async function listPagedRows(path, query, buildErrorMessage, { allowNullEmpty = false, signal } = {}) {
-    const rows = [];
-
-    for (let pageNumber = 1; ; pageNumber += 1) {
-      signal?.throwIfAborted();
-      await waitForQuotaWindow();
-      const result = await client.getJson(path, {
-        ...query,
-        pageNumber,
-        pageSize: DEFAULT_PAGE_SIZE,
-      }, { signal });
-
-      if (!result.ok) {
-        throw new Error(buildErrorMessage(result.status));
-      }
-
-      // Member-specific endpoints return JSON null when there are no rows.
-      // Club-wide lists must still return arrays, and other objects are invalid.
-      if (result.body === null && !result.bodyWasEmpty && allowNullEmpty) break;
-      if (!Array.isArray(result.body)) throw new Error(`Invalid Golden Records page response from ${path}.`);
-      const pageRows = result.body;
-
-      if (pageRows.length === 0) {
-        break;
-      }
-
-      rows.push(...pageRows);
-
-      if (pageRows.length < DEFAULT_PAGE_SIZE) {
-        break;
-      }
-    }
-
-    return rows;
+    return collectGoldenRecordsPages({
+      path,
+      beforePage: waitForQuotaWindow,
+      fetchPage: ({ pageNumber, pageSize, signal: pageSignal }) =>
+        client.getJson(path, { ...query, pageNumber, pageSize }, { signal: pageSignal }),
+      errorMessage: (response) => buildErrorMessage(response.status),
+      allowNullEmpty,
+      signal,
+    });
   }
 
   async function getCurrentHandicapsByMemberId(memberId, signal) {

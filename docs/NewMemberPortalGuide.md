@@ -69,7 +69,9 @@ the range.
 ### Range Usage
 
 The **Range Usage** page gives a view of attendance patterns at the range. This
-can help members understand busy times and general usage trends.
+can help members understand busy times and general usage trends. Choose **This week**,
+**This month**, or **Choose dates** to see your visits and the club totals for that
+period. Open **Explore club visit patterns** for hour, weekday, and date charts.
 
 ## Pages You May Not See
 

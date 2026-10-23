@@ -7,15 +7,19 @@ export function registerAuthRoutes({
   buildGuestUserProfile,
   buildMemberUserProfile,
   clearCsrfCookie,
+  clearRememberedDeviceCookie = () => "",
   clearSessionCookie,
   createCsrfCookie,
+  createRememberedDeviceCookie = () => "",
   createSessionCookie,
   getDeactivatedRfidTag,
   getCsrfToken,
   getSessionUsername,
+  getRememberedDeviceToken = () => null,
   getUtcTimestampParts,
   hashPassword,
   memberAuthGateway,
+  rememberedDeviceService = null,
   rfidMachineId,
   rfidReaderStatus,
   serverEventBus,
@@ -102,12 +106,13 @@ export function registerAuthRoutes({
     });
   };
 
-  const setSessionCookies = (req, res, username) => {
+  const setSessionCookies = (req, res, username, { extraCookies = [], maxAgeSeconds } = {}) => {
     const csrfToken = getCsrfToken(req);
 
     res.setHeader("Set-Cookie", [
-      createSessionCookie(username),
+      createSessionCookie(username, maxAgeSeconds),
       createCsrfCookie(csrfToken),
+      ...extraCookies,
     ]);
 
     return csrfToken;
@@ -143,7 +148,7 @@ export function registerAuthRoutes({
   };
 
   app.post("/api/auth/login", async (req, res) => {
-    const { username, password, deviceType } = req.body ?? {};
+    const { username, password, deviceType, rememberDevice } = req.body ?? {};
     const loginMethod = deviceType === "mobile" ? "password-mobile" : "password";
 
     if (!username || !password) {
@@ -245,10 +250,24 @@ export function registerAuthRoutes({
     }
     await markActiveAnnouncementsSeen(user.username);
     broadcastRangeMembersUpdated("auth.login");
-    const csrfToken = setSessionCookies(req, res, user.username);
     const disciplines = await memberAuthGateway.findDisciplinesByUsername(
       user.username,
     );
+    const extraCookies = [];
+    if (deviceType === "mobile" && rememberedDeviceService) {
+      const previousToken = getRememberedDeviceToken(req);
+      if (previousToken) {
+        await rememberedDeviceService.revoke(previousToken);
+      }
+      if (rememberDevice === true) {
+        const currentUser = await memberAuthGateway.findUserByUsername(user.username);
+        const issued = await rememberedDeviceService.issue(currentUser);
+        extraCookies.push(createRememberedDeviceCookie(issued.token));
+      } else if (previousToken) {
+        extraCookies.push(clearRememberedDeviceCookie());
+      }
+    }
+    const csrfToken = setSessionCookies(req, res, user.username, { extraCookies });
 
     res.json({
       success: true,
@@ -378,9 +397,36 @@ export function registerAuthRoutes({
     });
   });
 
-  app.post("/api/auth/logout", (_req, res) => {
+  app.post("/api/auth/logout", async (req, res) => {
+    res.setHeader("Set-Cookie", [clearSessionCookie(), clearCsrfCookie(), clearRememberedDeviceCookie()]);
+    await rememberedDeviceService?.revoke(getRememberedDeviceToken(req));
+    res.json({ success: true });
+  });
+
+  app.post("/api/auth/session/end", (_req, res) => {
     res.setHeader("Set-Cookie", [clearSessionCookie(), clearCsrfCookie()]);
     res.json({ success: true });
+  });
+
+  app.post("/api/auth/remembered-session", async (req, res) => {
+    const token = getRememberedDeviceToken(req);
+    const authenticated = await rememberedDeviceService?.authenticate(token,
+      async (username) => syncMemberStatusWithFees(await memberAuthGateway.findUserByUsername(username)));
+    if (!authenticated) {
+      res.setHeader("Set-Cookie", clearRememberedDeviceCookie());
+      res.status(401).json({ success: false, message: "Please sign in with your password." });
+      return;
+    }
+
+    const { user, remainingSeconds } = authenticated;
+    const disciplines = await memberAuthGateway.findDisciplinesByUsername(user.username);
+    const csrfToken = setSessionCookies(req, res, user.username, { maxAgeSeconds: remainingSeconds });
+    res.json({
+      success: true,
+      csrfToken,
+      userProfile: buildMemberUserProfile(user,
+        disciplines.map((discipline) => discipline.discipline)),
+    });
   });
 
   app.get("/api/auth/csrf", (req, res) => {

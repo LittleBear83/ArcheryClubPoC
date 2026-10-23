@@ -2,6 +2,7 @@ import { Button } from "../../components/Button";
 import { MobileCardList } from "../../components/mobile/MobileCardList";
 import { MobileKeyValueList } from "../../components/mobile/MobileKeyValueList";
 import { formatDate } from "../../../utils/dateTime";
+import { MEMBER_RANGE_ATTENDANCE_PERIOD_DAYS } from "../../../../shared/attendancePolicy.js";
 import type { useReportingPageState } from "./useReportingPageState";
 import { formatMemberType } from "./reportingUtils";
 import { ProfileAccordion } from "../profile/ProfileAccordion";
@@ -33,7 +34,7 @@ export function MemberRangeAttendanceSection({
         <label>
           Look back
           <select value={attendance.days} onChange={(event) => attendance.setDays(Number(event.target.value))}>
-            {[30, 60, 90, 180, 365].map((days) => (
+            {MEMBER_RANGE_ATTENDANCE_PERIOD_DAYS.map((days) => (
               <option key={days} value={days}>Last {days} days</option>
             ))}
           </select>

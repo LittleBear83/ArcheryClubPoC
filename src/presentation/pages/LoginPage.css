@@ -270,6 +270,24 @@
   cursor: not-allowed;
 }
 
+.login-shell .login-form .login-remember-device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--touch-target);
+  cursor: pointer;
+}
+
+.login-shell .login-form .login-remember-device input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+
 .login-shell .login-form-field--invalid input,
 .login-shell .login-form-field--invalid select {
   border-color: var(--danger);

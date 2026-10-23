@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import process from "node:process";
 import { before, after, test } from "node:test";
 import pg from "pg";
 import express from "express";
@@ -14,7 +15,9 @@ import { applyAuthChanges } from "../../domain/services/localDatabaseSyncService
 
 let admin, cloud, pi, gateway, tournament;
 const databases = [], pools = [];
+const enabled = process.env.ARCHERY_POSTGRES_INTEGRATION_TESTS === "1";
 before(async () => {
+  if (!enabled) return;
   assertSafeIntegrationEnvironment(process.env);
   admin = new pg.Pool({ database: "postgres" });
   for (const label of ["tournament_cloud", "tournament_pi"]) {
@@ -33,6 +36,7 @@ before(async () => {
   tournament = await gateway.createTournament({ name: "Setup shoot", tournamentType: "head-to-head", registrationStartDate: "2026-10-01", registrationEndDate: "2026-10-10", scoreSubmissionStartDate: "2026-10-11", scoreSubmissionEndDate: "2026-10-20", createdByUsername: "captain", timestampParts: ["2026-10-05", "12:00:00"] });
 });
 after(async () => {
+  if (!enabled) return;
   await Promise.all(pools.map((pool) => pool.end()));
   for (const name of databases) {
     assertSafeTemporaryDatabaseName(name);
@@ -43,7 +47,7 @@ after(async () => {
 
 const registration = (username, extra = {}) => ({ tournamentId: tournament.id, username, bowCode: "BB", timestampParts: ["2026-10-05", "12:00:00"], ...extra });
 
-test("PostgreSQL additions persist, deduplicate concurrent retries and replicate to Pi without an echo", async () => {
+test("PostgreSQL additions persist, deduplicate concurrent retries and replicate to Pi without an echo", { skip: !enabled }, async () => {
   assert.equal((await gateway.listTournamentRegistrationsByTournamentId(tournament.id)).length, 0);
   const results = await Promise.allSettled([gateway.registerForTournament(registration("robin")), gateway.registerForTournament(registration("robin"))]);
   assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
@@ -69,7 +73,7 @@ test("PostgreSQL additions persist, deduplicate concurrent retries and replicate
   assert.equal(Number((await cloud.query("SELECT COUNT(*) AS count FROM sync_local_outbox")).rows[0].count), 0);
 });
 
-test("PostgreSQL registration and draw reset roll back together on failure", async () => {
+test("PostgreSQL registration and draw reset roll back together on failure", { skip: !enabled }, async () => {
   await cloud.query("INSERT INTO users (username, first_name, surname) VALUES ('new-archer', 'New', 'Archer')");
   await cloud.query("INSERT INTO user_types (username, user_type) VALUES ('new-archer', 'member')");
   await cloud.query(`CREATE FUNCTION reject_tournament_reset() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture reset failure'; END $$`);
@@ -81,7 +85,7 @@ test("PostgreSQL registration and draw reset roll back together on failure", asy
   assert.equal((await gateway.listTournamentRegistrationsByTournamentId(tournament.id)).length, 3);
 });
 
-test("PostgreSQL manager HTTP additions rebuild atomically; failures preserve the draw and Pi refuses writes", async (t) => {
+test("PostgreSQL manager HTTP additions rebuild atomically; failures preserve the draw and Pi refuses writes", { skip: !enabled }, async (t) => {
   await cloud.query("INSERT INTO users (username, first_name, surname) VALUES ('api-archer', 'API', 'Archer'), ('failed-archer', 'Failed', 'Archer')");
   await cloud.query("INSERT INTO user_types (username, user_type) VALUES ('api-archer', 'member'), ('failed-archer', 'member')");
   const audits = [], notifications = [];

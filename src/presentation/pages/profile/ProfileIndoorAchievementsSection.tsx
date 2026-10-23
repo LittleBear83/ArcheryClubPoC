@@ -4,7 +4,7 @@ import { Button } from "../../components/Button";
 import { SectionPanel } from "../../components/SectionPanel";
 import { formatDate } from "../../../utils/dateTime";
 import { createIndoorTableEntry, currentIndoorSeasonYear, INDOOR_CLASSIFICATION_COLUMNS, INDOOR_SCORE_COLUMNS,
-  listIndoorTable, updateIndoorTableEntry, type IndoorTableEntry, type IndoorTablePayload } from "../../../api/indoorTableApi";
+  listAllIndoorTable, updateIndoorTableEntry, type IndoorTableEntry, type IndoorTablePayload } from "../../../api/indoorTableApi";
 import type { UserProfile } from "../../../types/app";
 
 const BOWS = [
@@ -19,20 +19,24 @@ export function ProfileIndoorAchievementsSection({ currentUserProfile, username,
     canManage: boolean; goldenRecordsHandicaps: Record<string, { achieved: string; handicap: number | null }> }) {
   const year = currentIndoorSeasonYear();
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ["indoor-table", year, currentUserProfile?.auth?.username],
-    queryFn: () => listIndoorTable(currentUserProfile, year), enabled: Boolean(username && currentUserProfile?.auth?.username) });
+  const query = useQuery({ queryKey: ["indoor-table", "all", currentUserProfile?.auth?.username],
+    queryFn: () => listAllIndoorTable(currentUserProfile), enabled: Boolean(username && currentUserProfile?.auth?.username) });
   const [drafts, setDrafts] = useState<Record<string, IndoorTablePayload>>({});
   const [saving, setSaving] = useState("");
   const [message, setMessage] = useState("");
   const [collapsedBowTypes, setCollapsedBowTypes] = useState<Record<string, boolean>>({});
   const visibleBows = BOWS.filter((bow) => disciplines?.includes(bow.discipline));
   const hasMultipleDisciplines = visibleBows.length > 1;
-  const rows = useMemo(() => (query.data?.rows ?? []).filter((row) => row.archerUsername === username),
+  const rows = useMemo(() => (query.data?.rows ?? []).filter((row) =>
+    row.archerUsername.toLowerCase() === username.toLowerCase()),
     [query.data?.rows, username]);
+  const historicalRows = rows.filter((row) => row.seasonYear < year &&
+    [...Object.values(row.classifications), ...Object.values(row.scores)].some(Boolean))
+    .sort((a, b) => b.seasonYear - a.seasonYear || a.bowType.localeCompare(b.bowType));
   useEffect(() => {
     const next: Record<string, IndoorTablePayload> = {};
     for (const bow of BOWS.filter((item) => disciplines?.includes(item.discipline))) {
-      const row = rows.find((entry) => entry.bowType === bow.bowType);
+      const row = rows.find((entry) => entry.seasonYear === year && entry.bowType === bow.bowType);
       next[bow.bowType] = { seasonYear: year, archerUsername: username, bowType: bow.bowType,
         handicap: row?.handicap ?? goldenRecordsHandicaps[bow.bowType]?.handicap ?? null,
         classifications: { ...(row?.classifications ?? {}) }, scores: { ...(row?.scores ?? {}) } };
@@ -64,9 +68,10 @@ export function ProfileIndoorAchievementsSection({ currentUserProfile, username,
     </div>
     {query.isLoading ? <p>Loading indoor achievements...</p> : query.isError ? <p role="alert">Could not load indoor achievements.</p>
       : visibleBows.length === 0 ? <p>Add a discipline to this profile before recording indoor achievements.</p>
-      : <div className="profile-outdoor-grid">
+      : <>
+      <div className="profile-outdoor-grid">
         {visibleBows.map((bow) => {
-        const row = rows.find((entry) => entry.bowType === bow.bowType);
+        const row = rows.find((entry) => entry.seasonYear === year && entry.bowType === bow.bowType);
         const draft = drafts[bow.bowType];
         if (!draft) return null;
         const isCollapsed = hasMultipleDisciplines && (collapsedBowTypes[bow.bowType] ?? true);
@@ -146,6 +151,21 @@ export function ProfileIndoorAchievementsSection({ currentUserProfile, username,
           ) : null}
         </article>;
         })}
-      </div>}
+      </div>
+      {historicalRows.length > 0 ? <section aria-label="Historical indoor achievements">
+        <h3>Earlier dated awards</h3>
+        <div className="profile-outdoor-grid">
+          {[...new Set(historicalRows.map((row) => row.bowType))].map((bowType) => <article key={bowType} className="profile-outdoor-card">
+            <h4>{BOWS.find((bow) => bow.bowType === bowType)?.label ?? bowType}</h4>
+            {historicalRows.filter((row) => row.bowType === bowType).flatMap((row) =>
+              Object.entries(row.classifications).filter(([, date]) => Boolean(date)).map(([key, date]) =>
+                <p key={`${row.id}:classification:${key}`}>{INDOOR_CLASSIFICATION_COLUMNS.find((column) => column.key === key)?.label ?? key}: {formatDate(date)}</p>))}
+            {historicalRows.filter((row) => row.bowType === bowType).flatMap((row) =>
+              Object.entries(row.scores).filter(([, date]) => Boolean(date)).map(([score, date]) =>
+                <p key={`${row.id}:score:${score}`}>Portsmouth {score}: {formatDate(date)}</p>))}
+          </article>)}
+        </div>
+      </section> : null}
+      </>}
   </SectionPanel>;
 }

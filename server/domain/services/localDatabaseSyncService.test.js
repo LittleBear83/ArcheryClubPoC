@@ -108,6 +108,63 @@ function createClientDouble() {
   };
 }
 
+test("publication snapshot orders data, checkpoint and notification around one transaction", async () => {
+  const { client, queries } = createClientDouble();
+  const events = [];
+  const recordingClient = {
+    async query(sql, values) {
+      const result = await client.query(sql, values);
+      events.push(String(sql).trim().replace(/\s+/g, " "));
+      return result;
+    },
+  };
+  await applyPublicationSnapshot({
+    client: recordingClient,
+    deactivatedRfidSuffix: "-deactivated",
+    snapshotResponse: {
+      checkpoint: "12",
+      feedVersion: PUBLICATION_FEED_VERSION,
+      mode: "snapshot",
+      snapshot: emptyPublicationSnapshot(),
+    },
+    syncGateway: {
+      async writeLocalState({ client: stateClient, state, stateKey }) {
+        assert.equal(stateClient, recordingClient);
+        assert.equal(stateKey, PUBLICATION_SYNC_STATE_KEY);
+        assert.equal(state.publicationCheckpoint, "12");
+        events.push("CHECKPOINT");
+      },
+    },
+    async onSnapshotApplied() { events.push("NOTIFY"); },
+  });
+  assert.equal(events[0], "BEGIN");
+  assert.ok(events.some((entry) => entry.startsWith("DELETE FROM ")));
+  assert.ok(events.findIndex((entry) => entry.startsWith("DELETE FROM ")) < events.indexOf("CHECKPOINT"));
+  assert.deepEqual(events.slice(-3), ["CHECKPOINT", "COMMIT", "NOTIFY"]);
+  assert.equal(queries.some((entry) => entry.sql === "ROLLBACK"), false);
+});
+
+test("publication snapshot rolls back and never notifies when checkpoint persistence fails", async () => {
+  const { client, queries } = createClientDouble();
+  let notified = false;
+  await assert.rejects(applyPublicationSnapshot({
+    client,
+    deactivatedRfidSuffix: "-deactivated",
+    snapshotResponse: {
+      checkpoint: "12",
+      feedVersion: PUBLICATION_FEED_VERSION,
+      mode: "snapshot",
+      snapshot: emptyPublicationSnapshot(),
+    },
+    syncGateway: { async writeLocalState() { throw new Error("checkpoint failed"); } },
+    onSnapshotApplied() { notified = true; },
+  }), /checkpoint failed/);
+  assert.equal(queries[0].sql, "BEGIN");
+  assert.equal(queries.at(-1).sql, "ROLLBACK");
+  assert.equal(queries.some((entry) => entry.sql === "COMMIT"), false);
+  assert.equal(notified, false);
+});
+
 test("applyAuthChanges upserts dependencies before dependent user role rows", async () => {
   const { client, queries } = createClientDouble();
 
@@ -482,16 +539,26 @@ test("normal v2 pull can continue immediately from a rebaseline BIGINT checkpoin
 function createPublicationSyncDouble({
   checkpoint = "0",
   failSql = null,
+  failOnceSql = null,
   feedVersion = PUBLICATION_FEED_VERSION,
+  tournamentOwnership = null,
 } = {}) {
   const queries = [];
   const writes = [];
+  let failedOnce = false;
   let state = { feedVersion, publicationCheckpoint: checkpoint };
   const client = {
     async query(sql, values = []) {
       const normalizedSql = String(sql).replace(/\s+/g, " ").trim();
       queries.push({ sql: normalizedSql, values });
       if (failSql && normalizedSql.startsWith(failSql)) throw new Error("simulated v2 apply failure");
+      if (failOnceSql && !failedOnce && normalizedSql.startsWith(failOnceSql)) {
+        failedOnce = true;
+        throw new Error("simulated transient apply failure");
+      }
+      if (normalizedSql.startsWith("SELECT sync_is_cloud_managed FROM tournaments") && tournamentOwnership !== null) {
+        return { rowCount: 1, rows: [{ sync_is_cloud_managed: tournamentOwnership }] };
+      }
       return { rowCount: /^\s*(INSERT|UPDATE|DELETE)\b/i.test(normalizedSql) ? 1 : 0, rows: [] };
     },
   };
@@ -606,6 +673,71 @@ test("repeated publication pages are idempotent and do not reapply acknowledged 
 
   assert.equal(sync.queries.filter((entry) => entry.sql.startsWith("INSERT INTO roles")).length, 1);
   assert.equal(sync.getState().publicationCheckpoint, "21");
+});
+
+test("partial publication failure rolls back, then retry applies the full page and checkpoint", async () => {
+  const sync = createPublicationSyncDouble({ checkpoint: "30", failOnceSql: "INSERT INTO permissions" });
+  const pullResponse = {
+    changes: [
+      { domain: "roles", operation: "upsert", payload: { role_key: "member", title: "Member" }, publicationCursor: "31", recordKey: "member" },
+      { domain: "permissions", operation: "upsert", payload: { permission_key: "view", label: "View" }, publicationCursor: "32", recordKey: "view" },
+    ],
+    checkpoint: "32",
+    feedVersion: PUBLICATION_FEED_VERSION,
+    mode: "incremental",
+  };
+  const apply = () => applyPulledPublicationResponse({
+    client: sync.client, deactivatedRfidSuffix: "-deactivated", pullResponse, syncGateway: sync.syncGateway,
+  });
+
+  await assert.rejects(apply(), /simulated transient apply failure/);
+  assert.equal(sync.queries.at(-1).sql, "ROLLBACK");
+  assert.equal(sync.writes.length, 0);
+  assert.equal(sync.getState().publicationCheckpoint, "30");
+
+  await apply();
+  assert.deepEqual(sync.queries.map(({ sql }) => sql).filter((sql) => /^(BEGIN|COMMIT|ROLLBACK)$/.test(sql)),
+    ["BEGIN", "ROLLBACK", "BEGIN", "COMMIT"]);
+  assert.equal(sync.queries.filter(({ sql }) => sql.startsWith("INSERT INTO roles")).length, 2);
+  assert.equal(sync.writes.length, 1);
+  assert.equal(sync.getState().publicationCheckpoint, "32");
+});
+
+test("duplicate changes for one identity apply only their latest payload", async () => {
+  const sync = createPublicationSyncDouble({ checkpoint: "40" });
+  await applyPulledPublicationResponse({
+    client: sync.client,
+    deactivatedRfidSuffix: "-deactivated",
+    pullResponse: {
+      changes: [
+        { domain: "roles", operation: "upsert", payload: { role_key: "member", title: "Old" }, publicationCursor: "41", recordKey: "member" },
+        { domain: "roles", operation: "upsert", payload: { role_key: "member", title: "New" }, publicationCursor: "42", recordKey: "member" },
+      ],
+      checkpoint: "42", feedVersion: PUBLICATION_FEED_VERSION, mode: "incremental",
+    },
+    syncGateway: sync.syncGateway,
+  });
+  const roleWrites = sync.queries.filter(({ sql }) => sql.startsWith("INSERT INTO roles"));
+  assert.equal(roleWrites.length, 1);
+  assert.deepEqual(roleWrites[0].values, ["member", "New", 0]);
+  assert.equal(sync.getState().publicationCheckpoint, "42");
+});
+
+test("conflicting Cloud tournament delete leaves locally managed tournament and checkpoint intact", async () => {
+  const sync = createPublicationSyncDouble({ checkpoint: "50", tournamentOwnership: 0 });
+  await assert.rejects(applyPulledPublicationResponse({
+    client: sync.client,
+    deactivatedRfidSuffix: "-deactivated",
+    pullResponse: {
+      changes: [{ domain: "tournaments", operation: "delete", payload: { sync_id: "local-tournament" }, publicationCursor: "51", recordKey: "local-tournament" }],
+      checkpoint: "51", feedVersion: PUBLICATION_FEED_VERSION, mode: "incremental",
+    },
+    syncGateway: sync.syncGateway,
+  }), /not Cloud-managed/);
+  assert.equal(sync.queries.at(-1).sql, "ROLLBACK");
+  assert.equal(sync.queries.some(({ sql }) => sql.startsWith("DELETE FROM tournaments")), false);
+  assert.equal(sync.getState().publicationCheckpoint, "50");
+  assert.equal(sync.writes.length, 0);
 });
 
 test("publication apply rejects a feed-version mismatch without applying or advancing", async () => {

@@ -10,8 +10,8 @@ function setup({ backfill } = {}) {
   const app = Object.fromEntries(["get", "post", "put", "delete"].map((method) =>
     [method, (path, handler) => routes.set(`${method.toUpperCase()} ${path}`, handler)]));
   const gateway = {
-    listEntriesByYear: async () => entries,
-    listAvailableYears: async () => [2026],
+    listEntriesByYear: async (year) => entries.filter((row) => row.seasonYear === year),
+    listAvailableYears: async () => [...new Set(entries.map((row) => row.seasonYear))].sort((a, b) => b - a),
     findEntryById: async (id) => entries.find((row) => row.id === id),
     findDuplicate: async (payload) => entries.find((row) => row.seasonYear === payload.seasonYear &&
       row.archerUsername === payload.archerUsername && row.bowType === payload.bowType && row.id !== payload.excludeId),
@@ -77,6 +77,21 @@ test("current-year GET backfills stored snapshots once before returning rows", a
   assert.equal((await h.call("GET", "/api/indoor-table", { year })).body.rows[0].handicap, 78);
   assert.equal((await h.call("GET", "/api/indoor-table", { year })).body.rows.length, 1);
   assert.equal(calls, 1);
+});
+
+test("all-season GET returns current and historical rows without combining their awards", async () => {
+  const h = setup();
+  h.entries.push({ id: 1, seasonYear: 2024, archerUsername: "Cfleetham", bowType: "Rec",
+    handicap: null, classifications: {}, scores: { 400: "2025-03-20" } });
+  h.entries.push({ id: 2, seasonYear: 2026, archerUsername: "Cfleetham", bowType: "Rec",
+    handicap: 31, classifications: {}, scores: {} });
+  const response = await h.call("GET", "/api/indoor-table", { year: "all" });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.seasonYear, null);
+  assert.deepEqual(response.body.availableYears, [2026, 2024]);
+  assert.deepEqual(response.body.rows.map((row) => row.seasonYear), [2026, 2024]);
+  assert.equal(response.body.rows[0].scores[400], undefined);
+  assert.equal(response.body.rows[1].scores[400], "2025-03-20");
 });
 
 test("stale profile save retains newly synced scores and fills lower awards", async () => {

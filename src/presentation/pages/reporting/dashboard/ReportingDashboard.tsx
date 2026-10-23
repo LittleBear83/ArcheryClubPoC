@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { loginMethodQueryOptions, type DashboardPeriod } from "../../../../api/reportingDashboardApi";
-import { DashboardPeriodFilter, DASHBOARD_PERIODS } from "./DashboardPeriodFilter";
+import { DASHBOARD_PERIODS, DEFAULT_DASHBOARD_PERIOD } from "../../../../../shared/attendancePolicy.js";
+import { DashboardPeriodFilter } from "./DashboardPeriodFilter";
 import { LoginMethodChartCard } from "./LoginMethodChartCard";
 
 export function ReportingDashboard({ actorUsername }: { actorUsername: string }) {
-  const [period, setPeriod] = useState<DashboardPeriod>("30d");
+  const [period, setPeriod] = useState<DashboardPeriod>(DEFAULT_DASHBOARD_PERIOD);
   const query = useQuery(loginMethodQueryOptions(actorUsername, period));
   const periodLabel = DASHBOARD_PERIODS.find((option) => option.value === period)!.label;
   return <section className="reporting-dashboard" aria-label="Reporting dashboard">

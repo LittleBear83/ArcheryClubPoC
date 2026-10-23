@@ -3,9 +3,37 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
+await import("./check-test-registrations.mjs");
 const root = process.cwd();
+await import("../shared/attendancePolicy.test.js");
+await import("../shared/handicapAllowance.test.js");
+await import("../shared/membershipClassification.test.js");
+await import("../src/utils/userProfile.test.js");
+await import("../src/api/beginnersCourseTypeSupport.test.js");
+await import("../src/presentation/navigation/memberPageAccess.test.js");
+await import("../server/domain/services/tournamentHandicapService.test.js");
+await import("../server/domain/services/rememberedDeviceService.test.js");
+await import("../server/security/rememberedDeviceCookie.test.js");
+await import("../server/infrastructure/persistence/rememberedDeviceGateway.test.js");
+await import("../server/presentation/http/registerAuthRoutes.remembered.test.js");
+await import("../server/domain/services/goldenRecordsIndoorMapping.test.js");
+await import("../server/domain/services/goldenRecordsOutdoorMapping.test.js");
+await import("../server/domain/services/goldenRecordsOutdoorSync.test.js");
+await import("../server/domain/services/beginnerCourseRules.test.js");
+await import("../server/domain/services/beginnerCourseViews.test.js");
+await import("../server/domain/services/feedbackSync.test.js");
+await import("../server/presentation/http/goldenRecordsIndoorBackfillRoutes.test.js");
+await import("../server/presentation/http/registerCourseDateCancellationRoutes.test.js");
+await import("../server/presentation/http/registerBeginnersCourseRoutes.test.js");
+await import("../server/infrastructure/golden-records/goldenRecordsPagination.test.js");
 await import("../server/domain/services/loginMethodReport.test.js");
 await import("../src/presentation/pages/achievementTableSelection.test.js");
+await import("../src/presentation/pages/featureStyles.test.js");
+await import("../src/presentation/pages/aggregateIndoorTableRows.test.js");
+await import("../src/presentation/pages/records/handicapLookup.test.js");
+await import("../src/presentation/pages/records/handicapMemberDefaults.test.js");
+await import("../src/presentation/pages/records/groupHandicapRounds.test.js");
+await import("../src/presentation/pages/goldenRecordsReferenceRefresh.test.js");
 await import("../server/presentation/http/tournamentTemplateCapability.test.js");
 await import("../server/presentation/http/tournamentRegistration.test.js");
 await import("../server/presentation/http/registerTournamentRoutes.templateUpdate.test.js");
@@ -32,14 +60,37 @@ await import("../server/presentation/http/beginnersCourseCoachRequirements.test.
 const outDir = path.join(root, ".test-dist");
 const files = [
   "src/utils/userProfile.js",
+  "src/utils/mobileInstall.ts",
+  "src/utils/mobileInstall.test.ts",
+  "src/utils/memberClassification.ts",
+  "src/utils/memberClassification.test.ts",
+  "src/utils/joiningRoutes.ts",
+  "src/presentation/pages/home/committeeApprovalSummaryUtils.ts",
+  "src/presentation/pages/home/committeeApprovalSummaryUtils.test.ts",
+  "src/presentation/pages/reporting/reportingUtils.ts",
+  "src/presentation/pages/reporting/reportingUtils.test.ts",
+  "src/presentation/pages/reporting/reportingPresentation.ts",
+  "src/presentation/pages/reporting/reportingPresentation.test.ts",
+  "src/presentation/pages/reporting/ReportingSharedSections.tsx",
+  "src/presentation/pages/reporting/ReportingSharedSections.test.tsx",
+  "src/presentation/pages/records/HandicapReferencePanel.tsx",
+  "src/presentation/pages/records/HandicapReferencePanel.test.tsx",
   "shared/membershipClassification.js",
+  "shared/membershipClassificationRules.js",
+  "shared/attendancePolicy.js",
   "src/presentation/pages/coachingHubModel.ts",
   "src/presentation/pages/coachingHubModel.test.ts",
   "src/presentation/pages/courseCoachRequirements.ts",
   "src/presentation/pages/courseCoachRequirements.test.ts",
   "src/presentation/pages/CoachingParticipantsList.tsx",
   "src/presentation/components/Button.tsx",
+  "src/presentation/components/DatePicker.tsx",
+  "src/presentation/components/mobile/MobileActionBar.tsx",
+  "src/presentation/pages/profile/ProfileAccordion.tsx",
+  "src/presentation/hooks/useIsMobile.ts",
   "src/utils/dateTime.js",
+  "src/presentation/pages/range-usage/rangeUsageUtils.ts",
+  "src/presentation/pages/range-usage/rangeUsageUtils.test.ts",
   "src/api/reportingDashboardApi.ts",
   "src/theme/themes.ts",
   "src/theme/ThemeContext.ts",
@@ -62,6 +113,9 @@ const files = [
   "src/presentation/pages/home/committeeApprovedCoursesUtils.test.ts",
   "src/presentation/pages/home/homeActivityFilters.ts",
   "src/presentation/pages/home/homeActivityFilters.test.ts",
+  "src/presentation/pages/home/homeTickerUtils.ts",
+  "src/presentation/pages/home/HomeTickers.tsx",
+  "src/presentation/pages/home/HomeTickers.test.tsx",
   "src/data/repositories/RoleRepositoryImpl.ts",
   "src/data/repositories/RoleRepositoryImpl.test.ts",
   "src/domain/repositories/RoleRepository.ts",
@@ -109,11 +163,25 @@ await copyFile(
   path.join(root, "src/api/beginnersCourseTypeSupport.js"),
   path.join(outDir, "src/api/beginnersCourseTypeSupport.js"),
 );
+await mkdir(path.join(outDir, "shared"), { recursive: true });
+await copyFile(path.join(root, "shared/handicapAllowance.js"), path.join(outDir, "shared/handicapAllowance.js"));
+await copyFile(path.join(root, "src/presentation/pages/records/handicapLookup.js"),
+  path.join(outDir, "src/presentation/pages/records/handicapLookup.js"));
 
 await import(pathToFileURL(path.join(outDir, "src/api/client.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/utils/mobileInstall.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/utils/memberClassification.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/home/committeeApprovalSummaryUtils.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/reportingUtils.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/reportingPresentation.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/ReportingSharedSections.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/records/HandicapReferencePanel.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/home/HomeTickers.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/range-usage/rangeUsageUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/dashboard/reportingDashboard.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/rolePermissionsUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/coachingHubModel.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/courseCoachRequirements.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/beginnersCoursesApi.test.js")));
 await import(

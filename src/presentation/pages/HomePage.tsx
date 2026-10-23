@@ -21,7 +21,6 @@ import { listCommitteeRoles } from "../../api/committeeApi";
 import { listRangeMembers } from "../../api/memberApi";
 import {
   listActiveAnnouncements,
-  type AnnouncementRecord,
 } from "../../api/announcementApi";
 import {
   getBeginnersCoursesDashboard,
@@ -36,7 +35,6 @@ import { useTheme } from "../../theme/useTheme";
 import type {
   ApprovalEvent,
   HomeMember,
-  LostArrowRecord,
   UserProfile,
 } from "../../types/app";
 import type { AppDependencies } from "../../bootstrap/createAppDependencies";
@@ -48,6 +46,8 @@ import {
 import { buildCommitteeApprovalSummary } from "./home/committeeApprovalSummaryUtils";
 import { filterHomeActivityCurrentOrUpcoming } from "./home/homeActivityFilters";
 import { homeQueryKeys } from "./home/homeQueryKeys";
+import { HomeTickers } from "./home/HomeTickers";
+import { getAnnouncementTickerState, getHomeTickerMessage, getLostArrowNoticeMessages } from "./home/homeTickerUtils";
 import { useHomePageToasts } from "./home/useHomePageToasts";
 import { useRangePresenceFeature } from "./home/useRangePresenceFeature";
 import {
@@ -297,7 +297,6 @@ type CommitteeApprovalSummary = {
   approvedHaveAGoSessionsCount: number;
   approvedTasterSessionsCount: number;
 };
-type LostArrowNotice = LostArrowRecord;
 const TOURNAMENT_WARNING_CLOSE_WINDOW_DAYS = 2;
 
 const pageTitleMap = {
@@ -318,7 +317,7 @@ const pageTitleMap = {
   "feedback-form": "Suggestion Box",
   "question-inbox": "Question Inbox",
   tournaments: "Tournaments",
-  records: "Records",
+  records: "Handicap Lookup",
   "outdoor-table": "Achievement Tables",
   "range-rules": "Range Rules",
   "range-rules-admin": "Range Rules Admin",
@@ -374,168 +373,6 @@ const pageIdToPath = Object.fromEntries(
 
 // The main shell maps URLs to drawer page identifiers so navigation stays
 // bookmarkable while the side drawer can work with simple page IDs.
-function getMembershipReminderMessage(currentUserProfile) {
-  const membershipFeesDue = currentUserProfile?.meta?.membershipFeesDue;
-
-  if (!membershipFeesDue) {
-    return "";
-  }
-
-  const today = new Date();
-  const todayUtc = Date.UTC(
-    today.getUTCFullYear(),
-    today.getUTCMonth(),
-    today.getUTCDate(),
-  );
-  const dueDate = new Date(`${membershipFeesDue}T00:00:00Z`);
-
-  if (Number.isNaN(dueDate.getTime())) {
-    return "";
-  }
-
-  const dueUtc = Date.UTC(
-    dueDate.getUTCFullYear(),
-    dueDate.getUTCMonth(),
-    dueDate.getUTCDate(),
-  );
-  const daysUntilDue = Math.floor((dueUtc - todayUtc) / 86400000);
-
-  if (daysUntilDue < 0 || daysUntilDue > 30) {
-    return "";
-  }
-
-  const formattedDueDate = formatDate(membershipFeesDue);
-
-  if (daysUntilDue <= 15) {
-    return `reminder: your membership fees are due on ${formattedDueDate},\nplease be aware that if you dont renew your membership will be susspended as well as your access to the range`;
-  }
-
-  return `reminder: your membership fees are due on ${formattedDueDate}`;
-}
-
-function getHomeTickerMessage(currentUserProfile, beginnerDashboard) {
-  const membershipReminderMessage = getMembershipReminderMessage(currentUserProfile);
-
-  if (membershipReminderMessage) {
-    return membershipReminderMessage;
-  }
-
-  if (beginnerDashboard?.showSafetyMessage) {
-    return "Please do not pick up any equipment until after the safety talk or until a coach asks you.";
-  }
-
-  return "";
-}
-
-function getLostArrowNoticeMessages(notices: LostArrowNotice[]) {
-  return notices.map((notice) => {
-    const foundBy = notice.foundByName || notice.foundByUsername || "another member";
-    const collectionLocation = notice.foundCollectionLocation
-      ? ` Collected from: ${notice.foundCollectionLocation}.`
-      : "";
-    return `${notice.arrowColour} ${notice.arrowMaterial} arrow (${notice.arrowIdentifier}) found by ${foundBy} on ${formatDate(notice.dateFound || notice.dateLost)}.${collectionLocation}`;
-  });
-}
-
-function getAnnouncementSeverityLevel(severity: AnnouncementRecord["severity"]) {
-  switch (severity) {
-    case "urgent_important":
-      return 3;
-    case "urgent":
-      return 2;
-    default:
-      return 1;
-  }
-}
-
-function getAnnouncementTickerTone(announcement: AnnouncementRecord) {
-  const baseLevel = getAnnouncementSeverityLevel(announcement.severity);
-
-  if (!announcement.escalateSeverity) {
-    return baseLevel === 1 ? "green" : baseLevel === 2 ? "yellow" : "red";
-  }
-
-  const startTime = Date.parse(`${announcement.activeFromDate}T00:00:00Z`);
-  const endTime = Date.parse(`${announcement.activeTillDate}T23:59:59Z`);
-  const totalDuration = endTime - startTime;
-
-  if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
-    return baseLevel === 1 ? "green" : baseLevel === 2 ? "yellow" : "red";
-  }
-
-  const remainingRatio = (endTime - Date.now()) / totalDuration;
-
-  if (announcement.severity === "information") {
-    if (remainingRatio <= 0.2) {
-      return "red";
-    }
-
-    if (remainingRatio <= 0.5) {
-      return "yellow";
-    }
-
-    return "green";
-  }
-
-  if (announcement.severity === "urgent") {
-    return remainingRatio <= 0.5 ? "red" : "yellow";
-  }
-
-  return remainingRatio <= 0.3 ? "red" : "yellow";
-}
-
-function getAnnouncementTickerState(announcements: AnnouncementRecord[]) {
-  if (announcements.length === 0) {
-    return [];
-  }
-
-  const groupedAnnouncements = new Map<
-    "green" | "yellow" | "red",
-    AnnouncementRecord[]
-  >();
-
-  for (const announcement of announcements) {
-    const tone = getAnnouncementTickerTone(announcement);
-    const existingGroup = groupedAnnouncements.get(tone) ?? [];
-    existingGroup.push(announcement);
-    groupedAnnouncements.set(tone, existingGroup);
-  }
-
-  return (["red", "yellow", "green"] as const)
-    .filter((tone) => groupedAnnouncements.has(tone))
-    .map((tone) => ({
-      tone,
-      message: (groupedAnnouncements.get(tone) ?? [])
-        .map((announcement) => announcement.message)
-        .join("   |   "),
-    }));
-}
-
-function buildAnnouncementTickerClassName({
-  isMobile,
-  tone,
-}: {
-  isMobile: boolean;
-  tone: "green" | "yellow" | "red";
-}) {
-  return [
-    "announcement-ticker",
-    `announcement-ticker--${tone}`,
-    isMobile ? "announcement-ticker--mobile" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-function buildAnnouncementTickerTrackClassName(isMobile: boolean) {
-  return [
-    "announcement-ticker-track",
-    isMobile ? "announcement-ticker-track--mobile" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
 function getHomeWelcomeName(currentUserProfile: UserProfile | null) {
   return (
     formatRangeMemberDisplayName(currentUserProfile) ||
@@ -864,98 +701,13 @@ export function HomePage({
 
   return (
     <>
-      {announcementTicker.length > 0 ? (
-        <div className="announcement-ticker-stack">
-          {announcementTicker.map((tickerRow) => (
-            <div
-              key={`${tickerRow.tone}-${tickerRow.message}`}
-              className={buildAnnouncementTickerClassName({
-                isMobile,
-                tone: tickerRow.tone,
-              })}
-              role="status"
-              aria-live="polite"
-            >
-              <div className={buildAnnouncementTickerTrackClassName(isMobile)}>
-                <span>{tickerRow.message}</span>
-                {isMobile ? null : (
-                  <span aria-hidden="true">{tickerRow.message}</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : null}
-
-      {homeTickerMessage ? (
-        <div
-          className={[
-            "membership-reminder-ticker",
-            isMobile ? "membership-reminder-ticker--mobile" : "",
-          ].filter(Boolean).join(" ")}
-          role="status"
-          aria-live="polite"
-        >
-          <div
-            className={[
-              "membership-reminder-ticker-track",
-              isMobile ? "membership-reminder-ticker-track--mobile" : "",
-            ].filter(Boolean).join(" ")}
-          >
-            <span>{homeTickerMessage}</span>
-          </div>
-        </div>
-      ) : null}
-
-      {lostArrowNoticeMessages.length > 0 ? (
-        <div
-          className={[
-            "lost-arrow-ticker",
-            isMobile ? "lost-arrow-ticker--mobile" : "",
-          ].filter(Boolean).join(" ")}
-          role="status"
-          aria-live="polite"
-        >
-          <div
-            className={[
-              "lost-arrow-ticker-track",
-              isMobile ? "lost-arrow-ticker-track--mobile" : "",
-            ].filter(Boolean).join(" ")}
-          >
-            <span>{lostArrowNoticeMessages.join("   |   ")}</span>
-            {isMobile ? null : (
-              <span aria-hidden="true">{lostArrowNoticeMessages.join("   |   ")}</span>
-            )}
-          </div>
-        </div>
-      ) : null}
-
-      {adminTournamentWarnings.length > 0 ? (
-        <div
-          className={[
-            "admin-warning-ticker",
-            isMobile ? "admin-warning-ticker--mobile" : "",
-          ].filter(Boolean).join(" ")}
-          role="status"
-          aria-live="polite"
-        >
-          <div
-            className={[
-              "admin-warning-ticker-track",
-              isMobile ? "admin-warning-ticker-track--mobile" : "",
-            ].filter(Boolean).join(" ")}
-          >
-            <span>
-              {adminTournamentWarnings.join("   |   ")}
-            </span>
-            {isMobile ? null : (
-              <span aria-hidden="true">
-                {adminTournamentWarnings.join("   |   ")}
-              </span>
-            )}
-          </div>
-        </div>
-      ) : null}
+      <HomeTickers
+        announcementTicker={announcementTicker}
+        homeTickerMessage={homeTickerMessage}
+        lostArrowNoticeMessages={lostArrowNoticeMessages}
+        adminTournamentWarnings={adminTournamentWarnings}
+        isMobile={isMobile}
+      />
 
       <SideDrawer
         currentUserProfile={currentUserProfile}
@@ -1183,7 +935,7 @@ export function HomePage({
             />
             <Route
               path="/records"
-              element={renderProgrammeRestrictedRoute("records", <RecordsPage />)}
+              element={renderProgrammeRestrictedRoute("records", <RecordsPage key={currentUserProfile?.auth?.username ?? ""} currentUserProfile={currentUserProfile} />)}
             />
             <Route
               path="/outdoor-table"

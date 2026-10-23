@@ -1,4 +1,5 @@
 import { createGoldenRecordsHttpClient } from "./goldenRecordsHttpClient.js";
+import { collectGoldenRecordsPages, GOLDEN_RECORDS_REQUEST_GAP_MS } from "./goldenRecordsPagination.js";
 
 const LOOKUP_DEFINITIONS = [
   { key: "rounds", path: "/api/rounds", paginated: true },
@@ -11,9 +12,6 @@ const STATUS_KEYS = {
   connection: "connection-test",
   lookupSync: "lookup-sync",
 };
-const DEFAULT_PAGE_SIZE = 1000;
-const DEFAULT_MAX_PAGES = 100;
-const MIN_REQUEST_GAP_MS = 1_100;
 
 function isRuntimeEnabled({
   apiKey,
@@ -135,48 +133,24 @@ export function createGoldenRecordsIntegrationService(runtimeConfig, integration
   async function waitForQuotaWindow() {
     const elapsedMs = Date.now() - lastRequestAt;
 
-    if (elapsedMs < MIN_REQUEST_GAP_MS) {
-      await new Promise((resolve) => setTimeout(resolve, MIN_REQUEST_GAP_MS - elapsedMs));
+    if (elapsedMs < GOLDEN_RECORDS_REQUEST_GAP_MS) {
+      await new Promise((resolve) => setTimeout(resolve, GOLDEN_RECORDS_REQUEST_GAP_MS - elapsedMs));
     }
 
     lastRequestAt = Date.now();
   }
 
   async function getPagedLookup(path) {
-    const rows = [];
-
-    for (let pageNumber = 1; pageNumber <= DEFAULT_MAX_PAGES; pageNumber += 1) {
-      await waitForQuotaWindow();
-      const result = await client.getJson(path, {
-        pageNumber,
-        pageSize: DEFAULT_PAGE_SIZE,
-      });
-
-      if (!result.ok) {
-        const message = `Golden Records returned ${result.status} for ${path}.`;
-        throw new Error(
-          buildBodyPreview(result.body) ? `${message} ${buildBodyPreview(result.body)}` : message,
-        );
-      }
-
-      const pageRows = normalizeLookupRows(result.body);
-
-      if (pageRows.length === 0) {
-        if (pageNumber === 1 && Array.isArray(result.body)) {
-          return result.body;
-        }
-
-        break;
-      }
-
-      rows.push(...pageRows);
-
-      if (pageRows.length < DEFAULT_PAGE_SIZE) {
-        break;
-      }
-    }
-
-    return rows;
+    return collectGoldenRecordsPages({
+      path,
+      beforePage: waitForQuotaWindow,
+      fetchPage: ({ pageNumber, pageSize }) => client.getJson(path, { pageNumber, pageSize }),
+      readRows: (response) => normalizeLookupRows(response.body),
+      errorMessage: (response) => {
+        const message = `Golden Records returned ${response.status} for ${path}.`;
+        return buildBodyPreview(response.body) ? `${message} ${buildBodyPreview(response.body)}` : message;
+      },
+    });
   }
 
   async function getLookupRows(definition) {

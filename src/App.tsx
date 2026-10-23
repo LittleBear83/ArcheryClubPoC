@@ -15,12 +15,14 @@ import {
   useServerEvents,
 } from "./presentation/state/useServerEvents";
 import {
+  endSessionOnly,
   getCurrentSession,
   loginAsGuest,
   loginWithCredentials,
   loginWithRfid,
   logoutSession,
   recordRfidCheckIn,
+  resumeRememberedSession,
 } from "./api/authApi";
 import type { UserProfile } from "./types/app";
 import type { AppDependencies } from "./bootstrap/createAppDependencies";
@@ -420,16 +422,19 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
     deviceType,
     username,
     password,
+    rememberDevice,
   }: {
     deviceType?: "desktop" | "mobile";
     username: string;
     password: string;
+    rememberDevice?: boolean;
   }) => {
     try {
       const result = await loginWithCredentials(
         username,
         password,
         deviceType ?? "desktop",
+        Boolean(rememberDevice),
       );
 
       markFreshSignIn();
@@ -449,7 +454,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   };
 
   const handleLogout = useCallback(
-    (message = "") => {
+    (message = "", preserveRememberedDevice = false) => {
       if (inactivityTimeoutRef.current) {
         window.clearTimeout(inactivityTimeoutRef.current);
         inactivityTimeoutRef.current = null;
@@ -465,7 +470,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       }
       safeLocalStorageRemove(AUTH_STORAGE_KEY);
       safeLocalStorageRemove(AUTH_USER_STORAGE_KEY);
-      void logoutSession().catch(() => undefined);
+      void (preserveRememberedDevice ? endSessionOnly() : logoutSession()).catch(() => undefined);
       setIsAuthenticated(false);
       setCurrentUserProfile(null);
       clearAuthenticatedQueries();
@@ -537,8 +542,24 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
   };
 
   useEffect(() => {
+    if (!isMobile || isAuthenticated) return undefined;
+
+    let cancelled = false;
+    void resumeRememberedSession().then((result) => {
+      if (!cancelled && lastSuccessfulSignInAtRef.current === 0) {
+        persistAuthenticatedUser(result.userProfile);
+        navigate("/", { replace: true });
+      }
+    }).catch(() => undefined);
+
+    return () => { cancelled = true; };
+  // Only try on page load; an inactivity logout must stay logged out until reload.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (isAuthenticated && !currentUserProfile) {
-      handleLogout();
+      handleLogout("", true);
     }
   }, [currentUserProfile, handleLogout, isAuthenticated]);
 
@@ -598,10 +619,26 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
           return;
         }
 
+        if (isMobile) {
+          try {
+            const restored = await resumeRememberedSession();
+            if (cancelled) return;
+            const restoredUsername = restored.userProfile?.auth?.username;
+            if (!currentUserProfile?.auth?.username ||
+                restoredUsername === currentUserProfile.auth.username) {
+              persistAuthenticatedUser(restored.userProfile);
+              return;
+            }
+          } catch {
+            // A missing or expired device token follows the normal sign-in path.
+          }
+        }
+
         handleLogout(
           error instanceof Error
             ? error.message
             : "Your session has expired. Please sign in again.",
+          true,
         );
       }
     };
@@ -620,7 +657,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         window.clearTimeout(validationTimeoutId);
       }
     };
-  }, [currentUserProfile?.auth?.username, handleLogout, isAuthenticated]);
+  }, [currentUserProfile?.auth?.username, handleLogout, isAuthenticated, isMobile]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -704,7 +741,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
       }
 
       inactivityTimeoutRef.current = window.setTimeout(() => {
-        handleLogout();
+        handleLogout("", true);
       }, inactivityTimeoutMs);
     };
 
@@ -836,7 +873,7 @@ function App({ dependencies }: { dependencies: AppDependencies }) {
         }
 
         if (!loginResult.success) {
-          handleLogout(loginResult.message);
+          handleLogout(loginResult.message, true);
         }
       } finally {
         isHandingOff = false;

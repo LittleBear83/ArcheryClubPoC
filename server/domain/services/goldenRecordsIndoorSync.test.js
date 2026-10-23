@@ -18,7 +18,7 @@ function harness(snapshot, storedSnapshots = []) {
     ], listAllUsers: async () => [user] },
     memberDistanceSignOffRepository: { replaceForDiscipline: async () => {} },
     indoorTableGateway: {
-      listEntriesByYear: async () => [...indoor],
+      listEntriesByYear: async (year) => indoor.filter((row) => row.seasonYear === year),
       listAvailableYears: async () => [...new Set(indoor.map((row) => row.seasonYear))],
       createEntry: async (entry) => { const result = { id: indoor.length + 1, ...entry }; indoor.push(result); return result; },
       createEntryIfAbsent: async (entry) => {
@@ -160,7 +160,8 @@ test("nightly and manual member sync add only missing verified indoor dates and 
     ] };
   const { indoor, service } = harness(snapshot);
   const first = await service.syncMember(user);
-  assert.equal(first.createdCount, 2);
+  assert.equal(first.createdCount, 3);
+  assert.equal(indoor.find((row) => row.seasonYear === year - 1 && row.bowType === "Rec").scores[475], `${year - 1}-10-03`);
   assert.equal(indoor.find((row) => row.bowType === "Rec").scores[500], `${year}-10-03`);
   assert.equal(indoor.find((row) => row.bowType === "Rec").scores[475], `${year}-10-03`);
   assert.equal(indoor.find((row) => row.bowType === "B/bow").classifications.archer1st, `${year}-09-03`);
@@ -178,6 +179,45 @@ test("nightly and manual member sync add only missing verified indoor dates and 
   assert.equal(edited.scores[500], `${year}-10-01`);
   assert.equal(edited.scores[550], `${year}-10-04`);
   assert.equal(edited.updatedByUsername, "captain");
+  assert.equal((await service.syncMember(user)).updatedCount, 0);
+});
+
+test("Cfleetham's dated Portsmouth awards populate the 2024 indoor season and survive retries", async () => {
+  const snapshot = { enabled: true, matchSource: "gr-id", matchedMemberId: "gr-1",
+    achievements: [
+      [300, "2024-09-24"], [325, "2024-11-27"], [350, "2025-02-05"],
+      [400, "2025-03-20"], [375, "2025-03-20"],
+    ].map(([score, achieved]) => ({ memberId: "gr-1", bowClass: "Recurve",
+      achievement: `Portsmouth ${score}`, round: "Portsmouth", achieved })),
+    classifications: [], handicaps: [] };
+  const { indoor, service } = harness(snapshot);
+  const member = { ...user, username: "Cfleetham" };
+  assert.equal((await service.syncMember(member)).createdCount, 1);
+  assert.equal(indoor[0].seasonYear, 2024);
+  assert.equal(indoor[0].bowType, "Rec");
+  assert.equal(indoor[0].handicap, null);
+  assert.equal(indoor[0].scores[300], "2024-09-24");
+  assert.equal(indoor[0].scores[325], "2024-11-27");
+  assert.equal(indoor[0].scores[350], "2025-02-05");
+  assert.equal(indoor[0].scores[375], "2025-03-20");
+  assert.equal(indoor[0].scores[400], "2025-03-20");
+  assert.equal((await service.syncMember(member)).syncedCount, 0);
+  assert.equal(indoor.length, 1);
+});
+
+test("historical sync fills only missing awards and preserves manual dates and handicap", async () => {
+  const snapshot = { enabled: true, matchSource: "gr-id", matchedMemberId: "gr-1",
+    achievements: [{ memberId: "gr-1", bowClass: "Recurve", achievement: "Portsmouth 400",
+      round: "Portsmouth", achieved: "2025-03-20" }], classifications: [], handicaps: [] };
+  const { indoor, service } = harness(snapshot);
+  indoor.push({ id: 1, seasonYear: 2024, archerUsername: "archer", bowType: "Rec",
+    handicap: 44, classifications: {}, scores: { 300: "2024-09-24" },
+    updatedByUsername: "captain" });
+  assert.equal((await service.syncMember(user)).updatedCount, 1);
+  assert.equal(indoor[0].handicap, 44);
+  assert.equal(indoor[0].scores[300], "2024-09-24");
+  assert.equal(indoor[0].scores[400], "2025-03-20");
+  assert.equal(indoor[0].updatedByUsername, "captain");
   assert.equal((await service.syncMember(user)).updatedCount, 0);
 });
 

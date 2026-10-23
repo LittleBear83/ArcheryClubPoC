@@ -24,6 +24,10 @@ export function listIndoorTable(actor: unknown, year: number) {
   return fetchApi<{ success: true; rows: IndoorTableEntry[]; seasonYear: number; availableYears: number[] }>(
     `/api/indoor-table?year=${year}`, { headers: buildActorHeaders(actor), cache: "no-store" });
 }
+export function listAllIndoorTable(actor: unknown) {
+  return fetchApi<{ success: true; rows: IndoorTableEntry[]; seasonYear: null; availableYears: number[] }>(
+    "/api/indoor-table?year=all", { headers: buildActorHeaders(actor), cache: "no-store" });
+}
 export function createIndoorTableEntry(actor: unknown, payload: IndoorTablePayload) {
   return fetchApi<{ success: true; entry: IndoorTableEntry }>("/api/indoor-table", {
     method: "POST", headers: buildActorHeaders(actor, true), body: JSON.stringify(payload),

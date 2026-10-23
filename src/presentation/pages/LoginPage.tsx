@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { REMEMBERED_DEVICE_DAYS } from "../../../shared/rememberedDevicePolicy";
 import "./LoginPage.css";
 import selbyLogo from "../../assets/selby_Archery_Logo.svg";
 import { Button } from "../components/Button";
@@ -38,6 +39,7 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
   const installContext = getCurrentMobileInstallContext();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberDevice, setRememberDevice] = useState(false);
   const [error, setError] = useState(initialMessage);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [rfidReaderStatus, setRfidReaderStatus] =
@@ -213,6 +215,7 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
       username,
       password,
       deviceType: isMobile ? "mobile" : "desktop",
+      rememberDevice: isMobile && rememberDevice,
     });
 
     if (!result.success) {
@@ -310,6 +313,13 @@ export function LoginPage({ onLogin, onRfidLogin, initialMessage = "" }) {
                   disabled={isSubmitting}
                 />
               </label>
+
+              {isMobile ? <label className="login-remember-device">
+                <input type="checkbox" checked={rememberDevice}
+                  onChange={(event) => setRememberDevice(event.target.checked)}
+                  disabled={isSubmitting} />
+                Remember this device for {REMEMBERED_DEVICE_DAYS} days
+              </label> : null}
 
               <Button
                 type="submit"

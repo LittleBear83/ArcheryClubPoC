@@ -1,10 +1,15 @@
+import { useState } from "react";
 import { Button } from "../../components/Button";
-import { findHandicapReferenceScores } from "./handicapLookup";
+import { DEFAULT_HANDICAP_ALLOWANCE_PERCENT,
+  MAX_HANDICAP_ALLOWANCE_PERCENT, MIN_HANDICAP_ALLOWANCE_PERCENT } from "../../../../shared/handicapAllowance";
+import { calculateHandicapLookupScores, findHandicapReferenceScores } from "./handicapLookup";
 import type { useRecordsPageState } from "./useRecordsPageState";
 
 type RecordsPageState = ReturnType<typeof useRecordsPageState>;
 
 export function HandicapReferencePanel({ state }: { state: RecordsPageState }) {
+  const [archerScore, setArcherScore] = useState("");
+  const [allowancePercent, setAllowancePercent] = useState(String(DEFAULT_HANDICAP_ALLOWANCE_PERCENT));
   const { bowDisciplineOptions, comparisonTables, groupedVisibleTables,
     handicapFamilies, handicapFilter, handicapTablesError, handicapTablesLoaded,
     handicapTablesLoading, handleBowDisciplineChange, handleFamilyChange,
@@ -15,6 +20,7 @@ export function HandicapReferencePanel({ state }: { state: RecordsPageState }) {
   const lookup = selectedTable
     ? findHandicapReferenceScores(handicapFilter, selectedTable, comparisonTables)
     : { status: "empty" as const };
+  const adjusted = calculateHandicapLookupScores(lookup, archerScore, allowancePercent);
 
   return <section className="records-page-panel records-handicap-panel" aria-labelledby="handicap-finder-title">
     <div className="records-handicap-header">
@@ -59,16 +65,31 @@ export function HandicapReferencePanel({ state }: { state: RecordsPageState }) {
           {hasLookup ? <Button type="button" variant="ghost"
             onClick={() => handleHandicapFilterChange("")}>Clear</Button> : null}
         </div>
+        <label className="records-field">Archer's score
+          <input type="number" min="0" step="1" inputMode="numeric" value={archerScore}
+            onChange={(event) => setArcherScore(event.target.value)} placeholder="Enter a score" />
+        </label>
+        <label className="records-field">Allowance %
+          <input type="number" min={MIN_HANDICAP_ALLOWANCE_PERCENT} max={MAX_HANDICAP_ALLOWANCE_PERCENT}
+            step="any" inputMode="decimal" value={allowancePercent}
+            onChange={(event) => setAllowancePercent(event.target.value)} />
+        </label>
       </div>
 
       {hasLookup ? <div className="records-handicap-result" role="status">
         {lookup.status === "invalid" ? <p>Enter a whole-number handicap.</p> : lookup.status === "missing"
           ? <p>No reference score for that handicap in this table.</p> : lookup.status === "found" ? <>
           <p className="records-handicap-result-heading">Reference scores for handicap {lookup.handicap}</p>
+          {adjusted.status === "invalid-score" ? <p>Enter a whole-number archer's score.</p> : null}
+          {adjusted.status === "invalid-percent" ? <p>Enter an allowance percentage from 0 to 100.</p> : null}
           <div className="records-handicap-result-grid">
-            {lookup.scores.map((entry) => <div className="records-handicap-result-card" key={entry.tableKey}>
+            {lookup.scores.map((entry, index) => <div className="records-handicap-result-card" key={entry.tableKey}>
               <span>{entry.title}</span>
               <strong>{entry.score ?? "—"}</strong>
+              {adjusted.status === "found" && adjusted.scores[index].adjustedScore !== null ? <>
+                <span>Allowance at {adjusted.allowancePercent}%: {adjusted.scores[index].adjustedAllowance}</span>
+                <span>Adjusted score: <b>{adjusted.scores[index].adjustedScore}</b></span>
+              </> : null}
             </div>)}
           </div>
         </> : null}

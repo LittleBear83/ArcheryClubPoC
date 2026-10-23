@@ -1,3 +1,5 @@
+import { applyHandicapAllowancePercent } from "../../../shared/handicapAllowance.js";
+
 const CAPTAINS_SWORD_TEMPLATE_KEY = "captains-sword";
 const CAPTAINS_SWORD_ALLOWANCE_PERCENT = 95;
 const CAPTAINS_SWORD_TABLE_FAMILY_KEY = "indoor-rounds";
@@ -111,7 +113,7 @@ function calculateAllowancePoints({
     return null;
   }
 
-  return Math.round((maxReferenceScore - referenceScore) * (allowancePercent / 100));
+  return applyHandicapAllowancePercent(maxReferenceScore - referenceScore, allowancePercent);
 }
 
 function buildParticipantHandicapSnapshot({

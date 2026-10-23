@@ -20,13 +20,14 @@ export async function loginWithCredentials(
   username: string,
   password: string,
   deviceType: CredentialLoginDeviceType = "desktop",
+  rememberDevice = false,
 ) {
   return fetchApi<{ success: true; userProfile: UserProfile }>("/api/auth/login", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ username, password, deviceType }),
+    body: JSON.stringify({ username, password, deviceType, rememberDevice }),
   });
 }
 
@@ -74,6 +75,16 @@ export async function loginAsGuest(guestDetails: {
 
 export async function logoutSession() {
   return fetchApi<{ success: true }>("/api/auth/logout", {
+    method: "POST",
+  });
+}
+
+export async function endSessionOnly() {
+  return fetchApi<{ success: true }>("/api/auth/session/end", { method: "POST" });
+}
+
+export async function resumeRememberedSession() {
+  return fetchApi<{ success: true; userProfile: UserProfile }>("/api/auth/remembered-session", {
     method: "POST",
   });
 }

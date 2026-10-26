@@ -716,6 +716,88 @@ export function registerMemberActivityRoutes({
     });
   });
 
+  function canViewRangeVisitHistory(req) {
+    const actor = getActorUser(req);
+    const role = String(actor?.user_type ?? "").trim().toLowerCase();
+    return actorHasPermission(actor, PERMISSIONS.VIEW_REPORTS) &&
+      ["admin", "developer"].includes(role);
+  }
+
+  app.get("/api/reporting/range-visits/years", async (req, res) => {
+    if (!canViewRangeVisitHistory(req)) {
+      return res.status(403).json({ success: false, message: "You do not have permission to view range visits." });
+    }
+    const endIso = addUtcDays(startOfUtcDay(new Date()), 1).toISOString();
+    const [memberYears, guestYears] = await Promise.all([
+      activityReportingGateway.countMemberRangeVisitsByYear(endIso),
+      activityReportingGateway.countGuestRangeVisitsByYear(endIso),
+    ]);
+    const years = new Map();
+    for (const row of memberYears) years.set(row.year, { year: row.year, members: Number(row.count), guests: 0 });
+    for (const row of guestYears) {
+      const year = years.get(row.year) ?? { year: row.year, members: 0, guests: 0 };
+      year.guests += Number(row.count);
+      years.set(row.year, year);
+    }
+    res.set("Cache-Control", "no-store");
+    return res.json({ success: true, years: [...years.values()]
+      .sort((left, right) => right.year.localeCompare(left.year))
+      .map((year) => ({ ...year, total: year.members + year.guests })) });
+  });
+
+  app.get("/api/reporting/range-visits", async (req, res) => {
+    if (!canViewRangeVisitHistory(req)) {
+      return res.status(403).json({ success: false, message: "You do not have permission to view range visits." });
+    }
+
+    const start = req.query.start;
+    const end = req.query.end;
+    if (typeof start !== "string" || typeof end !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+      return res.status(400).json({ success: false, message: "Choose valid start and end dates." });
+    }
+    const startDate = new Date(`${start}T00:00:00.000Z`);
+    const endDate = new Date(`${end}T00:00:00.000Z`);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) ||
+        toUtcDateString(startDate) !== start || toUtcDateString(endDate) !== end ||
+        startDate > endDate) {
+      return res.status(400).json({ success: false, message: "Choose a valid date range." });
+    }
+    if (rejectDateRangeIfTooLong(res, startDate, endDate, ATTENDANCE_MAX_RANGE_DAYS)) return;
+
+    const startIso = startDate.toISOString();
+    const endIso = addUtcDays(endDate, 1).toISOString();
+    const [memberVisits, guestVisits] = await Promise.all([
+      activityReportingGateway.listMemberRangeVisits(startIso, endIso),
+      activityReportingGateway.listReportingGuestLogins(startIso, endIso),
+    ]);
+    const visitDate = (value) => value instanceof Date
+      ? value.toISOString().slice(0, 10)
+      : String(value).slice(0, 10);
+    const rows = [
+      ...memberVisits.map((visit) => ({
+        id: `member-${visit.id}`,
+        date: visitDate(visit.logged_in_date),
+        time: String(visit.logged_in_time).slice(0, 8),
+        name: `${visit.first_name ?? ""} ${visit.surname ?? ""}`.trim() || visit.username,
+        username: visit.username,
+        loginMethod: visit.login_method,
+      })),
+      ...guestVisits.map((visit) => ({
+        id: `guest-${visit.id}`,
+        date: visitDate(visit.logged_in_date),
+        time: String(visit.logged_in_time).slice(0, 8),
+        name: `${visit.first_name ?? ""} ${visit.surname ?? ""}`.trim(),
+        username: "",
+        loginMethod: "guest",
+      })),
+    ].sort((left, right) =>
+      `${right.date}T${right.time}`.localeCompare(`${left.date}T${left.time}`) ||
+      left.name.localeCompare(right.name));
+    res.set("Cache-Control", "no-store");
+    return res.json({ success: true, report: { startDate: start, endDate: end, total: rows.length, rows } });
+  });
+
   app.get("/api/reporting/attendance", async (req, res) => {
     const actor = getActorUser(req);
 

@@ -2,13 +2,15 @@ export function createSqliteReportingStatements(db) {
   const memberPresenceEventsCte = `
     WITH RECURSIVE ordered_member_presence_events AS (
       SELECT
+        id,
         username,
+        login_method,
         logged_in_date,
         logged_in_time,
         (logged_in_date || 'T' || logged_in_time) AS logged_in_at,
         ROW_NUMBER() OVER (
           PARTITION BY username
-          ORDER BY logged_in_date, logged_in_time
+          ORDER BY logged_in_date, logged_in_time, id
         ) AS sequence_number
       FROM login_events
       WHERE login_method IN ('rfid', 'mobile-app')
@@ -49,7 +51,8 @@ export function createSqliteReportingStatements(db) {
         username,
         MIN(logged_in_date) AS logged_in_date,
         MIN(logged_in_time) AS logged_in_time,
-        session_started_at AS logged_in_at
+        session_started_at AS logged_in_at,
+        MIN(sequence_number) AS first_sequence_number
       FROM member_presence_sessions
       GROUP BY username, session_started_at
     )
@@ -252,6 +255,39 @@ export function createSqliteReportingStatements(db) {
     ORDER BY login_events.logged_in_date ASC, login_events.logged_in_time ASC, users.surname ASC, users.first_name ASC
   `);
 
+  const listMemberRangeVisits = db.prepare(`
+    ${memberPresenceEventsCte}
+    SELECT
+      first_event.id,
+      visit.username,
+      users.first_name,
+      users.surname,
+      first_event.login_method,
+      first_event.logged_in_date,
+      first_event.logged_in_time
+    FROM member_presence_visit_starts AS visit
+    INNER JOIN ordered_member_presence_events AS first_event
+      ON first_event.username = visit.username
+     AND first_event.sequence_number = visit.first_sequence_number
+    LEFT JOIN users ON users.username = visit.username
+    WHERE visit.logged_in_at >= ?
+    ORDER BY first_event.logged_in_date DESC, first_event.logged_in_time DESC, first_event.id DESC
+  `);
+
+  const countMemberRangeVisitsByYear = db.prepare(`
+    ${memberPresenceEventsCte}
+    SELECT substr(logged_in_date, 1, 4) AS year, COUNT(*) AS count
+    FROM member_presence_visit_starts
+    GROUP BY substr(logged_in_date, 1, 4)
+  `);
+
+  const countGuestRangeVisitsByYear = db.prepare(`
+    SELECT substr(logged_in_date, 1, 4) AS year, COUNT(*) AS count
+    FROM guest_login_events
+    WHERE logged_in_date || 'T' || logged_in_time < ?
+    GROUP BY substr(logged_in_date, 1, 4)
+  `);
+
   const listCurrentMemberTypeCounts = db.prepare(`
     SELECT membership_status, COUNT(*) AS count
     FROM users
@@ -352,6 +388,9 @@ export function createSqliteReportingStatements(db) {
     listMemberJourneyParticipants,
     listReportingGuestLogins,
     listReportingMemberLogins,
+    listMemberRangeVisits,
+    countMemberRangeVisitsByYear,
+    countGuestRangeVisitsByYear,
     listCurrentMemberTypeCounts,
     listMemberRangeAttendance,
     memberLoginsByDateForUserInRange,

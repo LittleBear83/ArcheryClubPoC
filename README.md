@@ -168,6 +168,12 @@ equipment and lost arrows. Existing records are left in place, repeated runs do
 not duplicate the samples, and a timestamped SQLite backup is made first. The
 command honours `DATABASE_PATH` and refuses live or PostgreSQL runtimes.
 
+For the Range visit history report, run `npm run seed:range-visits`. This adds
+member RFID/mobile check-ins and clearly labelled sample guest sign-ins across
+the current month, last 30 and 90 days, and current year. It also adds a repeat
+member check-in within two hours to exercise visit deduplication. The command
+backs up the local SQLite database first and skips samples already present.
+
 PostgreSQL notes:
 
 - set `DATABASE_URL`, or set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and

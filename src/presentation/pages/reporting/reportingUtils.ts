@@ -4,6 +4,8 @@ import type {
   AttendanceReportDailyRow,
   AttendanceReportRow,
   MemberRangeAttendanceRow,
+  MemberJourneyReportRow,
+  RangeVisitRow,
 } from "../../../api/reportingApi";
 
 export function getUtcDateString(date: Date) {
@@ -27,7 +29,8 @@ export function getMonthStartString() {
 }
 
 function escapeCsvValue(value: unknown) {
-  const text = String(value ?? "");
+  const raw = String(value ?? "");
+  const text = /^[\s]*[=+\-@]/u.test(raw) ? `'${raw}` : raw;
 
   if (!/[",\r\n]/.test(text)) {
     return text;
@@ -85,6 +88,26 @@ export function buildMemberRangeAttendanceCsv(rows: MemberRangeAttendanceRow[]) 
     row.hasRecordedVisit ? "Recorded visit" : "No recorded visit",
   ].map(escapeCsvValue).join(","));
   return [headers.map(escapeCsvValue).join(","), ...lines].join("\r\n");
+}
+
+export function buildRangeVisitCsv(rows: RangeVisitRow[]) {
+  const headers = ["Date", "Time (UTC)", "Name", "Username", "Check-in method"];
+  const lines = rows.map((row) => [
+    formatDate(row.date), row.time, row.name, row.username, row.loginMethod,
+  ].map(escapeCsvValue).join(","));
+  return [headers.join(","), ...lines].join("\r\n");
+}
+
+export function buildMemberJourneyCsv(rows: MemberJourneyReportRow[]) {
+  const headers = ["Joined date", "Joined time", "Name", "Username", "Origin", "Current course", "Journey", "Member type", "Programme type", "Role", "Converted to member", "Converted date", "Converted time"];
+  const lines = rows.map((row) => [
+    formatDate(row.joinedAtDate), row.joinedAtTime, row.name, row.username,
+    row.originCourseType, row.currentCourseType, row.journey,
+    row.membershipStatus, row.programmeType, row.role,
+    row.convertedToMember ? "Yes" : "No",
+    row.convertedAtDate ? formatDate(row.convertedAtDate) : "", row.convertedAtTime,
+  ].map(escapeCsvValue).join(","));
+  return [headers.join(","), ...lines].join("\r\n");
 }
 
 export async function saveCsv(filename: string, csv: string) {

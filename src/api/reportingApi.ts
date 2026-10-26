@@ -61,6 +61,29 @@ export type MemberRangeAttendanceReport = {
   rows: MemberRangeAttendanceRow[];
 };
 
+export type RangeVisitRow = {
+  id: string;
+  date: string;
+  time: string;
+  name: string;
+  username: string;
+  loginMethod: "rfid" | "mobile-app" | "guest";
+};
+
+export type RangeVisitReport = {
+  startDate: string;
+  endDate: string;
+  total: number;
+  rows: RangeVisitRow[];
+};
+
+export type RangeVisitYear = {
+  year: string;
+  members: number;
+  guests: number;
+  total: number;
+};
+
 export type MemberJourneyReportRow = {
   id: string;
   username: string;
@@ -129,6 +152,21 @@ export async function getAttendanceReport(
 export async function getMemberRangeAttendanceReport(actorUsername: string, days: number) {
   return fetchApi<{ success: true; report: MemberRangeAttendanceReport }>(
     `/api/reporting/member-range-attendance?days=${days}`,
+    { headers: buildActorHeaders(actorUsername), cache: "no-store" },
+  );
+}
+
+export async function getRangeVisitReport(actorUsername: string, startDate: string, endDate: string) {
+  const searchParams = new URLSearchParams({ start: startDate, end: endDate });
+  return fetchApi<{ success: true; report: RangeVisitReport }>(
+    `/api/reporting/range-visits?${searchParams.toString()}`,
+    { headers: buildActorHeaders(actorUsername), cache: "no-store" },
+  );
+}
+
+export async function getRangeVisitYears(actorUsername: string) {
+  return fetchApi<{ success: true; years: RangeVisitYear[] }>(
+    "/api/reporting/range-visits/years",
     { headers: buildActorHeaders(actorUsername), cache: "no-store" },
   );
 }

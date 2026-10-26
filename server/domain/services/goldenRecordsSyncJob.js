@@ -60,6 +60,7 @@ export function createGoldenRecordsSyncJob({
         id: randomUUID(), state: "queued", queuedAt: new Date().toISOString(),
         startedByUsername: actorUsername, attemptedCount: 0, matchedCount: 0,
         unmatchedCount: 0, achievementCount: 0, errorCount: 0,
+        lastSuccessfulAt: previous?.lastSuccessfulAt ?? (previous?.state === "completed" ? previous.completedAt : null),
       };
       await saveStatus(status);
       try {
@@ -119,6 +120,7 @@ export function createGoldenRecordsSyncJob({
         await release();
         return { started: false, status: latest };
       }
+      status.lastSuccessfulAt = latest?.lastSuccessfulAt ?? (latest?.state === "completed" ? latest.completedAt : null);
       await interruptOrphanedStatusWithLock();
       await saveStatus(status);
     } catch (error) {
@@ -147,6 +149,7 @@ export function createGoldenRecordsSyncJob({
           completedAt: new Date().toISOString(),
           durationMs: Date.now() - Date.parse(status.startedAt),
         };
+        if (completed.state === "completed") completed.lastSuccessfulAt = completed.completedAt;
         await saveStatus(completed);
         if (scheduleStatusKey) await goldenRecordsIntegrationGateway.upsertStatus(scheduleStatusKey, completed);
         if (manualStatusKey) await goldenRecordsIntegrationGateway.upsertStatus(manualStatusKey, completed);

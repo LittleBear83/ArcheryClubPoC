@@ -55,6 +55,41 @@ test("job failures remain visible and release the concurrency lock", async () =>
   assert.equal(released, true);
 });
 
+test("last successful club sync survives later partial and failed runs", async () => {
+  const statuses = new Map();
+  let runs = 0;
+  const job = createGoldenRecordsSyncJob({
+    backgroundExecutionAvailable: false,
+    goldenRecordsIntegrationGateway: {
+      findStatus: async (key) => statuses.get(key) ?? null,
+      upsertStatus: async (key, value) => { statuses.set(key, structuredClone(value)); },
+      tryAcquireMemberSyncLock: async () => async () => {},
+    },
+    goldenRecordsMemberSyncService: {
+      syncAllMembers: async () => {
+        runs += 1;
+        if (runs === 3) throw new Error("upstream unavailable");
+        return { attemptedCount: 1, matchedCount: 1, unmatchedCount: 0, achievementCount: 1, errorCount: runs === 2 ? 1 : 0 };
+      },
+    },
+    logger: { info() {}, error() {} },
+  });
+  const first = await job.start({ actorUsername: "admin", waitForCompletion: true });
+  const successful = await first.completion;
+  assert.equal(successful.state, "completed");
+  assert.equal(successful.lastSuccessfulAt, successful.completedAt);
+
+  const second = await job.start({ actorUsername: "admin", waitForCompletion: true });
+  const partial = await second.completion;
+  assert.equal(partial.state, "completed-with-errors");
+  assert.equal(partial.lastSuccessfulAt, successful.completedAt);
+
+  const third = await job.start({ actorUsername: "admin", waitForCompletion: true });
+  const failed = await third.completion;
+  assert.equal(failed.state, "failed");
+  assert.equal((await job.getStatus()).lastSuccessfulAt, successful.completedAt);
+});
+
 test("database lock rejects a second server instance without starting another sync", async () => {
   let calls = 0;
   const job = createGoldenRecordsSyncJob({

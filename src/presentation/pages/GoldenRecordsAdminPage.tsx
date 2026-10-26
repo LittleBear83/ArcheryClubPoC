@@ -75,6 +75,16 @@ function formatLookupLabel(value: string) {
     .join(" ");
 }
 
+const clubSyncTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/London",
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZoneName: "short",
+});
+
 export function GoldenRecordsAdminPage({
   currentUserProfile,
 }: GoldenRecordsAdminPageProps) {
@@ -262,6 +272,7 @@ export function GoldenRecordsAdminPage({
   const summary = data?.summary;
   const lastConnectionTest = summary?.lastConnectionTest ?? null;
   const lastSyncStatus = summary?.lastSyncStatus ?? null;
+  const lastSuccessfulClubSyncAt = memberSyncJob?.lastSuccessfulAt ?? (memberSyncJob?.state === "completed" ? memberSyncJob.completedAt : null);
   const selectedMember = memberOptionsQuery.data?.members.find((member) => member.username === selectedUsername);
   const selectedCandidate = candidateMatches.find((candidate) => candidate.memberId === selectedCandidateId);
   const finishedJob = memberSyncJob && !["queued", "running"].includes(memberSyncJob.state) ? memberSyncJob : null;
@@ -279,6 +290,12 @@ export function GoldenRecordsAdminPage({
         <p>
           For a missing member result, sync that member. For a wider issue, check the club sync.
           Maintenance tools are for occasional checks and imports.
+        </p>
+        <p className="golden-records-admin-last-sync">
+          <strong>Last successful club sync</strong>
+          {lastSuccessfulClubSyncAt
+            ? <time dateTime={lastSuccessfulClubSyncAt}>{clubSyncTimeFormatter.format(new Date(lastSuccessfulClubSyncAt))}</time>
+            : <span>{jobQuery.isLoading ? "Checking sync history..." : jobQuery.isError ? "Sync history unavailable" : "No successful club sync recorded"}</span>}
         </p>
 
         <StatusMessagePanel

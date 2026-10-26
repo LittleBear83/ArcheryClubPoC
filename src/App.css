@@ -8008,6 +8008,27 @@ button:disabled {
   color: var(--input-text);
 }
 
+.beginners-course-case-assignment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.beginners-course-case-assignment .beginners-course-mobile-field {
+  min-width: 0;
+}
+
+@media (max-width: 480px) {
+  .beginners-course-case-assignment {
+    grid-template-columns: 1fr;
+  }
+
+  .beginners-course-case-assignment .app-button {
+    width: 100%;
+  }
+}
+
 .beginners-course-participant-actions-buttons {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));

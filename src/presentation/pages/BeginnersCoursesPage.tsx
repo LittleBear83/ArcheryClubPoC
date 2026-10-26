@@ -796,6 +796,11 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
         : releaseBeginnerEquipment(currentUserProfile, reservations[0].participantId, reservations[0].caseId)) as { releasedCount: number };
       setReleaseSelection(null);
       setPhysicalReturnConfirmed(false);
+      setCaseSelections((current) => {
+        const next = { ...current };
+        for (const reservation of reservations) delete next[reservation.participantId];
+        return next;
+      });
       setMessage(result.releasedCount ? `${result.releasedCount} case reservation${result.releasedCount === 1 ? "" : "s"} released. Equipment is available at the range.` : "The case reservation was already released.");
       await refreshDashboard();
     } catch (releaseError) {
@@ -1855,25 +1860,33 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
           return (
             <div className="beginners-course-participant-actions">
               {usesEquipmentAssignment ? (
-                <label className="beginners-course-mobile-field">
-                  Assigned case
-                  <select
-                    disabled={Boolean(participant.assignedCaseId)}
-                    value={caseSelections[participant.id] ??
-                      (participant.assignedCaseId ? String(participant.assignedCaseId) : "")}
-                    onChange={(event) => setCaseSelections((current) => ({
-                      ...current,
-                      [participant.id]: event.target.value,
-                    }))}
-                  >
-                    <option value="" disabled={Boolean(participant.assignedCaseId)}>No case assigned</option>
-                    {getAvailableCasesForBeginner(availableCases, participant).map((caseItem) => (
-                      <option key={caseItem.id} value={caseItem.id}>
-                        {caseItem.reference}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="beginners-course-case-assignment">
+                  <label className="beginners-course-mobile-field">
+                    Assigned case
+                    <select
+                      disabled={Boolean(participant.assignedCaseId)}
+                      value={caseSelections[participant.id] ??
+                        (participant.assignedCaseId ? String(participant.assignedCaseId) : "")}
+                      onChange={(event) => setCaseSelections((current) => ({
+                        ...current,
+                        [participant.id]: event.target.value,
+                      }))}
+                    >
+                      <option value="" disabled={Boolean(participant.assignedCaseId)}>No case assigned</option>
+                      {getAvailableCasesForBeginner(availableCases, participant).map((caseItem) => (
+                        <option key={caseItem.id} value={caseItem.id}>
+                          {caseItem.reference}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {!participant.assignedCaseId && !participant.convertedToMember ? (
+                    <Button disabled={!caseSelections[participant.id] || mutation.isPending} onClick={() => {
+                      setActionSelection(null);
+                      void saveCaseAssignment(participant);
+                    }}>Save case</Button>
+                  ) : null}
+                </div>
               ) : null}
               <div className="beginners-course-participant-actions-buttons">
                 <Button variant="secondary" onClick={() => {
@@ -1906,10 +1919,6 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                       </div>
                     ) : null}
                     {error ? <p className="profile-error" role="alert">{error}</p> : null}
-                    <Button disabled={Boolean(participant.assignedCaseId) || mutation.isPending} onClick={() => {
-                      setActionSelection(null);
-                      void saveCaseAssignment(participant);
-                    }}>Save case</Button>
                     <Button
                       variant="info"
                       disabled={participant.convertedToMember || !canConvertBeginner || !canConvertMembers || mutation.isPending}

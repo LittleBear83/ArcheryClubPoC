@@ -308,10 +308,24 @@
 }
 
 @media print {
-  body:has(.reporting-visual-page) { background: var(--bg); color: var(--text); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body:has(.reporting-visual-page) { background: #fff; color: #17212b; }
   .page-shell:has(.reporting-visual-page) { width: 100%; padding: 0; margin: 0; }
   .page-content:has(.reporting-visual-page) { margin: 0; }
-  .reporting-visual-page { gap: 12px; padding: 4px; background: var(--bg); color: var(--text); print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .reporting-visual-page {
+    --text: #17212b;
+    --text-h: #101820;
+    --muted: #465564;
+    --panel-border: #cbd5df;
+    --surface: #fff;
+    --surface-deep: #f1f5f9;
+    --accent: #245a85;
+    gap: 12px;
+    padding: 4px;
+    background: #fff;
+    color: var(--text);
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
   .reporting-visual-toolbar, .reporting-visual-custom-filters, .reporting-visual-details,
   .reporting-visual-page .profile-accordion, .reporting-visual-drill-control,
   .reporting-visual-hint, .reporting-visual-selection .app-button { display: none !important; }
@@ -327,4 +341,6 @@
   .reporting-visual-chart-scroll { overflow: visible; }
   .reporting-visual-chart-scroll > div { min-width: 0 !important; }
   .reporting-visual-chart-scroll svg { max-width: 100%; }
+  html[data-theme="archery"] .reporting-visual-page .reporting-visual-panel svg { filter: invert(1); }
+  .reporting-visual-page .MuiChartsLegend-root { color: var(--text-h) !important; }
 }

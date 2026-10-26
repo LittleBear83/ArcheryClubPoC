@@ -10,11 +10,11 @@ import { Button } from "../../components/Button";
 import { ProfileAccordion } from "../profile/ProfileAccordion";
 import { MemberRangeAttendanceSection } from "./MemberRangeAttendanceSection";
 import { RangeVisitHistory } from "./RangeVisitHistory";
+import { ReportingExportModal } from "./ReportingExportModal";
 import { BreakdownList, ReportingErrors, ReportingFilters } from "./ReportingSharedSections";
 import { ReportingDashboard } from "./dashboard/ReportingDashboard";
 import "./dashboard/reportingDashboard.css";
 import { buildAccessInsights, buildJourneyInsights, buildVisitInsights, filterAccessRows, focusChartValues, type AccessSelection } from "./reportingInsights";
-import { buildCsv, buildMemberJourneyCsv, buildRangeVisitCsv, saveCsv } from "./reportingUtils";
 import { getRangeVisitPeriod } from "./rangeVisitPeriods";
 import type { useReportingPageState } from "./useReportingPageState";
 
@@ -39,9 +39,7 @@ function EmptyChart() {
 export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
   const { theme } = useTheme();
   const [selection, setSelection] = useState<AccessSelection>(null);
-  const [exportError, setExportError] = useState("");
-  const [journeyExportError, setJourneyExportError] = useState("");
-  const [visitExportError, setVisitExportError] = useState("");
+  const [exportOpen, setExportOpen] = useState(false);
   const [visitHour, setVisitHour] = useState<number | null>(null);
   const [selectedOrigin, setSelectedOrigin] = useState<string | null>(null);
   const { data, memberJourneyData, actorUsername, startDate, endDate, memberRangeAttendance } = state;
@@ -73,15 +71,6 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
   const selectedJourneys = memberJourneyData?.rows.filter((row) => !selectedOrigin || row.originCourseType === selectedOrigin) ?? [];
   const selectedJourneyConversions = selectedJourneys.filter((row) => row.convertedToMember).length;
 
-  async function exportRows(filename: string, csv: string, onError: (message: string) => void) {
-    onError("");
-    try { await saveCsv(filename, csv); }
-    catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
-      onError(error instanceof Error ? error.message : "Unable to export the selected data.");
-    }
-  }
-
   const selectionLabel = validSelection?.kind === "bucket"
     ? `${formatDate(validSelection.startDate)} to ${formatDate(validSelection.endDate)}`
     : validSelection?.kind === "weekday" ? `${insights?.weekdays[validSelection.day].label} across selected dates` : "all selected dates";
@@ -109,11 +98,21 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
         ] as const).map(([value, label]) =>
           <Button key={value} size="sm" variant="secondary" onClick={() => applyPeriod(value)}>{label}</Button>)}
       </div>
+      <Button size="sm" onClick={() => setExportOpen(true)}>Export data</Button>
       <details className="reporting-visual-custom-filters">
         <summary>Custom dates &amp; sources</summary>
         <ReportingFilters state={state} showExport={false} />
       </details>
     </div>
+    {exportOpen ? <ReportingExportModal
+      onClose={() => setExportOpen(false)}
+      data={{ access: data, journeys: memberJourneyData, visits, followUp: memberRangeAttendance.data, accessSelection: validSelection }}
+      canViewMemberVisits={memberRangeAttendance.canView}
+      loading={{ access: state.isFetching, journeys: state.isLoadingMemberJourneys, visits: visitQuery.isFetching, "follow-up": memberRangeAttendance.isFetching }}
+      initialVisitHour={visitHour}
+      initialJourneyOrigin={selectedOrigin}
+      initialFollowUpStatus={memberRangeAttendance.filter}
+    /> : null}
     <ReportingErrors state={state} />
     {state.isFetching && !data ? <p role="status">Loading reporting data…</p> : null}
 
@@ -147,10 +146,8 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
           {selectedBucket ? <div className="reporting-visual-selection" role="status">
             <strong>{selectedRows.length} events · {selectionLabel}</strong>
             <span>{selectedRows.filter((row) => row.type === "Member").length} member access events · {selectedRows.filter((row) => row.type === "Guest").length} guest sign-ins</span>
-            <Button size="sm" variant="secondary" onClick={() => void exportRows(`access-events-${selectedBucket}.csv`, buildCsv({ ...data, rows: selectedRows }), setExportError)}>Export these events</Button>
             <Button size="sm" variant="ghost" onClick={() => setSelection(null)}>Show all dates</Button>
           </div> : <p className="reporting-visual-hint">Select a bar or date to focus the chart and inspect its events.</p>}
-          {selectedBucket && exportError ? <p className="usage-error" role="alert">{exportError}</p> : null}
         </ChartPanel>
         <ChartPanel title="Activity by weekday" subtitle="Total recorded access events for each UTC weekday">
           {data.total ? <BarChart height={240} hideLegend
@@ -166,10 +163,8 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
           {selectedWeekday !== null ? <div className="reporting-visual-selection" role="status">
             <strong>{selectedRows.length} events · {selectionLabel}</strong>
             <span>Across {data.daily.length} UTC dates in the selected range.</span>
-            <Button size="sm" variant="secondary" onClick={() => void exportRows(`access-events-${startDate}-to-${endDate}-${insights.weekdays[selectedWeekday].label}.csv`, buildCsv({ ...data, rows: selectedRows }), setExportError)}>Export these events</Button>
             <Button size="sm" variant="ghost" onClick={() => setSelection(null)}>Show all weekdays</Button>
           </div> : <p className="reporting-visual-hint">Select a weekday to focus the chart and inspect its events.</p>}
-          {selectedWeekday !== null && exportError ? <p className="usage-error" role="alert">{exportError}</p> : null}
         </ChartPanel>
       </div>
 
@@ -220,19 +215,15 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
             {visitHour !== null ? <div className="reporting-visual-selection" role="status">
               <strong>{selectedVisits.length} visits starting at {String(visitHour).padStart(2, "0")}:00 UTC</strong>
               <span>{selectedVisits.filter((row) => row.loginMethod !== "guest").length} member visits · {selectedVisits.filter((row) => row.loginMethod === "guest").length} guest visits</span>
-              <Button size="sm" variant="secondary" onClick={() => void exportRows(`range-visits-${startDate}-to-${endDate}-hour-${visitHour}.csv`, buildRangeVisitCsv(selectedVisits), setVisitExportError)}>Export these visits</Button>
               <Button size="sm" variant="ghost" onClick={() => setVisitHour(null)}>Show all hours</Button>
             </div> : <p className="reporting-visual-hint">Select an hour to focus the chart and inspect its visits.</p>}
-            {visitHour !== null && visitExportError ? <p className="usage-error" role="alert">{visitExportError}</p> : null}
           </ChartPanel>
-          <ProfileAccordion title="Visit records and CSV" detail={visitHour === null ? `${visits.total} visits` : `${selectedVisits.length} visits starting at ${String(visitHour).padStart(2, "0")}:00 UTC`}>
+          <ProfileAccordion title="Visit records" detail={visitHour === null ? `${visits.total} visits` : `${selectedVisits.length} visits starting at ${String(visitHour).padStart(2, "0")}:00 UTC`}>
             {visitHour !== null ? <Button variant="ghost" onClick={() => setVisitHour(null)}>Show all hours</Button> : null}
-            <Button onClick={() => void exportRows(`range-visits-${startDate}-to-${endDate}${visitHour === null ? "" : `-hour-${visitHour}`}.csv`, buildRangeVisitCsv(selectedVisits), setVisitExportError)}>Export shown visits CSV</Button>
-            {visitExportError ? <p className="usage-error" role="alert">{visitExportError}</p> : null}
             <div className="reporting-table-wrap"><table className="committee-roles-table reporting-table"><thead><tr><th>Date</th><th>Time UTC</th><th>Name</th><th>Username</th><th>Method</th></tr></thead><tbody>
               {selectedVisits.slice(0, 100).map((row) => <tr key={row.id}><td>{formatDate(row.date)}</td><td>{row.time}</td><td>{row.name || row.username || "Guest"}</td><td>{row.username || "—"}</td><td>{row.loginMethod}</td></tr>)}
             </tbody></table></div>
-            {selectedVisits.length > 100 ? <p className="reporting-table-note">Showing 100 of {selectedVisits.length} rows. CSV includes all shown visits.</p> : null}
+            {selectedVisits.length > 100 ? <p className="reporting-table-note">Showing 100 of {selectedVisits.length} rows. Export data includes all matching visits.</p> : null}
           </ProfileAccordion>
         </> : null}
       </section> : null}
@@ -263,33 +254,27 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
             {selectedOrigin ? <div className="reporting-visual-selection" role="status">
               <strong>{selectedJourneys.length} starters · {journeyGroups.find((group) => group.key === selectedOrigin)?.label}</strong>
               <span>{selectedJourneyConversions} recorded member conversions in this cohort.</span>
-              <Button size="sm" variant="secondary" onClick={() => void exportRows(`programme-journeys-${startDate}-to-${endDate}-${selectedOrigin}.csv`, buildMemberJourneyCsv(selectedJourneys), setJourneyExportError)}>Export this cohort</Button>
               <Button size="sm" variant="ghost" onClick={() => setSelectedOrigin(null)}>Show all programmes</Button>
             </div> : <p className="reporting-visual-hint">Select a programme to focus the chart and inspect its participants.</p>}
-            {selectedOrigin && journeyExportError ? <p className="usage-error" role="alert">{journeyExportError}</p> : null}
           </ChartPanel>
-          <ProfileAccordion title="Programme cohort and CSV" detail={`${selectedJourneys.length} participant${selectedJourneys.length === 1 ? "" : "s"}`}>
+          <ProfileAccordion title="Programme cohort" detail={`${selectedJourneys.length} participant${selectedJourneys.length === 1 ? "" : "s"}`}>
             {selectedOrigin ? <Button variant="ghost" onClick={() => setSelectedOrigin(null)}>Show all programmes</Button> : null}
-            <Button onClick={() => void exportRows(`programme-journeys-${startDate}-to-${endDate}${selectedOrigin ? `-${selectedOrigin}` : ""}.csv`, buildMemberJourneyCsv(selectedJourneys), setJourneyExportError)}>Export shown participants CSV</Button>
-            {journeyExportError ? <p className="usage-error" role="alert">{journeyExportError}</p> : null}
             <div className="reporting-table-wrap"><table className="committee-roles-table reporting-table"><thead><tr><th>Joined</th><th>Name</th><th>Username</th><th>Origin</th><th>Journey</th><th>Member type</th><th>Converted</th><th>Converted at</th></tr></thead><tbody>
               {selectedJourneys.slice(0, 100).map((row) => <tr key={row.id}><td>{formatDate(row.joinedAtDate)}</td><td>{row.name}</td><td>{row.username}</td><td>{row.originCourseType}</td><td>{row.journey}</td><td>{row.membershipStatus}</td><td>{row.convertedToMember ? "Yes" : "No"}</td><td>{row.convertedAtDate ? formatDate(row.convertedAtDate) : "—"}</td></tr>)}
             </tbody></table></div>
-            {selectedJourneys.length > 100 ? <p className="reporting-table-note">Showing 100 of {selectedJourneys.length} rows. CSV includes all shown participants.</p> : null}
+            {selectedJourneys.length > 100 ? <p className="reporting-table-note">Showing 100 of {selectedJourneys.length} rows. Export data includes all matching participants.</p> : null}
           </ProfileAccordion>
         </> : null}
       </section>
 
       <section className="reporting-visual-section" aria-label="Detailed access events">
-        <header><h2>Explore the records</h2><p>Inspect the figures behind the charts and export the current selection.</p></header>
-        <ProfileAccordion title="Access event records and CSV" detail={`${selectedRows.length} events · ${selectionLabel}`}>
+        <header><h2>Explore the records</h2><p>Inspect the figures behind the charts. Use Export data to build a CSV.</p></header>
+        <ProfileAccordion title="Access event records" detail={`${selectedRows.length} events · ${selectionLabel}`}>
           {validSelection ? <Button variant="ghost" onClick={() => setSelection(null)}>Show all dates</Button> : null}
-          <Button onClick={() => void exportRows(`access-events-${startDate}-to-${endDate}${validSelection ? "-filtered" : ""}.csv`, buildCsv({ ...data, rows: selectedRows }), setExportError)}>Export shown events CSV</Button>
-          {exportError ? <p className="usage-error" role="alert">{exportError}</p> : null}
           {selectedRows.length ? <div className="reporting-table-wrap"><table className="committee-roles-table reporting-table"><thead><tr><th>Date</th><th>Time UTC</th><th>Type</th><th>Name</th><th>Username</th><th>Member type</th><th>Programme</th><th>Role</th><th>Method</th><th>Archery GB</th><th>Attending with</th></tr></thead><tbody>
             {selectedRows.slice(0, 100).map((row) => <tr key={row.id}><td>{formatDate(row.date)}</td><td>{row.time}</td><td>{row.type}</td><td>{row.name}</td><td>{row.username || "—"}</td><td>{row.membershipStatus}</td><td>{row.programmeType}</td><td>{row.role}</td><td>{row.loginMethod}</td><td>{row.archeryGbMembershipNumber || "—"}</td><td>{row.attendingWith || "—"}</td></tr>)}
           </tbody></table></div> : <p className="usage-empty-state">No events match this selection.</p>}
-          {selectedRows.length > 100 ? <p className="reporting-table-note">Showing 100 of {selectedRows.length} rows. CSV includes all shown events.</p> : null}
+          {selectedRows.length > 100 ? <p className="reporting-table-note">Showing 100 of {selectedRows.length} rows. Export data includes all matching events.</p> : null}
         </ProfileAccordion>
         <ProfileAccordion title="Profile and programme breakdowns" detail="Current profile snapshot and selected-range access events">
           <h3>Current active profiles by membership status</h3>
@@ -303,7 +288,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
           <ReportingDashboard actorUsername={actorUsername} />
         </ProfileAccordion>
         {memberRangeAttendance.canView ? <>
-          <MemberRangeAttendanceSection attendance={memberRangeAttendance} />
+          <MemberRangeAttendanceSection attendance={memberRangeAttendance} showExport={false} />
           <RangeVisitHistory actorUsername={actorUsername} />
         </> : null}
       </section>

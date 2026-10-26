@@ -22,9 +22,11 @@ function contactLink(emailAddress: string) {
 export function MemberRangeAttendanceSection({
   attendance,
   mobile = false,
+  showExport = true,
 }: {
   attendance: AttendanceState;
   mobile?: boolean;
+  showExport?: boolean;
 }) {
   if (!attendance.canView) return null;
 
@@ -48,9 +50,9 @@ export function MemberRangeAttendanceSection({
             <option value="all">All current members</option>
           </select>
         </label>
-        <Button type="button" onClick={attendance.handleExport} disabled={!attendance.data || attendance.isFetching}>
+        {showExport ? <Button type="button" onClick={attendance.handleExport} disabled={!attendance.data || attendance.isFetching}>
           Export shown members
-        </Button>
+        </Button> : null}
       </div>
       <p className="reporting-table-note">
         Range visits use RFID and on-site mobile check-ins. A missing check-in does not prove that someone has not attended; check before contacting them.

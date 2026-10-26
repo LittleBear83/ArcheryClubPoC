@@ -75,6 +75,8 @@ const files = [
   "src/presentation/pages/reporting/rangeVisitPeriods.test.ts",
   "src/presentation/pages/reporting/reportingInsights.ts",
   "src/presentation/pages/reporting/reportingInsights.test.ts",
+  "src/presentation/pages/reporting/reportingExportBuilder.ts",
+  "src/presentation/pages/reporting/reportingExportBuilder.test.ts",
   "src/presentation/pages/reporting/ReportingSharedSections.tsx",
   "src/presentation/pages/reporting/ReportingSharedSections.test.tsx",
   "src/presentation/pages/records/HandicapReferencePanel.tsx",
@@ -180,6 +182,7 @@ await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/r
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/reportingPresentation.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/rangeVisitPeriods.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/reportingInsights.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/reportingExportBuilder.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/ReportingSharedSections.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/records/HandicapReferencePanel.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/home/HomeTickers.test.js")));

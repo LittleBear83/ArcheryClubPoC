@@ -20,7 +20,7 @@ Use the installed [`@mui/x-charts` Community package](https://mui.com/x/react-ch
 
 1. **3 seconds:** access-event KPIs, with explicit definitions; permitted viewers also see recorded range-visit KPIs.
 2. **10 seconds:** date trend, weekday comparison, method mix, busiest-day cue and programme cohort comparison.
-3. **300 seconds:** a compact disclosure for custom dates and sources, chart and keyboard drill-downs, member follow-up, detailed records and filtered CSV exports.
+3. **300 seconds:** a compact disclosure for custom dates and sources, chart and keyboard drill-downs, member follow-up, detailed records and a central CSV export builder.
 
 Daily activity becomes seven-day buckets for selections longer than 62 days. All buckets, weekday bars, method counts and exported rows derive from the same access API response. Visit counts and unique checked-in accounts derive from the separate visit response. The distinction between access and visits is visible in the UI.
 Chart dropdowns show only non-empty choices. Selecting one focuses its chart and shows the matching count and export action beside it; the same selection controls the detailed rows below.
@@ -39,6 +39,6 @@ Chart dropdowns show only non-empty choices. Selecting one focuses its chart and
 ## Operational notes
 
 - Dates and hours use UTC, matching the APIs.
-- Access exports include exactly the rows selected by the chart or keyboard filter. Visit and journey exports use their respective selections.
+- The Export data modal previews its row count and offers dataset-specific filters. Access exports can use the current chart selection; visit, journey and follow-up exports can be refined by the relevant source, hour, programme or member status. Admin-only datasets are hidden from other reporting users.
 - The on-screen detail tables preview 100 rows; CSV includes every matching row.
 - The visual dashboard retains the existing permission checks and does not expose member visit or follow-up data to other reporting users.

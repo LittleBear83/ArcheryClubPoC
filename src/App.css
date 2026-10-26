@@ -8032,7 +8032,13 @@ button:disabled {
 .beginners-course-participant-actions-buttons {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  align-items: start;
   gap: 10px;
+}
+
+.beginners-course-return-date-field,
+.beginners-course-participant-actions-buttons > .profile-error {
+  grid-column: 1 / -1;
 }
 
 .beginners-course-attendance-table {

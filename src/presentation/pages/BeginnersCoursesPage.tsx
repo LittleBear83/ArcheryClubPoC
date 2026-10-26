@@ -1903,7 +1903,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                   <>
                     {participant.assignedCaseId && !participant.convertedToMember && canReleaseEquipment ? <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setActionSelection(null); setError(""); setPhysicalReturnConfirmed(false); setReleaseSelection({ course, participants: [participant], bulk: false }); }}>Release Equipment</Button> : null}
                     {(participant.assignedCaseId || conversionDateRequired[participant.id]) && !participant.convertedToMember ? (
-                      <div>
+                      <div className="beginners-course-return-date-field">
                         <label>
                           Expected return date for assigned case loan
                           <input type="date" required min={new Date().toISOString().slice(0, 10)}

@@ -8036,9 +8036,19 @@ button:disabled {
   gap: 10px;
 }
 
-.beginners-course-return-date-field,
 .beginners-course-participant-actions-buttons > .profile-error {
   grid-column: 1 / -1;
+}
+
+.beginners-course-return-date-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.beginners-course-return-date-field .equipment-meta-copy {
+  margin: 0;
+  line-height: 1.45;
 }
 
 .beginners-course-attendance-table {

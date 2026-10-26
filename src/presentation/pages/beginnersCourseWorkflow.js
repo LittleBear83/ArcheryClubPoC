@@ -21,6 +21,21 @@ export function validateBeginnerConversionReturnDate(assignedCaseId, expectedRet
   return null;
 }
 
+export function getSuggestedBeginnerCaseReturnDate(course, todayUtc = new Date().toISOString().slice(0, 10)) {
+  const allLessons = course?.lessons ?? [];
+  const activeLessons = allLessons.filter((lesson) => !lesson.isCancelled);
+  const lessons = activeLessons.length ? activeLessons : allLessons;
+  const lastDate = lessons.map((lesson) => lesson.date).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort().at(-1);
+  if (!lastDate) return todayUtc;
+
+  const [year, month, day] = lastDate.split("-").map(Number);
+  const targetMonthStart = new Date(Date.UTC(year, month - 1 + 3, 1));
+  const daysInTargetMonth = new Date(Date.UTC(targetMonthStart.getUTCFullYear(), targetMonthStart.getUTCMonth() + 1, 0)).getUTCDate();
+  const suggested = new Date(Date.UTC(targetMonthStart.getUTCFullYear(), targetMonthStart.getUTCMonth(), Math.min(day, daysInTargetMonth)))
+    .toISOString().slice(0, 10);
+  return suggested < todayUtc ? todayUtc : suggested;
+}
+
 export function selectCourseDetails(activeCourses, courses, closedDetailId) {
   return [...activeCourses, ...courses.filter((course) => course.id === closedDetailId && !activeCourses.some((active) => active.id === course.id))];
 }

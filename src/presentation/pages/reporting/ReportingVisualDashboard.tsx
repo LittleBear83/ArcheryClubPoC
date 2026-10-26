@@ -40,6 +40,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
   const { theme } = useTheme();
   const [selection, setSelection] = useState<AccessSelection>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [customFiltersOpen, setCustomFiltersOpen] = useState(false);
   const [visitHour, setVisitHour] = useState<number | null>(null);
   const [selectedOrigin, setSelectedOrigin] = useState<string | null>(null);
   const { data, memberJourneyData, actorUsername, startDate, endDate, memberRangeAttendance } = state;
@@ -83,6 +84,12 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
     setVisitHour(null);
   }
 
+  const activePeriod = (["current-month", "last-30-days", "last-90-days", "year-to-date"] as const)
+    .find((period) => {
+      const range = getRangeVisitPeriod(period, new Date());
+      return range.startDate === startDate && range.endDate === endDate;
+    });
+
   return <div className="range-usage-dashboard reporting-page reporting-visual-page">
     <header className="reporting-visual-header">
       <div><h1 className="range-usage-title">Reporting</h1>
@@ -91,19 +98,26 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
     </header>
 
     <div className="reporting-visual-toolbar">
-      <div className="reporting-visual-presets" role="group" aria-label="Quick date ranges">
-        {([[
-          "current-month", "This month"], ["last-30-days", "Last 30 days"],
-          ["last-90-days", "Last 90 days"], ["year-to-date", "Year to date"],
-        ] as const).map(([value, label]) =>
-          <Button key={value} size="sm" variant="secondary" onClick={() => applyPeriod(value)}>{label}</Button>)}
+      <div className="reporting-visual-toolbar-group" role="group" aria-label="Date range">
+        <span className="reporting-visual-toolbar-label">Date range</span>
+        <div className="reporting-visual-presets">
+          {([[
+            "current-month", "This month"], ["last-30-days", "Last 30 days"],
+            ["last-90-days", "Last 90 days"], ["year-to-date", "Year to date"],
+          ] as const).map(([value, label]) =>
+            <Button key={value} size="sm" variant="secondary" aria-pressed={activePeriod === value} onClick={() => applyPeriod(value)}>{label}</Button>)}
+          <Button size="sm" variant="secondary" aria-expanded={customFiltersOpen} aria-controls="reporting-custom-filters" onClick={() => setCustomFiltersOpen((open) => !open)}>Custom dates &amp; sources</Button>
+        </div>
       </div>
-      <Button size="sm" onClick={() => setExportOpen(true)}>Export data</Button>
-      <details className="reporting-visual-custom-filters">
-        <summary>Custom dates &amp; sources</summary>
-        <ReportingFilters state={state} showExport={false} />
-      </details>
+      <div className="reporting-visual-toolbar-group" role="group" aria-label="Exports">
+        <span className="reporting-visual-toolbar-label">Exports</span>
+        <div className="reporting-visual-export-actions">
+          <Button size="sm" variant="secondary" onClick={() => setExportOpen(true)}>Export data</Button>
+          <Button size="sm" variant="secondary" disabled={!data} title="Opens the print dialog; choose Save as PDF" onClick={() => window.print()}>Export visuals as PDF</Button>
+        </div>
+      </div>
     </div>
+    {customFiltersOpen ? <div id="reporting-custom-filters" className="reporting-visual-custom-filters"><ReportingFilters state={state} showExport={false} /></div> : null}
     {exportOpen ? <ReportingExportModal
       onClose={() => setExportOpen(false)}
       data={{ access: data, journeys: memberJourneyData, visits, followUp: memberRangeAttendance.data, accessSelection: validSelection }}
@@ -267,7 +281,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
         </> : null}
       </section>
 
-      <section className="reporting-visual-section" aria-label="Detailed access events">
+      <section className="reporting-visual-section reporting-visual-details" aria-label="Detailed access events">
         <header><h2>Explore the records</h2><p>Inspect the figures behind the charts. Use Export data to build a CSV.</p></header>
         <ProfileAccordion title="Access event records" detail={`${selectedRows.length} events · ${selectionLabel}`}>
           {validSelection ? <Button variant="ghost" onClick={() => setSelection(null)}>Show all dates</Button> : null}

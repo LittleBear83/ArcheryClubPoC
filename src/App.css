@@ -9649,6 +9649,24 @@ button:disabled {
   margin-top: 1rem;
 }
 
+.golden-records-admin-last-sync {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.75rem;
+  background: var(--surface-raised);
+  color: var(--text-h);
+}
+
+.golden-records-admin-last-sync time,
+.golden-records-admin-last-sync span {
+  color: var(--text-soft);
+}
+
 .golden-records-admin-card {
   border: 1px solid var(--panel-border);
   border-radius: 1rem;

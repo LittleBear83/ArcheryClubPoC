@@ -113,7 +113,7 @@ export function ReportingDesktopView(state: ReportingPageState) {
   return (
     <div className="range-usage-dashboard reporting-page">
       <p className="range-usage-title">Reporting</p>
-      <p className="reporting-table-note">Access event totals include every successful member sign-in and on-site check-in, plus guest sign-ins. Match the Dashboard by selecting the same UTC dates and comparing member events; range visits use a separate two-hour rule.</p>
+      <p className="reporting-table-note">Access event totals include every successful member sign-in and on-site check-in, plus guest sign-ins. Match the Dashboard by selecting the same dates and comparing member events; range visits use a separate two-hour rule.</p>
 
       <ReportingFilters state={state} />
       <ReportingErrors state={state} />

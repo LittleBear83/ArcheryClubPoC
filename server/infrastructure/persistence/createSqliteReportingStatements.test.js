@@ -295,6 +295,18 @@ test("member range usage collapses repeated on-site logins inside the two-hour w
         { hour: "11", count: 1 },
       ],
     );
+    assert.deepEqual(
+      statements.listMemberRangeVisits.all(endIso, startIso)
+        .map((row) => [row.username, row.login_method, row.logged_in_time]),
+      [
+        ["member-one", "rfid", "11:00:00"],
+        ["member-two", "rfid", "10:15:00"],
+      ],
+    );
+    assert.deepEqual(
+      statements.countMemberRangeVisitsByYear.all(endIso),
+      [{ year: "2026", count: 3 }],
+    );
   } finally {
     db.close();
   }
@@ -325,6 +337,36 @@ test("member range usage counts one visit for duplicate legacy rows at a session
       statements.countMemberLoginsInRange.get("2026-06-04T00:00:00", "2026-06-01T00:00:00"),
       { count: 4 },
     );
+    assert.equal(
+      statements.listMemberRangeVisits.all("2026-06-04T00:00:00", "2026-06-01T00:00:00").length,
+      4,
+    );
+    assert.deepEqual(
+      statements.countMemberRangeVisitsByYear.all("2026-06-04T00:00:00"),
+      [{ year: "2026", count: 4 }],
+    );
+  } finally {
+    db.close();
+  }
+});
+
+test("guest range visit years count every sign-in through the requested end", () => {
+  const db = new Database(":memory:");
+  try {
+    seedBaseSchema(db);
+    db.prepare(`INSERT INTO guest_login_events
+      (first_name, surname, archery_gb_membership_number, invited_by_username,
+       invited_by_name, logged_in_date, logged_in_time)
+      VALUES ('Guest', 'Archer', '', 'member-one', 'Member One', ?, ?)`)
+      .run("2024-06-01", "09:00:00");
+    db.prepare(`INSERT INTO guest_login_events
+      (first_name, surname, archery_gb_membership_number, invited_by_username,
+       invited_by_name, logged_in_date, logged_in_time)
+      VALUES ('Guest', 'Archer', '', 'member-one', 'Member One', ?, ?)`)
+      .run("2026-06-01", "09:00:00");
+    const statements = createSqliteReportingStatements(db);
+    assert.deepEqual(statements.countGuestRangeVisitsByYear.all("2026-01-01T00:00:00"),
+      [{ year: "2024", count: 1 }]);
   } finally {
     db.close();
   }

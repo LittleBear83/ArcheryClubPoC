@@ -46,13 +46,15 @@ function normalizeMemberJourneyRows(rows) {
 const POSTGRES_MEMBER_PRESENCE_EVENTS_CTE = `
   WITH RECURSIVE ordered_member_presence_events AS (
     SELECT
+      id,
       username,
+      login_method,
       logged_in_date,
       logged_in_time,
       (logged_in_date::text || 'T' || logged_in_time::text) AS logged_in_at,
       ROW_NUMBER() OVER (
         PARTITION BY username
-        ORDER BY logged_in_date, logged_in_time
+        ORDER BY logged_in_date, logged_in_time, id
       ) AS sequence_number
     FROM login_events
     WHERE login_method IN ('rfid', 'mobile-app')
@@ -93,7 +95,8 @@ const POSTGRES_MEMBER_PRESENCE_EVENTS_CTE = `
       username,
       MIN(logged_in_date) AS logged_in_date,
       MIN(logged_in_time) AS logged_in_time,
-      session_started_at AS logged_in_at
+      session_started_at AS logged_in_at,
+      MIN(sequence_number) AS first_sequence_number
     FROM member_presence_sessions
     GROUP BY username, session_started_at
   )
@@ -115,6 +118,9 @@ function createSqliteActivityReportingGateway({
   listMemberJourneyParticipants,
   listReportingGuestLogins,
   listReportingMemberLogins,
+  listMemberRangeVisits,
+  countMemberRangeVisitsByYear,
+  countGuestRangeVisitsByYear,
   listCurrentMemberTypeCounts,
   listMemberRangeAttendance,
   memberLoginsByDateForUserInRange,
@@ -175,6 +181,15 @@ function createSqliteActivityReportingGateway({
       return normalizeReportingMemberRows(
         listReportingMemberLogins.all(startIso, endIsoExclusive),
       );
+    },
+    async listMemberRangeVisits(startIso, endIsoExclusive) {
+      return listMemberRangeVisits.all(endIsoExclusive, startIso);
+    },
+    async countMemberRangeVisitsByYear(endIsoExclusive) {
+      return normalizeRowsWithCount(countMemberRangeVisitsByYear.all(endIsoExclusive));
+    },
+    async countGuestRangeVisitsByYear(endIsoExclusive) {
+      return normalizeRowsWithCount(countGuestRangeVisitsByYear.all(endIsoExclusive));
     },
     async listCurrentMemberTypeCounts() {
       return listCurrentMemberTypeCounts.all().map((row) => ({
@@ -460,6 +475,48 @@ function createPostgresActivityReportingGateway({ pool }) {
         [startIso, endIsoExclusive],
       );
       return normalizeReportingMemberRows(result.rows);
+    },
+    async listMemberRangeVisits(startIso, endIsoExclusive) {
+      const result = await pool.query(
+        `${POSTGRES_MEMBER_PRESENCE_EVENTS_CTE}
+         SELECT
+           first_event.id,
+           visit.username,
+           users.first_name,
+           users.surname,
+           first_event.login_method,
+           first_event.logged_in_date::text AS logged_in_date,
+           first_event.logged_in_time::text AS logged_in_time
+         FROM member_presence_visit_starts AS visit
+         INNER JOIN ordered_member_presence_events AS first_event
+           ON first_event.username = visit.username
+          AND first_event.sequence_number = visit.first_sequence_number
+         LEFT JOIN users ON users.username = visit.username
+         WHERE visit.logged_in_at >= $2
+         ORDER BY first_event.logged_in_date DESC, first_event.logged_in_time DESC, first_event.id DESC`,
+        [endIsoExclusive, startIso],
+      );
+      return result.rows;
+    },
+    async countMemberRangeVisitsByYear(endIsoExclusive) {
+      const result = await pool.query(
+        `${POSTGRES_MEMBER_PRESENCE_EVENTS_CTE}
+         SELECT substring(logged_in_date::text, 1, 4) AS year, COUNT(*) AS count
+         FROM member_presence_visit_starts
+         GROUP BY substring(logged_in_date::text, 1, 4)`,
+        [endIsoExclusive],
+      );
+      return normalizeRowsWithCount(result.rows);
+    },
+    async countGuestRangeVisitsByYear(endIsoExclusive) {
+      const result = await pool.query(
+        `SELECT substring(logged_in_date::text, 1, 4) AS year, COUNT(*) AS count
+         FROM guest_login_events
+         WHERE logged_in_date::text || 'T' || logged_in_time::text < $1
+         GROUP BY substring(logged_in_date::text, 1, 4)`,
+        [endIsoExclusive],
+      );
+      return normalizeRowsWithCount(result.rows);
     },
     async listCurrentMemberTypeCounts() {
       const result = await pool.query(

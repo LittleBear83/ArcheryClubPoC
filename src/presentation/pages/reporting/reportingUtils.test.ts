@@ -43,8 +43,9 @@ test("buildCsv includes membership and programme classification columns", () => 
 
   assert.equal(
     headerLine,
-    "Date,Time,Type,Member Type,Programme Type,Role,Name,Username,Login Method,Archery GB Number,Attending With,Attending With Username",
+    "UK date,UK time (BST/GMT),Type,Member Type,Programme Type,Role,Name,Username,Login Method,Archery GB Number,Attending With,Attending With Username",
   );
+  assert.match(firstRow, /12\/08\/2026,19:30:00 BST/);
   assert.match(firstRow, /non-member,taster-session,have-a-go,Taylor Archer/);
 });
 

@@ -29,6 +29,10 @@ test("shared filters retain source selection and mobile export layout", () => {
   assert.match(mobile, /mobile-action-bar/);
   assert.match(mobile, /reporting-filter-form--mobile/);
   assert.doesNotMatch(desktop, /reporting-filter-form--mobile/);
+  const customOnly = renderToStaticMarkup(<ReportingFilters state={state} showExport={false} />);
+  assert.match(customOnly, /Date from/);
+  assert.match(customOnly, /Included data sources/);
+  assert.doesNotMatch(customOnly, /Export CSV/);
   assert.match(renderToStaticMarkup(<ReportingFilters state={{ ...state, isFetching: true } as State} />), /disabled=""/);
 });
 

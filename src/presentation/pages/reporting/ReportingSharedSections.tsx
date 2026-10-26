@@ -7,7 +7,7 @@ import { formatPercentage } from "./reportingPresentation";
 
 type ReportingPageState = ReturnType<typeof useReportingPageState>;
 
-export function ReportingFilters({ state, mobile = false }: { state: ReportingPageState; mobile?: boolean }) {
+export function ReportingFilters({ state, mobile = false, showExport = true }: { state: ReportingPageState; mobile?: boolean; showExport?: boolean }) {
   const {
     data, endDate, handleExport, hasDataSource, includeGuests, includeMembers, isFetching,
     maxEndDate, minStartDate, setEndDate, setIncludeGuests, setIncludeMembers, setStartDate, startDate,
@@ -38,7 +38,7 @@ export function ReportingFilters({ state, mobile = false }: { state: ReportingPa
             <span>Guests</span>
           </label>
         </div>
-        {mobile ? <MobileActionBar>{exportButton}</MobileActionBar> : <div className="reporting-export-panel">{exportButton}</div>}
+        {showExport ? (mobile ? <MobileActionBar>{exportButton}</MobileActionBar> : <div className="reporting-export-panel">{exportButton}</div>) : null}
       </form>
     </section>
   );

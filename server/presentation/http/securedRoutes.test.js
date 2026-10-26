@@ -131,8 +131,11 @@ function registerMemberActivityTestRoutes(app, getActorUser, actorHasPermission,
       listMemberJourneyParticipants: async () => [],
       listCurrentMemberTypeCounts: overrides.listCurrentMemberTypeCounts ?? (async () => []),
       listMemberRangeAttendance: overrides.listMemberRangeAttendance ?? (async () => []),
-      listReportingGuestLogins: async () => [],
+      listReportingGuestLogins: overrides.listReportingGuestLogins ?? (async () => []),
       listReportingMemberLogins: overrides.listReportingMemberLogins ?? (async () => []),
+      listMemberRangeVisits: overrides.listMemberRangeVisits ?? (async () => []),
+      countMemberRangeVisitsByYear: overrides.countMemberRangeVisitsByYear ?? (async () => []),
+      countGuestRangeVisitsByYear: overrides.countGuestRangeVisitsByYear ?? (async () => []),
       memberLoginsByDateForUserInRange: async () => [],
       memberLoginsByDateInRange: async () => [],
       memberLoginsByHourForUserInRange: async () => [],
@@ -1437,6 +1440,77 @@ test("member range attendance is limited to admins and developers with report pe
     const invalidResponse = await requestJson(baseUrl, "/api/reporting/member-range-attendance?days=500");
     assert.equal(invalidResponse.status, 400);
     assert.equal(calls.length, 2);
+  } finally {
+    server.close();
+  }
+});
+
+test("range visit history restricts identities, validates dates and returns visit methods", async () => {
+  let actor = { username: "member", user_type: "member" };
+  let canView = true;
+  const calls = [];
+  const app = express();
+  registerMemberActivityTestRoutes(app, () => actor, () => canView, {
+    listMemberRangeVisits: async (start, end) => {
+      calls.push([start, end]);
+      return [{ id: 7, username: "robin", first_name: "Robin", surname: "Archer", login_method: "rfid", logged_in_date: "2026-07-23", logged_in_time: "09:15:00" }];
+    },
+    listReportingGuestLogins: async () => [
+      { id: 3, first_name: "Guest", surname: "Archer", logged_in_date: new Date("2026-07-23T00:00:00Z"), logged_in_time: "10:00:00" },
+    ],
+  });
+  const { baseUrl, server } = await startTestServer(app);
+  try {
+    const path = "/api/reporting/range-visits?start=2026-07-23&end=2026-07-23";
+    assert.equal((await requestJson(baseUrl, path)).status, 403);
+    actor = { username: "admin", user_type: "admin" };
+    canView = false;
+    assert.equal((await requestJson(baseUrl, path)).status, 403);
+    canView = true;
+    assert.equal((await requestJson(baseUrl, "/api/reporting/range-visits?start=2026-02-30&end=2026-03-01")).status, 400);
+    assert.equal((await requestJson(baseUrl, "/api/reporting/range-visits?start=2025-01-01&end=2026-07-23")).status, 400);
+    assert.equal(calls.length, 0);
+
+    const response = await requestJson(baseUrl, path);
+    assert.equal(response.status, 200);
+    assert.equal(response.body.report.total, 2);
+    assert.deepEqual(response.body.report.rows.map((row) => [row.name, row.loginMethod, row.time]), [
+      ["Guest Archer", "guest", "10:00:00"],
+      ["Robin Archer", "rfid", "09:15:00"],
+    ]);
+    assert.deepEqual(calls, [["2026-07-23T00:00:00.000Z", "2026-07-24T00:00:00.000Z"]]);
+  } finally {
+    server.close();
+  }
+});
+
+test("range visit years include all recorded years and remain admin-only", async () => {
+  let actor = { username: "member", user_type: "member" };
+  let canView = true;
+  const app = express();
+  registerMemberActivityTestRoutes(app, () => actor, () => canView, {
+    countMemberRangeVisitsByYear: async () => [
+      { year: "2024", count: 2 }, { year: "2026", count: 3 },
+    ],
+    countGuestRangeVisitsByYear: async () => [
+      { year: "2024", count: 1 }, { year: "2025", count: 4 },
+    ],
+  });
+  const { baseUrl, server } = await startTestServer(app);
+  try {
+    const path = "/api/reporting/range-visits/years";
+    assert.equal((await requestJson(baseUrl, path)).status, 403);
+    actor = { username: "admin", user_type: "admin" };
+    canView = false;
+    assert.equal((await requestJson(baseUrl, path)).status, 403);
+    canView = true;
+    const response = await requestJson(baseUrl, path);
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.years, [
+      { year: "2026", members: 3, guests: 0, total: 3 },
+      { year: "2025", members: 0, guests: 4, total: 4 },
+      { year: "2024", members: 2, guests: 1, total: 3 },
+    ]);
   } finally {
     server.close();
   }

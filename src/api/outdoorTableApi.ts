@@ -127,6 +127,7 @@ export type GoldenRecordsMemberSyncJob = {
   queuedAt?: string;
   startedAt: string;
   completedAt?: string;
+  lastSuccessfulAt?: string | null;
   durationMs?: number;
   scheduledDate?: string;
   startedByUsername: string;

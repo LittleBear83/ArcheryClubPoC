@@ -101,14 +101,19 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
       <span className="reporting-visual-date">{formatDate(startDate)} – {formatDate(endDate)} · UTC</span>
     </header>
 
-    <div className="reporting-visual-presets" role="group" aria-label="Quick date ranges">
-      {([[
-        "current-month", "This month"], ["last-30-days", "Last 30 days"],
-        ["last-90-days", "Last 90 days"], ["year-to-date", "Year to date"],
-      ] as const).map(([value, label]) =>
-        <Button key={value} size="sm" variant="secondary" onClick={() => applyPeriod(value)}>{label}</Button>)}
+    <div className="reporting-visual-toolbar">
+      <div className="reporting-visual-presets" role="group" aria-label="Quick date ranges">
+        {([[
+          "current-month", "This month"], ["last-30-days", "Last 30 days"],
+          ["last-90-days", "Last 90 days"], ["year-to-date", "Year to date"],
+        ] as const).map(([value, label]) =>
+          <Button key={value} size="sm" variant="secondary" onClick={() => applyPeriod(value)}>{label}</Button>)}
+      </div>
+      <details className="reporting-visual-custom-filters">
+        <summary>Custom dates &amp; sources</summary>
+        <ReportingFilters state={state} showExport={false} />
+      </details>
     </div>
-    <ReportingFilters state={state} />
     <ReportingErrors state={state} />
     {state.isFetching && !data ? <p role="status">Loading reporting data…</p> : null}
 

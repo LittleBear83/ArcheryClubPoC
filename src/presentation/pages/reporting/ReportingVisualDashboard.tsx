@@ -85,8 +85,8 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
 
   return <div className="range-usage-dashboard reporting-page reporting-visual-page">
     <header className="reporting-visual-header">
-      <div><p className="reporting-visual-eyebrow">Club intelligence</p><h1>Reporting</h1>
-        <p>Understand recorded activity, member engagement and programme journeys.</p></div>
+      <div><h1 className="range-usage-title">Reporting</h1>
+        <p className="reporting-table-note">Understand recorded activity, member engagement and programme journeys.</p></div>
       <span className="reporting-visual-date">{formatDate(startDate)} – {formatDate(endDate)} · UTC</span>
     </header>
 

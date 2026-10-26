@@ -11,11 +11,11 @@ function fixture() {
       username TEXT NOT NULL, assigned_case_id INTEGER, converted_to_member INTEGER NOT NULL DEFAULT 0,
       assigned_case_by_username TEXT, assigned_case_at_date TEXT, assigned_case_at_time TEXT);
     CREATE TABLE equipment_items (id INTEGER PRIMARY KEY, equipment_type TEXT NOT NULL,
-      status TEXT NOT NULL, location_type TEXT NOT NULL, location_case_id INTEGER);
+      status TEXT NOT NULL, location_type TEXT NOT NULL, location_case_id INTEGER, item_number TEXT);
     CREATE TABLE equipment_loans (id INTEGER PRIMARY KEY, equipment_item_id INTEGER NOT NULL,
       loan_context_case_id INTEGER, returned_at_date TEXT);
-    INSERT INTO equipment_items VALUES (10, 'case', 'active', 'cupboard', NULL),
-      (11, 'case', 'active', 'cupboard', NULL), (12, 'bow', 'active', 'case', 10);
+    INSERT INTO equipment_items VALUES (10, 'case', 'active', 'cupboard', NULL, 'CASE-10'),
+      (11, 'case', 'active', 'cupboard', NULL, 'CASE-11'), (12, 'bow', 'active', 'case', 10, 'BOW-12');
     INSERT INTO beginners_course_participants VALUES
       (1, 5, 'beginner1', 10, 0, 'officer', '2026-01-01', '12:00:00'),
       (2, 5, 'beginner2', 11, 0, 'officer', '2026-01-01', '12:00:00');
@@ -50,8 +50,9 @@ test("bulk release rolls back when a later reservation conflicts", async () => {
 test("active loans and converted participants cannot release cases", async () => {
   const { db, gateway } = fixture();
   try {
+    db.prepare("UPDATE equipment_items SET location_type = 'member', location_case_id = NULL WHERE id = 12").run();
     db.prepare("INSERT INTO equipment_loans VALUES (1, 12, 10, NULL)").run();
-    await assert.rejects(gateway.releaseParticipantCases({ courseId: 5, reservations: reservations.slice(0, 1) }), /active loan/);
+    await assert.rejects(gateway.releaseParticipantCases({ courseId: 5, reservations: reservations.slice(0, 1) }), /active loan for BOW-12/);
     db.prepare("DELETE FROM equipment_loans").run();
     db.prepare("UPDATE beginners_course_participants SET converted_to_member = 1 WHERE id = 1").run();
     await assert.rejects(gateway.releaseParticipantCases({ courseId: 5, reservations: reservations.slice(0, 1) }), /Converted members/);

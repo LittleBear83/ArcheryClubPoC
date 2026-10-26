@@ -133,6 +133,8 @@ try {
       const ben = addParticipant(ready.courseId, "dev_release_ready_ben", "Ben", "Sample", benCase);
       const chris = addParticipant(blocked.courseId, "dev_release_blocked_chris", "Chris", "Sample", blockedCase);
       addParticipant(blocked.courseId, "dev_release_converted_ella", "Ella", "Sample", null, true);
+      db.prepare(`UPDATE equipment_items SET location_type = 'member', location_case_id = NULL,
+        location_member_username = ? WHERE id = ?`).run("dev_release_converted_ella", blockedContent);
       const loanedCase = addCase("DEV-RELEASE-LOAN-01", { member: "dev_release_converted_ella" });
       const dana = addParticipant(active.courseId, "dev_release_active_dana", "Dana", "Sample", activeCase);
       addAttendance(ready.lessons[0], anna);

@@ -2,6 +2,7 @@ import { getSuggestedBeginnerCaseReturnDate, hasCourseFinished, isCourseClosed, 
 import { cancelCourseDates } from "../../api/beginnersCoursesApi";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import { Button } from "../components/Button";
 import { DatePicker } from "../components/DatePicker";
 import { Modal } from "../components/Modal";
@@ -2015,6 +2016,11 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
               <span>I confirm that the listed equipment has been physically returned and is available at the range.</span>
             </label>
             {error ? <p className="profile-error" role="alert">{error}</p> : null}
+            {error.includes("active loan") ? (
+              hasPermission(currentUserProfile, "return_equipment")
+                ? <Link className="app-button app-button--secondary app-button--md beginners-course-release-loan-link" to="/equipment">Open Equipment Management</Link>
+                : <p className="equipment-meta-copy">Ask an equipment manager to record the loan return, then try the release again.</p>
+            ) : null}
             <div className="beginners-course-actions">
               <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setReleaseSelection(null); setPhysicalReturnConfirmed(false); setReleaseReturnedOn(""); }}>Cancel</Button>
               <Button disabled={!physicalReturnConfirmed || !releaseReturnedOn || releaseReturnedOn > getClubTodayDate() || mutation.isPending} onClick={() => void confirmEquipmentRelease()}>{mutation.isPending ? "Releasing..." : "Release Equipment"}</Button>

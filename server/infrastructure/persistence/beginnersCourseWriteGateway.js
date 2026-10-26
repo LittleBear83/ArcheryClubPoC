@@ -32,10 +32,12 @@ function createSqliteBeginnersCourseWriteGateway({
           if (!item || item.equipment_type !== "case" || item.status !== "active" || item.location_type !== "cupboard") throw new Error("The reserved case is not active and at the range.");
           const conflict = db.prepare("SELECT id FROM beginners_course_participants WHERE assigned_case_id = ? AND id <> ? LIMIT 1").get(caseId, participantId);
           if (conflict) throw new Error("This case has another unresolved reservation.");
-          const openLoan = db.prepare(`SELECT id FROM equipment_loans WHERE returned_at_date IS NULL AND
-            (equipment_item_id = ? OR loan_context_case_id = ? OR equipment_item_id IN
+          const openLoan = db.prepare(`SELECT loan.id, item.item_number FROM equipment_loans AS loan
+            LEFT JOIN equipment_items AS item ON item.id = loan.equipment_item_id
+            WHERE loan.returned_at_date IS NULL AND
+            (loan.equipment_item_id = ? OR loan.loan_context_case_id = ? OR loan.equipment_item_id IN
               (SELECT id FROM equipment_items WHERE location_case_id = ?)) LIMIT 1`).get(caseId, caseId, caseId);
-          if (openLoan) throw new Error("This case or its contents has an active loan. Return the loan first.");
+          if (openLoan) throw new Error(`This case or its contents has an active loan${openLoan.item_number ? ` for ${openLoan.item_number}` : ""}. Return it in Equipment Management first.`);
           const result = db.prepare(`UPDATE beginners_course_participants SET assigned_case_id = NULL,
             assigned_case_by_username = NULL, assigned_case_at_date = NULL, assigned_case_at_time = NULL
             WHERE id = ? AND assigned_case_id = ? AND converted_to_member = 0`).run(participantId, caseId);
@@ -410,10 +412,12 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
           if (!item || item.equipment_type !== "case" || item.status !== "active" || item.location_type !== "cupboard") throw new Error("The reserved case is not active and at the range.");
           const conflict = await client.query("SELECT id FROM beginners_course_participants WHERE assigned_case_id = $1 AND id <> $2 LIMIT 1", [caseId, participantId]);
           if (conflict.rowCount) throw new Error("This case has another unresolved reservation.");
-          const openLoan = await client.query(`SELECT id FROM equipment_loans WHERE returned_at_date IS NULL AND
-            (equipment_item_id = $1 OR loan_context_case_id = $1 OR equipment_item_id IN
+          const openLoan = await client.query(`SELECT loan.id, item.item_number FROM equipment_loans AS loan
+            LEFT JOIN equipment_items AS item ON item.id = loan.equipment_item_id
+            WHERE loan.returned_at_date IS NULL AND
+            (loan.equipment_item_id = $1 OR loan.loan_context_case_id = $1 OR loan.equipment_item_id IN
               (SELECT id FROM equipment_items WHERE location_case_id = $1)) LIMIT 1`, [caseId]);
-          if (openLoan.rowCount) throw new Error("This case or its contents has an active loan. Return the loan first.");
+          if (openLoan.rowCount) throw new Error(`This case or its contents has an active loan${openLoan.rows[0].item_number ? ` for ${openLoan.rows[0].item_number}` : ""}. Return it in Equipment Management first.`);
           const result = await client.query(`UPDATE beginners_course_participants SET assigned_case_id = NULL,
             assigned_case_by_username = NULL, assigned_case_at_date = NULL, assigned_case_at_time = NULL
             WHERE id = $1 AND assigned_case_id = $2 AND converted_to_member = 0`, [participantId, caseId]);

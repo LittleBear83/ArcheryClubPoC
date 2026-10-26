@@ -8097,6 +8097,12 @@ button:disabled {
   justify-content: flex-end;
 }
 
+.beginners-course-release-loan-link {
+  justify-self: start;
+  white-space: normal;
+  text-align: center;
+}
+
 .beginners-course-participant-actions select {
   width: 100%;
   min-height: var(--control-height);

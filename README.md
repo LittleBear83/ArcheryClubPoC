@@ -173,6 +173,9 @@ This adds two completed beginners courses (one ready for bulk release and one
 with a loan conflict), an active course reservation, and available, loaned, and
 decommissioned stock. The command backs up local SQLite first and does not
 duplicate records on later runs.
+For the blocked sample, book `DEV-RELEASE-RISER-BLOCKED` back into case
+`DEV-RELEASE-BLOCKED-01` in Equipment Management before releasing Chris Sample's
+reservation.
 
 For the Range visit history report, run `npm run seed:range-visits`. This adds
 member RFID/mobile check-ins and clearly labelled sample guest sign-ins across

@@ -39,7 +39,7 @@ export function prepareReportingExport(data: ReportingExportData, options: Repor
       count: rows.length,
       csv: buildCsv({ ...report, rows }),
       filename: `access-events-${report.startDate}-to-${report.endDate}-${options.accessSource}-${options.accessScope}.csv`,
-      description: `${report.startDate} to ${report.endDate} UTC dates · UK local event times (BST/GMT)`,
+      description: `${report.startDate} to ${report.endDate} · UK local event times (BST/GMT)`,
     };
   }
   if (options.dataset === "journeys") {
@@ -52,7 +52,7 @@ export function prepareReportingExport(data: ReportingExportData, options: Repor
       count: rows.length,
       csv: buildMemberJourneyCsv(rows),
       filename: `programme-journeys-${report.startDate}-to-${report.endDate}-${options.journeyOrigin}-${options.journeyConversion}.csv`,
-      description: `${report.startDate} to ${report.endDate} UTC dates · UK local programme times (BST/GMT)`,
+      description: `${report.startDate} to ${report.endDate} · UK local programme times (BST/GMT)`,
     };
   }
   if (options.dataset === "visits") {
@@ -65,7 +65,7 @@ export function prepareReportingExport(data: ReportingExportData, options: Repor
       count: rows.length,
       csv: buildRangeVisitCsv(rows),
       filename: `range-visits-${report.startDate}-to-${report.endDate}-${options.visitKind}${options.visitHour ? `-${options.visitHour.padStart(2, "0")}h` : ""}.csv`,
-      description: `${report.startDate} to ${report.endDate} UTC dates · UK local visit times (BST/GMT)`,
+      description: `${report.startDate} to ${report.endDate} · UK local visit times (BST/GMT)`,
     };
   }
   if (!data.followUp) return null;
@@ -77,6 +77,6 @@ export function prepareReportingExport(data: ReportingExportData, options: Repor
     count: rows.length,
     csv: buildMemberRangeAttendanceCsv(rows),
     filename: `member-follow-up-${report.days}-days-${options.followUpStatus}-${options.followUpMemberType}.csv`,
-    description: `${report.startDate} to ${report.endDate} UTC · current member profiles and recorded range visits`,
+    description: `${report.startDate} to ${report.endDate} · current member profiles and recorded range visits`,
   };
 }

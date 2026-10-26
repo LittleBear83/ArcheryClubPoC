@@ -25,7 +25,7 @@ export function ReportingMobileView(state: ReportingPageState) {
   return (
     <div className="range-usage-dashboard reporting-page reporting-page--mobile">
       <p className="range-usage-title">Reporting</p>
-      <p className="reporting-table-note">Member access events include sign-ins and on-site check-ins. Match Dashboard totals using the same UTC dates; range visits use a two-hour rule.</p>
+      <p className="reporting-table-note">Member access events include sign-ins and on-site check-ins. Match Dashboard totals using the same dates; range visits use a two-hour rule.</p>
 
       <ReportingFilters state={state} mobile />
       <ReportingErrors state={state} />

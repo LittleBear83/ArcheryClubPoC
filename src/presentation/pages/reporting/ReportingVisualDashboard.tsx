@@ -95,7 +95,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
     <header className="reporting-visual-header">
       <div><h1 className="range-usage-title">Reporting</h1>
         <p className="reporting-table-note">Understand recorded activity, member engagement and programme journeys.</p></div>
-      <span className="reporting-visual-date">{formatDate(startDate)} – {formatDate(endDate)} · UTC date range; event times in UK local time (BST/GMT)</span>
+      <span className="reporting-visual-date">{formatDate(startDate)} – {formatDate(endDate)} · Event times in UK local time (BST/GMT)</span>
     </header>
 
     <div className="reporting-visual-toolbar">
@@ -164,7 +164,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
             <Button size="sm" variant="ghost" onClick={() => setSelection(null)}>Show all dates</Button>
           </div> : <p className="reporting-visual-hint">Select a bar or date to focus the chart and inspect its events.</p>}
         </ChartPanel>
-        <ChartPanel title="Activity by weekday" subtitle="Total recorded access events for each UTC weekday">
+        <ChartPanel title="Activity by weekday" subtitle="Total recorded access events by reporting weekday">
           {data.total ? <BarChart height={240} hideLegend
             xAxis={[{ data: insights.weekdays.map((day) => day.label), scaleType: "band" }]}
             series={[{ data: focusChartValues(insights.weekdays.map((day) => day.total), selectedWeekday), label: "Access events", color: colors[0] }]}
@@ -177,7 +177,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
           </label>
           {selectedWeekday !== null ? <div className="reporting-visual-selection" role="status">
             <strong>{selectedRows.length} events · {selectionLabel}</strong>
-            <span>Across {data.daily.length} UTC dates in the selected range.</span>
+            <span>Across {data.daily.length} dates in the selected range.</span>
             <Button size="sm" variant="ghost" onClick={() => setSelection(null)}>Show all weekdays</Button>
           </div> : <p className="reporting-visual-hint">Select a weekday to focus the chart and inspect its events.</p>}
         </ChartPanel>

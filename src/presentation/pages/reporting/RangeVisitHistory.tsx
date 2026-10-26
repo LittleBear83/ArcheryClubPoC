@@ -47,7 +47,7 @@ export function RangeVisitHistory({ actorUsername }: { actorUsername: string }) 
         ))}
       </div>
       <p className="reporting-table-note">
-        {formatDate(startDate)} to {formatDate(endDate)} (UTC date range). Visit times are shown in UK local time (BST/GMT). RFID and on-site mobile check-ins count as member visits. Repeat check-ins within two hours count once; each guest sign-in counts once.
+        {formatDate(startDate)} to {formatDate(endDate)}. Visit times are shown in UK local time (BST/GMT). RFID and on-site mobile check-ins count as member visits. Repeat check-ins within two hours count once; each guest sign-in counts once.
       </p>
       {visitsQuery.isPending || visitsQuery.isFetching ? <p role="status">Loading range visits...</p> : null}
       {visitsQuery.error ? <p className="usage-error" role="alert">{visitsQuery.error instanceof Error ? visitsQuery.error.message : "Unable to load range visits."}</p> : null}

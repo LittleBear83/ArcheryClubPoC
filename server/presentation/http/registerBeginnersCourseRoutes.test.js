@@ -69,6 +69,7 @@ test("release routes require permission and physical return, and bulk waits for 
   let allowed = false;
   let released = 0;
   let audited = 0;
+  const auditRecords = [];
   let equipmentBroadcasts = 0;
   registerBeginnersCourseParticipantRoutes({
     app,
@@ -87,7 +88,7 @@ test("release routes require permission and physical return, and bulk waits for 
     },
     findBeginnersParticipantAuditSnapshot: async () => ({ id: 1 }),
     buildBeginnersParticipantAuditLabel: () => "Beginner",
-    auditChangeLogger: { recordEntityChange: async () => { audited++; } },
+    auditChangeLogger: { recordEntityChange: async (record) => { audited++; auditRecords.push(record); } },
     getUtcTimestampParts: () => ["2026-10-26", "12:00:00"],
     broadcastBeginnersUpdated: () => {},
     broadcastEquipmentUpdated: () => { equipmentBroadcasts++; },
@@ -103,6 +104,12 @@ test("release routes require permission and physical return, and bulk waits for 
   const unconfirmed = response();
   await individual(request({ caseId: 10 }), unconfirmed);
   assert.equal(unconfirmed.statusCode, 400);
+  for (const returnedOn of ["2026-02-30", "2099-01-01"]) {
+    const invalidDate = response();
+    await individual(request({ confirmed: true, caseId: 10, returnedOn }), invalidDate);
+    assert.equal(invalidDate.statusCode, 400);
+  }
+  assert.equal(released, 0);
   const active = response();
   await bulk({ params: { id: "5" }, body: { confirmed: true, reservations: [{ participantId: 1, caseId: 10 }] } }, active);
   assert.equal(active.statusCode, 409);
@@ -114,6 +121,8 @@ test("release routes require permission and physical return, and bulk waits for 
   assert.equal(audited, 1);
   assert.equal(equipmentBroadcasts, 1);
   const bulkDone = response();
-  await bulk({ params: { id: "5" }, body: { confirmed: true, reservations: [{ participantId: 1, caseId: 10 }] } }, bulkDone);
+  await bulk({ params: { id: "5" }, body: { confirmed: true, returnedOn: "2026-09-14", reservations: [{ participantId: 1, caseId: 10 }] } }, bulkDone);
   assert.equal(bulkDone.body.releasedCount, 1);
+  assert.equal(auditRecords[1].after.equipmentReturnedOn, "2026-09-14");
+  assert.match(auditRecords[1].entityLabel, /returned 2026-09-14/);
 });

@@ -1,3 +1,5 @@
+import { getClubTodayDate } from "../../../shared/clubDate.js";
+
 export function registerBeginnersCourseParticipantRoutes({
   app,
   BeginnerConversionFailure,
@@ -1111,6 +1113,13 @@ export function registerBeginnersCourseParticipantRoutes({
       actorHasPermission(actor, PERMISSIONS.ASSIGN_EQUIPMENT) || actorHasPermission(actor, PERMISSIONS.RETURN_EQUIPMENT));
     if (!authorised) return res.status(403).json({ success: false, message: "You do not have permission to release course equipment." });
     if (req.body?.confirmed !== true) return res.status(400).json({ success: false, message: "Confirm the equipment has been physically returned and is available." });
+    const returnedOn = req.body?.returnedOn ?? getClubTodayDate();
+    const parsedReturnDate = typeof returnedOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(returnedOn)
+      ? new Date(`${returnedOn}T00:00:00Z`) : null;
+    if (!parsedReturnDate || Number.isNaN(parsedReturnDate.getTime()) ||
+      parsedReturnDate.toISOString().slice(0, 10) !== returnedOn || returnedOn > getClubTodayDate()) {
+      return res.status(400).json({ success: false, message: "Choose a valid physical return date no later than today." });
+    }
     if (bulk && (course.is_cancelled || course.approval_status !== "approved" || !(await hasBeginnersCourseCompleted(course)))) {
       return res.status(409).json({ success: false, message: "Bulk release is available only after an approved beginners course has finished." });
     }
@@ -1138,9 +1147,10 @@ export function registerBeginnersCourseParticipantRoutes({
       const after = await findBeginnersParticipantAuditSnapshot(row.participantId, courseType);
       try {
         await auditChangeLogger.recordEntityChange({
-          action: "case_released", actorUsername: actor.username, before: before.get(row.participantId), after,
+          action: "case_released", actorUsername: actor.username, before: before.get(row.participantId),
+          after: { ...(after ?? {}), equipmentReturnedOn: returnedOn },
           changedAtDate: date, changedAtTime: time, entityId: String(row.participantId),
-          entityLabel: `${buildBeginnersParticipantAuditLabel(after ?? before.get(row.participantId))} · course ${courseId} · case ${row.caseId}`,
+          entityLabel: `${buildBeginnersParticipantAuditLabel(after ?? before.get(row.participantId))} · course ${courseId} · case ${row.caseId} · returned ${returnedOn}`,
           entityType: "beginners_participant", req,
           target: bulk ? `/api/beginners-courses/${courseId}/release-equipment` : `/api/beginners-course-participants/${row.participantId}/release-equipment`,
         });

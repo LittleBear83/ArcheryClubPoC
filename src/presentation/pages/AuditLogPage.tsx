@@ -480,6 +480,7 @@ function formatAuditChangePath(path: string) {
     surname: "Surname",
     username: "Username",
     rfidTag: "RFID tag",
+    equipmentReturnedOn: "Physically returned on",
   };
 
   if (pathLabelMap[path]) {

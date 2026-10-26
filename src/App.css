@@ -8041,6 +8041,32 @@ button:disabled {
   min-width: 0;
 }
 
+.beginners-course-release-date {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.beginners-course-release-date .custom-date-picker-trigger {
+  justify-content: space-between;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--input-bg);
+  text-align: left;
+}
+
+.beginners-course-release-date .custom-date-picker-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.beginners-course-release-date p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
 .beginners-course-release-confirmation {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);

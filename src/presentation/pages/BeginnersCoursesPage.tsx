@@ -36,6 +36,7 @@ import {
   updateBeginnerParticipant,
 } from "../../api/beginnersCoursesApi";
 import { formatDate, formatClockTime } from "../../utils/dateTime";
+import { getClubTodayDate } from "../../../shared/clubDate.js";
 import {
   buildLessonCoachRequirements,
   DEFAULT_BEGINNERS_COACHES_PER_LESSON,
@@ -551,6 +552,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   } | null>(null);
   const [releaseSelection, setReleaseSelection] = useState<{ course: CourseRecord; participants: CourseBeginner[]; bulk: boolean } | null>(null);
   const [physicalReturnConfirmed, setPhysicalReturnConfirmed] = useState(false);
+  const [releaseReturnedOn, setReleaseReturnedOn] = useState("");
   const [editBeginnerForm, setEditBeginnerForm] = useState(EMPTY_BEGINNER_FORM);
   const [transferSelection, setTransferSelection] = useState<TransferSelection | null>(null);
   const [reallocationSelection, setReallocationSelection] = useState<ReallocationSelection | null>(
@@ -786,16 +788,24 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     await refreshDashboard();
   };
 
+  const openEquipmentRelease = (selection: { course: CourseRecord; participants: CourseBeginner[]; bulk: boolean }) => {
+    setError("");
+    setPhysicalReturnConfirmed(false);
+    setReleaseReturnedOn(getClubTodayDate());
+    setReleaseSelection(selection);
+  };
+
   const confirmEquipmentRelease = async () => {
-    if (!releaseSelection || !physicalReturnConfirmed || mutation.isPending) return;
+    if (!releaseSelection || !physicalReturnConfirmed || !releaseReturnedOn || mutation.isPending) return;
     const reservations = releaseSelection.participants.filter((participant) => participant.assignedCaseId && !participant.convertedToMember)
       .map((participant) => ({ participantId: participant.id, caseId: participant.assignedCaseId as number }));
     try {
       const result = await mutation.mutateAsync(() => releaseSelection.bulk
-        ? releaseCourseEquipment(currentUserProfile, releaseSelection.course.id, reservations)
-        : releaseBeginnerEquipment(currentUserProfile, reservations[0].participantId, reservations[0].caseId)) as { releasedCount: number };
+        ? releaseCourseEquipment(currentUserProfile, releaseSelection.course.id, reservations, releaseReturnedOn)
+        : releaseBeginnerEquipment(currentUserProfile, reservations[0].participantId, reservations[0].caseId, releaseReturnedOn)) as { releasedCount: number };
       setReleaseSelection(null);
       setPhysicalReturnConfirmed(false);
+      setReleaseReturnedOn("");
       setCaseSelections((current) => {
         const next = { ...current };
         for (const reservation of reservations) delete next[reservation.participantId];
@@ -1164,7 +1174,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                     <h4>Post-course equipment review</h4>
                     <p>These participants have not converted to members. Confirm each case has been physically returned before releasing its reservation.</p>
                     <ul>{outstandingReservations.map((participant) => <li key={participant.id}>{formatMemberDisplayName(participant)} · Case {participant.assignedCaseNumber || participant.assignedCaseId}</li>)}</ul>
-                    {canReleaseEquipment ? <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setError(""); setPhysicalReturnConfirmed(false); setReleaseSelection({ course, participants: outstandingReservations, bulk: true }); }}>Review bulk release</Button> : null}
+                    {canReleaseEquipment ? <Button variant="secondary" disabled={mutation.isPending} onClick={() => openEquipmentRelease({ course, participants: outstandingReservations, bulk: true })}>Review bulk release</Button> : null}
                   </section> : null}
                   {canAddParticipant || canCancelCourse || canRescheduleCourse ? (
                     <div className="beginners-course-expanded-toolbar">
@@ -1924,7 +1934,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                 ) : null}
                 {usesEquipmentAssignment ? (
                   <>
-                    {participant.assignedCaseId && !participant.convertedToMember && canReleaseEquipment ? <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setActionSelection(null); setError(""); setPhysicalReturnConfirmed(false); setReleaseSelection({ course, participants: [participant], bulk: false }); }}>Release Equipment</Button> : null}
+                    {participant.assignedCaseId && !participant.convertedToMember && canReleaseEquipment ? <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setActionSelection(null); openEquipmentRelease({ course, participants: [participant], bulk: false }); }}>Release Equipment</Button> : null}
                     {error ? <p className="profile-error" role="alert">{error}</p> : null}
                     <Button
                       variant="info"
@@ -1974,7 +1984,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
       <Modal
         open={Boolean(releaseSelection)}
-        onClose={() => { if (!mutation.isPending) { setReleaseSelection(null); setPhysicalReturnConfirmed(false); } }}
+        onClose={() => { if (!mutation.isPending) { setReleaseSelection(null); setPhysicalReturnConfirmed(false); setReleaseReturnedOn(""); } }}
         title={releaseSelection?.bulk ? "Release course equipment" : "Release Equipment"}
         contentClassName="beginners-course-release-modal"
       >
@@ -1989,14 +1999,25 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                 </li>
               ))}
             </ul>
+            <div className="beginners-course-release-date">
+              <DatePicker
+                label="Returned on"
+                helperText=""
+                required
+                max={getClubTodayDate()}
+                value={releaseReturnedOn}
+                onChange={(value) => { setError(""); setReleaseReturnedOn(value); }}
+              />
+              <p>The date the equipment was physically returned. Change today’s date if it came back earlier.</p>
+            </div>
             <label className="beginners-course-release-confirmation">
               <input type="checkbox" checked={physicalReturnConfirmed} onChange={(event) => setPhysicalReturnConfirmed(event.target.checked)} />
               <span>I confirm that the listed equipment has been physically returned and is available at the range.</span>
             </label>
             {error ? <p className="profile-error" role="alert">{error}</p> : null}
             <div className="beginners-course-actions">
-              <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setReleaseSelection(null); setPhysicalReturnConfirmed(false); }}>Cancel</Button>
-              <Button disabled={!physicalReturnConfirmed || mutation.isPending} onClick={() => void confirmEquipmentRelease()}>{mutation.isPending ? "Releasing..." : "Release Equipment"}</Button>
+              <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setReleaseSelection(null); setPhysicalReturnConfirmed(false); setReleaseReturnedOn(""); }}>Cancel</Button>
+              <Button disabled={!physicalReturnConfirmed || !releaseReturnedOn || releaseReturnedOn > getClubTodayDate() || mutation.isPending} onClick={() => void confirmEquipmentRelease()}>{mutation.isPending ? "Releasing..." : "Release Equipment"}</Button>
             </div>
           </div>
         ) : null}

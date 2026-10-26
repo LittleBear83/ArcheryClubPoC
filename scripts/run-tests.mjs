@@ -6,6 +6,7 @@ import ts from "typescript";
 await import("./check-test-registrations.mjs");
 const root = process.cwd();
 await import("../shared/attendancePolicy.test.js");
+await import("../shared/clubDate.test.js");
 await import("../shared/handicapAllowance.test.js");
 await import("../shared/membershipClassification.test.js");
 await import("../src/utils/userProfile.test.js");

@@ -7998,6 +7998,79 @@ button:disabled {
   gap: 12px;
 }
 
+.beginners-course-release-modal .modal-body {
+  min-width: 0;
+}
+
+.beginners-course-release-content {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.beginners-course-release-content > p {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.beginners-course-release-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(30vh, 240px);
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.beginners-course-release-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--input-bg);
+  overflow-wrap: anywhere;
+}
+
+.beginners-course-release-list li span {
+  min-width: 0;
+}
+
+.beginners-course-release-confirmation {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--input-bg);
+  color: var(--text-h);
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.beginners-course-release-confirmation input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+  appearance: auto;
+}
+
+.beginners-course-release-content .beginners-course-actions {
+  justify-content: flex-end;
+}
+
 .beginners-course-participant-actions select {
   width: 100%;
   min-height: var(--control-height);

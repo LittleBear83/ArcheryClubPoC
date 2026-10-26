@@ -1972,17 +1972,34 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
         })() : null}
       </Modal>
 
-      <Modal open={Boolean(releaseSelection)} onClose={() => { if (!mutation.isPending) { setReleaseSelection(null); setPhysicalReturnConfirmed(false); } }} title={releaseSelection?.bulk ? "Release course equipment" : "Release Equipment"}>
-        {releaseSelection ? <div className="beginners-course-participant-actions">
-          <p>Release {releaseSelection.participants.length} case reservation{releaseSelection.participants.length === 1 ? "" : "s"} for the course starting {formatDate(releaseSelection.course.firstLessonDate)}. Participant and attendance records will remain.</p>
-          <ul>{releaseSelection.participants.map((participant) => <li key={participant.id}>{formatMemberDisplayName(participant)} · Case {participant.assignedCaseNumber || participant.assignedCaseId}</li>)}</ul>
-          <label className="beginners-course-checkbox"><input type="checkbox" checked={physicalReturnConfirmed} onChange={(event) => setPhysicalReturnConfirmed(event.target.checked)} /> I confirm the equipment has been physically returned and is available at the range.</label>
-          {error ? <p className="profile-error" role="alert">{error}</p> : null}
-          <div className="beginners-course-actions">
-            <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setReleaseSelection(null); setPhysicalReturnConfirmed(false); }}>Cancel</Button>
-            <Button disabled={!physicalReturnConfirmed || mutation.isPending} onClick={() => void confirmEquipmentRelease()}>{mutation.isPending ? "Releasing..." : "Release Equipment"}</Button>
+      <Modal
+        open={Boolean(releaseSelection)}
+        onClose={() => { if (!mutation.isPending) { setReleaseSelection(null); setPhysicalReturnConfirmed(false); } }}
+        title={releaseSelection?.bulk ? "Release course equipment" : "Release Equipment"}
+        contentClassName="beginners-course-release-modal"
+      >
+        {releaseSelection ? (
+          <div className="beginners-course-release-content">
+            <p>Release {releaseSelection.participants.length} case reservation{releaseSelection.participants.length === 1 ? "" : "s"} from the course starting {formatDate(releaseSelection.course.firstLessonDate)}. Participant and attendance records will remain.</p>
+            <ul className="beginners-course-release-list">
+              {releaseSelection.participants.map((participant) => (
+                <li key={participant.id}>
+                  <span>{formatMemberDisplayName(participant)}</span>
+                  <span>Case {participant.assignedCaseNumber || participant.assignedCaseId}</span>
+                </li>
+              ))}
+            </ul>
+            <label className="beginners-course-release-confirmation">
+              <input type="checkbox" checked={physicalReturnConfirmed} onChange={(event) => setPhysicalReturnConfirmed(event.target.checked)} />
+              <span>I confirm that the listed equipment has been physically returned and is available at the range.</span>
+            </label>
+            {error ? <p className="profile-error" role="alert">{error}</p> : null}
+            <div className="beginners-course-actions">
+              <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setReleaseSelection(null); setPhysicalReturnConfirmed(false); }}>Cancel</Button>
+              <Button disabled={!physicalReturnConfirmed || mutation.isPending} onClick={() => void confirmEquipmentRelease()}>{mutation.isPending ? "Releasing..." : "Release Equipment"}</Button>
+            </div>
           </div>
-        </div> : null}
+        ) : null}
       </Modal>
 
       <Modal open={Boolean(cancellationCourse)} onClose={() => setCancellationCourse(null)} title="Cancel session date(s)">

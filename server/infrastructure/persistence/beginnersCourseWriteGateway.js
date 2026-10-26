@@ -19,6 +19,33 @@ function createSqliteBeginnersCourseWriteGateway({
   upsertUser,
 }) {
   return {
+    async releaseParticipantCases({ courseId, reservations }) {
+      const release = db.transaction(() => {
+        const released = [];
+        for (const { participantId, caseId } of reservations) {
+          const participant = db.prepare("SELECT id, course_id, username, assigned_case_id, converted_to_member FROM beginners_course_participants WHERE id = ?").get(participantId);
+          if (!participant || Number(participant.course_id) !== Number(courseId)) throw new Error("A participant no longer belongs to this course.");
+          if (participant.assigned_case_id == null) continue;
+          if (participant.converted_to_member) throw new Error("Converted members' equipment must use the normal loan return workflow.");
+          if (Number(participant.assigned_case_id) !== Number(caseId)) throw new Error("A case reservation changed. Refresh the course and review it again.");
+          const item = db.prepare("SELECT equipment_type, status, location_type FROM equipment_items WHERE id = ?").get(caseId);
+          if (!item || item.equipment_type !== "case" || item.status !== "active" || item.location_type !== "cupboard") throw new Error("The reserved case is not active and at the range.");
+          const conflict = db.prepare("SELECT id FROM beginners_course_participants WHERE assigned_case_id = ? AND id <> ? LIMIT 1").get(caseId, participantId);
+          if (conflict) throw new Error("This case has another unresolved reservation.");
+          const openLoan = db.prepare(`SELECT id FROM equipment_loans WHERE returned_at_date IS NULL AND
+            (equipment_item_id = ? OR loan_context_case_id = ? OR equipment_item_id IN
+              (SELECT id FROM equipment_items WHERE location_case_id = ?)) LIMIT 1`).get(caseId, caseId, caseId);
+          if (openLoan) throw new Error("This case or its contents has an active loan. Return the loan first.");
+          const result = db.prepare(`UPDATE beginners_course_participants SET assigned_case_id = NULL,
+            assigned_case_by_username = NULL, assigned_case_at_date = NULL, assigned_case_at_time = NULL
+            WHERE id = ? AND assigned_case_id = ? AND converted_to_member = 0`).run(participantId, caseId);
+          if (result.changes !== 1) throw new Error("A case reservation changed. Refresh the course and review it again.");
+          released.push({ participantId, courseId, caseId, username: participant.username });
+        }
+        return released;
+      });
+      return release.immediate();
+    },
     async addLessonCoachSelf({ actorUsername, assignedAtDate, assignedAtTime, lessonId }) {
       const insertIfEligible = db.prepare(`
         INSERT OR IGNORE INTO beginners_course_lesson_coaches (
@@ -322,13 +349,22 @@ function createSqliteBeginnersCourseWriteGateway({
       assignedAtTime,
       participantId,
     }) {
-      updateBeginnersCourseParticipantCase.run(
-        assignedCaseId,
-        assignedCaseId ? actorUsername : null,
-        assignedCaseId ? assignedAtDate : null,
-        assignedCaseId ? assignedAtTime : null,
-        participantId,
-      );
+      db.transaction(() => {
+        const current = db.prepare("SELECT assigned_case_id FROM beginners_course_participants WHERE id = ?").get(participantId);
+        if (!current) throw new Error("Beginner record not found.");
+        if (current.assigned_case_id != null && Number(current.assigned_case_id) !== Number(assignedCaseId))
+          throw new Error("Release the current case before changing the assignment.");
+        if (assignedCaseId != null) {
+          if (db.prepare("SELECT id FROM beginners_course_participants WHERE assigned_case_id = ? AND id <> ? LIMIT 1").get(assignedCaseId, participantId))
+            throw new Error("That case is already reserved for another participant.");
+          if (db.prepare("SELECT id FROM equipment_loans WHERE returned_at_date IS NULL AND (equipment_item_id = ? OR loan_context_case_id = ? OR equipment_item_id IN (SELECT id FROM equipment_items WHERE location_case_id = ?)) LIMIT 1").get(assignedCaseId, assignedCaseId, assignedCaseId))
+            throw new Error("That case or its contents are on loan.");
+        }
+        updateBeginnersCourseParticipantCase.run(
+          assignedCaseId, assignedCaseId ? actorUsername : null,
+          assignedCaseId ? assignedAtDate : null, assignedCaseId ? assignedAtTime : null, participantId,
+        );
+      }).immediate();
     },
     async updateParticipantNoShow({
       noShowRecorded,
@@ -350,6 +386,49 @@ function createSqliteBeginnersCourseWriteGateway({
 
 function createPostgresBeginnersCourseWriteGateway({ pool }) {
   return {
+    async releaseParticipantCases({ courseId, reservations }) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const released = [];
+        const sorted = [...reservations].sort((left, right) => left.participantId - right.participantId);
+        const ids = sorted.map(({ participantId }) => participantId);
+        const rows = (await client.query(`SELECT id, course_id, username, assigned_case_id, converted_to_member
+          FROM beginners_course_participants WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE`, [ids])).rows;
+        const byId = new Map(rows.map((row) => [Number(row.id), row]));
+        const caseIds = [...new Set(rows.map((row) => Number(row.assigned_case_id)).filter(Boolean))].sort((a, b) => a - b);
+        const cases = (await client.query(`SELECT id, equipment_type, status, location_type FROM equipment_items
+          WHERE id = ANY($1::bigint[]) ORDER BY id FOR UPDATE`, [caseIds])).rows;
+        const casesById = new Map(cases.map((item) => [Number(item.id), item]));
+        for (const { participantId, caseId } of sorted) {
+          const participant = byId.get(participantId);
+          if (!participant || Number(participant.course_id) !== Number(courseId)) throw new Error("A participant no longer belongs to this course.");
+          if (participant.assigned_case_id == null) continue;
+          if (participant.converted_to_member) throw new Error("Converted members' equipment must use the normal loan return workflow.");
+          if (Number(participant.assigned_case_id) !== Number(caseId)) throw new Error("A case reservation changed. Refresh the course and review it again.");
+          const item = casesById.get(Number(caseId));
+          if (!item || item.equipment_type !== "case" || item.status !== "active" || item.location_type !== "cupboard") throw new Error("The reserved case is not active and at the range.");
+          const conflict = await client.query("SELECT id FROM beginners_course_participants WHERE assigned_case_id = $1 AND id <> $2 LIMIT 1", [caseId, participantId]);
+          if (conflict.rowCount) throw new Error("This case has another unresolved reservation.");
+          const openLoan = await client.query(`SELECT id FROM equipment_loans WHERE returned_at_date IS NULL AND
+            (equipment_item_id = $1 OR loan_context_case_id = $1 OR equipment_item_id IN
+              (SELECT id FROM equipment_items WHERE location_case_id = $1)) LIMIT 1`, [caseId]);
+          if (openLoan.rowCount) throw new Error("This case or its contents has an active loan. Return the loan first.");
+          const result = await client.query(`UPDATE beginners_course_participants SET assigned_case_id = NULL,
+            assigned_case_by_username = NULL, assigned_case_at_date = NULL, assigned_case_at_time = NULL
+            WHERE id = $1 AND assigned_case_id = $2 AND converted_to_member = 0`, [participantId, caseId]);
+          if (result.rowCount !== 1) throw new Error("A case reservation changed. Refresh the course and review it again.");
+          released.push({ participantId, courseId, caseId, username: participant.username });
+        }
+        await client.query("COMMIT");
+        return released;
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
     async addLessonCoachSelf({ actorUsername, assignedAtDate, assignedAtTime, lessonId }) {
       const client = await pool.connect();
       try {
@@ -903,24 +982,29 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
       assignedAtTime,
       participantId,
     }) {
-      await pool.query(
-        `
-          UPDATE beginners_course_participants
-          SET
-            assigned_case_id = $1,
-            assigned_case_by_username = $2,
-            assigned_case_at_date = $3,
-            assigned_case_at_time = $4
-          WHERE id = $5
-        `,
-        [
-          assignedCaseId,
-          assignedCaseId ? actorUsername : null,
-          assignedCaseId ? assignedAtDate : null,
-          assignedCaseId ? assignedAtTime : null,
-          participantId,
-        ],
-      );
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        if (assignedCaseId != null) await client.query("SELECT id FROM equipment_items WHERE id = $1 FOR UPDATE", [assignedCaseId]);
+        const current = await client.query("SELECT assigned_case_id FROM beginners_course_participants WHERE id = $1 FOR UPDATE", [participantId]);
+        if (!current.rowCount) throw new Error("Beginner record not found.");
+        if (current.rows[0].assigned_case_id != null && Number(current.rows[0].assigned_case_id) !== Number(assignedCaseId))
+          throw new Error("Release the current case before changing the assignment.");
+        if (assignedCaseId != null) {
+          const conflict = await client.query("SELECT id FROM beginners_course_participants WHERE assigned_case_id = $1 AND id <> $2 LIMIT 1", [assignedCaseId, participantId]);
+          if (conflict.rowCount) throw new Error("That case is already reserved for another participant.");
+          const loan = await client.query("SELECT id FROM equipment_loans WHERE returned_at_date IS NULL AND (equipment_item_id = $1 OR loan_context_case_id = $1 OR equipment_item_id IN (SELECT id FROM equipment_items WHERE location_case_id = $1)) LIMIT 1", [assignedCaseId]);
+          if (loan.rowCount) throw new Error("That case or its contents are on loan.");
+        }
+        await client.query(`UPDATE beginners_course_participants SET assigned_case_id = $1,
+          assigned_case_by_username = $2, assigned_case_at_date = $3, assigned_case_at_time = $4 WHERE id = $5`,
+        [assignedCaseId, assignedCaseId ? actorUsername : null, assignedCaseId ? assignedAtDate : null,
+          assignedCaseId ? assignedAtTime : null, participantId]);
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally { client.release(); }
     },
     async updateParticipantNoShow({
       noShowRecorded,

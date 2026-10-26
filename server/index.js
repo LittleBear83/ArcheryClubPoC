@@ -8,6 +8,7 @@ import {
   normalizeCourseType,
 } from "./domain/services/beginnerCourseRules.js";
 import { createBeginnerCourseViews } from "./domain/services/beginnerCourseViews.js";
+import { getEquipmentAvailabilityStatus } from "./domain/services/equipmentAvailability.js";
 import express from "express";
 import helmet from "helmet";
 import { Buffer } from "node:buffer";
@@ -1923,7 +1924,7 @@ function buildCaseReservationMap(allParticipants, allCourses) {
 
     const course = coursesById.get(participant.course_id);
 
-    if (!course || Boolean(course.is_cancelled)) {
+    if (!course) {
       continue;
     }
 
@@ -1934,6 +1935,7 @@ function buildCaseReservationMap(allParticipants, allCourses) {
         participantName: `${participant.first_name} ${participant.surname}`.trim(),
         courseId: participant.course_id,
         courseType: normalizeCourseType(course.course_type),
+        courseStartDate: course.first_lesson_date,
       });
     }
   }
@@ -4057,7 +4059,8 @@ function getEquipmentCurrentLocation(item, maps) {
 function buildEquipmentItemResponse(item, maps) {
   const currentLocation = getEquipmentCurrentLocation(item, maps);
   const openLoan = maps.openLoanByItemId.get(item.id) ?? null;
-  const currentReservation = maps.caseReservationByCaseId.get(item.id) ?? null;
+  const currentReservation = maps.caseReservationByCaseId.get(item.id) ??
+    maps.caseReservationByCaseId.get(item.location_case_id) ?? null;
   const isCaseContentLoan =
     item.location_type === EQUIPMENT_LOCATION_TYPES.CASE &&
     item.location_case_id &&
@@ -4090,6 +4093,7 @@ function buildEquipmentItemResponse(item, maps) {
       : "",
     currentLocation,
     currentReservation,
+    availabilityStatus: getEquipmentAvailabilityStatus({ status: item.status, hasOpenLoan: Boolean(openLoan), locationType: currentLocation.type, reservation: currentReservation }),
     expectedReturnDate: openLoan?.expected_return_date ?? null,
     currentLoan: openLoan && !isCaseContentLoan
       ? {

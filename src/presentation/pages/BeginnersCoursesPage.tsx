@@ -14,6 +14,8 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import {
   addBeginnerToCourse,
   assignBeginnerCase,
+  releaseBeginnerEquipment,
+  releaseCourseEquipment,
   assignLessonCoaches,
   updateLessonRequiredCoachCount,
   cancelBeginnersCourse,
@@ -82,6 +84,7 @@ type CaseOption = {
   memberUsername: string;
   reservedParticipantUsername: string;
   reservedParticipantName: string;
+  availabilityStatus: string;
 };
 
 type CourseBeginner = {
@@ -331,6 +334,7 @@ function getAvailableCasesForBeginner(
     (caseItem) =>
       caseItem.reference &&
       caseItem.reference !== "Main Cupboard" &&
+      (caseItem.availabilityStatus === "available-at-range" || String(caseItem.id) === String(beginner.assignedCaseId ?? "")) &&
       (!caseItem.memberUsername ||
         caseItem.memberUsername === beginner.username ||
         String(caseItem.id) === String(beginner.assignedCaseId ?? "")) &&
@@ -545,6 +549,8 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     participant: CourseBeginner;
     course: CourseRecord;
   } | null>(null);
+  const [releaseSelection, setReleaseSelection] = useState<{ course: CourseRecord; participants: CourseBeginner[]; bulk: boolean } | null>(null);
+  const [physicalReturnConfirmed, setPhysicalReturnConfirmed] = useState(false);
   const [editBeginnerForm, setEditBeginnerForm] = useState(EMPTY_BEGINNER_FORM);
   const [transferSelection, setTransferSelection] = useState<TransferSelection | null>(null);
   const [reallocationSelection, setReallocationSelection] = useState<ReallocationSelection | null>(
@@ -626,6 +632,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
       queryClient.invalidateQueries({
         queryKey: ["committee-approval-summary", actorUsername],
       }),
+      queryClient.invalidateQueries({ queryKey: ["equipment-dashboard"] }),
     ]);
   };
 
@@ -777,6 +784,23 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     );
     setMessage(copy.equipmentUpdated);
     await refreshDashboard();
+  };
+
+  const confirmEquipmentRelease = async () => {
+    if (!releaseSelection || !physicalReturnConfirmed || mutation.isPending) return;
+    const reservations = releaseSelection.participants.filter((participant) => participant.assignedCaseId && !participant.convertedToMember)
+      .map((participant) => ({ participantId: participant.id, caseId: participant.assignedCaseId as number }));
+    try {
+      const result = await mutation.mutateAsync(() => releaseSelection.bulk
+        ? releaseCourseEquipment(currentUserProfile, releaseSelection.course.id, reservations)
+        : releaseBeginnerEquipment(currentUserProfile, reservations[0].participantId, reservations[0].caseId)) as { releasedCount: number };
+      setReleaseSelection(null);
+      setPhysicalReturnConfirmed(false);
+      setMessage(result.releasedCount ? `${result.releasedCount} case reservation${result.releasedCount === 1 ? "" : "s"} released. Equipment is available at the range.` : "The case reservation was already released.");
+      await refreshDashboard();
+    } catch (releaseError) {
+      setError(releaseError instanceof Error ? releaseError.message : "Equipment could not be released.");
+    }
   };
 
   const convertBeginnerToMember = async (beginner: CourseBeginner) => {
@@ -1058,6 +1082,9 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
   const renderCoursePanel = (course: CourseRecord) => {
           const isClosedCourse = closedCourseRecords.some((closed) => closed.id === course.id);
+          const outstandingReservations = course.beginners.filter((participant) => participant.assignedCaseId && !participant.convertedToMember);
+          const completedBeginnersCourse = copy.courseType === "beginners" && !course.isCancelled && course.approvalStatus === "approved" && hasCourseFinished(course);
+          const canReleaseEquipment = permissions.canManageBeginnersCourses || hasPermission(currentUserProfile, "assign_equipment") || hasPermission(currentUserProfile, "return_equipment");
           const beginnerForm = {
             ...EMPTY_BEGINNER_FORM,
             ...beginnerForms[course.id],
@@ -1113,6 +1140,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                           : `${copy.itemLabel} completed.`)}
                     </span>
                   ) : null}
+                  {completedBeginnersCourse && outstandingReservations.length ? <span className="equipment-meta-copy">{outstandingReservations.length} equipment reservation{outstandingReservations.length === 1 ? "" : "s"} awaiting review</span> : null}
                   </span>
                   <span className="profile-accordion-icon" aria-hidden="true" />
                 </button>
@@ -1120,6 +1148,12 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
               {isCollapsed ? null : (
                 <div className="beginners-course-expanded-content">
+                  {completedBeginnersCourse && outstandingReservations.length ? <section className="beginners-course-subpanel">
+                    <h4>Post-course equipment review</h4>
+                    <p>These participants have not converted to members. Confirm each case has been physically returned before releasing its reservation.</p>
+                    <ul>{outstandingReservations.map((participant) => <li key={participant.id}>{formatMemberDisplayName(participant)} · Case {participant.assignedCaseNumber || participant.assignedCaseId}</li>)}</ul>
+                    {canReleaseEquipment ? <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setError(""); setPhysicalReturnConfirmed(false); setReleaseSelection({ course, participants: outstandingReservations, bulk: true }); }}>Review bulk release</Button> : null}
+                  </section> : null}
                   {canAddParticipant || canCancelCourse || canRescheduleCourse ? (
                     <div className="beginners-course-expanded-toolbar">
                       {canAddParticipant ? <h4>{copy.addParticipantTitle}</h4> : null}
@@ -1816,6 +1850,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
             permissions.canManageBeginnersCourses &&
             copy.courseType !== "have-a-go" &&
             !participant.convertedToMember;
+          const canReleaseEquipment = permissions.canManageBeginnersCourses || hasPermission(currentUserProfile, "assign_equipment") || hasPermission(currentUserProfile, "return_equipment");
 
           return (
             <div className="beginners-course-participant-actions">
@@ -1823,6 +1858,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                 <label className="beginners-course-mobile-field">
                   Assigned case
                   <select
+                    disabled={Boolean(participant.assignedCaseId)}
                     value={caseSelections[participant.id] ??
                       (participant.assignedCaseId ? String(participant.assignedCaseId) : "")}
                     onChange={(event) => setCaseSelections((current) => ({
@@ -1830,7 +1866,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                       [participant.id]: event.target.value,
                     }))}
                   >
-                    <option value="">No case assigned</option>
+                    <option value="" disabled={Boolean(participant.assignedCaseId)}>No case assigned</option>
                     {getAvailableCasesForBeginner(availableCases, participant).map((caseItem) => (
                       <option key={caseItem.id} value={caseItem.id}>
                         {caseItem.reference}
@@ -1852,6 +1888,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                 ) : null}
                 {usesEquipmentAssignment ? (
                   <>
+                    {participant.assignedCaseId && !participant.convertedToMember && canReleaseEquipment ? <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setActionSelection(null); setError(""); setPhysicalReturnConfirmed(false); setReleaseSelection({ course, participants: [participant], bulk: false }); }}>Release Equipment</Button> : null}
                     {(participant.assignedCaseId || conversionDateRequired[participant.id]) && !participant.convertedToMember ? (
                       <div>
                         <label>
@@ -1869,7 +1906,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                       </div>
                     ) : null}
                     {error ? <p className="profile-error" role="alert">{error}</p> : null}
-                    <Button onClick={() => {
+                    <Button disabled={Boolean(participant.assignedCaseId) || mutation.isPending} onClick={() => {
                       setActionSelection(null);
                       void saveCaseAssignment(participant);
                     }}>Save case</Button>
@@ -1917,6 +1954,19 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
             </div>
           );
         })() : null}
+      </Modal>
+
+      <Modal open={Boolean(releaseSelection)} onClose={() => { if (!mutation.isPending) { setReleaseSelection(null); setPhysicalReturnConfirmed(false); } }} title={releaseSelection?.bulk ? "Release course equipment" : "Release Equipment"}>
+        {releaseSelection ? <div className="beginners-course-participant-actions">
+          <p>Release {releaseSelection.participants.length} case reservation{releaseSelection.participants.length === 1 ? "" : "s"} for the course starting {formatDate(releaseSelection.course.firstLessonDate)}. Participant and attendance records will remain.</p>
+          <ul>{releaseSelection.participants.map((participant) => <li key={participant.id}>{formatMemberDisplayName(participant)} · Case {participant.assignedCaseNumber || participant.assignedCaseId}</li>)}</ul>
+          <label className="beginners-course-checkbox"><input type="checkbox" checked={physicalReturnConfirmed} onChange={(event) => setPhysicalReturnConfirmed(event.target.checked)} /> I confirm the equipment has been physically returned and is available at the range.</label>
+          {error ? <p className="profile-error" role="alert">{error}</p> : null}
+          <div className="beginners-course-actions">
+            <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setReleaseSelection(null); setPhysicalReturnConfirmed(false); }}>Cancel</Button>
+            <Button disabled={!physicalReturnConfirmed || mutation.isPending} onClick={() => void confirmEquipmentRelease()}>{mutation.isPending ? "Releasing..." : "Release Equipment"}</Button>
+          </div>
+        </div> : null}
       </Modal>
 
       <Modal open={Boolean(cancellationCourse)} onClose={() => setCancellationCourse(null)} title="Cancel session date(s)">

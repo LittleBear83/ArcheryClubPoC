@@ -25,6 +25,7 @@ await import("../server/domain/services/feedbackSync.test.js");
 await import("../server/presentation/http/goldenRecordsIndoorBackfillRoutes.test.js");
 await import("../server/presentation/http/registerCourseDateCancellationRoutes.test.js");
 await import("../server/presentation/http/registerBeginnersCourseRoutes.test.js");
+await import("../server/infrastructure/persistence/beginnersCourseEquipmentRelease.test.js");
 await import("../server/infrastructure/golden-records/goldenRecordsPagination.test.js");
 await import("../server/domain/services/loginMethodReport.test.js");
 await import("../src/presentation/pages/achievementTableSelection.test.js");

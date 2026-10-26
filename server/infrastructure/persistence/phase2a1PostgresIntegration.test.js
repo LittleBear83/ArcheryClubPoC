@@ -1623,6 +1623,45 @@ test("PostgreSQL serializes concurrent claims for the final required coach slot"
   assert.equal(Number((await pool.query("SELECT COUNT(*) AS count FROM beginners_course_lesson_coaches WHERE lesson_id = $1", [lessonId])).rows[0].count), 2);
 });
 
+test("PostgreSQL equipment release is atomic, repeatable, and preserves case storage", { timeout: 30000 }, async () => {
+  const pool = await createTemporaryPool("case_release");
+  disposablePools.push(pool);
+  for (const [id, username] of [[220, "release-coordinator"], [221, "release-one"], [222, "release-two"]]) {
+    await seedUser(pool, id, username);
+  }
+  const courseId = Number((await pool.query(`INSERT INTO beginners_courses
+    (coordinator_username, submitted_by_username, first_lesson_date, start_time, end_time,
+      lesson_count, beginner_capacity, created_at_date, created_at_time)
+    VALUES ('release-coordinator', 'release-coordinator', '2026-10-01', '18:00:00', '20:00:00', 1, 8, '2026-09-01', '09:00:00') RETURNING id`)).rows[0].id);
+  const caseIds = [];
+  for (const number of [1, 2]) {
+    const row = await pool.query(`INSERT INTO equipment_items
+      (equipment_type, item_number, size_category, arrow_quantity, status, location_type,
+        added_by_username, added_at_date, added_at_time)
+      VALUES ('case', $1, 'standard', 1, 'active', 'cupboard', 'release-coordinator', '2026-09-01', '09:00:00') RETURNING id`, [`RELEASE-${number}`]);
+    caseIds.push(Number(row.rows[0].id));
+  }
+  const participantIds = [];
+  for (const [index, username] of ["release-one", "release-two"].entries()) {
+    const row = await pool.query(`INSERT INTO beginners_course_participants
+      (course_id, username, first_name, surname, beginner_size_category, assigned_case_id,
+        created_by_username, created_at_date, created_at_time)
+      VALUES ($1, $2, 'Release', 'Beginner', 'adult', $3, 'release-coordinator', '2026-09-01', '09:00:00') RETURNING id`,
+    [courseId, username, caseIds[index]]);
+    participantIds.push(Number(row.rows[0].id));
+  }
+  const write = createBeginnersCourseWriteGateway({ databaseEngine: "postgres", pool });
+  const rows = participantIds.map((participantId, index) => ({ participantId, caseId: caseIds[index] }));
+  const first = await Promise.all([write.releaseParticipantCases({ courseId, reservations: rows.slice(0, 1) }),
+    write.releaseParticipantCases({ courseId, reservations: rows.slice(0, 1) })]);
+  assert.deepEqual(first.map((result) => result.length).sort(), [0, 1]);
+  assert.equal((await pool.query("SELECT assigned_case_id FROM beginners_course_participants WHERE id = $1", [participantIds[0]])).rows[0].assigned_case_id, null);
+  assert.equal((await pool.query("SELECT location_type FROM equipment_items WHERE id = $1", [caseIds[0]])).rows[0].location_type, "cupboard");
+  await assert.rejects(write.releaseParticipantCases({ courseId, reservations: [rows[1], { participantId: 999999999, caseId: caseIds[1] }] }), /no longer belongs/i);
+  assert.equal(Number((await pool.query("SELECT assigned_case_id FROM beginners_course_participants WHERE id = $1", [participantIds[1]])).rows[0].assigned_case_id), caseIds[1]);
+  assert.equal((await write.releaseParticipantCases({ courseId, reservations: rows.slice(1) })).length, 1);
+});
+
 test("PostgreSQL course creation persists coach defaults, per-lesson overrides, and Taster defaults", { timeout: 30000 }, async () => {
   const pool = await createTemporaryPool("coach_requirements");
   disposablePools.push(pool);

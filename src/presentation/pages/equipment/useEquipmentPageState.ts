@@ -6,6 +6,7 @@ import {
   CASE_ASSIGNMENT_FIELDS,
   EMPTY_ADD_FORM,
   getEquipmentLoanDateLabel,
+  getEquipmentReservationLabel,
   getEquipmentLocationLabel,
   getEquipmentMemberLabel,
   getEquipmentReferenceLabel,
@@ -36,6 +37,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   const [editForm, setEditForm] = useState(EMPTY_ADD_FORM);
   const [editingItemId, setEditingItemId] = useState("");
   const [inventoryFilter, setInventoryFilter] = useState("");
+  const [availabilityFilter, setAvailabilityFilter] = useState("all");
   const [inventorySort, setInventorySort] = useState({
     column: "type",
     direction: "asc",
@@ -98,6 +100,8 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
         inactiveThresholdDays: 60,
         summary: {
           activeItemsCount: 0,
+          availableAtRangeCount: 0,
+          reservedAtRangeCount: 0,
           currentlyOnLoanCount: 0,
           totalLoanRecords: 0,
           totalReturnRecords: 0,
@@ -209,7 +213,8 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
 
   const filteredInventoryItems = useMemo(() => {
     const normalizedFilter = inventoryFilter.trim().toLowerCase();
-    const rows = activeItems.filter((item) => {
+    const rows = items.filter((item) => {
+      if (availabilityFilter !== "all" && item.availabilityStatus !== availabilityFilter) return false;
       if (!normalizedFilter) {
         return true;
       }
@@ -225,6 +230,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
         details,
         getEquipmentLocationLabel(item),
         memberName,
+        getEquipmentReservationLabel(item),
         loanDate,
         lastAssignedBy,
       ]
@@ -265,7 +271,13 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     });
 
     return sortedRows;
-  }, [activeItems, inventoryFilter, inventorySort]);
+  }, [items, availabilityFilter, inventoryFilter, inventorySort]);
+
+  const availabilityCounts = useMemo(() => ({
+    available: items.filter((item) => item.availabilityStatus === "available-at-range").length,
+    reserved: items.filter((item) => item.availabilityStatus === "reserved-at-range").length,
+    loaned: items.filter((item) => item.availabilityStatus === "on-loan").length,
+  }), [items]);
 
   const toggleInventorySort = (column) => {
     setInventorySort((current) => ({
@@ -709,6 +721,8 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   return {
     activeCaseModal,
     addEquipmentMutation,
+    availabilityCounts,
+    availabilityFilter,
     analytics,
     addForm,
     addStorageLocationMutation,
@@ -767,6 +781,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     setDecommissionReason,
     setExpectedReturnDate,
     setInventoryFilter,
+    setAvailabilityFilter,
     setNewStorageLocation,
     setRemoveStorageLocation,
     setReturnCaseId,

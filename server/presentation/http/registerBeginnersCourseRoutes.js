@@ -104,6 +104,7 @@ export function registerBeginnersCourseRoutes({
           caseItem.currentReservation?.participantUsername ?? "",
         reservedParticipantName:
           caseItem.currentReservation?.participantName ?? "",
+        availabilityStatus: caseItem.availabilityStatus,
       })),
     });
   });

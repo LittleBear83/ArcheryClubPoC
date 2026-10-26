@@ -281,6 +281,8 @@ export function registerEquipmentRoutes({
       inactiveThresholdDays,
       summary: {
         activeItemsCount: activeItems.length,
+        availableAtRangeCount: activeItems.filter((item) => item.availabilityStatus === "available-at-range").length,
+        reservedAtRangeCount: activeItems.filter((item) => item.availabilityStatus === "reserved-at-range").length,
         currentlyOnLoanCount: statRows.filter((row) => row.isOnLoan).length,
         totalLoanRecords: loans.length,
         totalReturnRecords: loans.filter((loan) => Boolean(loan.returned_at_date)).length,

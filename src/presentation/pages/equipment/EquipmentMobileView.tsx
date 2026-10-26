@@ -12,11 +12,14 @@ import { formatShortDateTime } from "../../../utils/dateTime";
 import { EquipmentMetricsSection } from "./EquipmentMetricsSection";
 import {
   CASE_ASSIGNMENT_FIELDS,
+  EQUIPMENT_AVAILABILITY_OPTIONS,
+  getEquipmentAvailabilityLabel,
   getEquipmentDetailsLabel,
   getEquipmentDueLabel,
   getEquipmentLoanDateLabel,
   getEquipmentLocationLabel,
   getEquipmentMemberLabel,
+  getEquipmentReservationLabel,
   getEquipmentReferenceLabel,
   getEquipmentTypeDisplayLabel,
   INVENTORY_SORT_OPTIONS,
@@ -28,6 +31,8 @@ type EquipmentPageState = ReturnType<typeof useEquipmentPageState>;
 
 export function EquipmentMobileView({
   analytics,
+  availabilityCounts,
+  availabilityFilter,
   addEquipmentMutation,
   addForm,
   addStorageLocationMutation,
@@ -80,6 +85,7 @@ export function EquipmentMobileView({
   setDecommissionReason,
   setExpectedReturnDate,
   setInventoryFilter,
+  setAvailabilityFilter,
   setNewStorageLocation,
   setRemoveStorageLocation,
   setReturnCaseId,
@@ -649,6 +655,9 @@ export function EquipmentMobileView({
               placeholder="Search type, number, location, member, or date"
             />
           </label>
+          <LabeledSelect className="equipment-inline-control" label="Availability" value={availabilityFilter} onChange={(event) => setAvailabilityFilter(event.target.value)}>
+            {EQUIPMENT_AVAILABILITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </LabeledSelect>
           <div className="equipment-mobile-sort-grid">
             <LabeledSelect
               className="equipment-inline-control"
@@ -675,6 +684,7 @@ export function EquipmentMobileView({
             </LabeledSelect>
           </div>
         </div>
+        <p className="equipment-meta-copy">Available at Range: {availabilityCounts.available} · Reserved at Range: {availabilityCounts.reserved} · On Loan: {availabilityCounts.loaned}</p>
         {filteredInventoryItems.length > 0 ? (
           <MobileCardList className="equipment-mobile-inventory-list">
             {filteredInventoryItems.map((item) => (
@@ -686,8 +696,9 @@ export function EquipmentMobileView({
                   items={[
                     { label: "Reference", value: getEquipmentReferenceLabel(item) },
                     { label: "Details", value: getEquipmentDetailsLabel(item) },
+                    { label: "Availability", value: getEquipmentAvailabilityLabel(item) },
                     { label: "Location", value: getEquipmentLocationLabel(item) },
-                    { label: "Member", value: getEquipmentMemberLabel(item) || "-" },
+                    { label: "Member / reservation", value: getEquipmentReservationLabel(item) || getEquipmentMemberLabel(item) || "-" },
                     { label: "Loan Date", value: getEquipmentLoanDateLabel(item) || "-" },
                     { label: "Expected return", value: getEquipmentDueLabel(item) },
                     { label: "Last Assigned By", value: item.lastAssignedBy || "-" },

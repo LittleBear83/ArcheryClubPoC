@@ -36,6 +36,25 @@ export function getEquipmentLocationLabel(item) {
   return item.currentLocation?.label || "";
 }
 
+export const EQUIPMENT_AVAILABILITY_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "available-at-range", label: "Available at Range" },
+  { value: "reserved-at-range", label: "Reserved at Range" },
+  { value: "on-loan", label: "On Loan" },
+  { value: "decommissioned", label: "Decommissioned" },
+];
+
+export function getEquipmentAvailabilityLabel(item) {
+  return EQUIPMENT_AVAILABILITY_OPTIONS.find((option) => option.value === item.availabilityStatus)?.label ?? "Unknown";
+}
+
+export function getEquipmentReservationLabel(item) {
+  const reservation = item.currentReservation;
+  if (!reservation) return "";
+  const participant = reservation.participantName || reservation.participantUsername;
+  return `${participant} · ${reservation.courseType === "beginners" ? "Beginners course" : "Course"}${reservation.courseStartDate ? ` from ${formatDate(reservation.courseStartDate)}` : ""}`;
+}
+
 export function getEquipmentMemberLabel(item) {
   return item.currentLoan?.memberName ||
     item.currentReservation?.participantName ||

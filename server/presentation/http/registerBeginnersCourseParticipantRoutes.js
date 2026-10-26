@@ -1098,6 +1098,65 @@ export function registerBeginnersCourseParticipantRoutes({
     });
   });
 
+  async function releaseCourseEquipment(req, res, { bulk }) {
+    if (serverRuntime?.sync?.isLocalPiNode) return res.status(503).json({ success: false, message: "Course equipment changes are unavailable on the Pi." });
+    const actor = getActorUser(req);
+    const participant = bulk ? null : await beginnersCourseReadGateway.findParticipantById(req.params.id);
+    const courseId = bulk ? Number(req.params.id) : Number(participant?.course_id);
+    const course = Number.isSafeInteger(courseId) ? await beginnersCourseReadGateway.findCourseById(courseId) : null;
+    if (!course || (!bulk && !participant)) return res.status(404).json({ success: false, message: "Course or participant not found." });
+    const courseType = normalizeCourseType(course.course_type);
+    if (courseType !== "beginners") return res.status(400).json({ success: false, message: "Equipment release is for beginners courses." });
+    const authorised = actor && (actorHasPermission(actor, getCourseTypePermissions(courseType).manage) ||
+      actorHasPermission(actor, PERMISSIONS.ASSIGN_EQUIPMENT) || actorHasPermission(actor, PERMISSIONS.RETURN_EQUIPMENT));
+    if (!authorised) return res.status(403).json({ success: false, message: "You do not have permission to release course equipment." });
+    if (req.body?.confirmed !== true) return res.status(400).json({ success: false, message: "Confirm the equipment has been physically returned and is available." });
+    if (bulk && (course.is_cancelled || course.approval_status !== "approved" || !(await hasBeginnersCourseCompleted(course)))) {
+      return res.status(409).json({ success: false, message: "Bulk release is available only after an approved beginners course has finished." });
+    }
+    const reservations = bulk ? req.body?.reservations : [{ participantId: participant.id, caseId: req.body?.caseId }];
+    if (!Array.isArray(reservations) || !reservations.length || reservations.length > 500 ||
+      reservations.some((row) => !Number.isSafeInteger(Number(row.participantId)) || Number(row.participantId) < 1 ||
+        !Number.isSafeInteger(Number(row.caseId)) || Number(row.caseId) < 1) ||
+      new Set(reservations.map((row) => Number(row.participantId))).size !== reservations.length) {
+      return res.status(400).json({ success: false, message: "Choose valid case reservations to release." });
+    }
+    const expected = reservations.map((row) => ({ participantId: Number(row.participantId), caseId: Number(row.caseId) }));
+    const before = new Map();
+    for (const row of expected) before.set(row.participantId, await findBeginnersParticipantAuditSnapshot(row.participantId, courseType));
+    let released;
+    try {
+      released = await beginnersCourseWriteGateway.releaseParticipantCases({ courseId, reservations: expected });
+    } catch (error) {
+      const message = error instanceof Error && !/SQL|database|syntax|relation|constraint|connection/i.test(error.message)
+        ? error.message : "Equipment could not be released. Refresh the course and try again.";
+      return res.status(409).json({ success: false, message });
+    }
+    const [date, time] = getUtcTimestampParts();
+    for (const row of released) {
+      if (!auditChangeLogger) continue;
+      const after = await findBeginnersParticipantAuditSnapshot(row.participantId, courseType);
+      try {
+        await auditChangeLogger.recordEntityChange({
+          action: "case_released", actorUsername: actor.username, before: before.get(row.participantId), after,
+          changedAtDate: date, changedAtTime: time, entityId: String(row.participantId),
+          entityLabel: `${buildBeginnersParticipantAuditLabel(after ?? before.get(row.participantId))} · course ${courseId} · case ${row.caseId}`,
+          entityType: "beginners_participant", req,
+          target: bulk ? `/api/beginners-courses/${courseId}/release-equipment` : `/api/beginners-course-participants/${row.participantId}/release-equipment`,
+        });
+      } catch (auditError) { console.error("Failed to record course equipment release audit event", auditError); }
+    }
+    if (released.length) {
+      broadcastBeginnersUpdated(courseType, "beginners.case-release");
+      broadcastEquipmentUpdated("beginners.case-release");
+    }
+    return res.json({ success: true, releasedCount: released.length,
+      course: (await buildBeginnersCourseDashboard(courseType)).find((entry) => Number(entry.id) === courseId) ?? null });
+  }
+
+  app.post("/api/beginners-course-participants/:id/release-equipment", (req, res) => releaseCourseEquipment(req, res, { bulk: false }));
+  app.post("/api/beginners-courses/:id/release-equipment", (req, res) => releaseCourseEquipment(req, res, { bulk: true }));
+
   app.post("/api/beginners-course-participants/:id/assign-case", async (req, res) => {
     const actor = getActorUser(req);
 
@@ -1138,6 +1197,9 @@ export function registerBeginnersCourseParticipantRoutes({
       req.body?.caseId === "" || req.body?.caseId == null
         ? null
         : Number.parseInt(req.body.caseId, 10);
+    if (participant.assigned_case_id != null && Number(participant.assigned_case_id) !== nextCaseId) {
+      return res.status(409).json({ success: false, message: "Release the current case and confirm its physical return before changing the assignment." });
+    }
     const nextCase = nextCaseId
       ? await equipmentGateway.findEquipmentItemById(nextCaseId)
       : null;

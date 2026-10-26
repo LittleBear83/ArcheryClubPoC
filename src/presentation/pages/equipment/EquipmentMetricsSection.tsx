@@ -42,6 +42,16 @@ export function EquipmentMetricsSection({ analytics }) {
       helper: "Items currently in service.",
     },
     {
+      label: "Available at Range",
+      value: analytics.summary.availableAtRangeCount ?? 0,
+      helper: "Active stock excluding reservations and loans.",
+    },
+    {
+      label: "Reserved at Range",
+      value: analytics.summary.reservedAtRangeCount ?? 0,
+      helper: "Cases and contents held for course participants.",
+    },
+    {
       label: "Currently on loan",
       value: analytics.summary.currentlyOnLoanCount,
       helper: "Items or case contents signed out now.",

@@ -191,6 +191,8 @@ function formatAuditAction(event: AuditEventRecord) {
     ["post /api/beginners-course-participants/:id/transfer-to-beginners-course", "beginner transferred to course"],
     ["post /api/beginners-course-participants/:id/convert", "beginner converted to member"],
     ["post /api/beginners-course-participants/:id/assign-case", "beginner case assigned"],
+    ["post /api/beginners-course-participants/:id/release-equipment", "beginner equipment released"],
+    ["post /api/beginners-courses/:id/release-equipment", "course equipment released"],
     ["post /api/beginners-course-lessons/:id/coaches", "lesson coaches assigned"],
     ["post /api/range-members/mobile-check-in", "mobile check-in recorded"],
   ] as const;

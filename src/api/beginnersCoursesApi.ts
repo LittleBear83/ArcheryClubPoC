@@ -117,6 +117,20 @@ export async function assignBeginnerCase(
   );
 }
 
+export async function releaseBeginnerEquipment(actor: ActorIdentity | string, beginnerId: string | number, caseId: number) {
+  return fetchApi<{ success: true; releasedCount: number }>(
+    `/api/beginners-course-participants/${beginnerId}/release-equipment`,
+    { method: "POST", headers: buildActorHeaders(actor, true), body: JSON.stringify({ caseId, confirmed: true }), cache: "no-store" },
+  );
+}
+
+export async function releaseCourseEquipment(actor: ActorIdentity | string, courseId: string | number, reservations: Array<{ participantId: number; caseId: number }>) {
+  return fetchApi<{ success: true; releasedCount: number }>(
+    `/api/beginners-courses/${courseId}/release-equipment`,
+    { method: "POST", headers: buildActorHeaders(actor, true), body: JSON.stringify({ reservations, confirmed: true }), cache: "no-store" },
+  );
+}
+
 export async function convertBeginnerToMember(
   actor: ActorIdentity | string,
   beginnerId: string | number,

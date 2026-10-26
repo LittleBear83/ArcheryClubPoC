@@ -9,11 +9,14 @@ import { formatShortDateTime } from "../../../utils/dateTime";
 import { EquipmentMetricsSection } from "./EquipmentMetricsSection";
 import {
   CASE_ASSIGNMENT_FIELDS,
+  EQUIPMENT_AVAILABILITY_OPTIONS,
+  getEquipmentAvailabilityLabel,
   getEquipmentDetailsLabel,
   getEquipmentDueLabel,
   getEquipmentLoanDateLabel,
   getEquipmentLocationLabel,
   getEquipmentMemberLabel,
+  getEquipmentReservationLabel,
   getEquipmentTypeDisplayLabel,
 } from "./equipmentUtils";
 import { EquipmentAddDetailsFields } from "./EquipmentAddDetailsFields";
@@ -23,6 +26,8 @@ type EquipmentPageState = ReturnType<typeof useEquipmentPageState>;
 
 export function EquipmentDesktopView({
   analytics,
+  availabilityCounts,
+  availabilityFilter,
   addEquipmentMutation,
   addForm,
   addStorageLocationMutation,
@@ -73,6 +78,7 @@ export function EquipmentDesktopView({
   setDecommissionReason,
   setExpectedReturnDate,
   setInventoryFilter,
+  setAvailabilityFilter,
   setNewStorageLocation,
   setRemoveStorageLocation,
   setReturnCaseId,
@@ -629,7 +635,13 @@ export function EquipmentDesktopView({
               placeholder="Search type, number, location, member, or date"
             />
           </label>
+          <label className="profile-member-select">Availability
+            <select value={availabilityFilter} onChange={(event) => setAvailabilityFilter(event.target.value)}>
+              {EQUIPMENT_AVAILABILITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
         </div>
+        <p className="equipment-meta-copy">Available at Range: {availabilityCounts.available} · Reserved at Range: {availabilityCounts.reserved} · On Loan: {availabilityCounts.loaned}</p>
         <div className="equipment-inventory-table-wrap">
           <table className="equipment-inventory-table">
             <thead>
@@ -655,6 +667,7 @@ export function EquipmentDesktopView({
                 <th>
                   Details
                 </th>
+                <th>Availability</th>
                 <th>
                   <button
                     type="button"
@@ -670,7 +683,7 @@ export function EquipmentDesktopView({
                     className="equipment-table-sort"
                     onClick={() => toggleInventorySort("member")}
                   >
-                    Member
+                    Member / reservation
                   </button>
                 </th>
                 <th>
@@ -703,8 +716,9 @@ export function EquipmentDesktopView({
                     </td>
                     <td>{item.number || (item.type === "arrows" ? `${item.arrowQuantity} x ${item.arrowLength}"` : "-")}</td>
                     <td>{getEquipmentDetailsLabel(item)}</td>
+                    <td>{getEquipmentAvailabilityLabel(item)}</td>
                     <td>{getEquipmentLocationLabel(item)}</td>
-                    <td>{getEquipmentMemberLabel(item) || "-"}</td>
+                    <td>{getEquipmentReservationLabel(item) || getEquipmentMemberLabel(item) || "-"}</td>
                     <td>{getEquipmentLoanDateLabel(item) || "-"}</td>
                     <td>{getEquipmentDueLabel(item)}</td>
                     <td>{item.lastAssignedBy || "-"}</td>
@@ -712,7 +726,7 @@ export function EquipmentDesktopView({
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8}>No equipment matches the current filter.</td>
+                  <td colSpan={9}>No equipment matches the current filter.</td>
                 </tr>
               )}
             </tbody>

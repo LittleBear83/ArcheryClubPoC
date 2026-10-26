@@ -62,3 +62,58 @@ test("extracted participant routes keep course lookup, capacity validation and r
   assert.equal(full.statusCode, 400);
   assert.equal(full.body.message, "This beginners course is already full.");
 });
+
+test("release routes require permission and physical return, and bulk waits for course completion", async () => {
+  const { app, routes } = routeApp();
+  let completed = false;
+  let allowed = false;
+  let released = 0;
+  let audited = 0;
+  let equipmentBroadcasts = 0;
+  registerBeginnersCourseParticipantRoutes({
+    app,
+    getActorUser: () => ({ username: "officer" }),
+    actorHasPermission: () => allowed,
+    getCourseTypePermissions: () => ({ manage: "manage" }),
+    normalizeCourseType: () => "beginners",
+    PERMISSIONS: { ASSIGN_EQUIPMENT: "assign", RETURN_EQUIPMENT: "return" },
+    beginnersCourseReadGateway: {
+      findParticipantById: async () => ({ id: 1, course_id: 5 }),
+      findCourseById: async () => ({ id: 5, course_type: "beginners", approval_status: "approved", is_cancelled: 0 }),
+    },
+    hasBeginnersCourseCompleted: async () => completed,
+    beginnersCourseWriteGateway: {
+      releaseParticipantCases: async ({ reservations }) => { released++; return reservations.map((row) => ({ ...row, username: "beginner", courseId: 5 })); },
+    },
+    findBeginnersParticipantAuditSnapshot: async () => ({ id: 1 }),
+    buildBeginnersParticipantAuditLabel: () => "Beginner",
+    auditChangeLogger: { recordEntityChange: async () => { audited++; } },
+    getUtcTimestampParts: () => ["2026-10-26", "12:00:00"],
+    broadcastBeginnersUpdated: () => {},
+    broadcastEquipmentUpdated: () => { equipmentBroadcasts++; },
+    buildBeginnersCourseDashboard: async () => [{ id: 5 }],
+  });
+  const individual = routes.get("POST /api/beginners-course-participants/:id/release-equipment");
+  const bulk = routes.get("POST /api/beginners-courses/:id/release-equipment");
+  const request = (body) => ({ params: { id: "1" }, body });
+  const denied = response();
+  await individual(request({ confirmed: true, caseId: 10 }), denied);
+  assert.equal(denied.statusCode, 403);
+  allowed = true;
+  const unconfirmed = response();
+  await individual(request({ caseId: 10 }), unconfirmed);
+  assert.equal(unconfirmed.statusCode, 400);
+  const active = response();
+  await bulk({ params: { id: "5" }, body: { confirmed: true, reservations: [{ participantId: 1, caseId: 10 }] } }, active);
+  assert.equal(active.statusCode, 409);
+  completed = true;
+  const done = response();
+  await individual(request({ confirmed: true, caseId: 10 }), done);
+  assert.equal(done.body.releasedCount, 1);
+  assert.equal(released, 1);
+  assert.equal(audited, 1);
+  assert.equal(equipmentBroadcasts, 1);
+  const bulkDone = response();
+  await bulk({ params: { id: "5" }, body: { confirmed: true, reservations: [{ participantId: 1, caseId: 10 }] } }, bulkDone);
+  assert.equal(bulkDone.body.releasedCount, 1);
+});

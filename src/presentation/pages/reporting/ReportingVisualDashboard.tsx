@@ -16,6 +16,7 @@ import { ReportingDashboard } from "./dashboard/ReportingDashboard";
 import "./dashboard/reportingDashboard.css";
 import { buildAccessInsights, buildJourneyInsights, buildVisitInsights, filterAccessRows, focusChartValues, type AccessSelection } from "./reportingInsights";
 import { getRangeVisitPeriod } from "./rangeVisitPeriods";
+import { ukReportClock, ukReportTime } from "./reportingTime";
 import type { useReportingPageState } from "./useReportingPageState";
 
 type ReportingState = ReturnType<typeof useReportingPageState>;
@@ -68,7 +69,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
   });
   const visits = visitQuery.data;
   const visitInsights = useMemo(() => visits ? buildVisitInsights(visits) : null, [visits]);
-  const selectedVisits = visits?.rows.filter((row) => visitHour === null || Number(row.time.slice(0, 2)) === visitHour) ?? [];
+  const selectedVisits = visits?.rows.filter((row) => visitHour === null || ukReportTime(row.date, row.time).hour === visitHour) ?? [];
   const selectedJourneys = memberJourneyData?.rows.filter((row) => !selectedOrigin || row.originCourseType === selectedOrigin) ?? [];
   const selectedJourneyConversions = selectedJourneys.filter((row) => row.convertedToMember).length;
 
@@ -94,7 +95,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
     <header className="reporting-visual-header">
       <div><h1 className="range-usage-title">Reporting</h1>
         <p className="reporting-table-note">Understand recorded activity, member engagement and programme journeys.</p></div>
-      <span className="reporting-visual-date">{formatDate(startDate)} – {formatDate(endDate)} · UTC</span>
+      <span className="reporting-visual-date">{formatDate(startDate)} – {formatDate(endDate)} · UTC date range; event times in UK local time (BST/GMT)</span>
     </header>
 
     <div className="reporting-visual-toolbar">
@@ -212,7 +213,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
             <Kpi label="Unique checked-in accounts" value={visitInsights.uniqueMembers} detail="Distinct usernames with a recorded on-site check-in" />
             <Kpi label="Guest visits" value={visitInsights.guests} detail="Guest sign-ins in the selected period" />
           </div>
-          <ChartPanel title="When recorded visits start" subtitle="UTC hour of the first check-in for each member visit, plus guest sign-ins">
+          <ChartPanel title="When recorded visits start" subtitle="UK local hour of the first check-in for each member visit, plus guest sign-ins">
             {visits.total ? <div className="reporting-visual-chart-scroll"><div style={{ minWidth: 680 }}><BarChart height={230}
               xAxis={[{ data: visitInsights.hours.map((hour) => hour.label), scaleType: "band", tickLabelInterval: (_, index) => index % 2 === 0 }]}
               series={[
@@ -227,15 +228,15 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
               </select>
             </label>
             {visitHour !== null ? <div className="reporting-visual-selection" role="status">
-              <strong>{selectedVisits.length} visits starting at {String(visitHour).padStart(2, "0")}:00 UTC</strong>
+              <strong>{selectedVisits.length} visits starting at {String(visitHour).padStart(2, "0")}:00 UK local time</strong>
               <span>{selectedVisits.filter((row) => row.loginMethod !== "guest").length} member visits · {selectedVisits.filter((row) => row.loginMethod === "guest").length} guest visits</span>
               <Button size="sm" variant="ghost" onClick={() => setVisitHour(null)}>Show all hours</Button>
             </div> : <p className="reporting-visual-hint">Select an hour to focus the chart and inspect its visits.</p>}
           </ChartPanel>
-          <ProfileAccordion title="Visit records" detail={visitHour === null ? `${visits.total} visits` : `${selectedVisits.length} visits starting at ${String(visitHour).padStart(2, "0")}:00 UTC`}>
+          <ProfileAccordion title="Visit records" detail={visitHour === null ? `${visits.total} visits` : `${selectedVisits.length} visits starting at ${String(visitHour).padStart(2, "0")}:00 UK local time`}>
             {visitHour !== null ? <Button variant="ghost" onClick={() => setVisitHour(null)}>Show all hours</Button> : null}
-            <div className="reporting-table-wrap"><table className="committee-roles-table reporting-table"><thead><tr><th>Date</th><th>Time UTC</th><th>Name</th><th>Username</th><th>Method</th></tr></thead><tbody>
-              {selectedVisits.slice(0, 100).map((row) => <tr key={row.id}><td>{formatDate(row.date)}</td><td>{row.time}</td><td>{row.name || row.username || "Guest"}</td><td>{row.username || "—"}</td><td>{row.loginMethod}</td></tr>)}
+            <div className="reporting-table-wrap"><table className="committee-roles-table reporting-table"><thead><tr><th>UK date</th><th>UK time</th><th>Name</th><th>Username</th><th>Method</th></tr></thead><tbody>
+              {selectedVisits.slice(0, 100).map((row) => { const local = ukReportTime(row.date, row.time); return <tr key={row.id}><td>{formatDate(local.date)}</td><td>{ukReportClock(local)}</td><td>{row.name || row.username || "Guest"}</td><td>{row.username || "—"}</td><td>{row.loginMethod}</td></tr>; })}
             </tbody></table></div>
             {selectedVisits.length > 100 ? <p className="reporting-table-note">Showing 100 of {selectedVisits.length} rows. Export data includes all matching visits.</p> : null}
           </ProfileAccordion>
@@ -274,7 +275,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
           <ProfileAccordion title="Programme cohort" detail={`${selectedJourneys.length} participant${selectedJourneys.length === 1 ? "" : "s"}`}>
             {selectedOrigin ? <Button variant="ghost" onClick={() => setSelectedOrigin(null)}>Show all programmes</Button> : null}
             <div className="reporting-table-wrap"><table className="committee-roles-table reporting-table"><thead><tr><th>Joined</th><th>Name</th><th>Username</th><th>Origin</th><th>Journey</th><th>Member type</th><th>Converted</th><th>Converted at</th></tr></thead><tbody>
-              {selectedJourneys.slice(0, 100).map((row) => <tr key={row.id}><td>{formatDate(row.joinedAtDate)}</td><td>{row.name}</td><td>{row.username}</td><td>{row.originCourseType}</td><td>{row.journey}</td><td>{row.membershipStatus}</td><td>{row.convertedToMember ? "Yes" : "No"}</td><td>{row.convertedAtDate ? formatDate(row.convertedAtDate) : "—"}</td></tr>)}
+            {selectedJourneys.slice(0, 100).map((row) => <tr key={row.id}><td>{formatDate(ukReportTime(row.joinedAtDate, row.joinedAtTime).date)}</td><td>{row.name}</td><td>{row.username}</td><td>{row.originCourseType}</td><td>{row.journey}</td><td>{row.membershipStatus}</td><td>{row.convertedToMember ? "Yes" : "No"}</td><td>{row.convertedAtDate ? formatDate(ukReportTime(row.convertedAtDate, row.convertedAtTime).date) : "—"}</td></tr>)}
             </tbody></table></div>
             {selectedJourneys.length > 100 ? <p className="reporting-table-note">Showing 100 of {selectedJourneys.length} rows. Export data includes all matching participants.</p> : null}
           </ProfileAccordion>
@@ -285,8 +286,8 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
         <header><h2>Explore the records</h2><p>Inspect the figures behind the charts. Use Export data to build a CSV.</p></header>
         <ProfileAccordion title="Access event records" detail={`${selectedRows.length} events · ${selectionLabel}`}>
           {validSelection ? <Button variant="ghost" onClick={() => setSelection(null)}>Show all dates</Button> : null}
-          {selectedRows.length ? <div className="reporting-table-wrap"><table className="committee-roles-table reporting-table"><thead><tr><th>Date</th><th>Time UTC</th><th>Type</th><th>Name</th><th>Username</th><th>Member type</th><th>Programme</th><th>Role</th><th>Method</th><th>Archery GB</th><th>Attending with</th></tr></thead><tbody>
-            {selectedRows.slice(0, 100).map((row) => <tr key={row.id}><td>{formatDate(row.date)}</td><td>{row.time}</td><td>{row.type}</td><td>{row.name}</td><td>{row.username || "—"}</td><td>{row.membershipStatus}</td><td>{row.programmeType}</td><td>{row.role}</td><td>{row.loginMethod}</td><td>{row.archeryGbMembershipNumber || "—"}</td><td>{row.attendingWith || "—"}</td></tr>)}
+          {selectedRows.length ? <div className="reporting-table-wrap"><table className="committee-roles-table reporting-table"><thead><tr><th>UK date</th><th>UK time</th><th>Type</th><th>Name</th><th>Username</th><th>Member type</th><th>Programme</th><th>Role</th><th>Method</th><th>Archery GB</th><th>Attending with</th></tr></thead><tbody>
+            {selectedRows.slice(0, 100).map((row) => { const local = ukReportTime(row.date, row.time); return <tr key={row.id}><td>{formatDate(local.date)}</td><td>{ukReportClock(local)}</td><td>{row.type}</td><td>{row.name}</td><td>{row.username || "—"}</td><td>{row.membershipStatus}</td><td>{row.programmeType}</td><td>{row.role}</td><td>{row.loginMethod}</td><td>{row.archeryGbMembershipNumber || "—"}</td><td>{row.attendingWith || "—"}</td></tr>; })}
           </tbody></table></div> : <p className="usage-empty-state">No events match this selection.</p>}
           {selectedRows.length > 100 ? <p className="reporting-table-note">Showing 100 of {selectedRows.length} rows. Export data includes all matching events.</p> : null}
         </ProfileAccordion>

@@ -1,6 +1,7 @@
 import type { AttendanceReport, MemberJourneyReport, MemberRangeAttendanceReport, RangeVisitReport } from "../../../api/reportingApi";
 import { filterAccessRows, type AccessSelection } from "./reportingInsights";
 import { buildCsv, buildMemberJourneyCsv, buildMemberRangeAttendanceCsv, buildRangeVisitCsv } from "./reportingUtils";
+import { ukReportTime } from "./reportingTime";
 
 export type ReportingExportDataset = "access" | "journeys" | "visits" | "follow-up";
 export type ReportingExportOptions = {
@@ -38,7 +39,7 @@ export function prepareReportingExport(data: ReportingExportData, options: Repor
       count: rows.length,
       csv: buildCsv({ ...report, rows }),
       filename: `access-events-${report.startDate}-to-${report.endDate}-${options.accessSource}-${options.accessScope}.csv`,
-      description: `${report.startDate} to ${report.endDate} UTC · successful access events`,
+      description: `${report.startDate} to ${report.endDate} UTC dates · UK local event times (BST/GMT)`,
     };
   }
   if (options.dataset === "journeys") {
@@ -51,7 +52,7 @@ export function prepareReportingExport(data: ReportingExportData, options: Repor
       count: rows.length,
       csv: buildMemberJourneyCsv(rows),
       filename: `programme-journeys-${report.startDate}-to-${report.endDate}-${options.journeyOrigin}-${options.journeyConversion}.csv`,
-      description: `${report.startDate} to ${report.endDate} UTC · people who started a programme`,
+      description: `${report.startDate} to ${report.endDate} UTC dates · UK local programme times (BST/GMT)`,
     };
   }
   if (options.dataset === "visits") {
@@ -59,12 +60,12 @@ export function prepareReportingExport(data: ReportingExportData, options: Repor
     const report = data.visits;
     const rows = report.rows.filter((row) =>
       (options.visitKind === "all" || (row.loginMethod === "guest") === (options.visitKind === "guest")) &&
-      (options.visitHour === "" || row.time.slice(0, 2) === options.visitHour.padStart(2, "0")));
+      (options.visitHour === "" || ukReportTime(row.date, row.time).hour === Number(options.visitHour)));
     return {
       count: rows.length,
       csv: buildRangeVisitCsv(rows),
       filename: `range-visits-${report.startDate}-to-${report.endDate}-${options.visitKind}${options.visitHour ? `-${options.visitHour.padStart(2, "0")}h` : ""}.csv`,
-      description: `${report.startDate} to ${report.endDate} UTC · two-hour-deduplicated member visits and guest sign-ins`,
+      description: `${report.startDate} to ${report.endDate} UTC dates · UK local visit times (BST/GMT)`,
     };
   }
   if (!data.followUp) return null;

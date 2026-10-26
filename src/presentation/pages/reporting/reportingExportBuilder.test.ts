@@ -10,15 +10,15 @@ const options: ReportingExportOptions = {
 };
 const access = {
   startDate: "2026-10-01", endDate: "2026-10-26", rows: [
-    { id: "member-1", date: "2026-10-12", type: "Member", name: "A", username: "a" },
-    { id: "guest-1", date: "2026-10-12", type: "Guest", name: "B", username: "" },
-    { id: "member-2", date: "2026-10-13", type: "Member", name: "C", username: "c" },
+    { id: "member-1", date: "2026-10-12", time: "09:00:00", type: "Member", name: "A", username: "a" },
+    { id: "guest-1", date: "2026-10-12", time: "09:30:00", type: "Guest", name: "B", username: "" },
+    { id: "member-2", date: "2026-10-13", time: "10:00:00", type: "Member", name: "C", username: "c" },
   ],
 } as AttendanceReport;
 const journeys = { startDate: access.startDate, endDate: access.endDate, rows: [
-  { id: "1", originCourseType: "beginners", convertedToMember: true, name: "A" },
-  { id: "2", originCourseType: "beginners", convertedToMember: false, name: "B" },
-  { id: "3", originCourseType: "taster-session", convertedToMember: true, name: "C" },
+  { id: "1", originCourseType: "beginners", convertedToMember: true, name: "A", joinedAtDate: "2026-10-12", joinedAtTime: "09:00:00", convertedAtDate: "2026-10-13", convertedAtTime: "10:00:00" },
+  { id: "2", originCourseType: "beginners", convertedToMember: false, name: "B", joinedAtDate: "2026-10-12", joinedAtTime: "11:00:00", convertedAtDate: "", convertedAtTime: "" },
+  { id: "3", originCourseType: "taster-session", convertedToMember: true, name: "C", joinedAtDate: "2026-10-13", joinedAtTime: "12:00:00", convertedAtDate: "2026-10-14", convertedAtTime: "13:00:00" },
 ] } as MemberJourneyReport;
 const visits = { startDate: access.startDate, endDate: access.endDate, rows: [
   { id: "member-1", date: "2026-10-12", time: "09:00:00", loginMethod: "rfid", name: "A", username: "a" },
@@ -50,10 +50,11 @@ test("journey export filters origin and conversion", () => {
   assert.match(prepared?.csv ?? "", /A/u);
 });
 
-test("visit export filters member or guest and hour", () => {
-  const prepared = prepareReportingExport(data, { ...options, dataset: "visits", visitKind: "member", visitHour: "9" });
+test("visit export filters member or guest by UK local hour", () => {
+  const prepared = prepareReportingExport(data, { ...options, dataset: "visits", visitKind: "member", visitHour: "10" });
   assert.equal(prepared?.count, 1);
   assert.equal(prepared?.csv.split("\r\n").length, 2);
+  assert.match(prepared?.csv ?? "", /10:00:00 BST/);
 });
 
 test("follow-up export filters recorded status and member type", () => {

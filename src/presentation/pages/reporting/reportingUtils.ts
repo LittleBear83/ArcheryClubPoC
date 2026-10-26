@@ -1,4 +1,5 @@
-import { formatClockTime, formatDate, formatDateRangeLabel } from "../../../utils/dateTime.js";
+import { formatDate, formatDateRangeLabel } from "../../../utils/dateTime.js";
+import { ukReportClock, ukReportTime } from "./reportingTime";
 import type {
   AttendanceReport,
   AttendanceReportDailyRow,
@@ -41,8 +42,8 @@ function escapeCsvValue(value: unknown) {
 
 export function buildCsv(report: AttendanceReport) {
   const headers = [
-    "Date",
-    "Time",
+    "UK date",
+    "UK time (BST/GMT)",
     "Type",
     "Member Type",
     "Programme Type",
@@ -54,10 +55,11 @@ export function buildCsv(report: AttendanceReport) {
     "Attending With",
     "Attending With Username",
   ];
-  const lines = report.rows.map((row) =>
-    [
-      formatDate(row.date),
-      formatClockTime(row.time),
+  const lines = report.rows.map((row) => {
+    const local = ukReportTime(row.date, row.time);
+    return [
+      formatDate(local.date),
+      ukReportClock(local),
       row.type,
       row.membershipStatus,
       row.programmeType,
@@ -68,10 +70,8 @@ export function buildCsv(report: AttendanceReport) {
       row.archeryGbMembershipNumber,
       row.attendingWith,
       row.attendingWithUsername,
-    ]
-      .map(escapeCsvValue)
-      .join(","),
-  );
+    ].map(escapeCsvValue).join(",");
+  });
 
   return [headers.map(escapeCsvValue).join(","), ...lines].join("\r\n");
 }
@@ -91,22 +91,28 @@ export function buildMemberRangeAttendanceCsv(rows: MemberRangeAttendanceRow[]) 
 }
 
 export function buildRangeVisitCsv(rows: RangeVisitRow[]) {
-  const headers = ["Date", "Time (UTC)", "Name", "Username", "Check-in method"];
-  const lines = rows.map((row) => [
-    formatDate(row.date), row.time, row.name, row.username, row.loginMethod,
-  ].map(escapeCsvValue).join(","));
+  const headers = ["UK date", "UK time (BST/GMT)", "Name", "Username", "Check-in method"];
+  const lines = rows.map((row) => {
+    const local = ukReportTime(row.date, row.time);
+    return [formatDate(local.date), ukReportClock(local), row.name, row.username, row.loginMethod]
+      .map(escapeCsvValue).join(",");
+  });
   return [headers.join(","), ...lines].join("\r\n");
 }
 
 export function buildMemberJourneyCsv(rows: MemberJourneyReportRow[]) {
-  const headers = ["Joined date", "Joined time", "Name", "Username", "Origin", "Current course", "Journey", "Member type", "Programme type", "Role", "Converted to member", "Converted date", "Converted time"];
-  const lines = rows.map((row) => [
-    formatDate(row.joinedAtDate), row.joinedAtTime, row.name, row.username,
-    row.originCourseType, row.currentCourseType, row.journey,
-    row.membershipStatus, row.programmeType, row.role,
-    row.convertedToMember ? "Yes" : "No",
-    row.convertedAtDate ? formatDate(row.convertedAtDate) : "", row.convertedAtTime,
-  ].map(escapeCsvValue).join(","));
+  const headers = ["Joined UK date", "Joined UK time (BST/GMT)", "Name", "Username", "Origin", "Current course", "Journey", "Member type", "Programme type", "Role", "Converted to member", "Converted UK date", "Converted UK time (BST/GMT)"];
+  const lines = rows.map((row) => {
+    const joined = ukReportTime(row.joinedAtDate, row.joinedAtTime);
+    const converted = row.convertedAtDate ? ukReportTime(row.convertedAtDate, row.convertedAtTime) : null;
+    return [
+      formatDate(joined.date), ukReportClock(joined), row.name, row.username,
+      row.originCourseType, row.currentCourseType, row.journey,
+      row.membershipStatus, row.programmeType, row.role,
+      row.convertedToMember ? "Yes" : "No",
+      converted ? formatDate(converted.date) : "", converted ? ukReportClock(converted) : "",
+    ].map(escapeCsvValue).join(",");
+  });
   return [headers.join(","), ...lines].join("\r\n");
 }
 

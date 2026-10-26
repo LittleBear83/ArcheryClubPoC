@@ -139,7 +139,7 @@ export function ReportingExportModal({
             <option value="guest">Guest sign-ins</option>
           </select>
         </label>
-        <label>Start hour (UTC)
+        <label>Start hour (UK local time)
           <select value={options.visitHour} onChange={(event) => changeOption("visitHour", event.target.value)}>
             <option value="">Any hour</option>
             {hours.map((hour) => <option key={hour} value={hour}>{hour}:00</option>)}

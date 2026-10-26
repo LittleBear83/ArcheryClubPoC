@@ -5,6 +5,7 @@ import { formatDate } from "../../../utils/dateTime";
 import { Button } from "../../components/Button";
 import { ProfileAccordion } from "../profile/ProfileAccordion";
 import { getRangeVisitPeriod, RANGE_VISIT_PERIODS, type RangeVisitPeriod } from "./rangeVisitPeriods";
+import { ukReportClock, ukReportTime } from "./reportingTime";
 
 function methodLabel(method: string) {
   if (method === "rfid") return "RFID";
@@ -46,7 +47,7 @@ export function RangeVisitHistory({ actorUsername }: { actorUsername: string }) 
         ))}
       </div>
       <p className="reporting-table-note">
-        {formatDate(startDate)} to {formatDate(endDate)} (UTC). RFID and on-site mobile check-ins count as member visits. Repeat check-ins within two hours count once; each guest sign-in counts once.
+        {formatDate(startDate)} to {formatDate(endDate)} (UTC date range). Visit times are shown in UK local time (BST/GMT). RFID and on-site mobile check-ins count as member visits. Repeat check-ins within two hours count once; each guest sign-in counts once.
       </p>
       {visitsQuery.isPending || visitsQuery.isFetching ? <p role="status">Loading range visits...</p> : null}
       {visitsQuery.error ? <p className="usage-error" role="alert">{visitsQuery.error instanceof Error ? visitsQuery.error.message : "Unable to load range visits."}</p> : null}
@@ -57,18 +58,19 @@ export function RangeVisitHistory({ actorUsername }: { actorUsername: string }) 
             <div className="reporting-table-wrap">
               <table className="committee-roles-table reporting-table">
                 <thead>
-                  <tr><th>Date</th><th>Time (UTC)</th><th>Name</th><th>Username</th><th>Check-in method</th></tr>
+                  <tr><th>UK date</th><th>UK time (BST/GMT)</th><th>Name</th><th>Username</th><th>Check-in method</th></tr>
                 </thead>
                 <tbody>
-                  {report.rows.map((row) => (
-                    <tr key={row.id}>
-                      <td>{formatDate(row.date)}</td>
-                      <td>{row.time.slice(0, 5)}</td>
+                  {report.rows.map((row) => {
+                    const local = ukReportTime(row.date, row.time);
+                    return <tr key={row.id}>
+                      <td>{formatDate(local.date)}</td>
+                      <td>{ukReportClock(local)}</td>
                       <td>{row.name || row.username || "Guest"}</td>
                       <td>{row.username || "—"}</td>
                       <td>{methodLabel(row.loginMethod)}</td>
-                    </tr>
-                  ))}
+                    </tr>;
+                  })}
                 </tbody>
               </table>
             </div>

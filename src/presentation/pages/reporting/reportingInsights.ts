@@ -1,4 +1,5 @@
 import type { AttendanceReport, AttendanceReportRow, MemberJourneyReport, RangeVisitReport } from "../../../api/reportingApi";
+import { ukReportTime } from "./reportingTime";
 
 export type TrendBucket = { startDate: string; endDate: string; label: string; members: number; guests: number; total: number };
 export type AccessSelection = { kind: "bucket"; startDate: string; endDate: string } | { kind: "weekday"; day: number } | null;
@@ -69,7 +70,7 @@ export function buildVisitInsights(report: RangeVisitReport) {
   const uniqueMembers = new Set(members.map((row) => row.username.toLowerCase())).size;
   const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, label: `${String(hour).padStart(2, "0")}:00`, members: 0, guests: 0 }));
   for (const row of report.rows) {
-    const hour = Number(row.time.slice(0, 2));
+    const hour = ukReportTime(row.date, row.time).hour;
     if (!Number.isInteger(hour) || hour < 0 || hour > 23) continue;
     hours[hour][row.loginMethod === "guest" ? "guests" : "members"] += 1;
   }

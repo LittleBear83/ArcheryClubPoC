@@ -19,6 +19,7 @@
     "seed:live-showcase": "node scripts/seedLiveShowcase.mjs",
     "seed:runtime-showcase": "node scripts/seedRuntimeShowcase.mjs",
     "seed:local": "node scripts/seedLocalDevelopment.mjs",
+    "seed:equipment-release": "node scripts/seedCourseEquipmentRelease.mjs",
     "seed:range-visits": "node scripts/seedRangeVisitHistory.mjs",
     "test": "node scripts/run-tests.mjs",
     "test:postgres-integration": "node --test server/infrastructure/persistence/phase2a1PostgresIntegration.test.js server/infrastructure/persistence/memberSignoffCommitteeSyncPostgresIntegration.test.js server/infrastructure/persistence/committeeMinutesSyncPostgresIntegration.test.js server/infrastructure/persistence/syncAuditPostgresIntegration.test.js server/infrastructure/persistence/loginMethodReportingPostgresIntegration.test.js server/infrastructure/persistence/feedbackSyncPostgresIntegration.test.js server/infrastructure/persistence/tournamentRegistrationPostgresIntegration.test.js server/infrastructure/persistence/rememberedDevicePostgresIntegration.test.js",

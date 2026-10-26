@@ -168,6 +168,12 @@ equipment and lost arrows. Existing records are left in place, repeated runs do
 not duplicate the samples, and a timestamped SQLite backup is made first. The
 command honours `DATABASE_PATH` and refuses live or PostgreSQL runtimes.
 
+For post-course equipment release testing, run `npm run seed:equipment-release`.
+This adds two completed beginners courses (one ready for bulk release and one
+with a loan conflict), an active course reservation, and available, loaned, and
+decommissioned stock. The command backs up local SQLite first and does not
+duplicate records on later runs.
+
 For the Range visit history report, run `npm run seed:range-visits`. This adds
 member RFID/mobile check-ins and clearly labelled sample guest sign-ins across
 the current month, last 30 and 90 days, and current year. It also adds a repeat

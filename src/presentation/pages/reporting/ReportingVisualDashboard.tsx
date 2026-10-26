@@ -53,6 +53,9 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
     text: { primary: theme.variables["--text"], secondary: theme.variables["--text-muted"] },
   } }), [theme]);
   const insights = useMemo(() => data ? buildAccessInsights(data) : null, [data]);
+  const methodTotal = insights?.methods.reduce((total, method) => total + method.count, 0) ?? 0;
+  const methodPercentage = (count: number) => methodTotal
+    ? `${(count / methodTotal * 100).toLocaleString("en-GB", { maximumFractionDigits: 1 })}%` : "0%";
   const journeyGroups = useMemo(() => memberJourneyData ? buildJourneyInsights(memberJourneyData) : [], [memberJourneyData]);
   const validSelection = selection?.kind === "bucket" && (
     selection.startDate < startDate || selection.endDate > endDate ||
@@ -188,10 +191,15 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
           {data.members ? <PieChart height={210} hideLegend
             series={[{ innerRadius: 50, outerRadius: 85, paddingAngle: 2, data: insights.methods
               .map((method, index) => ({ id: method.method, value: method.count, label: method.label, color: colors[index % colors.length] }))
-              .filter((method) => method.value > 0) }]}
+              .filter((method) => method.value > 0),
+              valueFormatter: (item) => `${item.value.toLocaleString("en-GB")} (${methodPercentage(item.value)})`,
+            }]}
           /> : <EmptyChart />}
-          <ul className="reporting-visual-legend">{insights.methods.map((method) =>
-            <li key={method.method}>{method.label} <strong>{method.count}</strong></li>)}</ul>
+          <ul className="reporting-visual-legend" aria-label="Member access method colour key">{insights.methods.map((method, index) =>
+            <li key={method.method}>
+              <span className="reporting-visual-legend-swatch" style={{ backgroundColor: colors[index % colors.length] }} aria-hidden="true" />
+              <span>{method.label}</span> <strong>{method.count.toLocaleString("en-GB")} ({methodPercentage(method.count)})</strong>
+            </li>)}</ul>
         </ChartPanel>
         <ChartPanel title="Committee cues" subtitle="Questions suggested by recorded activity">
           <div className="reporting-visual-cues">

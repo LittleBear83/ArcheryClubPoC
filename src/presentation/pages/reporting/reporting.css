@@ -269,6 +269,8 @@
 .reporting-visual-selection span { color: var(--muted); font-size: .86rem; }
 .reporting-visual-selection .app-button { margin-top: 6px; }
 .reporting-visual-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: .85rem; }
+.reporting-visual-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.reporting-visual-legend-swatch { flex: 0 0 12px; width: 12px; height: 12px; border-radius: 3px; }
 .reporting-visual-legend strong { color: var(--text-h); }
 .reporting-visual-cues { display: grid; gap: 12px; }
 .reporting-visual-cues p { display: grid; gap: 3px; margin: 0; padding: 12px; border-radius: 12px; background: var(--surface-deep); }

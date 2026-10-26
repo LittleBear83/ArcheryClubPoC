@@ -67,14 +67,16 @@ test("release routes require permission and physical return, and bulk waits for 
   const { app, routes } = routeApp();
   let completed = false;
   let allowed = false;
+  let canReturn = false;
   let released = 0;
   let audited = 0;
   const auditRecords = [];
+  const releaseRequests = [];
   let equipmentBroadcasts = 0;
   registerBeginnersCourseParticipantRoutes({
     app,
     getActorUser: () => ({ username: "officer" }),
-    actorHasPermission: () => allowed,
+    actorHasPermission: (_actor, permission) => allowed && (permission !== "return" || canReturn),
     getCourseTypePermissions: () => ({ manage: "manage" }),
     normalizeCourseType: () => "beginners",
     PERMISSIONS: { ASSIGN_EQUIPMENT: "assign", RETURN_EQUIPMENT: "return" },
@@ -84,7 +86,12 @@ test("release routes require permission and physical return, and bulk waits for 
     },
     hasBeginnersCourseCompleted: async () => completed,
     beginnersCourseWriteGateway: {
-      releaseParticipantCases: async ({ reservations }) => { released++; return reservations.map((row) => ({ ...row, username: "beginner", courseId: 5 })); },
+      releaseParticipantCases: async (options) => {
+        released++;
+        releaseRequests.push(options);
+        return options.reservations.map((row) => ({ ...row, username: "beginner", courseId: 5,
+          returnedLoans: options.returnActiveLoans ? [{ loanId: 7, itemId: 12, itemNumber: "RISER-12", memberUsername: "borrower" }] : [] }));
+      },
     },
     findBeginnersParticipantAuditSnapshot: async () => ({ id: 1 }),
     buildBeginnersParticipantAuditLabel: () => "Beginner",
@@ -104,6 +111,13 @@ test("release routes require permission and physical return, and bulk waits for 
   const unconfirmed = response();
   await individual(request({ caseId: 10 }), unconfirmed);
   assert.equal(unconfirmed.statusCode, 400);
+  const noReturnPermission = response();
+  await individual(request({ confirmed: true, caseId: 10, returnActiveLoans: true, loansConfirmed: true }), noReturnPermission);
+  assert.equal(noReturnPermission.statusCode, 403);
+  canReturn = true;
+  const noLoanConfirmation = response();
+  await individual(request({ confirmed: true, caseId: 10, returnActiveLoans: true }), noLoanConfirmation);
+  assert.equal(noLoanConfirmation.statusCode, 400);
   for (const returnedOn of ["2026-02-30", "2099-01-01"]) {
     const invalidDate = response();
     await individual(request({ confirmed: true, caseId: 10, returnedOn }), invalidDate);
@@ -125,4 +139,12 @@ test("release routes require permission and physical return, and bulk waits for 
   assert.equal(bulkDone.body.releasedCount, 1);
   assert.equal(auditRecords[1].after.equipmentReturnedOn, "2026-09-14");
   assert.match(auditRecords[1].entityLabel, /returned 2026-09-14/);
+  const override = response();
+  await individual(request({ confirmed: true, caseId: 10, returnedOn: "2026-10-20", returnActiveLoans: true, loansConfirmed: true }), override);
+  assert.equal(override.body.releasedCount, 1);
+  assert.equal(override.body.returnedLoanCount, 1);
+  assert.equal(releaseRequests.at(-1).returnActiveLoans, true);
+  assert.equal(releaseRequests.at(-1).returnedOn, "2026-10-20");
+  assert.equal(auditRecords.at(-1).entityType, "equipment_item");
+  assert.equal(auditRecords.at(-1).after.returnedOn, "2026-10-20");
 });

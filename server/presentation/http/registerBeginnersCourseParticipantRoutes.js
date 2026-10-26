@@ -1113,6 +1113,13 @@ export function registerBeginnersCourseParticipantRoutes({
       actorHasPermission(actor, PERMISSIONS.ASSIGN_EQUIPMENT) || actorHasPermission(actor, PERMISSIONS.RETURN_EQUIPMENT));
     if (!authorised) return res.status(403).json({ success: false, message: "You do not have permission to release course equipment." });
     if (req.body?.confirmed !== true) return res.status(400).json({ success: false, message: "Confirm the equipment has been physically returned and is available." });
+    const returnActiveLoans = req.body?.returnActiveLoans === true;
+    if (returnActiveLoans && (bulk || !actorHasPermission(actor, PERMISSIONS.RETURN_EQUIPMENT))) {
+      return res.status(403).json({ success: false, message: "Only an equipment return manager can record and release an active loan individually." });
+    }
+    if (returnActiveLoans && req.body?.loansConfirmed !== true) {
+      return res.status(400).json({ success: false, message: "Confirm the outstanding loaned equipment is physically back before recording its return." });
+    }
     const returnedOn = req.body?.returnedOn ?? getClubTodayDate();
     const parsedReturnDate = typeof returnedOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(returnedOn)
       ? new Date(`${returnedOn}T00:00:00Z`) : null;
@@ -1133,15 +1140,18 @@ export function registerBeginnersCourseParticipantRoutes({
     const expected = reservations.map((row) => ({ participantId: Number(row.participantId), caseId: Number(row.caseId) }));
     const before = new Map();
     for (const row of expected) before.set(row.participantId, await findBeginnersParticipantAuditSnapshot(row.participantId, courseType));
+    const [date, time] = getUtcTimestampParts();
     let released;
     try {
-      released = await beginnersCourseWriteGateway.releaseParticipantCases({ courseId, reservations: expected });
+      released = await beginnersCourseWriteGateway.releaseParticipantCases({
+        actorUsername: actor.username, courseId, reservations: expected,
+        returnActiveLoans, returnedOn, returnedAtTime: time,
+      });
     } catch (error) {
       const message = error instanceof Error && !/SQL|database|syntax|relation|constraint|connection/i.test(error.message)
         ? error.message : "Equipment could not be released. Refresh the course and try again.";
       return res.status(409).json({ success: false, message });
     }
-    const [date, time] = getUtcTimestampParts();
     for (const row of released) {
       if (!auditChangeLogger) continue;
       const after = await findBeginnersParticipantAuditSnapshot(row.participantId, courseType);
@@ -1155,12 +1165,25 @@ export function registerBeginnersCourseParticipantRoutes({
           target: bulk ? `/api/beginners-courses/${courseId}/release-equipment` : `/api/beginners-course-participants/${row.participantId}/release-equipment`,
         });
       } catch (auditError) { console.error("Failed to record course equipment release audit event", auditError); }
+      for (const loan of row.returnedLoans ?? []) {
+        try {
+          await auditChangeLogger.recordEntityChange({
+            action: "returned", actorUsername: actor.username, changedAtDate: date, changedAtTime: time,
+            before: { loanId: loan.loanId, memberUsername: loan.memberUsername, status: "on-loan" },
+            after: { loanId: loan.loanId, memberUsername: loan.memberUsername, status: "in-case", returnedOn },
+            entityId: String(loan.itemId), entityLabel: `${loan.itemNumber || `Item ${loan.itemId}`} · case ${row.caseId}`,
+            entityType: "equipment_item", req,
+            target: `/api/beginners-course-participants/${row.participantId}/release-equipment`,
+          });
+        } catch (auditError) { console.error("Failed to record overridden course equipment loan return audit event", auditError); }
+      }
     }
     if (released.length) {
       broadcastBeginnersUpdated(courseType, "beginners.case-release");
       broadcastEquipmentUpdated("beginners.case-release");
     }
     return res.json({ success: true, releasedCount: released.length,
+      returnedLoanCount: released.reduce((count, row) => count + (row.returnedLoans?.length ?? 0), 0),
       course: (await buildBeginnersCourseDashboard(courseType)).find((entry) => Number(entry.id) === courseId) ?? null });
   }
 

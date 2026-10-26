@@ -1646,7 +1646,7 @@ test("PostgreSQL equipment release is atomic, repeatable, and preserves case sto
     const row = await pool.query(`INSERT INTO beginners_course_participants
       (course_id, username, first_name, surname, beginner_size_category, assigned_case_id,
         created_by_username, created_at_date, created_at_time)
-      VALUES ($1, $2, 'Release', 'Beginner', 'adult', $3, 'release-coordinator', '2026-09-01', '09:00:00') RETURNING id`,
+      VALUES ($1, $2, 'Release', 'Beginner', 'senior', $3, 'release-coordinator', '2026-09-01', '09:00:00') RETURNING id`,
     [courseId, username, caseIds[index]]);
     participantIds.push(Number(row.rows[0].id));
   }
@@ -1657,9 +1657,26 @@ test("PostgreSQL equipment release is atomic, repeatable, and preserves case sto
   assert.deepEqual(first.map((result) => result.length).sort(), [0, 1]);
   assert.equal((await pool.query("SELECT assigned_case_id FROM beginners_course_participants WHERE id = $1", [participantIds[0]])).rows[0].assigned_case_id, null);
   assert.equal((await pool.query("SELECT location_type FROM equipment_items WHERE id = $1", [caseIds[0]])).rows[0].location_type, "cupboard");
-  await assert.rejects(write.releaseParticipantCases({ courseId, reservations: [rows[1], { participantId: 999999999, caseId: caseIds[1] }] }), /no longer belongs/i);
+  const riserId = Number((await pool.query(`INSERT INTO equipment_items
+    (equipment_type, item_number, size_category, arrow_quantity, status, location_type,
+      location_member_username, added_by_username, added_at_date, added_at_time)
+    VALUES ('riser', 'RELEASE-RISER', 'standard', 1, 'active', 'member', 'release-two',
+      'release-coordinator', '2026-09-01', '09:00:00') RETURNING id`)).rows[0].id);
+  const loanId = Number((await pool.query(`INSERT INTO equipment_loans
+    (equipment_item_id, member_username, loaned_by_username, loaned_at_date, loaned_at_time, loan_context_case_id)
+    VALUES ($1, 'release-two', 'release-coordinator', '2026-09-01', '09:00:00', $2) RETURNING id`,
+  [riserId, caseIds[1]])).rows[0].id);
+  const override = { actorUsername: "release-coordinator", courseId, returnActiveLoans: true,
+    returnedOn: "2026-10-20", returnedAtTime: "12:00:00" };
+  await assert.rejects(write.releaseParticipantCases({ ...override,
+    reservations: [rows[1], { participantId: 999999999, caseId: caseIds[1] }] }), /no longer belongs/i);
   assert.equal(Number((await pool.query("SELECT assigned_case_id FROM beginners_course_participants WHERE id = $1", [participantIds[1]])).rows[0].assigned_case_id), caseIds[1]);
-  assert.equal((await write.releaseParticipantCases({ courseId, reservations: rows.slice(1) })).length, 1);
+  assert.equal((await pool.query("SELECT returned_at_date FROM equipment_loans WHERE id = $1", [loanId])).rows[0].returned_at_date, null);
+  const final = await write.releaseParticipantCases({ ...override, reservations: rows.slice(1) });
+  assert.equal(final.length, 1);
+  assert.equal(final[0].returnedLoans[0].itemNumber, "RELEASE-RISER");
+  assert.equal((await pool.query("SELECT returned_at_date FROM equipment_loans WHERE id = $1", [loanId])).rows[0].returned_at_date, "2026-10-20");
+  assert.equal(Number((await pool.query("SELECT location_case_id FROM equipment_items WHERE id = $1", [riserId])).rows[0].location_case_id), caseIds[1]);
 });
 
 test("PostgreSQL course creation persists coach defaults, per-lesson overrides, and Taster defaults", { timeout: 30000 }, async () => {

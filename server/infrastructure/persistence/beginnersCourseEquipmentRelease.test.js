@@ -11,11 +11,16 @@ function fixture() {
       username TEXT NOT NULL, assigned_case_id INTEGER, converted_to_member INTEGER NOT NULL DEFAULT 0,
       assigned_case_by_username TEXT, assigned_case_at_date TEXT, assigned_case_at_time TEXT);
     CREATE TABLE equipment_items (id INTEGER PRIMARY KEY, equipment_type TEXT NOT NULL,
-      status TEXT NOT NULL, location_type TEXT NOT NULL, location_case_id INTEGER, item_number TEXT);
+      status TEXT NOT NULL, location_type TEXT NOT NULL, location_case_id INTEGER, item_number TEXT,
+      arrow_quantity INTEGER DEFAULT 1, location_label TEXT, location_member_username TEXT,
+      last_storage_updated_by_username TEXT, last_storage_updated_at_date TEXT, last_storage_updated_at_time TEXT);
     CREATE TABLE equipment_loans (id INTEGER PRIMARY KEY, equipment_item_id INTEGER NOT NULL,
-      loan_context_case_id INTEGER, returned_at_date TEXT);
-    INSERT INTO equipment_items VALUES (10, 'case', 'active', 'cupboard', NULL, 'CASE-10'),
-      (11, 'case', 'active', 'cupboard', NULL, 'CASE-11'), (12, 'bow', 'active', 'case', 10, 'BOW-12');
+      loan_context_case_id INTEGER, returned_at_date TEXT, member_username TEXT DEFAULT 'member',
+      returned_by_username TEXT, returned_at_time TEXT, return_location_type TEXT,
+      return_location_label TEXT, return_case_id INTEGER);
+    INSERT INTO equipment_items (id, equipment_type, status, location_type, location_case_id, item_number)
+      VALUES (10, 'case', 'active', 'cupboard', NULL, 'CASE-10'),
+      (11, 'case', 'active', 'cupboard', NULL, 'CASE-11'), (12, 'riser', 'active', 'case', 10, 'RISER-12');
     INSERT INTO beginners_course_participants VALUES
       (1, 5, 'beginner1', 10, 0, 'officer', '2026-01-01', '12:00:00'),
       (2, 5, 'beginner2', 11, 0, 'officer', '2026-01-01', '12:00:00');
@@ -51,11 +56,64 @@ test("active loans and converted participants cannot release cases", async () =>
   const { db, gateway } = fixture();
   try {
     db.prepare("UPDATE equipment_items SET location_type = 'member', location_case_id = NULL WHERE id = 12").run();
-    db.prepare("INSERT INTO equipment_loans VALUES (1, 12, 10, NULL)").run();
-    await assert.rejects(gateway.releaseParticipantCases({ courseId: 5, reservations: reservations.slice(0, 1) }), /active loan for BOW-12/);
+    db.prepare("INSERT INTO equipment_loans (id, equipment_item_id, loan_context_case_id, returned_at_date) VALUES (1, 12, 10, NULL)").run();
+    await assert.rejects(gateway.releaseParticipantCases({ courseId: 5, reservations: reservations.slice(0, 1) }), /active loan for RISER-12/);
     db.prepare("DELETE FROM equipment_loans").run();
     db.prepare("UPDATE beginners_course_participants SET converted_to_member = 1 WHERE id = 1").run();
     await assert.rejects(gateway.releaseParticipantCases({ courseId: 5, reservations: reservations.slice(0, 1) }), /Converted members/);
+    assert.equal(db.prepare("SELECT assigned_case_id FROM beginners_course_participants WHERE id = 1").get().assigned_case_id, 10);
+  } finally { db.close(); }
+});
+
+test("confirmed return override closes the loan and releases the reservation atomically", async () => {
+  const { db, gateway } = fixture();
+  try {
+    db.prepare("UPDATE equipment_items SET location_type = 'member', location_case_id = NULL, location_member_username = 'borrower' WHERE id = 12").run();
+    db.prepare("INSERT INTO equipment_loans (id, equipment_item_id, loan_context_case_id, member_username) VALUES (1, 12, 10, 'borrower')").run();
+    const request = { actorUsername: "officer", courseId: 5, reservations: reservations.slice(0, 1),
+      returnActiveLoans: true, returnedOn: "2026-10-20", returnedAtTime: "12:00:00" };
+    const released = await gateway.releaseParticipantCases(request);
+    assert.equal(released.length, 1);
+    assert.deepEqual(released[0].returnedLoans.map((loan) => loan.itemNumber), ["RISER-12"]);
+    assert.deepEqual(db.prepare("SELECT returned_by_username, returned_at_date, return_location_type, return_case_id FROM equipment_loans WHERE id = 1").get(),
+      { returned_by_username: "officer", returned_at_date: "2026-10-20", return_location_type: "case", return_case_id: 10 });
+    assert.deepEqual(db.prepare("SELECT location_type, location_case_id, location_member_username FROM equipment_items WHERE id = 12").get(),
+      { location_type: "case", location_case_id: 10, location_member_username: null });
+    assert.equal(db.prepare("SELECT assigned_case_id FROM beginners_course_participants WHERE id = 1").get().assigned_case_id, null);
+    assert.deepEqual(await gateway.releaseParticipantCases(request), []);
+  } finally { db.close(); }
+});
+
+test("return override rejects a self-return and rolls back if another reservation conflicts", async () => {
+  const { db, gateway } = fixture();
+  try {
+    db.prepare("UPDATE equipment_items SET location_type = 'member', location_case_id = NULL WHERE id = 12").run();
+    db.prepare("INSERT INTO equipment_loans (id, equipment_item_id, loan_context_case_id, member_username) VALUES (1, 12, 10, 'borrower')").run();
+    const request = { actorUsername: "borrower", courseId: 5, reservations: reservations.slice(0, 1),
+      returnActiveLoans: true, returnedOn: "2026-10-20", returnedAtTime: "12:00:00" };
+    await assert.rejects(gateway.releaseParticipantCases(request), /cannot record their own/);
+    db.prepare("INSERT INTO beginners_course_participants (id, course_id, username, assigned_case_id) VALUES (3, 5, 'other', 11)").run();
+    await assert.rejects(gateway.releaseParticipantCases({ ...request, actorUsername: "officer", reservations }), /unresolved reservation/);
+    assert.equal(db.prepare("SELECT returned_at_date FROM equipment_loans WHERE id = 1").get().returned_at_date, null);
+    assert.equal(db.prepare("SELECT assigned_case_id FROM beginners_course_participants WHERE id = 1").get().assigned_case_id, 10);
+  } finally { db.close(); }
+});
+
+test("return override refuses a case loan or an overfull case", async () => {
+  const { db, gateway } = fixture();
+  const request = { actorUsername: "officer", courseId: 5, reservations: reservations.slice(0, 1),
+    returnActiveLoans: true, returnedOn: "2026-10-20", returnedAtTime: "12:00:00" };
+  try {
+    db.prepare("INSERT INTO equipment_loans (id, equipment_item_id, loan_context_case_id) VALUES (1, 10, 10)").run();
+    await assert.rejects(gateway.releaseParticipantCases(request), /case loan must be returned/i);
+    db.prepare("DELETE FROM equipment_loans").run();
+    db.prepare("UPDATE equipment_items SET location_type = 'member', location_case_id = NULL WHERE id = 12").run();
+    db.prepare("INSERT INTO equipment_items (id, equipment_type, status, location_type, location_case_id, item_number) VALUES (13, 'riser', 'active', 'case', 10, 'RISER-13')").run();
+    db.prepare("INSERT INTO equipment_loans (id, equipment_item_id, loan_context_case_id) VALUES (2, 12, 10)").run();
+    await assert.rejects(gateway.releaseParticipantCases(request), /exceed the case capacity/);
+    db.prepare("UPDATE equipment_items SET location_type = 'cupboard' WHERE id = 12").run();
+    await assert.rejects(gateway.releaseParticipantCases(request), /conflicting location/);
+    assert.equal(db.prepare("SELECT returned_at_date FROM equipment_loans WHERE id = 2").get().returned_at_date, null);
     assert.equal(db.prepare("SELECT assigned_case_id FROM beginners_course_participants WHERE id = 1").get().assigned_case_id, 10);
   } finally { db.close(); }
 });
@@ -78,7 +136,7 @@ test("assignment cannot bypass return confirmation or reserve an occupied case",
     await assert.rejects(assign(1, 11), /Release the current case/);
     db.prepare("INSERT INTO beginners_course_participants (id, course_id, username) VALUES (3, 5, 'new')").run();
     await assert.rejects(assign(3, 10), /already reserved/);
-    db.prepare("INSERT INTO equipment_loans VALUES (1, 12, 10, NULL)").run();
+    db.prepare("INSERT INTO equipment_loans (id, equipment_item_id, loan_context_case_id, returned_at_date) VALUES (1, 12, 10, NULL)").run();
     await assert.rejects(assign(3, 10), /already reserved/);
     assert.equal(db.prepare("SELECT assigned_case_id FROM beginners_course_participants WHERE id = 3").get().assigned_case_id, null);
   } finally { db.close(); }

@@ -1,3 +1,34 @@
+import { EQUIPMENT_CASE_CAPACITY } from "../../domain/constants.js";
+
+function assertReturnedItemsFitCase(existingItems, loans, caseId) {
+  const totals = new Map();
+  for (const item of existingItems) {
+    totals.set(item.equipment_type, (totals.get(item.equipment_type) ?? 0) +
+      (item.equipment_type === "arrows" ? Number(item.arrow_quantity ?? 0) : 1));
+  }
+  for (const loan of loans) {
+    if (loan.location_type === "case" && Number(loan.location_case_id) === Number(caseId)) continue;
+    totals.set(loan.equipment_type, (totals.get(loan.equipment_type) ?? 0) +
+      (loan.equipment_type === "arrows" ? Number(loan.arrow_quantity ?? 0) : 1));
+  }
+  for (const [type, count] of totals) {
+    if (count > (EQUIPMENT_CASE_CAPACITY[type] ?? Infinity))
+      throw new Error("The returned equipment would exceed the case capacity. Use Equipment Management to resolve its contents first.");
+  }
+}
+
+function assertLoansCanReturnToCase(loans, caseId, actorUsername) {
+  if (loans.some((loan) => Number(loan.equipment_item_id) === Number(caseId) || loan.equipment_type === "case"))
+    throw new Error("A case loan must be returned through Equipment Management before releasing its reservation.");
+  if (loans.some((loan) => loan.member_username === actorUsername))
+    throw new Error("The borrowing member cannot record their own equipment return.");
+  if (new Set(loans.map((loan) => Number(loan.equipment_item_id))).size !== loans.length ||
+    loans.some((loan) => loan.status !== "active" ||
+      (loan.location_type !== "member" && !(loan.location_type === "case" && Number(loan.location_case_id) === Number(caseId))) ||
+      (loan.location_case_id != null && Number(loan.location_case_id) !== Number(caseId))))
+    throw new Error("The loaned equipment has a conflicting location, loan or status. Use Equipment Management to resolve it.");
+}
+
 function createSqliteBeginnersCourseWriteGateway({
   cancelBeginnersCourse,
   db,
@@ -19,7 +50,7 @@ function createSqliteBeginnersCourseWriteGateway({
   upsertUser,
 }) {
   return {
-    async releaseParticipantCases({ courseId, reservations }) {
+    async releaseParticipantCases({ actorUsername, courseId, reservations, returnActiveLoans = false, returnedOn, returnedAtTime }) {
       const release = db.transaction(() => {
         const released = [];
         for (const { participantId, caseId } of reservations) {
@@ -32,17 +63,39 @@ function createSqliteBeginnersCourseWriteGateway({
           if (!item || item.equipment_type !== "case" || item.status !== "active" || item.location_type !== "cupboard") throw new Error("The reserved case is not active and at the range.");
           const conflict = db.prepare("SELECT id FROM beginners_course_participants WHERE assigned_case_id = ? AND id <> ? LIMIT 1").get(caseId, participantId);
           if (conflict) throw new Error("This case has another unresolved reservation.");
-          const openLoan = db.prepare(`SELECT loan.id, item.item_number FROM equipment_loans AS loan
-            LEFT JOIN equipment_items AS item ON item.id = loan.equipment_item_id
+          const openLoans = db.prepare(`SELECT loan.id, loan.equipment_item_id, loan.member_username,
+              item.item_number, item.equipment_type, item.status, item.location_type, item.location_case_id, item.arrow_quantity
+            FROM equipment_loans AS loan
+            INNER JOIN equipment_items AS item ON item.id = loan.equipment_item_id
             WHERE loan.returned_at_date IS NULL AND
             (loan.equipment_item_id = ? OR loan.loan_context_case_id = ? OR loan.equipment_item_id IN
-              (SELECT id FROM equipment_items WHERE location_case_id = ?)) LIMIT 1`).get(caseId, caseId, caseId);
-          if (openLoan) throw new Error(`This case or its contents has an active loan${openLoan.item_number ? ` for ${openLoan.item_number}` : ""}. Return it in Equipment Management first.`);
+              (SELECT id FROM equipment_items WHERE location_case_id = ?)) ORDER BY loan.id`).all(caseId, caseId, caseId);
+          if (openLoans.length && !returnActiveLoans) {
+            const itemNames = openLoans.map((loan) => loan.item_number || `item ${loan.equipment_item_id}`).join(", ");
+            throw new Error(`This case or its contents has an active loan for ${itemNames}. Return it in Equipment Management first, or use the confirmed return override.`);
+          }
+          if (openLoans.length && returnActiveLoans) {
+            assertLoansCanReturnToCase(openLoans, caseId, actorUsername);
+            const contents = db.prepare(`SELECT equipment_type, arrow_quantity FROM equipment_items
+              WHERE location_type = 'case' AND location_case_id = ? AND status = 'active'`).all(caseId);
+            assertReturnedItemsFitCase(contents, openLoans, caseId);
+            for (const loan of openLoans) {
+              db.prepare(`UPDATE equipment_loans SET returned_by_username = ?, returned_at_date = ?, returned_at_time = ?,
+                return_location_type = 'case', return_location_label = NULL, return_case_id = ?
+                WHERE id = ? AND returned_at_date IS NULL`).run(actorUsername, returnedOn, returnedAtTime, caseId, loan.id);
+              db.prepare(`UPDATE equipment_items SET location_type = 'case', location_label = NULL,
+                location_case_id = ?, location_member_username = NULL, last_storage_updated_by_username = ?,
+                last_storage_updated_at_date = ?, last_storage_updated_at_time = ? WHERE id = ?`)
+                .run(caseId, actorUsername, returnedOn, returnedAtTime, loan.equipment_item_id);
+            }
+          }
           const result = db.prepare(`UPDATE beginners_course_participants SET assigned_case_id = NULL,
             assigned_case_by_username = NULL, assigned_case_at_date = NULL, assigned_case_at_time = NULL
             WHERE id = ? AND assigned_case_id = ? AND converted_to_member = 0`).run(participantId, caseId);
           if (result.changes !== 1) throw new Error("A case reservation changed. Refresh the course and review it again.");
-          released.push({ participantId, courseId, caseId, username: participant.username });
+          released.push({ participantId, courseId, caseId, username: participant.username,
+            returnedLoans: openLoans.map((loan) => ({ loanId: loan.id, itemId: loan.equipment_item_id,
+              itemNumber: loan.item_number, memberUsername: loan.member_username })) });
         }
         return released;
       });
@@ -388,7 +441,7 @@ function createSqliteBeginnersCourseWriteGateway({
 
 function createPostgresBeginnersCourseWriteGateway({ pool }) {
   return {
-    async releaseParticipantCases({ courseId, reservations }) {
+    async releaseParticipantCases({ actorUsername, courseId, reservations, returnActiveLoans = false, returnedOn, returnedAtTime }) {
       const client = await pool.connect();
       try {
         await client.query("BEGIN");
@@ -412,17 +465,42 @@ function createPostgresBeginnersCourseWriteGateway({ pool }) {
           if (!item || item.equipment_type !== "case" || item.status !== "active" || item.location_type !== "cupboard") throw new Error("The reserved case is not active and at the range.");
           const conflict = await client.query("SELECT id FROM beginners_course_participants WHERE assigned_case_id = $1 AND id <> $2 LIMIT 1", [caseId, participantId]);
           if (conflict.rowCount) throw new Error("This case has another unresolved reservation.");
-          const openLoan = await client.query(`SELECT loan.id, item.item_number FROM equipment_loans AS loan
-            LEFT JOIN equipment_items AS item ON item.id = loan.equipment_item_id
+          const openLoanRows = await client.query(`SELECT loan.id, loan.equipment_item_id, loan.member_username,
+              item.item_number, item.equipment_type, item.status, item.location_type, item.location_case_id, item.arrow_quantity
+            FROM equipment_loans AS loan
+            INNER JOIN equipment_items AS item ON item.id = loan.equipment_item_id
             WHERE loan.returned_at_date IS NULL AND
             (loan.equipment_item_id = $1 OR loan.loan_context_case_id = $1 OR loan.equipment_item_id IN
-              (SELECT id FROM equipment_items WHERE location_case_id = $1)) LIMIT 1`, [caseId]);
-          if (openLoan.rowCount) throw new Error(`This case or its contents has an active loan${openLoan.rows[0].item_number ? ` for ${openLoan.rows[0].item_number}` : ""}. Return it in Equipment Management first.`);
+              (SELECT id FROM equipment_items WHERE location_case_id = $1)) ORDER BY loan.id FOR UPDATE OF loan, item`, [caseId]);
+          const openLoans = openLoanRows.rows;
+          if (openLoans.length && !returnActiveLoans) {
+            const itemNames = openLoans.map((loan) => loan.item_number || `item ${loan.equipment_item_id}`).join(", ");
+            throw new Error(`This case or its contents has an active loan for ${itemNames}. Return it in Equipment Management first, or use the confirmed return override.`);
+          }
+          if (openLoans.length && returnActiveLoans) {
+            assertLoansCanReturnToCase(openLoans, caseId, actorUsername);
+            const contents = (await client.query(`SELECT equipment_type, arrow_quantity FROM equipment_items
+              WHERE location_type = 'case' AND location_case_id = $1 AND status = 'active' FOR UPDATE`, [caseId])).rows;
+            assertReturnedItemsFitCase(contents, openLoans, caseId);
+            for (const loan of openLoans) {
+              const returned = await client.query(`UPDATE equipment_loans SET returned_by_username = $1,
+                returned_at_date = $2, returned_at_time = $3, return_location_type = 'case',
+                return_location_label = NULL, return_case_id = $4 WHERE id = $5 AND returned_at_date IS NULL`,
+              [actorUsername, returnedOn, returnedAtTime, caseId, loan.id]);
+              if (returned.rowCount !== 1) throw new Error("A loan changed. Refresh the course and try again.");
+              await client.query(`UPDATE equipment_items SET location_type = 'case', location_label = NULL,
+                location_case_id = $1, location_member_username = NULL, last_storage_updated_by_username = $2,
+                last_storage_updated_at_date = $3, last_storage_updated_at_time = $4 WHERE id = $5`,
+              [caseId, actorUsername, returnedOn, returnedAtTime, loan.equipment_item_id]);
+            }
+          }
           const result = await client.query(`UPDATE beginners_course_participants SET assigned_case_id = NULL,
             assigned_case_by_username = NULL, assigned_case_at_date = NULL, assigned_case_at_time = NULL
             WHERE id = $1 AND assigned_case_id = $2 AND converted_to_member = 0`, [participantId, caseId]);
           if (result.rowCount !== 1) throw new Error("A case reservation changed. Refresh the course and review it again.");
-          released.push({ participantId, courseId, caseId, username: participant.username });
+          released.push({ participantId, courseId, caseId, username: participant.username,
+            returnedLoans: openLoans.map((loan) => ({ loanId: loan.id, itemId: loan.equipment_item_id,
+              itemNumber: loan.item_number, memberUsername: loan.member_username })) });
         }
         await client.query("COMMIT");
         return released;

@@ -553,6 +553,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   } | null>(null);
   const [releaseSelection, setReleaseSelection] = useState<{ course: CourseRecord; participants: CourseBeginner[]; bulk: boolean } | null>(null);
   const [physicalReturnConfirmed, setPhysicalReturnConfirmed] = useState(false);
+  const [returnActiveLoans, setReturnActiveLoans] = useState(false);
   const [releaseReturnedOn, setReleaseReturnedOn] = useState("");
   const [editBeginnerForm, setEditBeginnerForm] = useState(EMPTY_BEGINNER_FORM);
   const [transferSelection, setTransferSelection] = useState<TransferSelection | null>(null);
@@ -792,6 +793,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
   const openEquipmentRelease = (selection: { course: CourseRecord; participants: CourseBeginner[]; bulk: boolean }) => {
     setError("");
     setPhysicalReturnConfirmed(false);
+    setReturnActiveLoans(false);
     setReleaseReturnedOn(getClubTodayDate());
     setReleaseSelection(selection);
   };
@@ -803,9 +805,10 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
     try {
       const result = await mutation.mutateAsync(() => releaseSelection.bulk
         ? releaseCourseEquipment(currentUserProfile, releaseSelection.course.id, reservations, releaseReturnedOn)
-        : releaseBeginnerEquipment(currentUserProfile, reservations[0].participantId, reservations[0].caseId, releaseReturnedOn)) as { releasedCount: number };
+        : releaseBeginnerEquipment(currentUserProfile, reservations[0].participantId, reservations[0].caseId, releaseReturnedOn, returnActiveLoans)) as { releasedCount: number; returnedLoanCount: number };
       setReleaseSelection(null);
       setPhysicalReturnConfirmed(false);
+      setReturnActiveLoans(false);
       setReleaseReturnedOn("");
       setCaseSelections((current) => {
         const next = { ...current };
@@ -817,10 +820,14 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
         for (const reservation of reservations) delete next[reservation.participantId];
         return next;
       });
-      setMessage(result.releasedCount ? `${result.releasedCount} case reservation${result.releasedCount === 1 ? "" : "s"} released. Equipment is available at the range.` : "The case reservation was already released.");
+      setMessage(result.releasedCount
+        ? `${result.returnedLoanCount ? `${result.returnedLoanCount} loan return${result.returnedLoanCount === 1 ? "" : "s"} recorded. ` : ""}${result.releasedCount} case reservation${result.releasedCount === 1 ? "" : "s"} released. Equipment is available at the range.`
+        : "The case reservation was already released.");
       await refreshDashboard();
     } catch (releaseError) {
-      setError(releaseError instanceof Error ? releaseError.message : "Equipment could not be released.");
+      const message = releaseError instanceof Error ? releaseError.message : "Equipment could not be released.";
+      setError(message);
+      if (!message.includes("active loan")) setReturnActiveLoans(false);
     }
   };
 
@@ -1985,7 +1992,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
 
       <Modal
         open={Boolean(releaseSelection)}
-        onClose={() => { if (!mutation.isPending) { setReleaseSelection(null); setPhysicalReturnConfirmed(false); setReleaseReturnedOn(""); } }}
+        onClose={() => { if (!mutation.isPending) { setReleaseSelection(null); setPhysicalReturnConfirmed(false); setReturnActiveLoans(false); setReleaseReturnedOn(""); } }}
         title={releaseSelection?.bulk ? "Release course equipment" : "Release Equipment"}
         contentClassName="beginners-course-release-modal"
       >
@@ -2007,7 +2014,7 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
                 required
                 max={getClubTodayDate()}
                 value={releaseReturnedOn}
-                onChange={(value) => { setError(""); setReleaseReturnedOn(value); }}
+                onChange={(value) => { if (!error.includes("active loan")) setError(""); setReleaseReturnedOn(value); }}
               />
               <p>The date the equipment was physically returned. Change today’s date if it came back earlier.</p>
             </div>
@@ -2015,15 +2022,21 @@ export function BeginnersCoursesPage({ currentUserProfile, variant = "beginners"
               <input type="checkbox" checked={physicalReturnConfirmed} onChange={(event) => setPhysicalReturnConfirmed(event.target.checked)} />
               <span>I confirm that the listed equipment has been physically returned and is available at the range.</span>
             </label>
-            {error ? <p className="profile-error" role="alert">{error}</p> : null}
+            {error ? <p className={returnActiveLoans && error.includes("active loan") ? "equipment-meta-copy" : "profile-error"} role="alert">{error}</p> : null}
+            {!releaseSelection.bulk && error.includes("active loan") && hasPermission(currentUserProfile, "return_equipment") ? (
+              <label className="beginners-course-release-confirmation">
+                <input type="checkbox" checked={returnActiveLoans} onChange={(event) => setReturnActiveLoans(event.target.checked)} />
+                <span><strong>Record loan return here</strong><br />I confirm all loaned equipment named above is physically back. Book it into this case and release the reservation together.</span>
+              </label>
+            ) : null}
             {error.includes("active loan") ? (
               hasPermission(currentUserProfile, "return_equipment")
                 ? <Link className="app-button app-button--secondary app-button--md beginners-course-release-loan-link" to="/equipment">Open Equipment Management</Link>
                 : <p className="equipment-meta-copy">Ask an equipment manager to record the loan return, then try the release again.</p>
             ) : null}
             <div className="beginners-course-actions">
-              <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setReleaseSelection(null); setPhysicalReturnConfirmed(false); setReleaseReturnedOn(""); }}>Cancel</Button>
-              <Button disabled={!physicalReturnConfirmed || !releaseReturnedOn || releaseReturnedOn > getClubTodayDate() || mutation.isPending} onClick={() => void confirmEquipmentRelease()}>{mutation.isPending ? "Releasing..." : "Release Equipment"}</Button>
+              <Button variant="secondary" disabled={mutation.isPending} onClick={() => { setReleaseSelection(null); setPhysicalReturnConfirmed(false); setReturnActiveLoans(false); setReleaseReturnedOn(""); }}>Cancel</Button>
+              <Button disabled={!physicalReturnConfirmed || !releaseReturnedOn || releaseReturnedOn > getClubTodayDate() || mutation.isPending} onClick={() => void confirmEquipmentRelease()}>{mutation.isPending ? "Releasing..." : returnActiveLoans ? "Record return and release" : "Release Equipment"}</Button>
             </div>
           </div>
         ) : null}

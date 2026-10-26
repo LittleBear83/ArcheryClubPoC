@@ -248,6 +248,7 @@
 .reporting-visual-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  align-items: start;
   gap: 16px;
   min-width: 0;
 }
@@ -268,6 +269,11 @@
 .reporting-visual-hint { margin: 8px 0 0; color: var(--muted); font-size: .84rem; }
 .reporting-visual-drill-control { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: var(--text-h); font-size: .86rem; font-weight: 700; }
 .reporting-visual-drill-control select { min-width: 0; max-width: 100%; padding: 8px 10px; border: 1px solid var(--panel-border); border-radius: 8px; background: var(--surface-deep); color: var(--text-h); font: inherit; }
+.reporting-visual-drill-control select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.reporting-visual-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 12px; padding: 12px; border-left: 3px solid var(--accent); border-radius: 8px; background: var(--surface-deep); color: var(--text-h); }
+.reporting-visual-selection strong, .reporting-visual-selection span { flex-basis: 100%; }
+.reporting-visual-selection span { color: var(--muted); font-size: .86rem; }
+.reporting-visual-selection .app-button { margin-top: 6px; }
 .reporting-visual-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0; padding: 0; list-style: none; color: var(--muted); font-size: .85rem; }
 .reporting-visual-legend strong { color: var(--text-h); }
 .reporting-visual-cues { display: grid; gap: 12px; }

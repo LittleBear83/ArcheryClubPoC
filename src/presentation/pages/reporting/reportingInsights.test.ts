@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AttendanceReport, MemberJourneyReport, RangeVisitReport } from "../../../api/reportingApi";
-import { buildAccessInsights, buildJourneyInsights, buildVisitInsights, filterAccessRows } from "./reportingInsights";
+import { buildAccessInsights, buildJourneyInsights, buildVisitInsights, filterAccessRows, focusChartValues } from "./reportingInsights";
 import { buildCsv, buildMemberJourneyCsv, buildRangeVisitCsv } from "./reportingUtils";
 
 const report: AttendanceReport = {
@@ -32,6 +32,13 @@ test("access charts reconcile with event rows and drilled CSV", () => {
   assert.equal(buildCsv({ ...report, rows: selected }).split("\r\n").length - 1, selected.length);
   const sunday = filterAccessRows(report.rows, { kind: "weekday", day: 0 });
   assert.equal(sunday.length, insights.weekdays[0].total);
+});
+
+test("chart dropdown focus changes the plotted values and resets to the full series", () => {
+  const values = [3, 0, 7, 2];
+  assert.deepEqual(focusChartValues(values, 2), [0, 0, 7, 0]);
+  assert.deepEqual(focusChartValues(values, 0), [3, 0, 0, 0]);
+  assert.deepEqual(focusChartValues(values, null), values);
 });
 
 test("long ranges group dates into bounded weekly trend buckets", () => {

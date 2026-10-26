@@ -13,7 +13,7 @@ import { RangeVisitHistory } from "./RangeVisitHistory";
 import { BreakdownList, ReportingErrors, ReportingFilters } from "./ReportingSharedSections";
 import { ReportingDashboard } from "./dashboard/ReportingDashboard";
 import "./dashboard/reportingDashboard.css";
-import { buildAccessInsights, buildJourneyInsights, buildVisitInsights, filterAccessRows, type AccessSelection } from "./reportingInsights";
+import { buildAccessInsights, buildJourneyInsights, buildVisitInsights, filterAccessRows, focusChartValues, type AccessSelection } from "./reportingInsights";
 import { buildCsv, buildMemberJourneyCsv, buildRangeVisitCsv, saveCsv } from "./reportingUtils";
 import { getRangeVisitPeriod } from "./rangeVisitPeriods";
 import type { useReportingPageState } from "./useReportingPageState";
@@ -54,8 +54,14 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
   } }), [theme]);
   const insights = useMemo(() => data ? buildAccessInsights(data) : null, [data]);
   const journeyGroups = useMemo(() => memberJourneyData ? buildJourneyInsights(memberJourneyData) : [], [memberJourneyData]);
-  const validSelection = selection?.kind === "bucket" && (selection.startDate < startDate || selection.endDate > endDate) ? null : selection;
+  const validSelection = selection?.kind === "bucket" && (
+    selection.startDate < startDate || selection.endDate > endDate ||
+    !insights?.trend.some((bucket) => bucket.startDate === selection.startDate && bucket.endDate === selection.endDate)
+  ) ? null : selection;
   const selectedRows = data ? filterAccessRows(data.rows, validSelection) : [];
+  const selectedBucket = validSelection?.kind === "bucket" ? validSelection.startDate : null;
+  const selectedWeekday = validSelection?.kind === "weekday" ? validSelection.day : null;
+  const selectedBucketIndex = selectedBucket ? insights?.trend.findIndex((bucket) => bucket.startDate === selectedBucket) ?? -1 : null;
   const visitQuery = useQuery({
     queryKey: ["reporting-visual-visits", actorUsername, startDate, endDate],
     queryFn: async () => (await getRangeVisitReport(actorUsername, startDate, endDate)).report,
@@ -65,6 +71,7 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
   const visitInsights = useMemo(() => visits ? buildVisitInsights(visits) : null, [visits]);
   const selectedVisits = visits?.rows.filter((row) => visitHour === null || Number(row.time.slice(0, 2)) === visitHour) ?? [];
   const selectedJourneys = memberJourneyData?.rows.filter((row) => !selectedOrigin || row.originCourseType === selectedOrigin) ?? [];
+  const selectedJourneyConversions = selectedJourneys.filter((row) => row.convertedToMember).length;
 
   async function exportRows(filename: string, csv: string, onError: (message: string) => void) {
     onError("");
@@ -117,43 +124,56 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
       <div className="reporting-visual-grid">
         <ChartPanel title="Access activity over time" subtitle={insights.trend.length > 62 ? "Weekly totals" : data.daily.length > 62 ? "Weekly totals" : "Daily totals"}>
           {data.total ? <div className="reporting-visual-chart-scroll"><div style={{ minWidth: Math.max(560, insights.trend.length * 24) }}>
-            <BarChart height={300}
+            <BarChart height={240}
               xAxis={[{ data: insights.trend.map((bucket) => bucket.label), scaleType: "band", tickLabelInterval: (_, index) => index % Math.max(1, Math.ceil(insights.trend.length / 12)) === 0 }]}
               series={[
-                { data: insights.trend.map((bucket) => bucket.members), label: "Member access events", stack: "events", color: colors[0] },
-                { data: insights.trend.map((bucket) => bucket.guests), label: "Guest sign-ins", stack: "events", color: colors[1] },
+                { data: focusChartValues(insights.trend.map((bucket) => bucket.members), selectedBucketIndex), label: "Member access events", stack: "events", color: colors[0] },
+                { data: focusChartValues(insights.trend.map((bucket) => bucket.guests), selectedBucketIndex), label: "Guest sign-ins", stack: "events", color: colors[1] },
               ]}
-              onItemClick={(_, item) => { const bucket = insights.trend[item.dataIndex]; setSelection({ kind: "bucket", startDate: bucket.startDate, endDate: bucket.endDate }); }}
+              onItemClick={(_, item) => { const bucket = insights.trend[item.dataIndex]; if (bucket.total > 0) setSelection({ kind: "bucket", startDate: bucket.startDate, endDate: bucket.endDate }); }}
             />
           </div></div> : <EmptyChart />}
           <label className="reporting-visual-drill-control">Inspect dates
             <select value={validSelection?.kind === "bucket" ? validSelection.startDate : ""} onChange={(event) => {
               const bucket = insights.trend.find((item) => item.startDate === event.target.value);
               setSelection(bucket ? { kind: "bucket", startDate: bucket.startDate, endDate: bucket.endDate } : null);
-            }}><option value="">All dates</option>{insights.trend.map((bucket) => <option key={bucket.startDate} value={bucket.startDate}>{formatDate(bucket.startDate)}{bucket.startDate !== bucket.endDate ? ` to ${formatDate(bucket.endDate)}` : ""} · {bucket.total}</option>)}</select>
+            }}><option value="">All dates</option>{insights.trend.filter((bucket) => bucket.total > 0).map((bucket) => <option key={bucket.startDate} value={bucket.startDate}>{formatDate(bucket.startDate)}{bucket.startDate !== bucket.endDate ? ` to ${formatDate(bucket.endDate)}` : ""} · {bucket.total}</option>)}</select>
           </label>
-          <p className="reporting-visual-hint">Select a bar to inspect and export its underlying events.</p>
+          {selectedBucket ? <div className="reporting-visual-selection" role="status">
+            <strong>{selectedRows.length} events · {selectionLabel}</strong>
+            <span>{selectedRows.filter((row) => row.type === "Member").length} member access events · {selectedRows.filter((row) => row.type === "Guest").length} guest sign-ins</span>
+            <Button size="sm" variant="secondary" onClick={() => void exportRows(`access-events-${selectedBucket}.csv`, buildCsv({ ...data, rows: selectedRows }), setExportError)}>Export these events</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelection(null)}>Show all dates</Button>
+          </div> : <p className="reporting-visual-hint">Select a bar or date to focus the chart and inspect its events.</p>}
+          {selectedBucket && exportError ? <p className="usage-error" role="alert">{exportError}</p> : null}
         </ChartPanel>
         <ChartPanel title="Activity by weekday" subtitle="Total recorded access events for each UTC weekday">
-          {data.total ? <BarChart height={300} hideLegend
+          {data.total ? <BarChart height={240} hideLegend
             xAxis={[{ data: insights.weekdays.map((day) => day.label), scaleType: "band" }]}
-            series={[{ data: insights.weekdays.map((day) => day.total), label: "Access events", color: colors[0] }]}
-            onItemClick={(_, item) => setSelection({ kind: "weekday", day: item.dataIndex })}
+            series={[{ data: focusChartValues(insights.weekdays.map((day) => day.total), selectedWeekday), label: "Access events", color: colors[0] }]}
+            onItemClick={(_, item) => { if (insights.weekdays[item.dataIndex].total > 0) setSelection({ kind: "weekday", day: item.dataIndex }); }}
           /> : <EmptyChart />}
           <label className="reporting-visual-drill-control">Inspect weekday
             <select value={validSelection?.kind === "weekday" ? validSelection.day : ""} onChange={(event) => setSelection(event.target.value === "" ? null : { kind: "weekday", day: Number(event.target.value) })}>
-              <option value="">All weekdays</option>{insights.weekdays.map((day) => <option key={day.day} value={day.day}>{day.label} · {day.total}</option>)}
+              <option value="">All weekdays</option>{insights.weekdays.filter((day) => day.total > 0).map((day) => <option key={day.day} value={day.day}>{day.label} · {day.total}</option>)}
             </select>
           </label>
-          <p className="reporting-visual-hint">Select a day to inspect its events.</p>
+          {selectedWeekday !== null ? <div className="reporting-visual-selection" role="status">
+            <strong>{selectedRows.length} events · {selectionLabel}</strong>
+            <span>Across {data.daily.length} UTC dates in the selected range.</span>
+            <Button size="sm" variant="secondary" onClick={() => void exportRows(`access-events-${startDate}-to-${endDate}-${insights.weekdays[selectedWeekday].label}.csv`, buildCsv({ ...data, rows: selectedRows }), setExportError)}>Export these events</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelection(null)}>Show all weekdays</Button>
+          </div> : <p className="reporting-visual-hint">Select a weekday to focus the chart and inspect its events.</p>}
+          {selectedWeekday !== null && exportError ? <p className="usage-error" role="alert">{exportError}</p> : null}
         </ChartPanel>
       </div>
 
       <div className="reporting-visual-grid reporting-visual-grid--secondary">
         <ChartPanel title="Member access methods" subtitle="Member events only; all use the selected date range">
-          {data.members ? <PieChart height={260} hideLegend
-            series={[{ innerRadius: 58, outerRadius: 100, paddingAngle: 2, data: insights.methods.filter((method) => method.count > 0)
-              .map((method, index) => ({ id: method.method, value: method.count, label: method.label, color: colors[index % colors.length] })) }]}
+          {data.members ? <PieChart height={210} hideLegend
+            series={[{ innerRadius: 50, outerRadius: 85, paddingAngle: 2, data: insights.methods
+              .map((method, index) => ({ id: method.method, value: method.count, label: method.label, color: colors[index % colors.length] }))
+              .filter((method) => method.value > 0) }]}
           /> : <EmptyChart />}
           <ul className="reporting-visual-legend">{insights.methods.map((method) =>
             <li key={method.method}>{method.label} <strong>{method.count}</strong></li>)}</ul>
@@ -179,20 +199,26 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
             <Kpi label="Guest visits" value={visitInsights.guests} detail="Guest sign-ins in the selected period" />
           </div>
           <ChartPanel title="When recorded visits start" subtitle="UTC hour of the first check-in for each member visit, plus guest sign-ins">
-            {visits.total ? <div className="reporting-visual-chart-scroll"><div style={{ minWidth: 680 }}><BarChart height={280}
+            {visits.total ? <div className="reporting-visual-chart-scroll"><div style={{ minWidth: 680 }}><BarChart height={230}
               xAxis={[{ data: visitInsights.hours.map((hour) => hour.label), scaleType: "band", tickLabelInterval: (_, index) => index % 2 === 0 }]}
               series={[
-                { data: visitInsights.hours.map((hour) => hour.members), label: "Member visits", stack: "visits", color: colors[0] },
-                { data: visitInsights.hours.map((hour) => hour.guests), label: "Guest visits", stack: "visits", color: colors[1] },
+                { data: focusChartValues(visitInsights.hours.map((hour) => hour.members), visitHour), label: "Member visits", stack: "visits", color: colors[0] },
+                { data: focusChartValues(visitInsights.hours.map((hour) => hour.guests), visitHour), label: "Guest visits", stack: "visits", color: colors[1] },
               ]}
-              onItemClick={(_, item) => setVisitHour(item.dataIndex)}
+              onItemClick={(_, item) => { if (visitInsights.hours[item.dataIndex].members + visitInsights.hours[item.dataIndex].guests > 0) setVisitHour(item.dataIndex); }}
             /></div></div> : <EmptyChart />}
             <label className="reporting-visual-drill-control">Inspect hour
               <select value={visitHour ?? ""} onChange={(event) => setVisitHour(event.target.value === "" ? null : Number(event.target.value))}>
-                <option value="">All hours</option>{visitInsights.hours.map((hour) => <option key={hour.hour} value={hour.hour}>{hour.label} · {hour.members + hour.guests}</option>)}
+                <option value="">All hours</option>{visitInsights.hours.filter((hour) => hour.members + hour.guests > 0).map((hour) => <option key={hour.hour} value={hour.hour}>{hour.label} · {hour.members + hour.guests}</option>)}
               </select>
             </label>
-            <p className="reporting-visual-hint">Select an hour to inspect those visits below.</p>
+            {visitHour !== null ? <div className="reporting-visual-selection" role="status">
+              <strong>{selectedVisits.length} visits starting at {String(visitHour).padStart(2, "0")}:00 UTC</strong>
+              <span>{selectedVisits.filter((row) => row.loginMethod !== "guest").length} member visits · {selectedVisits.filter((row) => row.loginMethod === "guest").length} guest visits</span>
+              <Button size="sm" variant="secondary" onClick={() => void exportRows(`range-visits-${startDate}-to-${endDate}-hour-${visitHour}.csv`, buildRangeVisitCsv(selectedVisits), setVisitExportError)}>Export these visits</Button>
+              <Button size="sm" variant="ghost" onClick={() => setVisitHour(null)}>Show all hours</Button>
+            </div> : <p className="reporting-visual-hint">Select an hour to focus the chart and inspect its visits.</p>}
+            {visitHour !== null && visitExportError ? <p className="usage-error" role="alert">{visitExportError}</p> : null}
           </ChartPanel>
           <ProfileAccordion title="Visit records and CSV" detail={visitHour === null ? `${visits.total} visits` : `${selectedVisits.length} visits starting at ${String(visitHour).padStart(2, "0")}:00 UTC`}>
             {visitHour !== null ? <Button variant="ghost" onClick={() => setVisitHour(null)}>Show all hours</Button> : null}
@@ -216,20 +242,26 @@ export function ReportingVisualDashboard({ state }: { state: ReportingState }) {
             <Kpi label="Beginners conversion" value={`${memberJourneyData.summary.beginnersCourseConversionRate}%`} detail="Beginners course cohort, including taster route" />
           </div>
           <ChartPanel title="Started versus converted" subtitle="Grouped by original programme in this cohort">
-            {memberJourneyData.rows.length ? <BarChart height={270}
+            {memberJourneyData.rows.length ? <BarChart height={230}
               xAxis={[{ data: journeyGroups.map((group) => group.label), scaleType: "band" }]}
               series={[
-                { data: journeyGroups.map((group) => group.started), label: "Started", color: colors[0] },
-                { data: journeyGroups.map((group) => group.converted), label: "Converted", color: colors[2] },
+                { data: focusChartValues(journeyGroups.map((group) => group.started), selectedOrigin ? journeyGroups.findIndex((group) => group.key === selectedOrigin) : null), label: "Started", color: colors[0] },
+                { data: focusChartValues(journeyGroups.map((group) => group.converted), selectedOrigin ? journeyGroups.findIndex((group) => group.key === selectedOrigin) : null), label: "Converted", color: colors[2] },
               ]}
-              onItemClick={(_, item) => setSelectedOrigin(journeyGroups[item.dataIndex].key)}
+              onItemClick={(_, item) => { if (journeyGroups[item.dataIndex].started > 0) setSelectedOrigin(journeyGroups[item.dataIndex].key); }}
             /> : <EmptyChart />}
             <label className="reporting-visual-drill-control">Inspect programme
               <select value={selectedOrigin ?? ""} onChange={(event) => setSelectedOrigin(event.target.value || null)}>
-                <option value="">All programmes</option>{journeyGroups.map((group) => <option key={group.key} value={group.key}>{group.label} · {group.started} started</option>)}
+                <option value="">All programmes</option>{journeyGroups.filter((group) => group.started > 0).map((group) => <option key={group.key} value={group.key}>{group.label} · {group.started} started</option>)}
               </select>
             </label>
-            <p className="reporting-visual-hint">Select a programme to inspect its participants.</p>
+            {selectedOrigin ? <div className="reporting-visual-selection" role="status">
+              <strong>{selectedJourneys.length} starters · {journeyGroups.find((group) => group.key === selectedOrigin)?.label}</strong>
+              <span>{selectedJourneyConversions} recorded member conversions in this cohort.</span>
+              <Button size="sm" variant="secondary" onClick={() => void exportRows(`programme-journeys-${startDate}-to-${endDate}-${selectedOrigin}.csv`, buildMemberJourneyCsv(selectedJourneys), setJourneyExportError)}>Export this cohort</Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedOrigin(null)}>Show all programmes</Button>
+            </div> : <p className="reporting-visual-hint">Select a programme to focus the chart and inspect its participants.</p>}
+            {selectedOrigin && journeyExportError ? <p className="usage-error" role="alert">{journeyExportError}</p> : null}
           </ChartPanel>
           <ProfileAccordion title="Programme cohort and CSV" detail={`${selectedJourneys.length} participant${selectedJourneys.length === 1 ? "" : "s"}`}>
             {selectedOrigin ? <Button variant="ghost" onClick={() => setSelectedOrigin(null)}>Show all programmes</Button> : null}

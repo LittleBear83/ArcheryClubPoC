@@ -3,6 +3,10 @@ import type { AttendanceReport, AttendanceReportRow, MemberJourneyReport, RangeV
 export type TrendBucket = { startDate: string; endDate: string; label: string; members: number; guests: number; total: number };
 export type AccessSelection = { kind: "bucket"; startDate: string; endDate: string } | { kind: "weekday"; day: number } | null;
 
+export function focusChartValues(values: number[], selectedIndex: number | null) {
+  return selectedIndex === null ? values : values.map((value, index) => index === selectedIndex ? value : 0);
+}
+
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export function weekdayIndex(date: string) {

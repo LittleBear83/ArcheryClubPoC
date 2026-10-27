@@ -15,6 +15,7 @@ import {
   EQUIPMENT_AVAILABILITY_OPTIONS,
   getEquipmentAvailabilityLabel,
   getEquipmentDetailsLabel,
+  getEquipmentDecommissionedDateLabel,
   getEquipmentDueLabel,
   getEquipmentLoanDateLabel,
   getEquipmentLocationLabel,
@@ -31,6 +32,7 @@ import type { useEquipmentPageState } from "./useEquipmentPageState";
 type EquipmentPageState = ReturnType<typeof useEquipmentPageState>;
 
 export function EquipmentMobileView({
+  activeItems,
   analytics,
   availabilityCounts,
   availabilityFilter,
@@ -45,6 +47,7 @@ export function EquipmentMobileView({
   cupboardLabel,
   cupboardOptions,
   decommissionMutation,
+  decommissionedItems,
   decommissionReason,
   editForm,
   editingItem,
@@ -63,7 +66,6 @@ export function EquipmentMobileView({
   handleUpdateStorage,
   inventoryFilter,
   inventorySort,
-  items,
   loanedItems,
   members,
   message,
@@ -255,9 +257,9 @@ export function EquipmentMobileView({
             label="Selected equipment"
             value={selectedItemId}
             onChange={(event) => setSelectedItemId(event.target.value)}
-            disabled={items.length === 0}
+            disabled={activeItems.length === 0}
           >
-            {items.map((item) => (
+            {activeItems.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.label} | {item.status} | {getEquipmentLocationLabel(item)}
               </option>
@@ -635,7 +637,7 @@ export function EquipmentMobileView({
       <SectionPanel
         className="profile-form"
         title={`Inventory Register (${filteredInventoryItems.length})`}
-        description="Search and review the full equipment list."
+        description="Search and review equipment currently in service."
         collapsible
         defaultCollapsed
         toggleStyle="accordion"
@@ -705,6 +707,32 @@ export function EquipmentMobileView({
         ) : (
           <MobileEmptyState message="No equipment matches the current filter." />
         )}
+      </SectionPanel>
+
+      <SectionPanel
+        className="profile-form"
+        title={`Decommissioned Equipment (${decommissionedItems.length})`}
+        description="Retired items remain visible for 18 months after decommissioning."
+        collapsible
+        defaultCollapsed
+        toggleStyle="accordion"
+      >
+        {decommissionedItems.length ? (
+          <MobileCardList className="equipment-mobile-inventory-list">
+            {decommissionedItems.map((item) => (
+              <article key={item.id} className="equipment-inventory-card">
+                <p className="profile-mobile-card-title">{getEquipmentTypeDisplayLabel(item)}</p>
+                <MobileKeyValueList items={[
+                  { label: "Reference", value: getEquipmentReferenceLabel(item) },
+                  { label: "Details", value: getEquipmentDetailsLabel(item) },
+                  { label: "Decommissioned", value: getEquipmentDecommissionedDateLabel(item) },
+                  { label: "By", value: item.decommissionedBy || "-" },
+                  { label: "Reason", value: item.decommissionReason || "-" },
+                ]} />
+              </article>
+            ))}
+          </MobileCardList>
+        ) : <MobileEmptyState message="No decommissioned equipment within the retention period." />}
       </SectionPanel>
 
       <Modal

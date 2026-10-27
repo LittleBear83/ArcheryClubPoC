@@ -32,7 +32,7 @@ function harness({ itemType = "riser", contents = [], loans = [], items = [] } =
       patch: (path, fn) => routes.set(`PATCH ${path}`, fn),
     },
     actorHasPermission: () => true,
-    buildEquipmentCaseResponse: () => ({}),
+    buildEquipmentCaseResponse: (row) => row.caseResponse ?? { contents: [] },
     buildEquipmentItemResponse: (row) => row.response ?? ({ id: row.id, label: `Item ${row.id}`, status: "active", type: "riser", typeLabel: "Riser" }),
     buildEquipmentMaps: async () => ({ items, loans, openLoanByItemId: new Map() }),
     DEFAULT_EQUIPMENT_CUPBOARD_LABEL: "Main Cupboard",
@@ -135,4 +135,34 @@ test("equipment metrics expose arrow markings and descriptions for used and unus
   assert.equal(payload.analytics.mostUsedItems[0].referenceLabel, 'A2 · 6 arrows · 28"');
   assert.equal(payload.analytics.neverLoanedItems[0].referenceLabel, 'Unmarked · 6 arrows · 28" | ID 11');
   assert.equal(payload.analytics.overdueLoans[0].itemLabel, "Arrows A2");
+});
+
+test("dashboard omits retired equipment after 18 months without changing stored records", async () => {
+  const items = [
+    { id: 1, equipment_type: "riser", status: "active", response: { id: 1, status: "active", type: "riser" } },
+    { id: 2, equipment_type: "riser", status: "decommissioned", decommissioned_at_date: "2020-01-01", response: { id: 2, status: "decommissioned", type: "riser" } },
+    { id: 3, equipment_type: "riser", status: "decommissioned", decommissioned_at_date: today(), response: { id: 3, status: "decommissioned", type: "riser" } },
+    { id: 4, equipment_type: "riser", status: "decommissioned", response: { id: 4, status: "decommissioned", type: "riser" } },
+  ];
+  const { payload } = await harness({ items }).request("GET", "/api/equipment/dashboard");
+  assert.deepEqual(payload.items.map((item) => item.id), [1, 3, 4]);
+  assert.equal(items.length, 4);
+});
+
+test("active case contents do not expose retired equipment", async () => {
+  const { payload } = await harness({
+    items: [{
+      id: 20, equipment_type: "case", status: "active",
+      response: { id: 20, type: "case", status: "active" },
+      caseResponse: {
+        id: 20,
+        contents: [
+          { id: 21, status: "active" },
+          { id: 22, status: "decommissioned", decommissionedAt: today() },
+          { id: 23, status: "decommissioned", decommissionedAt: "2020-01-01" },
+        ],
+      },
+    }],
+  }).request("GET", "/api/equipment/dashboard");
+  assert.deepEqual(payload.cases[0].contents.map((item) => item.id), [21]);
 });

@@ -38,11 +38,10 @@ export function getEquipmentLocationLabel(item) {
 }
 
 export const EQUIPMENT_AVAILABILITY_OPTIONS = [
-  { value: "all", label: "All statuses" },
+  { value: "all", label: "All current statuses" },
   { value: "available-at-range", label: "Available at Range" },
   { value: "reserved-at-range", label: "Reserved at Range" },
   { value: "on-loan", label: "On Loan" },
-  { value: "decommissioned", label: "Decommissioned" },
 ];
 
 export function getEquipmentAvailabilityLabel(item) {
@@ -86,6 +85,10 @@ export function getEquipmentReferenceLabel(item) {
 
 export function getEquipmentDetailsLabel(item) {
   return item.type === "arrows" ? getArrowDescription(item) : item.detailSummary || "-";
+}
+
+export function getEquipmentDecommissionedDateLabel(item) {
+  return item.decommissionedAt ? formatDate(item.decommissionedAt.slice(0, 10)) : "Date not recorded";
 }
 
 export function getEquipmentRegisterReference(item) {

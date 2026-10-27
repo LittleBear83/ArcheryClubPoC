@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { hasPermission } from "../../../utils/userProfile";
 import { compareArrowReferences } from "../../../../shared/equipmentArrowDisplay.js";
+import { isEquipmentWithinFrontendRetention, partitionEquipmentRegisterItems } from "../../../../shared/equipmentRetention.js";
 import {
   buildEquipmentFormFromItem,
   CASE_ASSIGNMENT_FIELDS,
@@ -75,8 +76,12 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     canManageEquipmentStorageLocations: false,
   };
   const items = useMemo(
-    () => equipmentQuery.data?.items ?? [],
+    () => (equipmentQuery.data?.items ?? []).filter((item) => isEquipmentWithinFrontendRetention(item)),
     [equipmentQuery.data?.items],
+  );
+  const { current: currentInventoryItems, decommissioned: decommissionedItems } = useMemo(
+    () => partitionEquipmentRegisterItems(items),
+    [items],
   );
   const members = useMemo(
     () => equipmentQuery.data?.members ?? [],
@@ -132,10 +137,10 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   );
 
   useEffect(() => {
-    if (!selectedItemId && items.length > 0) {
-      setSelectedItemId(String(items[0].id));
+    if (!activeItems.some((item) => String(item.id) === selectedItemId)) {
+      setSelectedItemId(activeItems.length ? String(activeItems[0].id) : "");
     }
-  }, [items, selectedItemId]);
+  }, [activeItems, selectedItemId]);
 
   useEffect(() => {
     if (
@@ -216,7 +221,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
 
   const filteredInventoryItems = useMemo(() => {
     const normalizedFilter = inventoryFilter.trim().toLowerCase();
-    const rows = items.filter((item) => {
+    const rows = currentInventoryItems.filter((item) => {
       if (availabilityFilter !== "all" && item.availabilityStatus !== availabilityFilter) return false;
       if (!normalizedFilter) {
         return true;
@@ -273,7 +278,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     });
 
     return sortedRows;
-  }, [items, availabilityFilter, inventoryFilter, inventorySort]);
+  }, [currentInventoryItems, availabilityFilter, inventoryFilter, inventorySort]);
 
   const availabilityCounts = useMemo(() => ({
     available: items.filter((item) => item.availabilityStatus === "available-at-range").length,
@@ -721,6 +726,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
   );
 
   return {
+    activeItems,
     activeCaseModal,
     addEquipmentMutation,
     availabilityCounts,
@@ -739,6 +745,7 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     cupboardOptions,
     currentUserProfile,
     decommissionMutation,
+    decommissionedItems,
     decommissionReason,
     equipmentQuery,
     equipmentTypeOptions,

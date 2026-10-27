@@ -1,4 +1,5 @@
 import { getArrowDescription, getArrowReference } from "../../../shared/equipmentArrowDisplay.js";
+import { isEquipmentWithinFrontendRetention } from "../../../shared/equipmentRetention.js";
 
 export function registerEquipmentRoutes({
   actorHasPermission,
@@ -342,9 +343,18 @@ export function registerEquipmentRoutes({
 
     const maps = await buildEquipmentMaps();
     const cases = maps.items
-      .filter((item) => item.equipment_type === EQUIPMENT_TYPES.CASE)
-      .map((item) => buildEquipmentCaseResponse(item, maps));
-    const items = maps.items.map((item) => buildEquipmentItemResponse(item, maps));
+      .filter((item) => item.equipment_type === EQUIPMENT_TYPES.CASE && item.status === "active")
+      .map((item) => {
+        const response = buildEquipmentCaseResponse(item, maps);
+        return {
+          ...response,
+          contents: (response.contents ?? []).filter((content) =>
+            content.status === "active" && isEquipmentWithinFrontendRetention(content)),
+        };
+      });
+    const items = maps.items
+      .filter((item) => isEquipmentWithinFrontendRetention(item))
+      .map((item) => buildEquipmentItemResponse(item, maps));
     const analytics = buildEquipmentAnalytics(items, maps.loans);
 
     res.json({

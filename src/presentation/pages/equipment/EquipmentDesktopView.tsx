@@ -12,6 +12,7 @@ import {
   EQUIPMENT_AVAILABILITY_OPTIONS,
   getEquipmentAvailabilityLabel,
   getEquipmentDetailsLabel,
+  getEquipmentDecommissionedDateLabel,
   getEquipmentDueLabel,
   getEquipmentLoanDateLabel,
   getEquipmentLocationLabel,
@@ -26,6 +27,7 @@ import type { useEquipmentPageState } from "./useEquipmentPageState";
 type EquipmentPageState = ReturnType<typeof useEquipmentPageState>;
 
 export function EquipmentDesktopView({
+  activeItems,
   analytics,
   availabilityCounts,
   availabilityFilter,
@@ -40,6 +42,7 @@ export function EquipmentDesktopView({
   cupboardLabel,
   cupboardOptions,
   decommissionMutation,
+  decommissionedItems,
   decommissionReason,
   editForm,
   editingItem,
@@ -57,7 +60,6 @@ export function EquipmentDesktopView({
   handleReturnEquipment,
   handleUpdateStorage,
   inventoryFilter,
-  items,
   loanedItems,
   members,
   message,
@@ -244,9 +246,9 @@ export function EquipmentDesktopView({
                 <select
                   value={selectedItemId}
                   onChange={(event) => setSelectedItemId(event.target.value)}
-                  disabled={items.length === 0}
+                  disabled={activeItems.length === 0}
                 >
-                  {items.map((item) => (
+                  {activeItems.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.label} | {item.status} | {getEquipmentLocationLabel(item)}
                     </option>
@@ -615,7 +617,7 @@ export function EquipmentDesktopView({
       <SectionPanel
         className="profile-form"
         title="Inventory Register"
-        description="Search and review the full equipment list."
+        description="Search and review equipment currently in service."
         collapsible
         defaultCollapsed
         toggleStyle="accordion"
@@ -724,6 +726,42 @@ export function EquipmentDesktopView({
                   <td colSpan={9}>No equipment matches the current filter.</td>
                 </tr>
               )}
+            </tbody>
+          </table>
+        </div>
+      </SectionPanel>
+
+      <SectionPanel
+        className="profile-form"
+        title={`Decommissioned Equipment (${decommissionedItems.length})`}
+        description="Retired items remain visible for 18 months after decommissioning."
+        collapsible
+        defaultCollapsed
+        toggleStyle="accordion"
+      >
+        <div className="equipment-inventory-table-wrap">
+          <table className="equipment-inventory-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Reference Number</th>
+                <th>Details</th>
+                <th>Decommissioned</th>
+                <th>By</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {decommissionedItems.length ? decommissionedItems.map((item) => (
+                <tr key={item.id}>
+                  <td>{getEquipmentTypeDisplayLabel(item)}</td>
+                  <td>{getEquipmentRegisterReference(item)}</td>
+                  <td>{getEquipmentDetailsLabel(item)}</td>
+                  <td>{getEquipmentDecommissionedDateLabel(item)}</td>
+                  <td>{item.decommissionedBy || "-"}</td>
+                  <td>{item.decommissionReason || "-"}</td>
+                </tr>
+              )) : <tr><td colSpan={6}>No decommissioned equipment within the retention period.</td></tr>}
             </tbody>
           </table>
         </div>

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getEquipmentDetailsLabel,
+  getEquipmentDecommissionedDateLabel,
   getEquipmentReferenceLabel,
   getEquipmentRegisterReference,
   getEquipmentSearchText,
@@ -28,4 +29,9 @@ test("other equipment retains its current labels", () => {
   assert.equal(getEquipmentRegisterReference(item), "R1");
   assert.equal(getEquipmentReferenceLabel(item), 'R1 | 25" | left-handed');
   assert.equal(getEquipmentDetailsLabel(item), '25" | left-handed');
+});
+
+test("retirement date is readable even for legacy records without one", () => {
+  assert.equal(getEquipmentDecommissionedDateLabel({ decommissionedAt: "2026-10-27 09:00:00" }), "27/10/2026");
+  assert.equal(getEquipmentDecommissionedDateLabel({ decommissionedAt: "" }), "Date not recorded");
 });

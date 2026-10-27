@@ -177,6 +177,11 @@ For the blocked sample, book `DEV-RELEASE-RISER-BLOCKED` back into case
 `DEV-RELEASE-BLOCKED-01` in Equipment Management before releasing Chris Sample's
 reservation.
 
+The equipment register separates current and decommissioned items. Decommissioned
+items appear in a collapsed section for 18 calendar months, then disappear from
+equipment tables. Database records and audit history remain intact. Legacy items
+without a decommission date remain visible because their retirement age is unknown.
+
 For the Range visit history report, run `npm run seed:range-visits`. This adds
 member RFID/mobile check-ins and clearly labelled sample guest sign-ins across
 the current month, last 30 and 90 days, and current year. It also adds a repeat

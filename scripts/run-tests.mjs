@@ -8,6 +8,7 @@ const root = process.cwd();
 await import("../shared/attendancePolicy.test.js");
 await import("../shared/clubDate.test.js");
 await import("../shared/equipmentArrowDisplay.test.js");
+await import("../shared/equipmentRetention.test.js");
 await import("../shared/handicapAllowance.test.js");
 await import("../shared/membershipClassification.test.js");
 await import("../src/utils/userProfile.test.js");
@@ -179,6 +180,7 @@ await copyFile(
 await mkdir(path.join(outDir, "shared"), { recursive: true });
 await copyFile(path.join(root, "shared/handicapAllowance.js"), path.join(outDir, "shared/handicapAllowance.js"));
 await copyFile(path.join(root, "shared/equipmentArrowDisplay.js"), path.join(outDir, "shared/equipmentArrowDisplay.js"));
+await copyFile(path.join(root, "shared/equipmentRetention.js"), path.join(outDir, "shared/equipmentRetention.js"));
 await copyFile(path.join(root, "src/presentation/pages/records/handicapLookup.js"),
   path.join(outDir, "src/presentation/pages/records/handicapLookup.js"));
 

@@ -86,7 +86,7 @@ export function EquipmentAddDetailsFields({
           />
 
           <label>
-            Arrow initial or number
+            Arrow marking / reference
             <input
               value={addForm.arrowIdentifier}
               onChange={updateAddFormField("arrowIdentifier")}

@@ -20,6 +20,7 @@ import {
   getEquipmentLocationLabel,
   getEquipmentMemberLabel,
   getEquipmentReservationLabel,
+  getEquipmentRegisterReference,
   getEquipmentReferenceLabel,
   getEquipmentTypeDisplayLabel,
   INVENTORY_SORT_OPTIONS,
@@ -620,13 +621,7 @@ export function EquipmentMobileView({
                         <td>{field.label}</td>
                         <td>{item ? getEquipmentTypeDisplayLabel(item) : "Missing"}</td>
                         <td>
-                          {item
-                            ? item.number || (
-                              item.type === "arrows"
-                                ? `${item.arrowQuantity} x ${item.arrowLength}"`
-                                : "-"
-                            )
-                            : "-"}
+                          {item ? getEquipmentRegisterReference(item) : "-"}
                         </td>
                         <td>{item ? getEquipmentDetailsLabel(item) : "No item currently assigned"}</td>
                       </tr>

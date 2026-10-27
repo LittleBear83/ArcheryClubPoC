@@ -1,4 +1,5 @@
 import { formatDate, formatShortDateTime } from "../../../utils/dateTime";
+import { getArrowDescription, getArrowReference, getArrowSearchText } from "../../../../shared/equipmentArrowDisplay.js";
 
 export function getEquipmentDueLabel(item) {
   const date = item.expectedReturnDate ?? item.currentLoan?.expectedReturnDate;
@@ -73,7 +74,7 @@ export function getEquipmentLoanDateLabel(item) {
 
 export function getEquipmentReferenceLabel(item) {
   if (item.type === "arrows") {
-    return `${item.arrowQuantity} x ${item.arrowLength}"`;
+    return getArrowReference(item);
   }
 
   if (item.number && item.detailSummary) {
@@ -84,7 +85,17 @@ export function getEquipmentReferenceLabel(item) {
 }
 
 export function getEquipmentDetailsLabel(item) {
-  return item.detailSummary || "-";
+  return item.type === "arrows" ? getArrowDescription(item) : item.detailSummary || "-";
+}
+
+export function getEquipmentRegisterReference(item) {
+  return item.type === "arrows" ? getArrowReference(item) : item.number || "-";
+}
+
+export function getEquipmentSearchText(item) {
+  return item.type === "arrows"
+    ? getArrowSearchText(item)
+    : [getEquipmentReferenceLabel(item), getEquipmentDetailsLabel(item), item.number].join(" ");
 }
 
 export function getEquipmentTypeDisplayLabel(item) {

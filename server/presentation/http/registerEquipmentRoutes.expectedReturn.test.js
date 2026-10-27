@@ -33,7 +33,7 @@ function harness({ itemType = "riser", contents = [], loans = [], items = [] } =
     },
     actorHasPermission: () => true,
     buildEquipmentCaseResponse: () => ({}),
-    buildEquipmentItemResponse: (row) => ({ id: row.id, label: `Item ${row.id}`, status: "active", type: "riser", typeLabel: "Riser" }),
+    buildEquipmentItemResponse: (row) => row.response ?? ({ id: row.id, label: `Item ${row.id}`, status: "active", type: "riser", typeLabel: "Riser" }),
     buildEquipmentMaps: async () => ({ items, loans, openLoanByItemId: new Map() }),
     DEFAULT_EQUIPMENT_CUPBOARD_LABEL: "Main Cupboard",
     EQUIPMENT_LOCATION_TYPES: { CASE: "case", MEMBER: "member" },
@@ -116,4 +116,23 @@ test("dashboard excludes returned loans and separates overdue from the next 14 d
   assert.equal(payload.analytics.summary.dueWithin14DaysCount, 2);
   assert.deepEqual(payload.analytics.overdueLoans.map((row) => row.id), [1]);
   assert.deepEqual(payload.analytics.dueWithin14DaysLoans.map((row) => row.id), [2, 3]);
+});
+
+test("equipment metrics expose arrow markings and descriptions for used and unused stock", async () => {
+  const arrow = (id, arrowIdentifier) => ({
+    id,
+    equipment_type: "arrows",
+    response: {
+      id, type: "arrows", typeLabel: "Arrows", status: "active",
+      label: `Arrows ${arrowIdentifier || "Unmarked"}`,
+      arrowQuantity: 6, arrowLength: 28, details: { arrowIdentifier },
+    },
+  });
+  const { payload } = await harness({
+    items: [arrow(10, "A2"), arrow(11, "")],
+    loans: [{ id: 1, equipment_item_id: 10, member_username: "borrower", expected_return_date: offsetDate(-1) }],
+  }).request("GET", "/api/equipment/dashboard");
+  assert.equal(payload.analytics.mostUsedItems[0].referenceLabel, 'A2 · 6 arrows · 28"');
+  assert.equal(payload.analytics.neverLoanedItems[0].referenceLabel, 'Unmarked · 6 arrows · 28" | ID 11');
+  assert.equal(payload.analytics.overdueLoans[0].itemLabel, "Arrows A2");
 });

@@ -1,4 +1,5 @@
 import { registerCourseDateCancellationRoutes } from "./presentation/http/registerCourseDateCancellationRoutes.js";
+import { getArrowDescription, getArrowDisplayLabel } from "../shared/equipmentArrowDisplay.js";
 import { registerBeginnersCourseRoutes } from "./presentation/http/registerBeginnersCourseRoutes.js";
 import { registerBeginnersCourseParticipantRoutes } from "./presentation/http/registerBeginnersCourseParticipantRoutes.js";
 import {
@@ -3859,11 +3860,12 @@ function buildEquipmentDisplayLabel(item) {
   }
 
   if (item.equipment_type === EQUIPMENT_TYPES.ARROWS) {
-    const arrowParts = [`${item.arrow_quantity} x ${item.arrow_length}"`, typeLabel];
-    if (details.spine) {
-      arrowParts.push(`Spine ${details.spine}`);
-    }
-    return arrowParts.join(" ");
+    return getArrowDisplayLabel({
+      id: item.id,
+      arrowQuantity: item.arrow_quantity,
+      arrowLength: item.arrow_length,
+      details,
+    });
   }
 
   if (item.item_number) {
@@ -3884,24 +3886,6 @@ function parseEquipmentDetails(detailsJson) {
   } catch {
     return {};
   }
-}
-
-function buildArrowFletchingSummary(details) {
-  const fletchingColours = [
-    details.fletchingColour1,
-    details.fletchingColour2,
-    details.fletchingColour3,
-  ].filter(Boolean);
-
-  if (fletchingColours.length > 0) {
-    return `Fletch ${fletchingColours.join("/")}`;
-  }
-
-  if (details.fletchingColour) {
-    return `Fletch ${details.fletchingColour}`;
-  }
-
-  return "";
 }
 
 function buildEquipmentDetailSummary(item, details) {
@@ -3931,16 +3915,12 @@ function buildEquipmentDetailSummary(item, details) {
     case EQUIPMENT_TYPES.CHEST_GUARD:
       return [details.fitSize, details.handedness].filter(Boolean).join(" | ");
     case EQUIPMENT_TYPES.ARROWS:
-      return [
-        details.arrowMaterial,
-        details.arrowColour,
-        details.arrowIdentifier ? `marked ${details.arrowIdentifier}` : "",
-        buildArrowFletchingSummary(details),
-        details.nockColour ? `Nock ${details.nockColour}` : "",
-        details.spine ? `Spine ${details.spine}` : "",
-      ]
-        .filter(Boolean)
-        .join(" | ");
+      return getArrowDescription({
+        id: item.id,
+        arrowQuantity: item.arrow_quantity,
+        arrowLength: item.arrow_length,
+        details,
+      });
     default:
       return "";
   }

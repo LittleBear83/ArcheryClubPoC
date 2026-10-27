@@ -7,6 +7,7 @@ await import("./check-test-registrations.mjs");
 const root = process.cwd();
 await import("../shared/attendancePolicy.test.js");
 await import("../shared/clubDate.test.js");
+await import("../shared/equipmentArrowDisplay.test.js");
 await import("../shared/handicapAllowance.test.js");
 await import("../shared/membershipClassification.test.js");
 await import("../src/utils/userProfile.test.js");
@@ -99,6 +100,8 @@ const files = [
   "src/presentation/pages/profile/ProfileAccordion.tsx",
   "src/presentation/hooks/useIsMobile.ts",
   "src/utils/dateTime.js",
+  "src/presentation/pages/equipment/equipmentUtils.ts",
+  "src/presentation/pages/equipment/equipmentUtils.test.ts",
   "src/presentation/pages/range-usage/rangeUsageUtils.ts",
   "src/presentation/pages/range-usage/rangeUsageUtils.test.ts",
   "src/api/reportingDashboardApi.ts",
@@ -175,10 +178,12 @@ await copyFile(
 );
 await mkdir(path.join(outDir, "shared"), { recursive: true });
 await copyFile(path.join(root, "shared/handicapAllowance.js"), path.join(outDir, "shared/handicapAllowance.js"));
+await copyFile(path.join(root, "shared/equipmentArrowDisplay.js"), path.join(outDir, "shared/equipmentArrowDisplay.js"));
 await copyFile(path.join(root, "src/presentation/pages/records/handicapLookup.js"),
   path.join(outDir, "src/presentation/pages/records/handicapLookup.js"));
 
 await import(pathToFileURL(path.join(outDir, "src/api/client.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/equipment/equipmentUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/utils/mobileInstall.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/utils/memberClassification.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/home/committeeApprovalSummaryUtils.test.js")));

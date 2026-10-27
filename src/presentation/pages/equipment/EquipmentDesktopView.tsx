@@ -17,6 +17,7 @@ import {
   getEquipmentLocationLabel,
   getEquipmentMemberLabel,
   getEquipmentReservationLabel,
+  getEquipmentRegisterReference,
   getEquipmentTypeDisplayLabel,
 } from "./equipmentUtils";
 import { EquipmentAddDetailsFields } from "./EquipmentAddDetailsFields";
@@ -600,13 +601,7 @@ export function EquipmentDesktopView({
                         <td>{field.label}</td>
                         <td>{item ? getEquipmentTypeDisplayLabel(item) : "Missing"}</td>
                         <td>
-                          {item
-                            ? item.number || (
-                              item.type === "arrows"
-                                ? `${item.arrowQuantity} x ${item.arrowLength}"`
-                                : "-"
-                            )
-                            : "-"}
+                          {item ? getEquipmentRegisterReference(item) : "-"}
                         </td>
                         <td>{item ? getEquipmentDetailsLabel(item) : "No item currently assigned"}</td>
                       </tr>
@@ -714,7 +709,7 @@ export function EquipmentDesktopView({
                     <td>
                       {getEquipmentTypeDisplayLabel(item)}
                     </td>
-                    <td>{item.number || (item.type === "arrows" ? `${item.arrowQuantity} x ${item.arrowLength}"` : "-")}</td>
+                    <td>{getEquipmentRegisterReference(item)}</td>
                     <td>{getEquipmentDetailsLabel(item)}</td>
                     <td>{getEquipmentAvailabilityLabel(item)}</td>
                     <td>{getEquipmentLocationLabel(item)}</td>

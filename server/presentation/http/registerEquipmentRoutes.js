@@ -1,3 +1,5 @@
+import { getArrowDescription, getArrowReference } from "../../../shared/equipmentArrowDisplay.js";
+
 export function registerEquipmentRoutes({
   actorHasPermission,
   app,
@@ -115,7 +117,7 @@ export function registerEquipmentRoutes({
 
   const getEquipmentReferenceLabel = (item) => {
     if (item.type === EQUIPMENT_TYPES.ARROWS) {
-      return `${item.arrowQuantity} x ${item.arrowLength}"`;
+      return getArrowReference(item);
     }
 
     if (item.number && item.detailSummary) {
@@ -201,7 +203,9 @@ export function registerEquipmentRoutes({
         type: stats.item.type,
         typeLabel: stats.item.typeLabel,
         sizeCategory: stats.item.sizeCategory,
-        referenceLabel: getEquipmentReferenceLabel(stats.item),
+        referenceLabel: stats.item.type === EQUIPMENT_TYPES.ARROWS
+          ? `${getArrowReference(stats.item)} · ${getArrowDescription(stats.item)}`
+          : getEquipmentReferenceLabel(stats.item),
         locationLabel: stats.item.currentLocation?.label || "Main Cupboard",
         loanCount: stats.loanCount,
         returnCount: stats.returnCount,

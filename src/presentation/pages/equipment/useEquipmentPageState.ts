@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { hasPermission } from "../../../utils/userProfile";
+import { compareArrowReferences } from "../../../../shared/equipmentArrowDisplay.js";
 import {
   buildEquipmentFormFromItem,
   CASE_ASSIGNMENT_FIELDS,
@@ -10,6 +11,8 @@ import {
   getEquipmentLocationLabel,
   getEquipmentMemberLabel,
   getEquipmentReferenceLabel,
+  getEquipmentRegisterReference,
+  getEquipmentSearchText,
   getEquipmentTypeDisplayLabel,
 } from "./equipmentUtils";
 
@@ -222,12 +225,9 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
       const memberName = getEquipmentMemberLabel(item);
       const loanDate = getEquipmentLoanDateLabel(item);
       const lastAssignedBy = item.lastAssignedBy || "";
-      const details = item.detailSummary || "";
-
       return [
         item.typeLabel,
-        getEquipmentReferenceLabel(item),
-        details,
+        getEquipmentSearchText(item),
         getEquipmentLocationLabel(item),
         memberName,
         getEquipmentReservationLabel(item),
@@ -240,12 +240,14 @@ export function useEquipmentPageState({ currentUserProfile, equipmentCrud }) {
     });
 
     const sortedRows = [...rows].sort((left, right) => {
+      if (inventorySort.column === "reference" && left.type === "arrows" && right.type === "arrows") {
+        const comparison = compareArrowReferences(left, right);
+        return inventorySort.direction === "asc" ? comparison : -comparison;
+      }
       const getSortValue = (item) => {
         switch (inventorySort.column) {
           case "reference":
-            return item.type === "arrows"
-              ? `${item.arrowLength ?? 0}`.padStart(4, "0")
-              : item.number || "";
+            return item.type === "arrows" ? getEquipmentRegisterReference(item) : item.number || "";
           case "location":
             return getEquipmentLocationLabel(item);
           case "member":

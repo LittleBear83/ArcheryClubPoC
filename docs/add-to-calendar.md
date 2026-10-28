@@ -20,3 +20,7 @@ On desktop and on iPhone Safari/PWA and Android Chrome, open **My Events** below
 ## Quick Event Creation follow-up
 
 In a desktop browser, double-click empty and populated day cells, including a date in another month. Confirm Add Event opens with that date. Double-click an event label and the calendar navigation controls to confirm they do not open the form. Single-click a day, then use Add event and confirm its date matches the selection. On iPhone Safari/PWA and Android Chrome, confirm ordinary single-tap navigation still works and Add event uses the selected day. Check that the multiple-date pickers still select dates with a single click or tap. These browser checks remain manual.
+
+## Home shortcut follow-up
+
+On desktop and mobile, select anywhere on **Your Club Events List**. Confirm it opens the existing My Events modal at `/event-calendar?view=my-events`, including when no bookings are listed. Check keyboard focus styling and Enter activation, refresh the URL, use Back while the modal is open, and close it with its close control. Confirm the URL no longer requests the modal after closing and that the card works again on a later visit. These browser checks remain manual.

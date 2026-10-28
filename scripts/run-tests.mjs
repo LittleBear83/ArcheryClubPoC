@@ -120,6 +120,10 @@ const files = [
   "src/presentation/pages/event-calendar/myEvents.test.ts",
   "src/presentation/pages/event-calendar/eventCreationDate.ts",
   "src/presentation/pages/event-calendar/eventCreationDate.test.ts",
+  "src/presentation/pages/event-calendar/myEventsNavigation.ts",
+  "src/presentation/pages/event-calendar/myEventsNavigation.test.ts",
+  "src/presentation/pages/HomeSection.tsx",
+  "src/presentation/pages/HomeSection.myEvents.test.tsx",
   "src/presentation/pages/roles/rolePermissionsUtils.test.ts",
   "src/api/client.ts",
   "src/api/client.test.ts",
@@ -211,6 +215,8 @@ await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/roleP
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/calendarExport.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/myEvents.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/eventCreationDate.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/myEventsNavigation.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/HomeSection.myEvents.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/coachingHubModel.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/courseCoachRequirements.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));

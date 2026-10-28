@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import "./EventCalendarPage.css";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
@@ -16,6 +17,7 @@ import { EventCalendarMobileView } from "./event-calendar/EventCalendarMobileVie
 import { AddToCalendar } from "./event-calendar/AddToCalendar";
 import { MyEventsModal } from "./event-calendar/MyEventsModal";
 import { getMyEvents } from "./event-calendar/myEvents";
+import { clearMyEventsView, isMyEventsView, showMyEventsView } from "./event-calendar/myEventsNavigation";
 import { canQuickCreateEvent, resolveEventCreationDate } from "./event-calendar/eventCreationDate";
 import { coachingCalendarExport, eventCalendarExport, lessonCalendarExport } from "./event-calendar/calendarExport";
 import {
@@ -250,6 +252,7 @@ export function EventCalendarPage({
   onBookingsChanged,
 }: EventCalendarPageProps) {
   const isMobile = useIsMobile();
+  const [searchParams, setSearchParams] = useSearchParams();
   const today = new Date();
   const clubToday = getTodayDateString();
   const [year, setYear] = useState(Number(clubToday.slice(0, 4)));
@@ -278,7 +281,6 @@ export function EventCalendarPage({
     null,
   );
   const [selectedLessonId, setSelectedLessonId] = useState<BeginnersCourseCalendarLesson["id"] | null>(null);
-  const [myEventsOpen, setMyEventsOpen] = useState(false);
   const [myEventsNow, setMyEventsNow] = useState(() => new Date());
   const [cancelEventModalOpen, setCancelEventModalOpen] = useState(false);
   const [cancelEventId, setCancelEventId] = useState<CalendarEvent["id"] | null>(null);
@@ -338,6 +340,7 @@ export function EventCalendarPage({
   );
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const canManageBookings = Boolean(actorUsername);
+  const myEventsOpen = isMyEventsView(searchParams, canManageBookings);
 
   const getEventTypeDetails = (type) =>
     EVENT_TYPE_OPTIONS.find((option) => option.value === type) ??
@@ -1517,8 +1520,8 @@ export function EventCalendarPage({
       )}
 
       <MyEventsModal
-        open={myEventsOpen && canManageBookings}
-        onClose={() => setMyEventsOpen(false)}
+        open={myEventsOpen}
+        onClose={() => setSearchParams((current) => clearMyEventsView(current), { replace: true })}
         items={myEvents}
         loading={eventsQuery.isPending || coachingSessionsQuery.isPending}
         error={myEventsError}
@@ -1563,7 +1566,7 @@ export function EventCalendarPage({
               type="button"
               onClick={() => {
                 setMyEventsNow(new Date());
-                setMyEventsOpen(true);
+                setSearchParams((current) => showMyEventsView(current));
               }}
             >
               My Events

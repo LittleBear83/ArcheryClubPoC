@@ -1,5 +1,7 @@
 import { getGoldenRecordsNightlyDate } from "../../domain/services/goldenRecordsNightlySchedule.js";
 
+const schedulerResourceName = /^projects\/[^/]+\/locations\/[^/]+\/jobs\/([^/]+)$/;
+
 export function registerGoldenRecordsNightlySyncRoute({
   app,
   enabled,
@@ -14,19 +16,25 @@ export function registerGoldenRecordsNightlySyncRoute({
     if (!enabled) return res.status(404).json({ success: false });
     const jobName = req.get("X-CloudScheduler-JobName");
     const scheduleTime = req.get("X-CloudScheduler-ScheduleTime");
+    const expectedShortName = expectedJobName?.match(schedulerResourceName)?.[1];
+    const matchesShortName = Boolean(expectedShortName && jobName === expectedShortName);
     const reject = (reason, message) => {
       logger.warn?.(JSON.stringify({
         severity: "WARNING",
         event: "golden_records.nightly_sync.rejected",
         reason,
         jobNameHeaderPresent: Boolean(jobName),
+        receivedJobNameLength: jobName?.length ?? 0,
+        configuredJobNameLength: expectedJobName?.length ?? 0,
+        receivedJobNameFullyQualified: schedulerResourceName.test(jobName ?? ""),
+        matchesShortJobId: matchesShortName,
         scheduleTimeHeaderPresent: Boolean(scheduleTime),
       }));
       return res.status(403).json({ success: false, message });
     };
 
-    if (!expectedJobName || jobName !== expectedJobName) {
-      return reject(!expectedJobName ? "job_name_not_configured" : !jobName ? "job_name_missing" : "job_name_mismatch", "Unexpected scheduler job.");
+    if (!expectedJobName || !expectedShortName || (jobName !== expectedJobName && !matchesShortName)) {
+      return reject(!expectedJobName ? "job_name_not_configured" : !expectedShortName ? "job_name_invalid_configuration" : !jobName ? "job_name_missing" : "job_name_mismatch", "Unexpected scheduler job.");
     }
 
     const scheduledAtMs = Date.parse(scheduleTime ?? "");

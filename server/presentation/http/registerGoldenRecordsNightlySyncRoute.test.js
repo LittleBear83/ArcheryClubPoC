@@ -33,10 +33,38 @@ test("nightly endpoint is absent on the public service and rejects wrong schedul
   assert.equal(starts, 0);
 });
 
-test("nightly endpoint requires the exact production Scheduler resource name", async () => {
+test("nightly endpoint accepts the configured Scheduler resource or its short job ID", async () => {
   const call = makeRoute({ expectedJobName: JOB_NAME });
   assert.equal((await call(VALID_HEADERS)).code, 200);
-  assert.equal((await call({ ...VALID_HEADERS, "X-CloudScheduler-JobName": "selby-golden-records-nightly" })).code, 403);
+  assert.equal((await call({ ...VALID_HEADERS, "X-CloudScheduler-JobName": "selby-golden-records-nightly" })).code, 200);
+  assert.equal((await makeRoute({ expectedJobName: "unexpected-format" })({ ...VALID_HEADERS, "X-CloudScheduler-JobName": "unexpected-format" })).code, 403);
+  assert.equal((await makeRoute({ expectedJobName: "unexpected-format" })({ ...VALID_HEADERS, "X-CloudScheduler-JobName": "other" })).code, 403);
+  assert.equal((await makeRoute({ expectedJobName: "" })(VALID_HEADERS)).code, 403);
+});
+
+test("missing or malformed job-name configuration never starts a sync", async () => {
+  let starts = 0;
+  const warnings = [];
+  const start = async () => { starts++; };
+  const logger = { warn: (line) => warnings.push(JSON.parse(line)) };
+  assert.equal((await makeRoute({ expectedJobName: "", start, logger })(VALID_HEADERS)).code, 403);
+  assert.equal((await makeRoute({ expectedJobName: "unexpected-format", start, logger })(VALID_HEADERS)).code, 403);
+  assert.deepEqual(warnings.map(({ reason }) => reason), ["job_name_not_configured", "job_name_invalid_configuration"]);
+  assert.equal(starts, 0);
+});
+
+test("nightly endpoint accepts the GMT London slot", async () => {
+  const scheduledDates = [];
+  const scheduleTime = "2026-01-12T01:00:00Z";
+  const call = makeRoute({
+    now: () => Date.parse("2026-01-12T01:01:00Z"),
+    start: async ({ scheduledDate }) => {
+      scheduledDates.push(scheduledDate);
+      return { started: true, completion: Promise.resolve({ state: "completed" }) };
+    },
+  });
+  assert.equal((await call({ ...VALID_HEADERS, "X-CloudScheduler-ScheduleTime": scheduleTime })).code, 200);
+  assert.deepEqual(scheduledDates, ["2026-01-12"]);
 });
 
 test("nightly endpoint parses RFC 3339 schedule times with a nonzero offset", async () => {
@@ -56,6 +84,7 @@ test("nightly endpoint logs safe rejection reasons and header presence", async (
   const cases = [
     [{}, "job_name_missing", false, false],
     [{ "X-CloudScheduler-JobName": "wrong", "X-CloudScheduler-ScheduleTime": SCHEDULE_TIME }, "job_name_mismatch", true, true],
+    [{ ...VALID_HEADERS, "X-CloudScheduler-JobName": "projects/other/locations/europe-west2/jobs/selby-golden-records-nightly" }, "job_name_mismatch", true, true],
     [{ "X-CloudScheduler-JobName": JOB_NAME }, "schedule_time_missing", true, false],
     [{ ...VALID_HEADERS, "X-CloudScheduler-ScheduleTime": "not-a-time" }, "schedule_time_invalid", true, true],
     [{ ...VALID_HEADERS, "X-CloudScheduler-ScheduleTime": "2026-07-11T00:00:00Z" }, "schedule_time_out_of_window", true, true],
@@ -67,11 +96,34 @@ test("nightly endpoint logs safe rejection reasons and header presence", async (
       event: "golden_records.nightly_sync.rejected",
       reason,
       jobNameHeaderPresent,
+      receivedJobNameLength: headers["X-CloudScheduler-JobName"]?.length ?? 0,
+      configuredJobNameLength: JOB_NAME.length,
+      receivedJobNameFullyQualified: headers["X-CloudScheduler-JobName"]?.startsWith("projects/") ?? false,
+      matchesShortJobId: false,
       scheduleTimeHeaderPresent,
     });
     assert.equal(warnings.at(-1).length, 1);
   }
   assert.equal(starts, 0);
+});
+
+test("diagnostic metadata identifies short-name matches without logging header values", async () => {
+  const warnings = [];
+  const call = makeRoute({ logger: { warn: (line) => warnings.push(JSON.parse(line)) } });
+  await call({ ...VALID_HEADERS, "X-CloudScheduler-JobName": "selby-golden-records-nightly", "X-CloudScheduler-ScheduleTime": "invalid" });
+  assert.deepEqual(warnings, [{
+    severity: "WARNING",
+    event: "golden_records.nightly_sync.rejected",
+    reason: "schedule_time_invalid",
+    jobNameHeaderPresent: true,
+    receivedJobNameLength: "selby-golden-records-nightly".length,
+    configuredJobNameLength: JOB_NAME.length,
+    receivedJobNameFullyQualified: false,
+    matchesShortJobId: true,
+    scheduleTimeHeaderPresent: true,
+  }]);
+  assert.equal(JSON.stringify(warnings).includes(JOB_NAME), false);
+  assert.equal(JSON.stringify(warnings).includes("selby-golden-records-nightly"), false);
 });
 
 test("nightly endpoint awaits completion and returns retryable failures", async () => {

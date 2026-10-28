@@ -21,7 +21,7 @@ export function MyEventsModal({ open, onClose, items, loading, error, onRetry }:
     {!loading && !error && items.length === 0 ? <p>You have no upcoming booked events.</p> : null}
     {!loading && items.length > 0 ? <ul className="my-events-list">
       {items.map(({ item }) => <li key={`${item.kind}-${item.id}`} className="my-events-item">
-        <span className="my-events-type">{item.kind === "coaching" ? "Coaching Session" : "Club Event"}</span>
+        <span className="my-events-type">{item.kind === "coaching" ? "Coaching Session" : item.kind === "lesson" ? "Coaching Assignment" : "Club Event"}</span>
         <h4>{item.title}</h4>
         <p>{formatDate(item.date)} · {formatClockTime(item.startTime)} to {formatClockTime(item.endTime)}</p>
         <AddToCalendar item={item} />

@@ -15,7 +15,7 @@ These device and layout checks were not performed in the development environment
 
 ## My Events follow-up
 
-On desktop and on iPhone Safari/PWA and Android Chrome, open **My Events** below the calendar. Check the list and its empty state at narrow widths, use Tab and Escape to navigate and close the modal, and confirm focus returns to the button. Book and leave a club event and a coaching session, then reopen the list to confirm it refreshes. Check that a current event remains listed until its end time. The Apple and Google options in each list entry use the same export controls as event details. These device checks remain manual.
+On desktop and on iPhone Safari/PWA and Android Chrome, open **My Events** using the calendar action buttons or the home shortcut. Check the list and its empty state at narrow widths, use Tab and Escape to navigate and close the modal, and confirm focus returns to the button. Book and leave a club event and a coaching session, then reopen the list to confirm it refreshes. As an assigned coach, check a regular coaching session and a Beginners, Taster or Have a Go lesson, including one without a participant booking. Check that a current event remains listed until its end time. The Apple and Google options in each list entry use the same export controls as event details. These device checks remain manual.
 
 ## Quick Event Creation follow-up
 

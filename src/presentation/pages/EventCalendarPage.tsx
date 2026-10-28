@@ -143,6 +143,10 @@ type CalendarEvent = {
 
 type EventCalendarPageProps = {
   currentUserProfile: UserProfile | null;
+  assignedCoachLessons?: Array<{ id: string | number }>;
+  assignedCoachLessonsLoading?: boolean;
+  assignedCoachLessonsError?: string;
+  onRetryAssignedCoachLessons?: () => void;
   onBookingsChanged?: () => void;
 };
 
@@ -249,6 +253,10 @@ const ALL_CALENDAR_FILTERS: EventCalendarFilterKey[] = [
 
 export function EventCalendarPage({
   currentUserProfile,
+  assignedCoachLessons = [],
+  assignedCoachLessonsLoading = false,
+  assignedCoachLessonsError = "",
+  onRetryAssignedCoachLessons,
   onBookingsChanged,
 }: EventCalendarPageProps) {
   const isMobile = useIsMobile();
@@ -340,6 +348,7 @@ export function EventCalendarPage({
   );
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const canManageBookings = Boolean(actorUsername);
+  const expectsCoachAssignments = currentUserProfile?.meta?.coachingVolunteer === true;
   const myEventsOpen = isMyEventsView(searchParams, canManageBookings);
 
   const getEventTypeDetails = (type) =>
@@ -388,14 +397,23 @@ export function EventCalendarPage({
     () => coachingSessionsQuery.data ?? [],
     [coachingSessionsQuery.data],
   );
+  const beginnersLessons = useMemo(
+    () => beginnersLessonsQuery.data ?? [],
+    [beginnersLessonsQuery.data],
+  );
   const myEvents = useMemo(
     () => getMyEvents(
       events,
       coachingSessions,
       myEventsNow,
       `${window.location.origin}/event-calendar`,
+      {
+        actorUsername,
+        assignedLessonIds: assignedCoachLessons.map((lesson) => lesson.id),
+        lessons: beginnersLessons,
+      },
     ),
-    [events, coachingSessions, myEventsNow],
+    [events, coachingSessions, myEventsNow, actorUsername, assignedCoachLessons, beginnersLessons],
   );
   useEffect(() => {
     if (!myEventsOpen || myEvents.length === 0) return;
@@ -407,14 +425,15 @@ export function EventCalendarPage({
     const timer = window.setTimeout(() => setMyEventsNow(new Date()), delay);
     return () => window.clearTimeout(timer);
   }, [myEventsOpen, myEvents]);
-  const myEventsError = [eventsQuery.error, coachingSessionsQuery.error]
+  const myEventsError = [
+    eventsQuery.error,
+    coachingSessionsQuery.error,
+    expectsCoachAssignments ? beginnersLessonsQuery.error : null,
+  ]
     .filter((error): error is Error => error instanceof Error)
     .map((error) => error.message)
+    .concat(expectsCoachAssignments && assignedCoachLessonsError ? [assignedCoachLessonsError] : [])
     .join(" ");
-  const beginnersLessons = useMemo(
-    () => beginnersLessonsQuery.data ?? [],
-    [beginnersLessonsQuery.data],
-  );
   const calendarLoadError =
     eventsQuery.error instanceof Error
       ? eventsQuery.error.message
@@ -1523,10 +1542,14 @@ export function EventCalendarPage({
         open={myEventsOpen}
         onClose={() => setSearchParams((current) => clearMyEventsView(current), { replace: true })}
         items={myEvents}
-        loading={eventsQuery.isPending || coachingSessionsQuery.isPending}
+        loading={eventsQuery.isPending || coachingSessionsQuery.isPending || (expectsCoachAssignments && (beginnersLessonsQuery.isPending || assignedCoachLessonsLoading))}
         error={myEventsError}
         onRetry={() => {
           void Promise.all([eventsQuery.refetch(), coachingSessionsQuery.refetch()]);
+          if (expectsCoachAssignments) {
+            void beginnersLessonsQuery.refetch();
+            onRetryAssignedCoachLessons?.();
+          }
         }}
       />
 

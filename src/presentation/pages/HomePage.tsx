@@ -576,11 +576,12 @@ export function HomePage({
     queryFn: fetchRangeMembers,
   });
 
-  const { data: homeActivity } = useQuery({
+  const homeActivityQuery = useQuery({
     queryKey: homeQueryKeys.activity(actorUsername),
     queryFn: () => fetchHomeActivity(actorUsername),
     enabled: Boolean(actorUsername),
   });
+  const homeActivity = homeActivityQuery.data;
 
   const { data: adminTournamentWarnings = [] } = useQuery({
     queryKey: homeQueryKeys.adminWarnings(actorUsername),
@@ -899,6 +900,10 @@ export function HomePage({
                 "event-calendar",
                 <EventCalendarPage
                   currentUserProfile={currentUserProfile}
+                  assignedCoachLessons={homeActivity?.beginnerCoachAssignments ?? []}
+                  assignedCoachLessonsLoading={homeActivityQuery.isPending}
+                  assignedCoachLessonsError={homeActivityQuery.error instanceof Error ? homeActivityQuery.error.message : ""}
+                  onRetryAssignedCoachLessons={() => { void homeActivityQuery.refetch(); }}
                   onBookingsChanged={() =>
                     queryClient.invalidateQueries({
                       queryKey: homeQueryKeys.activity(actorUsername),

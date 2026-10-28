@@ -13,6 +13,8 @@ import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { EventCalendarDesktopView } from "./event-calendar/EventCalendarDesktopView";
 import { EventCalendarMobileView } from "./event-calendar/EventCalendarMobileView";
+import { AddToCalendar } from "./event-calendar/AddToCalendar";
+import { coachingCalendarExport, eventCalendarExport, lessonCalendarExport } from "./event-calendar/calendarExport";
 import {
   buildRecurringDates,
   EVENT_TYPE_OPTIONS,
@@ -271,6 +273,7 @@ export function EventCalendarPage({
   const [selectedEventId, setSelectedEventId] = useState<CalendarEvent["id"] | null>(
     null,
   );
+  const [selectedLessonId, setSelectedLessonId] = useState<BeginnersCourseCalendarLesson["id"] | null>(null);
   const [cancelEventModalOpen, setCancelEventModalOpen] = useState(false);
   const [cancelEventId, setCancelEventId] = useState<CalendarEvent["id"] | null>(null);
   const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
@@ -531,6 +534,7 @@ export function EventCalendarPage({
     year,
     month,
   });
+  const selectedLessonDetail = activeSelectedBeginnersLessons.find((lesson) => lesson.id === selectedLessonId) ?? null;
   const hasRejectedSummaryItems =
     rejectedSelectedEvents.length > 0 || rejectedSelectedCoachingSessions.length > 0;
   const hasCancelledSummaryItems =
@@ -542,6 +546,7 @@ export function EventCalendarPage({
     setSelectedDate(dateString);
     setSelectedEventId(null);
     setSelectedCoachingSessionId(null);
+    setSelectedLessonId(null);
     setBookingMessage("");
   };
 
@@ -1270,6 +1275,9 @@ export function EventCalendarPage({
                         ? getCancelledSummary(lesson.cancellationReason)
                         : ""}
                     </span>
+                    <Button type="button" variant="secondary" onClick={() => setSelectedLessonId(lesson.id)}>
+                      View details
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -2287,6 +2295,7 @@ export function EventCalendarPage({
               </>
             ) : null}
             <div className="event-detail-actions">
+              <AddToCalendar item={eventCalendarExport(selectedEventDetail, `${window.location.origin}/event-calendar`)} />
               {selectedEventDetail.canApprove ? (
                 <Button
                   type="button"
@@ -2443,6 +2452,7 @@ export function EventCalendarPage({
               </>
             ) : null}
             <div className="event-detail-actions">
+              <AddToCalendar item={coachingCalendarExport(selectedCoachingSessionDetail, `${window.location.origin}/event-calendar`)} />
               {selectedCoachingSessionDetail.canApprove ? (
                 <Button
                   type="button"
@@ -2536,6 +2546,24 @@ export function EventCalendarPage({
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(selectedLessonDetail)}
+        onClose={() => setSelectedLessonId(null)}
+        title={selectedLessonDetail?.title ?? "Course session details"}
+        contentClassName={eventModalContentClassName}
+      >
+        {selectedLessonDetail ? <div className={eventDetailModalClassName}>
+          <p><strong>{getCourseLessonLabel(selectedLessonDetail)} {selectedLessonDetail.lessonNumber}</strong></p>
+          <p><strong>Date:</strong> {formatDate(selectedLessonDetail.date)}</p>
+          <p><strong>Time:</strong> {formatClockTime(selectedLessonDetail.startTime)} to {formatClockTime(selectedLessonDetail.endTime)}</p>
+          <p><strong>Coordinator:</strong> {selectedLessonDetail.coordinatorName}</p>
+          <p><strong>Coaches:</strong> {selectedLessonDetail.coachNames.length ? selectedLessonDetail.coachNames.join(", ") : "To be assigned"}</p>
+          <div className="event-detail-actions">
+            <AddToCalendar item={lessonCalendarExport(selectedLessonDetail, `${window.location.origin}/event-calendar`)} />
+          </div>
+        </div> : null}
       </Modal>
 
       <Modal

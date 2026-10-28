@@ -693,6 +693,63 @@
   text-align: center;
 }
 
+.my-events-trigger {
+  display: flex;
+  justify-content: flex-end;
+  margin: 18px 0;
+}
+
+.my-events-modal {
+  width: min(100%, 620px);
+}
+
+.my-events-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.my-events-item {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--panel-border-strong);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+
+.my-events-item h4 {
+  margin: 6px 0;
+}
+
+.my-events-item p {
+  margin: 0 0 12px;
+}
+
+.my-events-type {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.my-events-error {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 720px) {
+  .my-events-trigger .app-button,
+  .my-events-item .add-to-calendar,
+  .my-events-item .add-to-calendar-options .app-button {
+    width: 100%;
+  }
+
+  .my-events-item .add-to-calendar-options {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .event-detail-modal--mobile .mobile-key-value-row {
   grid-template-columns: minmax(0, 104px) minmax(0, 1fr);
 }

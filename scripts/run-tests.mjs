@@ -116,6 +116,8 @@ const files = [
   "src/presentation/pages/roles/rolePermissionsUtils.ts",
   "src/presentation/pages/event-calendar/calendarExport.ts",
   "src/presentation/pages/event-calendar/calendarExport.test.ts",
+  "src/presentation/pages/event-calendar/myEvents.ts",
+  "src/presentation/pages/event-calendar/myEvents.test.ts",
   "src/presentation/pages/roles/rolePermissionsUtils.test.ts",
   "src/api/client.ts",
   "src/api/client.test.ts",
@@ -204,6 +206,7 @@ await import(pathToFileURL(path.join(outDir, "src/presentation/pages/range-usage
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/dashboard/reportingDashboard.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/rolePermissionsUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/calendarExport.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/myEvents.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/coachingHubModel.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/courseCoachRequirements.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));

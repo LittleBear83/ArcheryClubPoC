@@ -12,3 +12,7 @@ Manual checks when devices are available:
 4. Confirm that adding an activity leaves club booking status unchanged.
 
 These device and layout checks were not performed in the development environment. Browser handling of downloaded `.ics` files varies; if the browser does not open the file directly, open it from Downloads in a calendar app. The Google link requires access to Google Calendar but no portal calendar authorisation.
+
+## My Events follow-up
+
+On desktop and on iPhone Safari/PWA and Android Chrome, open **My Events** below the calendar. Check the list and its empty state at narrow widths, use Tab and Escape to navigate and close the modal, and confirm focus returns to the button. Book and leave a club event and a coaching session, then reopen the list to confirm it refreshes. Check that a current event remains listed until its end time. The Apple and Google options in each list entry use the same export controls as event details. These device checks remain manual.

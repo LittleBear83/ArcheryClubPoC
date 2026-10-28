@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./EventCalendarPage.css";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
@@ -14,6 +14,8 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import { EventCalendarDesktopView } from "./event-calendar/EventCalendarDesktopView";
 import { EventCalendarMobileView } from "./event-calendar/EventCalendarMobileView";
 import { AddToCalendar } from "./event-calendar/AddToCalendar";
+import { MyEventsModal } from "./event-calendar/MyEventsModal";
+import { getMyEvents } from "./event-calendar/myEvents";
 import { coachingCalendarExport, eventCalendarExport, lessonCalendarExport } from "./event-calendar/calendarExport";
 import {
   buildRecurringDates,
@@ -274,6 +276,8 @@ export function EventCalendarPage({
     null,
   );
   const [selectedLessonId, setSelectedLessonId] = useState<BeginnersCourseCalendarLesson["id"] | null>(null);
+  const [myEventsOpen, setMyEventsOpen] = useState(false);
+  const [myEventsNow, setMyEventsNow] = useState(() => new Date());
   const [cancelEventModalOpen, setCancelEventModalOpen] = useState(false);
   const [cancelEventId, setCancelEventId] = useState<CalendarEvent["id"] | null>(null);
   const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
@@ -379,6 +383,29 @@ export function EventCalendarPage({
     () => coachingSessionsQuery.data ?? [],
     [coachingSessionsQuery.data],
   );
+  const myEvents = useMemo(
+    () => getMyEvents(
+      events,
+      coachingSessions,
+      myEventsNow,
+      `${window.location.origin}/event-calendar`,
+    ),
+    [events, coachingSessions, myEventsNow],
+  );
+  useEffect(() => {
+    if (!myEventsOpen || myEvents.length === 0) return;
+    const nextEnd = myEvents.reduce(
+      (earliest, { end }) => Math.min(earliest, end.getTime()),
+      Number.POSITIVE_INFINITY,
+    );
+    const delay = Math.max(1, Math.min(nextEnd - Date.now() + 1, 2_147_483_647));
+    const timer = window.setTimeout(() => setMyEventsNow(new Date()), delay);
+    return () => window.clearTimeout(timer);
+  }, [myEventsOpen, myEvents]);
+  const myEventsError = [eventsQuery.error, coachingSessionsQuery.error]
+    .filter((error): error is Error => error instanceof Error)
+    .map((error) => error.message)
+    .join(" ");
   const beginnersLessons = useMemo(
     () => beginnersLessonsQuery.data ?? [],
     [beginnersLessonsQuery.data],
@@ -1473,6 +1500,31 @@ export function EventCalendarPage({
           renderItem={renderDesktopCalendarItem}
         />
       )}
+
+      {canManageBookings ? (
+        <div className="my-events-trigger">
+          <Button
+            type="button"
+            onClick={() => {
+              setMyEventsNow(new Date());
+              setMyEventsOpen(true);
+            }}
+          >
+            My Events
+          </Button>
+        </div>
+      ) : null}
+
+      <MyEventsModal
+        open={myEventsOpen && canManageBookings}
+        onClose={() => setMyEventsOpen(false)}
+        items={myEvents}
+        loading={eventsQuery.isPending || coachingSessionsQuery.isPending}
+        error={myEventsError}
+        onRetry={() => {
+          void Promise.all([eventsQuery.refetch(), coachingSessionsQuery.refetch()]);
+        }}
+      />
 
       {canCreateEvents ? (
         <div className="event-page-actions">

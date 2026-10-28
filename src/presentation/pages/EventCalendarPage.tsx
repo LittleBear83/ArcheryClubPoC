@@ -1501,20 +1501,6 @@ export function EventCalendarPage({
         />
       )}
 
-      {canManageBookings ? (
-        <div className="my-events-trigger">
-          <Button
-            type="button"
-            onClick={() => {
-              setMyEventsNow(new Date());
-              setMyEventsOpen(true);
-            }}
-          >
-            My Events
-          </Button>
-        </div>
-      ) : null}
-
       <MyEventsModal
         open={myEventsOpen && canManageBookings}
         onClose={() => setMyEventsOpen(false)}
@@ -1526,13 +1512,11 @@ export function EventCalendarPage({
         }}
       />
 
-      {canCreateEvents ? (
+      {canCreateEvents || canManageCoachingSessions || canCancelEvents || canManageBookings ? (
         <div className="event-page-actions">
-          <Button
-            onClick={handleOpenModal}
-          >
-            Add event
-          </Button>
+          {canCreateEvents ? (
+            <Button onClick={handleOpenModal}>Add event</Button>
+          ) : null}
           {canManageCoachingSessions ? (
             <Button
               type="button"
@@ -1559,33 +1543,15 @@ export function EventCalendarPage({
               Cancel event
             </Button>
           ) : null}
-        </div>
-      ) : canManageCoachingSessions || canCancelEvents ? (
-        <div className="event-page-actions">
-          {canManageCoachingSessions ? (
+          {canManageBookings ? (
             <Button
               type="button"
               onClick={() => {
-                setCoachingFormError("");
-                setIsCoachingModalOpen(true);
+                setMyEventsNow(new Date());
+                setMyEventsOpen(true);
               }}
             >
-              Add coaching session
-            </Button>
-          ) : null}
-          {canCancelEvents ? (
-            <Button
-              type="button"
-              className="event-danger-ghost-button"
-              onClick={() => {
-                setCancelEventModalOpen(true);
-                setCancelEventId(null);
-                setCancelConfirmationOpen(false);
-                setCancelConfirmationText("");
-              }}
-              variant="ghost"
-            >
-              Cancel event
+              My Events
             </Button>
           ) : null}
         </div>

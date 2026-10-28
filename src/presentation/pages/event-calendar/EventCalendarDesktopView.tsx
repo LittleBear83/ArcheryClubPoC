@@ -9,6 +9,7 @@ type EventCalendarDesktopViewProps = {
   selectedDate: string | null;
   scheduleItemsByDate: Record<string, Array<{ id: string | number }>>;
   onDayClick: (dateKey: string) => void;
+  onDayDoubleClick?: (dateKey: string) => void;
   onToday: () => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
@@ -27,6 +28,7 @@ export function EventCalendarDesktopView({
   selectedDate,
   scheduleItemsByDate,
   onDayClick,
+  onDayDoubleClick,
   onToday,
   onPrevMonth,
   onNextMonth,
@@ -42,6 +44,7 @@ export function EventCalendarDesktopView({
           month={month}
           selectedDate={selectedDate}
           onDayClick={onDayClick}
+          onDayDoubleClick={onDayDoubleClick}
           onToday={onToday}
           onPrevMonth={onPrevMonth}
           onNextMonth={onNextMonth}

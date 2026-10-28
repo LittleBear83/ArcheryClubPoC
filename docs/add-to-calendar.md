@@ -16,3 +16,7 @@ These device and layout checks were not performed in the development environment
 ## My Events follow-up
 
 On desktop and on iPhone Safari/PWA and Android Chrome, open **My Events** below the calendar. Check the list and its empty state at narrow widths, use Tab and Escape to navigate and close the modal, and confirm focus returns to the button. Book and leave a club event and a coaching session, then reopen the list to confirm it refreshes. Check that a current event remains listed until its end time. The Apple and Google options in each list entry use the same export controls as event details. These device checks remain manual.
+
+## Quick Event Creation follow-up
+
+In a desktop browser, double-click empty and populated day cells, including a date in another month. Confirm Add Event opens with that date. Double-click an event label and the calendar navigation controls to confirm they do not open the form. Single-click a day, then use Add event and confirm its date matches the selection. On iPhone Safari/PWA and Android Chrome, confirm ordinary single-tap navigation still works and Add event uses the selected day. Check that the multiple-date pickers still select dates with a single click or tap. These browser checks remain manual.

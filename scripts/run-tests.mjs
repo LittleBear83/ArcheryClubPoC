@@ -118,6 +118,8 @@ const files = [
   "src/presentation/pages/event-calendar/calendarExport.test.ts",
   "src/presentation/pages/event-calendar/myEvents.ts",
   "src/presentation/pages/event-calendar/myEvents.test.ts",
+  "src/presentation/pages/event-calendar/eventCreationDate.ts",
+  "src/presentation/pages/event-calendar/eventCreationDate.test.ts",
   "src/presentation/pages/roles/rolePermissionsUtils.test.ts",
   "src/api/client.ts",
   "src/api/client.test.ts",
@@ -183,6 +185,7 @@ await copyFile(
 );
 await mkdir(path.join(outDir, "shared"), { recursive: true });
 await copyFile(path.join(root, "shared/handicapAllowance.js"), path.join(outDir, "shared/handicapAllowance.js"));
+await copyFile(path.join(root, "shared/clubDate.js"), path.join(outDir, "shared/clubDate.js"));
 await copyFile(path.join(root, "shared/equipmentArrowDisplay.js"), path.join(outDir, "shared/equipmentArrowDisplay.js"));
 await copyFile(path.join(root, "shared/equipmentRetention.js"), path.join(outDir, "shared/equipmentRetention.js"));
 await copyFile(path.join(root, "src/presentation/pages/records/handicapLookup.js"),
@@ -207,6 +210,7 @@ await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/d
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/rolePermissionsUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/calendarExport.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/myEvents.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/eventCreationDate.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/coachingHubModel.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/courseCoachRequirements.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));

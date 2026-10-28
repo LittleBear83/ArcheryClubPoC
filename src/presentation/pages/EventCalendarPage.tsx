@@ -16,6 +16,7 @@ import { EventCalendarMobileView } from "./event-calendar/EventCalendarMobileVie
 import { AddToCalendar } from "./event-calendar/AddToCalendar";
 import { MyEventsModal } from "./event-calendar/MyEventsModal";
 import { getMyEvents } from "./event-calendar/myEvents";
+import { canQuickCreateEvent, resolveEventCreationDate } from "./event-calendar/eventCreationDate";
 import { coachingCalendarExport, eventCalendarExport, lessonCalendarExport } from "./event-calendar/calendarExport";
 import {
   buildRecurringDates,
@@ -250,12 +251,13 @@ export function EventCalendarPage({
 }: EventCalendarPageProps) {
   const isMobile = useIsMobile();
   const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
+  const clubToday = getTodayDateString();
+  const [year, setYear] = useState(Number(clubToday.slice(0, 4)));
+  const [month, setMonth] = useState(Number(clubToday.slice(5, 7)) - 1);
 
   const [newEvent, setNewEvent] = useState("");
   const [newEventDate, setNewEventDate] = useState(
-    today.toISOString().slice(0, 10),
+    clubToday,
   );
   const [newEventStartTime, setNewEventStartTime] = useState("09:00");
   const [newEventEndTime, setNewEventEndTime] = useState("10:00");
@@ -265,11 +267,11 @@ export function EventCalendarPage({
   const [eventCreationMode, setEventCreationMode] = useState<EventCreationMode>("single");
   const [repeatPattern, setRepeatPattern] = useState<"weekly" | "monthly">("weekly");
   const [repeatUntilDate, setRepeatUntilDate] = useState(
-    today.toISOString().slice(0, 10),
+    clubToday,
   );
   const [multiDateModalOpen, setMultiDateModalOpen] = useState(false);
-  const [multiDateYear, setMultiDateYear] = useState(today.getFullYear());
-  const [multiDateMonth, setMultiDateMonth] = useState(today.getMonth());
+  const [multiDateYear, setMultiDateYear] = useState(Number(clubToday.slice(0, 4)));
+  const [multiDateMonth, setMultiDateMonth] = useState(Number(clubToday.slice(5, 7)) - 1);
   const [selectedMultiDates, setSelectedMultiDates] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<CalendarEvent["id"] | null>(
@@ -486,7 +488,7 @@ export function EventCalendarPage({
         }
       }
       setNewEvent("");
-      setNewEventDate(today.toISOString().slice(0, 10));
+      setNewEventDate(getTodayDateString());
       setNewEventStartTime("09:00");
       setNewEventEndTime("10:00");
       setNewEventDetails("");
@@ -494,7 +496,7 @@ export function EventCalendarPage({
       setNewEventVenue("indoor");
       setEventCreationMode("single");
       setRepeatPattern("weekly");
-      setRepeatUntilDate(today.toISOString().slice(0, 10));
+      setRepeatUntilDate(getTodayDateString());
       setSelectedMultiDates([]);
       setMultiDateModalOpen(false);
       setEventFormError("");
@@ -577,9 +579,21 @@ export function EventCalendarPage({
     setBookingMessage("");
   };
 
-  const handleOpenModal = () => {
+  const handleOpenModal = (requestedDate: string | null = selectedDate) => {
+    if (!canCreateEvents) return;
+    const date = resolveEventCreationDate(requestedDate);
+    setNewEventDate(date);
+    setRepeatUntilDate((current) => current < date ? date : current);
+    setSelectedMultiDates([]);
+    setEventCreationMode("single");
     setEventFormError("");
     setIsModalOpen(true);
+  };
+
+  const handleDateDoubleClick = (date: string) => {
+    if (!canQuickCreateEvent(canCreateEvents, date)) return;
+    handleDateSelect(date);
+    handleOpenModal(date);
   };
 
   const toggleMultiDateSelection = (dateKey: string) => {
@@ -831,10 +845,10 @@ export function EventCalendarPage({
   };
 
   const handleCalendarToday = () => {
-    const todayDate = new Date();
-    setYear(todayDate.getFullYear());
-    setMonth(todayDate.getMonth());
-    handleDateSelect(todayDate.toISOString().slice(0, 10));
+    const todayDate = getTodayDateString();
+    setYear(Number(todayDate.slice(0, 4)));
+    setMonth(Number(todayDate.slice(5, 7)) - 1);
+    handleDateSelect(todayDate);
   };
 
   const handleCalendarPrevMonth = () => {
@@ -1493,6 +1507,7 @@ export function EventCalendarPage({
           selectedDate={selectedDate}
           scheduleItemsByDate={scheduleItemsByDate}
           onDayClick={handleDateSelect}
+          onDayDoubleClick={canCreateEvents ? handleDateDoubleClick : undefined}
           onToday={handleCalendarToday}
           onPrevMonth={handleCalendarPrevMonth}
           onNextMonth={handleCalendarNextMonth}
@@ -1515,7 +1530,7 @@ export function EventCalendarPage({
       {canCreateEvents || canManageCoachingSessions || canCancelEvents || canManageBookings ? (
         <div className="event-page-actions">
           {canCreateEvents ? (
-            <Button onClick={handleOpenModal}>Add event</Button>
+            <Button onClick={() => handleOpenModal()}>Add event</Button>
           ) : null}
           {canManageCoachingSessions ? (
             <Button

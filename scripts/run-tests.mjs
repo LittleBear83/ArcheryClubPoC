@@ -114,6 +114,16 @@ const files = [
   "src/presentation/pages/reporting/dashboard/LoginMethodChartCard.tsx",
   "src/presentation/pages/reporting/dashboard/reportingDashboard.test.tsx",
   "src/presentation/pages/roles/rolePermissionsUtils.ts",
+  "src/presentation/pages/event-calendar/calendarExport.ts",
+  "src/presentation/pages/event-calendar/calendarExport.test.ts",
+  "src/presentation/pages/event-calendar/myEvents.ts",
+  "src/presentation/pages/event-calendar/myEvents.test.ts",
+  "src/presentation/pages/event-calendar/eventCreationDate.ts",
+  "src/presentation/pages/event-calendar/eventCreationDate.test.ts",
+  "src/presentation/pages/event-calendar/myEventsNavigation.ts",
+  "src/presentation/pages/event-calendar/myEventsNavigation.test.ts",
+  "src/presentation/pages/HomeSection.tsx",
+  "src/presentation/pages/HomeSection.myEvents.test.tsx",
   "src/presentation/pages/roles/rolePermissionsUtils.test.ts",
   "src/api/client.ts",
   "src/api/client.test.ts",
@@ -179,6 +189,7 @@ await copyFile(
 );
 await mkdir(path.join(outDir, "shared"), { recursive: true });
 await copyFile(path.join(root, "shared/handicapAllowance.js"), path.join(outDir, "shared/handicapAllowance.js"));
+await copyFile(path.join(root, "shared/clubDate.js"), path.join(outDir, "shared/clubDate.js"));
 await copyFile(path.join(root, "shared/equipmentArrowDisplay.js"), path.join(outDir, "shared/equipmentArrowDisplay.js"));
 await copyFile(path.join(root, "shared/equipmentRetention.js"), path.join(outDir, "shared/equipmentRetention.js"));
 await copyFile(path.join(root, "src/presentation/pages/records/handicapLookup.js"),
@@ -201,6 +212,11 @@ await import(pathToFileURL(path.join(outDir, "src/presentation/pages/home/HomeTi
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/range-usage/rangeUsageUtils.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/reporting/dashboard/reportingDashboard.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/roles/rolePermissionsUtils.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/calendarExport.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/myEvents.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/eventCreationDate.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/event-calendar/myEventsNavigation.test.js")));
+await import(pathToFileURL(path.join(outDir, "src/presentation/pages/HomeSection.myEvents.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/coachingHubModel.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/presentation/pages/courseCoachRequirements.test.js")));
 await import(pathToFileURL(path.join(outDir, "src/api/memberProfileApi.test.js")));

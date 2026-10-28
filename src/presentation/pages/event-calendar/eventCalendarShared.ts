@@ -1,3 +1,5 @@
+import { getClubTodayDate } from "../../../../shared/clubDate.js";
+
 export const EVENT_TYPE_OPTIONS = [
   { value: "competition", label: "Competition", className: "event-type-competition" },
   { value: "social", label: "Social event", className: "event-type-social" },
@@ -15,7 +17,7 @@ export const eventQueryKeys = {
 };
 
 export function getTodayDateString() {
-  return new Date().toISOString().slice(0, 10);
+  return getClubTodayDate();
 }
 
 export function parseDateString(dateString: string) {

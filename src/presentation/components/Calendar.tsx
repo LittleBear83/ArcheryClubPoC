@@ -24,6 +24,7 @@ type CalendarProps = {
   selectedDate: string | null;
   selectedDates?: string[];
   onDayClick?: (dateKey: string) => void;
+  onDayDoubleClick?: (dateKey: string) => void;
 };
 
 function getMonthDays(year: number, month: number) {
@@ -67,6 +68,7 @@ export function Calendar({
   selectedDate,
   selectedDates = [],
   onDayClick,
+  onDayDoubleClick,
 }: CalendarProps) {
   const calendar = useMemo(() => getMonthDays(year, month), [month, year]);
 
@@ -143,6 +145,16 @@ export function Calendar({
                         if (dateKey && onDayClick) {
                           onDayClick(dateKey);
                         }
+                      }}
+                      onDoubleClick={(event) => {
+                        if (!dateKey || !onDayDoubleClick) return;
+                        if (
+                          event.target instanceof Element &&
+                          event.target.closest(
+                            ".calendar-day-item, button, a, input, select, textarea",
+                          )
+                        ) return;
+                        onDayDoubleClick(dateKey);
                       }}
                     >
                       <div className="calendar-day-header">

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { filterHomeActivityCurrentOrUpcoming } from "./home/homeActivityFilters";
+import { MY_EVENTS_PATH } from "./event-calendar/myEventsNavigation";
 import { Button } from "../components/Button";
 import { formatClockTime, formatDate } from "../../utils/dateTime";
 import {
@@ -197,7 +199,7 @@ function SignedUpEventsList({ events, coachAssignments }) {
   const clubEventItems = buildClubEventItems(filterHomeActivityCurrentOrUpcoming(events, now), filterHomeActivityCurrentOrUpcoming(coachAssignments, now));
 
   return (
-    <section className="home-panel">
+    <Link to={MY_EVENTS_PATH} className="home-panel home-panel--interactive" aria-label="Open My Events in the club calendar">
       <h3 className="home-panel-title">Your Club Events List</h3>
       <ul className="home-info-list home-info-list--events">
         {clubEventItems.length > 0 ? (
@@ -212,7 +214,7 @@ function SignedUpEventsList({ events, coachAssignments }) {
           <li>No signed-up events yet.</li>
         )}
       </ul>
-    </section>
+    </Link>
   );
 }
 

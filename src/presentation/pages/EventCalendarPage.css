@@ -359,6 +359,26 @@
   overflow-wrap: anywhere;
 }
 
+.add-to-calendar {
+  display: grid;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.add-to-calendar-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.add-to-calendar-options p {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .event-summary-panel .profile-member-select {
   margin-bottom: 16px;
 }
@@ -449,6 +469,7 @@
   gap: 12px;
   flex-wrap: wrap;
   align-items: center;
+  margin: 18px 0;
 }
 
 .event-booking-message {
@@ -660,6 +681,67 @@
 .event-multi-date-modal--mobile .event-detail-actions {
   display: grid;
   grid-template-columns: 1fr;
+}
+
+.event-detail-modal--mobile .add-to-calendar-options {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.event-detail-modal--mobile .add-to-calendar-options .app-button {
+  width: 100%;
+  white-space: normal;
+  text-align: center;
+}
+
+.my-events-modal {
+  width: min(100%, 620px);
+}
+
+.my-events-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.my-events-item {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--panel-border-strong);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+
+.my-events-item h4 {
+  margin: 6px 0;
+}
+
+.my-events-item p {
+  margin: 0 0 12px;
+}
+
+.my-events-type {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.my-events-error {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 720px) {
+  .my-events-item .add-to-calendar,
+  .my-events-item .add-to-calendar-options .app-button {
+    width: 100%;
+  }
+
+  .my-events-item .add-to-calendar-options {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .event-detail-modal--mobile .mobile-key-value-row {

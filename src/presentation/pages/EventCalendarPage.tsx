@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import "./EventCalendarPage.css";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Modal } from "../components/Modal";
@@ -13,6 +14,12 @@ import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { EventCalendarDesktopView } from "./event-calendar/EventCalendarDesktopView";
 import { EventCalendarMobileView } from "./event-calendar/EventCalendarMobileView";
+import { AddToCalendar } from "./event-calendar/AddToCalendar";
+import { MyEventsModal } from "./event-calendar/MyEventsModal";
+import { getMyEvents } from "./event-calendar/myEvents";
+import { clearMyEventsView, isMyEventsView, showMyEventsView } from "./event-calendar/myEventsNavigation";
+import { canQuickCreateEvent, resolveEventCreationDate } from "./event-calendar/eventCreationDate";
+import { coachingCalendarExport, eventCalendarExport, lessonCalendarExport } from "./event-calendar/calendarExport";
 import {
   buildRecurringDates,
   EVENT_TYPE_OPTIONS,
@@ -245,13 +252,15 @@ export function EventCalendarPage({
   onBookingsChanged,
 }: EventCalendarPageProps) {
   const isMobile = useIsMobile();
+  const [searchParams, setSearchParams] = useSearchParams();
   const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
+  const clubToday = getTodayDateString();
+  const [year, setYear] = useState(Number(clubToday.slice(0, 4)));
+  const [month, setMonth] = useState(Number(clubToday.slice(5, 7)) - 1);
 
   const [newEvent, setNewEvent] = useState("");
   const [newEventDate, setNewEventDate] = useState(
-    today.toISOString().slice(0, 10),
+    clubToday,
   );
   const [newEventStartTime, setNewEventStartTime] = useState("09:00");
   const [newEventEndTime, setNewEventEndTime] = useState("10:00");
@@ -261,16 +270,18 @@ export function EventCalendarPage({
   const [eventCreationMode, setEventCreationMode] = useState<EventCreationMode>("single");
   const [repeatPattern, setRepeatPattern] = useState<"weekly" | "monthly">("weekly");
   const [repeatUntilDate, setRepeatUntilDate] = useState(
-    today.toISOString().slice(0, 10),
+    clubToday,
   );
   const [multiDateModalOpen, setMultiDateModalOpen] = useState(false);
-  const [multiDateYear, setMultiDateYear] = useState(today.getFullYear());
-  const [multiDateMonth, setMultiDateMonth] = useState(today.getMonth());
+  const [multiDateYear, setMultiDateYear] = useState(Number(clubToday.slice(0, 4)));
+  const [multiDateMonth, setMultiDateMonth] = useState(Number(clubToday.slice(5, 7)) - 1);
   const [selectedMultiDates, setSelectedMultiDates] = useState<string[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<CalendarEvent["id"] | null>(
     null,
   );
+  const [selectedLessonId, setSelectedLessonId] = useState<BeginnersCourseCalendarLesson["id"] | null>(null);
+  const [myEventsNow, setMyEventsNow] = useState(() => new Date());
   const [cancelEventModalOpen, setCancelEventModalOpen] = useState(false);
   const [cancelEventId, setCancelEventId] = useState<CalendarEvent["id"] | null>(null);
   const [cancelConfirmationOpen, setCancelConfirmationOpen] = useState(false);
@@ -329,6 +340,7 @@ export function EventCalendarPage({
   );
   const actorUsername = currentUserProfile?.auth?.username ?? "";
   const canManageBookings = Boolean(actorUsername);
+  const myEventsOpen = isMyEventsView(searchParams, canManageBookings);
 
   const getEventTypeDetails = (type) =>
     EVENT_TYPE_OPTIONS.find((option) => option.value === type) ??
@@ -376,6 +388,29 @@ export function EventCalendarPage({
     () => coachingSessionsQuery.data ?? [],
     [coachingSessionsQuery.data],
   );
+  const myEvents = useMemo(
+    () => getMyEvents(
+      events,
+      coachingSessions,
+      myEventsNow,
+      `${window.location.origin}/event-calendar`,
+    ),
+    [events, coachingSessions, myEventsNow],
+  );
+  useEffect(() => {
+    if (!myEventsOpen || myEvents.length === 0) return;
+    const nextEnd = myEvents.reduce(
+      (earliest, { end }) => Math.min(earliest, end.getTime()),
+      Number.POSITIVE_INFINITY,
+    );
+    const delay = Math.max(1, Math.min(nextEnd - Date.now() + 1, 2_147_483_647));
+    const timer = window.setTimeout(() => setMyEventsNow(new Date()), delay);
+    return () => window.clearTimeout(timer);
+  }, [myEventsOpen, myEvents]);
+  const myEventsError = [eventsQuery.error, coachingSessionsQuery.error]
+    .filter((error): error is Error => error instanceof Error)
+    .map((error) => error.message)
+    .join(" ");
   const beginnersLessons = useMemo(
     () => beginnersLessonsQuery.data ?? [],
     [beginnersLessonsQuery.data],
@@ -456,7 +491,7 @@ export function EventCalendarPage({
         }
       }
       setNewEvent("");
-      setNewEventDate(today.toISOString().slice(0, 10));
+      setNewEventDate(getTodayDateString());
       setNewEventStartTime("09:00");
       setNewEventEndTime("10:00");
       setNewEventDetails("");
@@ -464,7 +499,7 @@ export function EventCalendarPage({
       setNewEventVenue("indoor");
       setEventCreationMode("single");
       setRepeatPattern("weekly");
-      setRepeatUntilDate(today.toISOString().slice(0, 10));
+      setRepeatUntilDate(getTodayDateString());
       setSelectedMultiDates([]);
       setMultiDateModalOpen(false);
       setEventFormError("");
@@ -531,6 +566,7 @@ export function EventCalendarPage({
     year,
     month,
   });
+  const selectedLessonDetail = activeSelectedBeginnersLessons.find((lesson) => lesson.id === selectedLessonId) ?? null;
   const hasRejectedSummaryItems =
     rejectedSelectedEvents.length > 0 || rejectedSelectedCoachingSessions.length > 0;
   const hasCancelledSummaryItems =
@@ -542,12 +578,25 @@ export function EventCalendarPage({
     setSelectedDate(dateString);
     setSelectedEventId(null);
     setSelectedCoachingSessionId(null);
+    setSelectedLessonId(null);
     setBookingMessage("");
   };
 
-  const handleOpenModal = () => {
+  const handleOpenModal = (requestedDate: string | null = selectedDate) => {
+    if (!canCreateEvents) return;
+    const date = resolveEventCreationDate(requestedDate);
+    setNewEventDate(date);
+    setRepeatUntilDate((current) => current < date ? date : current);
+    setSelectedMultiDates([]);
+    setEventCreationMode("single");
     setEventFormError("");
     setIsModalOpen(true);
+  };
+
+  const handleDateDoubleClick = (date: string) => {
+    if (!canQuickCreateEvent(canCreateEvents, date)) return;
+    handleDateSelect(date);
+    handleOpenModal(date);
   };
 
   const toggleMultiDateSelection = (dateKey: string) => {
@@ -799,10 +848,10 @@ export function EventCalendarPage({
   };
 
   const handleCalendarToday = () => {
-    const todayDate = new Date();
-    setYear(todayDate.getFullYear());
-    setMonth(todayDate.getMonth());
-    handleDateSelect(todayDate.toISOString().slice(0, 10));
+    const todayDate = getTodayDateString();
+    setYear(Number(todayDate.slice(0, 4)));
+    setMonth(Number(todayDate.slice(5, 7)) - 1);
+    handleDateSelect(todayDate);
   };
 
   const handleCalendarPrevMonth = () => {
@@ -1270,6 +1319,9 @@ export function EventCalendarPage({
                         ? getCancelledSummary(lesson.cancellationReason)
                         : ""}
                     </span>
+                    <Button type="button" variant="secondary" onClick={() => setSelectedLessonId(lesson.id)}>
+                      View details
+                    </Button>
                   </div>
                 ))}
               </div>
@@ -1458,6 +1510,7 @@ export function EventCalendarPage({
           selectedDate={selectedDate}
           scheduleItemsByDate={scheduleItemsByDate}
           onDayClick={handleDateSelect}
+          onDayDoubleClick={canCreateEvents ? handleDateDoubleClick : undefined}
           onToday={handleCalendarToday}
           onPrevMonth={handleCalendarPrevMonth}
           onNextMonth={handleCalendarNextMonth}
@@ -1466,13 +1519,22 @@ export function EventCalendarPage({
         />
       )}
 
-      {canCreateEvents ? (
+      <MyEventsModal
+        open={myEventsOpen}
+        onClose={() => setSearchParams((current) => clearMyEventsView(current), { replace: true })}
+        items={myEvents}
+        loading={eventsQuery.isPending || coachingSessionsQuery.isPending}
+        error={myEventsError}
+        onRetry={() => {
+          void Promise.all([eventsQuery.refetch(), coachingSessionsQuery.refetch()]);
+        }}
+      />
+
+      {canCreateEvents || canManageCoachingSessions || canCancelEvents || canManageBookings ? (
         <div className="event-page-actions">
-          <Button
-            onClick={handleOpenModal}
-          >
-            Add event
-          </Button>
+          {canCreateEvents ? (
+            <Button onClick={() => handleOpenModal()}>Add event</Button>
+          ) : null}
           {canManageCoachingSessions ? (
             <Button
               type="button"
@@ -1499,33 +1561,15 @@ export function EventCalendarPage({
               Cancel event
             </Button>
           ) : null}
-        </div>
-      ) : canManageCoachingSessions || canCancelEvents ? (
-        <div className="event-page-actions">
-          {canManageCoachingSessions ? (
+          {canManageBookings ? (
             <Button
               type="button"
               onClick={() => {
-                setCoachingFormError("");
-                setIsCoachingModalOpen(true);
+                setMyEventsNow(new Date());
+                setSearchParams((current) => showMyEventsView(current));
               }}
             >
-              Add coaching session
-            </Button>
-          ) : null}
-          {canCancelEvents ? (
-            <Button
-              type="button"
-              className="event-danger-ghost-button"
-              onClick={() => {
-                setCancelEventModalOpen(true);
-                setCancelEventId(null);
-                setCancelConfirmationOpen(false);
-                setCancelConfirmationText("");
-              }}
-              variant="ghost"
-            >
-              Cancel event
+              My Events
             </Button>
           ) : null}
         </div>
@@ -2287,6 +2331,7 @@ export function EventCalendarPage({
               </>
             ) : null}
             <div className="event-detail-actions">
+              <AddToCalendar item={eventCalendarExport(selectedEventDetail, `${window.location.origin}/event-calendar`)} />
               {selectedEventDetail.canApprove ? (
                 <Button
                   type="button"
@@ -2443,6 +2488,7 @@ export function EventCalendarPage({
               </>
             ) : null}
             <div className="event-detail-actions">
+              <AddToCalendar item={coachingCalendarExport(selectedCoachingSessionDetail, `${window.location.origin}/event-calendar`)} />
               {selectedCoachingSessionDetail.canApprove ? (
                 <Button
                   type="button"
@@ -2536,6 +2582,24 @@ export function EventCalendarPage({
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={Boolean(selectedLessonDetail)}
+        onClose={() => setSelectedLessonId(null)}
+        title={selectedLessonDetail?.title ?? "Course session details"}
+        contentClassName={eventModalContentClassName}
+      >
+        {selectedLessonDetail ? <div className={eventDetailModalClassName}>
+          <p><strong>{getCourseLessonLabel(selectedLessonDetail)} {selectedLessonDetail.lessonNumber}</strong></p>
+          <p><strong>Date:</strong> {formatDate(selectedLessonDetail.date)}</p>
+          <p><strong>Time:</strong> {formatClockTime(selectedLessonDetail.startTime)} to {formatClockTime(selectedLessonDetail.endTime)}</p>
+          <p><strong>Coordinator:</strong> {selectedLessonDetail.coordinatorName}</p>
+          <p><strong>Coaches:</strong> {selectedLessonDetail.coachNames.length ? selectedLessonDetail.coachNames.join(", ") : "To be assigned"}</p>
+          <div className="event-detail-actions">
+            <AddToCalendar item={lessonCalendarExport(selectedLessonDetail, `${window.location.origin}/event-calendar`)} />
+          </div>
+        </div> : null}
       </Modal>
 
       <Modal

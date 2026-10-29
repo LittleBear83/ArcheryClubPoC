@@ -14,7 +14,7 @@ export function migrateSqliteExternalDistanceSigners(db) {
       discipline TEXT NOT NULL CHECK (discipline IN ('Long Bow', 'Bare Bow', 'Recurve Bow', 'Compound Bow')),
       distance_yards INTEGER NOT NULL CHECK (distance_yards IN (20, 30, 40, 50, 60, 80, 100)),
       signed_off_by_username TEXT,
-      source TEXT NOT NULL DEFAULT 'manual',
+      source TEXT NOT NULL DEFAULT 'manual' CHECK (source <> 'manual' OR signed_off_by_username IS NOT NULL),
       signed_off_at_date TEXT NOT NULL,
       signed_off_at_time TEXT NOT NULL,
       PRIMARY KEY (username, discipline, distance_yards),

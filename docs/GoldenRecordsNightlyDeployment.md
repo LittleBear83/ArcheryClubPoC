@@ -8,6 +8,19 @@ Cloud Run service name does not match `GOLDEN_RECORDS_WORKER_SERVICE_NAME`.
 Keep the worker private: the scheduler job name header is only a secondary
 check; Cloud Run IAM validates the OIDC token before Express sees the request.
 
+## Sign-off integrity release gate (29 October 2026)
+
+For the `fix/golden-records-signoff-integrity` release, follow the ordered
+[sign-off audit and rollout assessment](GoldenRecordsSignoffIntegrityAudit.md)
+before using the older worker-only steps below. All live Pi PostgreSQL
+databases must apply migration 025 before the new public portal or private
+worker can import a null human signer. Keep Golden Records refresh and club sync actions frozen during
+the mixed-version window, and keep Scheduler paused until the public portal,
+worker, PostgreSQL migration 025 and every Pi have passed verification. A
+`completed-with-errors` nightly run now returns HTTP 200 with `success: false`
+and persisted member errors, so Scheduler does not retry the full club for
+permanent member-level errors. A whole-job failure still returns HTTP 500.
+
 ## Diagnosing HTTP 403 from the nightly route
 
 On 28 October 2026, revision `selby-golden-records-worker-00004-wvh` logged

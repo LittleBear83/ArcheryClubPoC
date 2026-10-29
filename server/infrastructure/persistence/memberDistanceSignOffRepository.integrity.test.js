@@ -42,6 +42,11 @@ test("SQLite migration preserves manual signers and imported rows coexist withou
     assert.equal(rows[0].source, "manual");
     assert.equal(rows[1].signedOffByUsername, null);
     assert.equal(rows[1].source, "golden-records");
+    assert.throws(() => db.prepare(`
+      INSERT INTO member_distance_sign_offs
+        (username, discipline, distance_yards, signed_off_by_username, source, signed_off_at_date, signed_off_at_time)
+      VALUES ('member', 'Recurve Bow', 30, NULL, 'manual', '2026-02-01', '09:00:00')
+    `).run(), /CHECK constraint failed/);
     assert.deepEqual(db.pragma("foreign_key_check"), []);
   } finally {
     db.close();

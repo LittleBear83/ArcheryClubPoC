@@ -9,13 +9,22 @@ function retryDelay(response, attempt, baseDelayMs) {
   const retryAfter = response?.headers?.get?.("retry-after");
   const seconds = Number(retryAfter);
   if (retryAfter && Number.isFinite(seconds) && seconds >= 0) {
-    return Math.min(seconds * 1000, 10_000);
+    return Math.min(seconds * 1000, 60_000);
   }
   const retryAt = Date.parse(retryAfter ?? "");
   if (Number.isFinite(retryAt)) {
-    return Math.min(Math.max(0, retryAt - Date.now()), 10_000);
+    return Math.min(Math.max(0, retryAt - Date.now()), 60_000);
   }
   return Math.min(baseDelayMs * 2 ** attempt, 5_000);
+}
+
+function rateLimitExceedsBudget(response) {
+  if (response.status !== 429) return false;
+  const retryAfter = response.headers?.get?.("retry-after");
+  if (!retryAfter) return false;
+  const seconds = Number(retryAfter);
+  const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now();
+  return Number.isFinite(delay) && delay > 60_000;
 }
 
 function buildUrl(baseUrl, path, searchParams = {}) {
@@ -67,7 +76,7 @@ export function createGoldenRecordsHttpClient({
             },
             signal: requestSignal,
           });
-          if (RETRYABLE_STATUSES.has(response.status) && attempt < maxRetries) {
+          if (RETRYABLE_STATUSES.has(response.status) && attempt < maxRetries && !rateLimitExceedsBudget(response)) {
             clearTimeout(timeoutId);
             await response.body?.cancel?.();
             await new Promise((resolve) => setTimeout(resolve, retryDelay(response, attempt, retryDelayMs)));

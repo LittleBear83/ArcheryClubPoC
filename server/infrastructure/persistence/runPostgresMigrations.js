@@ -178,7 +178,7 @@ export function buildInitialSchemaSql() {
       username TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
       discipline TEXT NOT NULL,
       distance_yards INTEGER NOT NULL,
-      signed_off_by_username TEXT NOT NULL REFERENCES users(username),
+      signed_off_by_username TEXT REFERENCES users(username),
       source TEXT NOT NULL DEFAULT 'manual',
       signed_off_at_date TEXT NOT NULL,
       signed_off_at_time TEXT NOT NULL,

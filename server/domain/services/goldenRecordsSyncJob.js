@@ -99,7 +99,7 @@ export function createGoldenRecordsSyncJob({
     try {
       if (scheduleStatusKey) {
         const previousRun = await goldenRecordsIntegrationGateway.findStatus(scheduleStatusKey);
-        if (previousRun?.state === "completed") {
+        if (["completed", "completed-with-errors"].includes(previousRun?.state)) {
           await release();
           return { started: false, alreadyCompleted: true, status: previousRun };
         }

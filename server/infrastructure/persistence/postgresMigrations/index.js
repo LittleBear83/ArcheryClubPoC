@@ -23,6 +23,7 @@ import { migration as manualLessonAttendanceMigration } from "./021_manual_lesso
 import { migration as coachingAssignmentNotificationsMigration } from "./022_coaching_assignment_notifications.js";
 import { migration as coachingParticipantNotesMigration } from "./023_coaching_participant_notes.js";
 import { migration as rememberedDevicesMigration } from "./024_remembered_devices.js";
+import { migration as externalDistanceSignersMigration } from "./025_external_distance_signers.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -48,4 +49,5 @@ export const postgresMigrations = [
   coachingAssignmentNotificationsMigration,
   coachingParticipantNotesMigration,
   rememberedDevicesMigration,
+  externalDistanceSignersMigration,
 ];

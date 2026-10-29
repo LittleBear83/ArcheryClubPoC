@@ -37,6 +37,23 @@ test("Golden Records client stops after bounded retries and does not retry authe
   }
 });
 
+test("Golden Records client respects a rate-limit window beyond its backoff budget", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return { ok: false, status: 429, statusText: "Too Many Requests",
+      headers: { get: () => "600" }, text: async () => "rate limited" };
+  };
+  try {
+    const result = await createGoldenRecordsHttpClient({ apiKey: "test" }).getJson("/test");
+    assert.equal(result.status, 429);
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("Golden Records client retries a timed-out request", async () => {
   const originalFetch = globalThis.fetch;
   let calls = 0;

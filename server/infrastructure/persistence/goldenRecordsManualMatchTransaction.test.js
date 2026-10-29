@@ -59,14 +59,19 @@ test("PostgreSQL manual assignment passes one client through downstream writes",
   assert.equal(released, true);
 });
 
-test("PostgreSQL sign-off replacement joins the caller-owned transaction", async () => {
+test("PostgreSQL sign-off import joins the caller-owned transaction without deleting approvals", async () => {
   const queries = [];
   const client = { query: async (sql) => { queries.push(String(sql).trim()); },
     release: () => { throw new Error("Caller owns this client"); } };
   const repository = createMemberDistanceSignOffRepository({ engine: "postgres", pool: {
     connect: async () => { throw new Error("Must not request another client"); },
   } }, { allowedDisciplines: ["Recurve Bow"], distanceYards: [20] });
-  await repository.replaceForDiscipline("robin", "Recurve Bow", [], client);
+  await repository.replaceForDiscipline("robin", "Recurve Bow", [{
+    username: "robin", discipline: "Recurve Bow", distanceYards: 20,
+    source: "golden-records", signedOffByUsername: null,
+    signedOffAtDate: "2026-01-01", signedOffAtTime: "12:00:00",
+  }], client);
   assert.equal(queries.length, 1);
-  assert.match(queries[0], /^DELETE FROM member_distance_sign_offs/);
+  assert.match(queries[0], /^INSERT INTO member_distance_sign_offs/);
+  assert.match(queries[0], /WHERE member_distance_sign_offs.source = 'golden-records'/);
 });

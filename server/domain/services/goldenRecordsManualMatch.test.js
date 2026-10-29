@@ -101,6 +101,8 @@ for (const matchSource of ["not-found", "ambiguous"]) {
     assert.equal(h.outdoorRows[0].archer3rd, true);
     assert.equal(h.outdoorRows[0].bowman3rd, true);
     assert.deepEqual(h.signOffs.map((row) => row.distanceYards), [20]);
+    assert.equal(h.signOffs[0].signedOffByUsername, null);
+    assert.equal(h.signOffs[0].signedOffAtDate, "2026-08-02");
     assert.equal(result.syncedCount, 1);
     assert.equal(h.users.length, 1);
   });

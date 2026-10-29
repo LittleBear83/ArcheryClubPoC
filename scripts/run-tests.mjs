@@ -60,6 +60,7 @@ await import("../server/infrastructure/persistence/coachingAssignmentNotificatio
 await import("../server/infrastructure/persistence/coachingParticipantNoteGateway.test.js");
 await import("../shared/award252Progression.test.js");
 await import("../server/infrastructure/persistence/memberDistanceSignOffRepository.test.js");
+await import("../server/infrastructure/persistence/memberDistanceSignOffRepository.integrity.test.js");
 await import("../server/presentation/http/beginnersCourseCoachRequirements.test.js");
 const outDir = path.join(root, ".test-dist");
 const files = [

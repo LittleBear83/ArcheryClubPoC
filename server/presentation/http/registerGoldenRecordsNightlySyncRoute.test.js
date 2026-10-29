@@ -140,8 +140,15 @@ test("nightly endpoint awaits completion and returns retryable failures", async 
   assert.equal((await pending).code, 200);
   assert.equal((await makeRoute({ start: async () => ({ started: false, status: { state: "running" } }) })(headers)).code, 503);
   assert.equal((await makeRoute({ start: async () => ({ started: true, completion: Promise.resolve({ state: "failed" }) }) })(headers)).code, 500);
-  assert.equal((await makeRoute({ start: async () => ({ started: true, completion: Promise.resolve({ state: "completed-with-errors" }) }) })(headers)).code, 500);
+  const partial = await makeRoute({ start: async () => ({ started: true, completion: Promise.resolve({ state: "completed-with-errors", errorCount: 1 }) }) })(headers);
+  assert.equal(partial.code, 200);
+  assert.equal(partial.body.success, false);
+  assert.equal(partial.body.job.errorCount, 1);
   assert.equal((await makeRoute({ start: async () => ({ started: false, alreadyCompleted: true, status: { state: "completed" } }) })(headers)).code, 200);
+  const repeatedPartial = await makeRoute({ start: async () => ({ started: false, alreadyCompleted: true,
+    status: { state: "completed-with-errors", errorCount: 1 } }) })(headers);
+  assert.equal(repeatedPartial.code, 200);
+  assert.equal(repeatedPartial.body.success, false);
 });
 
 test("nightly retry keeps the original schedule time and completed runs are deduplicated", async () => {

@@ -90,15 +90,24 @@ function createSqliteMemberDistanceSignOffRepository(
       signed_off_at_date = excluded.signed_off_at_date,
       signed_off_at_time = excluded.signed_off_at_time
   `);
-  const deleteDistanceSignOffsByUsernameAndDiscipline = db.prepare(`
-    DELETE FROM member_distance_sign_offs
-    WHERE username = ? AND discipline = ?
+  const upsertImportedSignOff = db.prepare(`
+    INSERT INTO member_distance_sign_offs (
+      username, discipline, distance_yards, signed_off_by_username, source,
+      signed_off_at_date, signed_off_at_time
+    ) VALUES (
+      @username, @discipline, @distanceYards, @signedOffByUsername, @source,
+      @signedOffAtDate, @signedOffAtTime
+    )
+    ON CONFLICT(username, discipline, distance_yards) DO UPDATE SET
+      signed_off_by_username = excluded.signed_off_by_username,
+      source = excluded.source,
+      signed_off_at_date = excluded.signed_off_at_date,
+      signed_off_at_time = excluded.signed_off_at_time
+    WHERE member_distance_sign_offs.source = 'golden-records'
   `);
-  const replaceDistanceSignOffsTransaction = db.transaction(({ discipline, signOffs, username }) => {
-    deleteDistanceSignOffsByUsernameAndDiscipline.run(username, discipline);
-
+  const replaceDistanceSignOffsTransaction = db.transaction(({ signOffs }) => {
     for (const signOff of signOffs) {
-      upsertDistanceSignOff.run(signOff);
+      upsertImportedSignOff.run(signOff);
     }
   });
 
@@ -219,19 +228,11 @@ function createPostgresMemberDistanceSignOffRepository(
         ],
       );
     },
-    async replaceForDiscipline(username, discipline, signOffs, transactionClient) {
+    async replaceForDiscipline(_username, _discipline, signOffs, transactionClient) {
       const client = transactionClient ?? await db.pool.connect();
 
       try {
         if (!transactionClient) await client.query("BEGIN");
-        await client.query(
-          `
-            DELETE FROM member_distance_sign_offs
-            WHERE LOWER(username) = LOWER($1) AND discipline = $2
-          `,
-          [username, discipline],
-        );
-
         for (const signOff of signOffs) {
           await client.query(
             `
@@ -257,6 +258,13 @@ function createPostgresMemberDistanceSignOffRepository(
                 (SELECT id FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1),
                 (SELECT id FROM users WHERE LOWER(username) = LOWER($4) LIMIT 1)
               )
+              ON CONFLICT(username, discipline, distance_yards) DO UPDATE SET
+                signed_off_by_username = EXCLUDED.signed_off_by_username,
+                source = EXCLUDED.source,
+                signed_off_at_date = EXCLUDED.signed_off_at_date,
+                signed_off_at_time = EXCLUDED.signed_off_at_time,
+                signed_off_by_user_id = EXCLUDED.signed_off_by_user_id
+              WHERE member_distance_sign_offs.source = 'golden-records'
             `,
             [
               signOff.username,

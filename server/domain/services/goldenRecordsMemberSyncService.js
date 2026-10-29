@@ -601,7 +601,6 @@ export function createGoldenRecordsMemberSyncService({
     disciplines,
     goldenRecordsSnapshot,
     transactionClient,
-    updatedByUsername,
     user,
     skipUnchanged = false,
   }) {
@@ -636,7 +635,7 @@ export function createGoldenRecordsMemberSyncService({
         source: "golden-records",
         signedOffAtDate: achievedDate,
         signedOffAtTime: normalizeGoldenRecordsTime(achievement.achieved),
-        signedOffByUsername: updatedByUsername,
+        signedOffByUsername: null,
       });
       signOffsByDiscipline.set(discipline, current);
     }
@@ -656,7 +655,10 @@ export function createGoldenRecordsMemberSyncService({
         }, []);
 
       const existing = existingSignOffs.filter((row) => row.discipline === discipline);
-      if (skipUnchanged && existing.length === signOffs.length && existing.every((row) => signOffs.some((next) =>
+      const imported = existing.filter((row) => row.source === "golden-records");
+      const applicable = signOffs.filter((next) => !existing.some((row) =>
+        row.distanceYards === next.distanceYards && row.source !== "golden-records"));
+      if (skipUnchanged && applicable.every((next) => imported.some((row) =>
         row.distanceYards === next.distanceYards && row.source === next.source &&
         row.signedOffByUsername === next.signedOffByUsername && row.signedOffAt === next.signedOffAtDate &&
         row.signedOffAtTime === next.signedOffAtTime))) {

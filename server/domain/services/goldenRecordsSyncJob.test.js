@@ -226,6 +226,30 @@ test("failed nightly run remains visible and can be retried", async () => {
   assert.equal(calls, 2);
 });
 
+test("nightly partial results are retained without repeating the full club run", async () => {
+  const statuses = new Map();
+  let calls = 0;
+  const job = createGoldenRecordsSyncJob({
+    backgroundExecutionAvailable: false,
+    goldenRecordsIntegrationGateway: {
+      findStatus: async (key) => statuses.get(key) ?? null,
+      upsertStatus: async (key, value) => { statuses.set(key, structuredClone(value)); },
+      tryAcquireMemberSyncLock: async () => async () => {},
+    },
+    goldenRecordsMemberSyncService: { syncAllMembers: async () => {
+      calls++;
+      return { attemptedCount: 2, errorCount: 1, errors: [{ username: "robin", message: "Invalid member data" }] };
+    } },
+    logger: { info() {}, error() {} },
+  });
+  const first = await job.start({ actorUsername: "scheduler", scheduledDate: "2026-07-12", waitForCompletion: true });
+  assert.equal((await first.completion).state, "completed-with-errors");
+  const second = await job.start({ actorUsername: "scheduler", scheduledDate: "2026-07-12", waitForCompletion: true });
+  assert.equal(second.alreadyCompleted, true);
+  assert.equal(second.status.errorCount, 1);
+  assert.equal(calls, 1);
+});
+
 test("manual queue survives browser disconnect, blocks nightly overlap, and deduplicates task retry", async () => {
   const statuses = new Map();
   let releaseCount = 0;

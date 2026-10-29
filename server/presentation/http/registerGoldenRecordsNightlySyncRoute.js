@@ -56,15 +56,15 @@ export function registerGoldenRecordsNightlySyncRoute({
         waitForCompletion: true,
       });
       if (result.alreadyCompleted) {
-        return res.json({ success: true, skipped: true, job: result.status });
+        return res.json({ success: result.status?.state === "completed", skipped: true, job: result.status });
       }
       if (!result.started) {
         return res.status(503).json({ success: false, message: "A Golden Records sync is already running.", job: result.status });
       }
 
       const job = await result.completion;
-      const success = job.state === "completed";
-      return res.status(success ? 200 : 500).json({ success, job });
+      const finished = job.state === "completed" || job.state === "completed-with-errors";
+      return res.status(finished ? 200 : 500).json({ success: job.state === "completed", job });
     } catch (error) {
       logger.error?.("Golden Records nightly sync request failed", error);
       return res.status(500).json({ success: false, message: "Golden Records nightly sync failed to start." });

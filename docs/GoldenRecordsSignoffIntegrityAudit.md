@@ -67,9 +67,10 @@ can retry. After correcting member data, an authorised manual full-club sync
 can recover affected members. Golden Records Admin shows the status, error
 count and first ten member errors; the persisted job status retains the full
 error list. The HTTP client retries 429 and transient server
-responses at most twice, honours `Retry-After` up to 60 seconds, and returns a
-429 without retrying when the requested wait exceeds that budget. It keeps its
-existing per-request timeout. The nine observed executions are consistent
+responses at most twice, honours `Retry-After` within a 60-second total
+rate-limit wait budget, and returns a 429 without retrying when the requested
+wait exceeds the remaining budget. An aborted sync cancels a pending retry
+wait. It keeps its existing per-request timeout. The nine observed executions are consistent
 with the old HTTP 500 retry path; cloud logs would be needed to assign each
 execution to a specific Scheduler attempt.
 

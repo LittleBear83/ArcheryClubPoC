@@ -393,6 +393,11 @@ export function GoldenRecordsAdminPage({
           {memberSyncJob ? (
             <div role="status">
               <p>
+                {memberSyncJob.queuedAt ? <><strong>Queued:</strong> <time dateTime={memberSyncJob.queuedAt}>{clubSyncTimeFormatter.format(new Date(memberSyncJob.queuedAt))}</time>. </> : null}
+                {memberSyncJob.startedAt ? <><strong>Started:</strong> <time dateTime={memberSyncJob.startedAt}>{clubSyncTimeFormatter.format(new Date(memberSyncJob.startedAt))}</time>. </> : null}
+                {memberSyncJob.completedAt ? <><strong>Finished:</strong> <time dateTime={memberSyncJob.completedAt}>{clubSyncTimeFormatter.format(new Date(memberSyncJob.completedAt))}</time>.</> : null}
+              </p>
+              <p>
                 <strong>Status:</strong> {memberSyncJob.state}. {memberSyncJob.attemptedCount} members attempted; {memberSyncJob.matchedCount} matched, {memberSyncJob.unmatchedCount} unmatched, {memberSyncJob.achievementCount} achievements, {memberSyncJob.errorCount} errors.
                 {memberSyncJob.durationMs !== undefined ? ` Duration: ${Math.round(memberSyncJob.durationMs / 1000)} seconds.` : ""}
                 {memberSyncJob.failureMessage ? ` ${memberSyncJob.failureMessage}` : ""}

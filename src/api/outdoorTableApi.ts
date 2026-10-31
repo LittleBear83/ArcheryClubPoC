@@ -125,7 +125,7 @@ export type GoldenRecordsMemberSyncJob = {
   id: string;
   state: "queued" | "running" | "completed" | "completed-with-errors" | "failed" | "interrupted";
   queuedAt?: string;
-  startedAt: string;
+  startedAt?: string;
   completedAt?: string;
   lastSuccessfulAt?: string | null;
   durationMs?: number;

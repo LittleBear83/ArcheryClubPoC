@@ -54,6 +54,24 @@ test("Golden Records client respects a rate-limit window beyond its backoff budg
   }
 });
 
+test("Golden Records client cancels a Retry-After wait when the sync is aborted", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return { status: 429, headers: { get: () => "30" }, body: { cancel: async () => {} } };
+  };
+  const controller = new AbortController();
+  try {
+    const request = createGoldenRecordsHttpClient({ apiKey: "test" }).getJson("/test", {}, { signal: controller.signal });
+    setTimeout(() => controller.abort(), 10);
+    await assert.rejects(request, { name: "AbortError" });
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("Golden Records client retries a timed-out request", async () => {
   const originalFetch = globalThis.fetch;
   let calls = 0;

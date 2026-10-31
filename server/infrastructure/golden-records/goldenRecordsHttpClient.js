@@ -3,28 +3,35 @@ import { buildGoldenRecordsAuthorizationHeader } from "./goldenRecordsAuth.js";
 const DEFAULT_BASE_URL = "https://api2.archery-records.net";
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_USER_AGENT = "ArcheryClubPoC/1.0";
+const MAX_RATE_LIMIT_WAIT_MS = 60_000;
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
+
+function waitForRetry(delayMs, signal) {
+  signal?.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    function onAbort() {
+      clearTimeout(timeoutId);
+      reject(signal.reason ?? new DOMException("The request was aborted.", "AbortError"));
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 function retryDelay(response, attempt, baseDelayMs) {
   const retryAfter = response?.headers?.get?.("retry-after");
   const seconds = Number(retryAfter);
   if (retryAfter && Number.isFinite(seconds) && seconds >= 0) {
-    return Math.min(seconds * 1000, 60_000);
+    return seconds * 1000;
   }
   const retryAt = Date.parse(retryAfter ?? "");
   if (Number.isFinite(retryAt)) {
-    return Math.min(Math.max(0, retryAt - Date.now()), 60_000);
+    return Math.max(0, retryAt - Date.now());
   }
   return Math.min(baseDelayMs * 2 ** attempt, 5_000);
-}
-
-function rateLimitExceedsBudget(response) {
-  if (response.status !== 429) return false;
-  const retryAfter = response.headers?.get?.("retry-after");
-  if (!retryAfter) return false;
-  const seconds = Number(retryAfter);
-  const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(retryAfter) - Date.now();
-  return Number.isFinite(delay) && delay > 60_000;
 }
 
 function buildUrl(baseUrl, path, searchParams = {}) {
@@ -61,6 +68,7 @@ export function createGoldenRecordsHttpClient({
 
   return {
     async getJson(path, searchParams = {}, { signal } = {}) {
+      const rateLimitDeadline = Date.now() + MAX_RATE_LIMIT_WAIT_MS;
       for (let attempt = 0; ; attempt += 1) {
         signal?.throwIfAborted();
         const controller = new AbortController();
@@ -76,10 +84,13 @@ export function createGoldenRecordsHttpClient({
             },
             signal: requestSignal,
           });
-          if (RETRYABLE_STATUSES.has(response.status) && attempt < maxRetries && !rateLimitExceedsBudget(response)) {
+          const delayMs = retryDelay(response, attempt, retryDelayMs);
+          const canRetry = RETRYABLE_STATUSES.has(response.status) && attempt < maxRetries &&
+            (response.status !== 429 || Date.now() + delayMs <= rateLimitDeadline);
+          if (canRetry) {
             clearTimeout(timeoutId);
             await response.body?.cancel?.();
-            await new Promise((resolve) => setTimeout(resolve, retryDelay(response, attempt, retryDelayMs)));
+            await waitForRetry(delayMs, signal);
             continue;
           }
           const text = await response.text();
@@ -99,7 +110,7 @@ export function createGoldenRecordsHttpClient({
         } catch (error) {
           if (signal?.aborted || attempt >= maxRetries || (!controller.signal.aborted && !(error instanceof TypeError))) throw error;
           clearTimeout(timeoutId);
-          await new Promise((resolve) => setTimeout(resolve, retryDelay(null, attempt, retryDelayMs)));
+          await waitForRetry(retryDelay(null, attempt, retryDelayMs), signal);
         } finally {
           clearTimeout(timeoutId);
         }

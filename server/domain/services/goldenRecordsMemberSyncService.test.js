@@ -542,6 +542,7 @@ test("club sync links an existing AGB member, stores the profile snapshot and up
       ...currentService,
       fetchClubData: async () => ({
         members: [{ memberId: "new-id", membershipId: "123456", name: "Robin Archer", email: "", memberArchived: false }],
+        handicapsByMember: new Map([["new-id", [{ member_id: "new-id", bow_class: "Recurve", type: "Outdoor", handicap: 37 }]]]),
         achievementsByMember: new Map([["new-id", [{
           member_id: "new-id", achievement: "Archer 3rd", achieved: "2026-06-12T09:00:00Z", bow_class: "Recurve",
         }]]]),

@@ -262,15 +262,45 @@ export function createGoldenRecordsCurrentHandicapService({
     rows: [],
   };
   let lastRequestAt = 0;
+  let requestTimes = [];
+  let requestQueue = Promise.resolve();
 
-  async function waitForQuotaWindow() {
-    const elapsedMs = Date.now() - lastRequestAt;
-
-    if (elapsedMs < GOLDEN_RECORDS_REQUEST_GAP_MS) {
-      await new Promise((resolve) => setTimeout(resolve, GOLDEN_RECORDS_REQUEST_GAP_MS - elapsedMs));
+  async function waitForQuotaWindow(signal) {
+    signal?.throwIfAborted();
+    const now = Date.now();
+    requestTimes = requestTimes.filter((timestamp) => timestamp > now - 60 * 60_000);
+    const minuteTimes = requestTimes.filter((timestamp) => timestamp > now - 60_000);
+    const nextRequestAt = Math.max(
+      lastRequestAt + GOLDEN_RECORDS_REQUEST_GAP_MS,
+      minuteTimes.length >= 20 ? minuteTimes[minuteTimes.length - 20] + 60_001 : 0,
+      requestTimes.length >= 200 ? requestTimes[requestTimes.length - 200] + 60 * 60_000 + 1 : 0,
+    );
+    if (nextRequestAt > now) {
+      await new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve();
+        }, nextRequestAt - now);
+        function onAbort() {
+          clearTimeout(timeoutId);
+          reject(signal.reason ?? new DOMException("The request was aborted.", "AbortError"));
+        }
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
     }
 
-    lastRequestAt = Date.now();
+    signal?.throwIfAborted();
+    lastRequestAt = Math.max(Date.now(), nextRequestAt);
+    requestTimes.push(lastRequestAt);
+  }
+
+  function runWithQuota(task, signal) {
+    const turn = requestQueue.then(async () => {
+      await waitForQuotaWindow(signal);
+      return task();
+    });
+    requestQueue = turn.catch(() => {});
+    return turn;
   }
 
   async function listMembers({ forceRefresh = false } = {}) {
@@ -283,9 +313,8 @@ export function createGoldenRecordsCurrentHandicapService({
   async function listPagedRows(path, query, buildErrorMessage, { allowNullEmpty = false, signal } = {}) {
     return collectGoldenRecordsPages({
       path,
-      beforePage: waitForQuotaWindow,
       fetchPage: ({ pageNumber, pageSize, signal: pageSignal }) =>
-        client.getJson(path, { ...query, pageNumber, pageSize }, { signal: pageSignal }),
+        runWithQuota(() => client.getJson(path, { ...query, pageNumber, pageSize }, { signal: pageSignal }), pageSignal),
       errorMessage: (response) => buildErrorMessage(response.status),
       allowNullEmpty,
       signal,
@@ -352,7 +381,12 @@ export function createGoldenRecordsCurrentHandicapService({
     signal,
   }) {
     const fetchedAt = new Date().toISOString();
-    const handicapRows = await getCurrentHandicapsByMemberId(memberId, signal);
+    if (clubData && !(clubData.handicapsByMember instanceof Map)) {
+      throw new Error("Golden Records club handicap data is unavailable; refusing individual-request fallback.");
+    }
+    const handicapRows = clubData
+      ? (clubData.handicapsByMember.get(String(memberId)) ?? []).map(normalizeHandicapRow)
+      : await getCurrentHandicapsByMemberId(memberId, signal);
     const rawAchievements = clubData?.achievementsByMember.get(String(memberId)) ?? (clubData ? [] : undefined);
     const achievementRows = rawAchievements ? rawAchievements.map(normalizeAchievementRow) : await getAchievementsByMemberId(memberId, signal);
     const classificationRows = clubData?.currentClassificationsByMember
@@ -572,13 +606,23 @@ export function createGoldenRecordsCurrentHandicapService({
     async fetchClubData({ signal } = {}) {
       try {
         const members = (await listPagedRows("/api/members", {}, (status) => "Golden Records members API returned " + status, { signal })).map(normalizeMemberRow);
+        const handicaps = await listPagedRows("/api/currenthandicaps", {},
+          (status) => `Golden Records current handicaps API returned ${status}`, { signal });
         const achievements = await listPagedRows("/api/Achievements", {}, (status) => "Golden Records achievements API returned " + status, { signal });
         const classifications = await listPagedRows("/api/classifications", {}, (status) => "Golden Records classifications API returned " + status, { signal });
         const currentClassifications = await listPagedRows("/api/currentclassifications", {},
           (status) => "Golden Records current classifications API returned " + status, { signal });
         const achievementsByMember = new Map();
+        const handicapsByMember = new Map();
         const classificationsByMember = new Map();
         const currentClassificationsByMember = new Map();
+        for (const row of handicaps) {
+          const key = String(row.member_id ?? "").trim();
+          if (!key) throw new Error("Golden Records bulk current handicaps response contains a row without a member ID.");
+          const rows = handicapsByMember.get(key) ?? [];
+          rows.push(row);
+          handicapsByMember.set(key, rows);
+        }
         for (const row of achievements) {
           const key = String(row.member_id ?? "");
           const rows = achievementsByMember.get(key) ?? [];
@@ -598,8 +642,8 @@ export function createGoldenRecordsCurrentHandicapService({
           rows.push(row);
           currentClassificationsByMember.set(key, rows);
         }
-        logger.info?.("Golden Records club data fetched", { members: members.length, activeMembers: members.filter((row) => !row.memberArchived).length, achievements: achievements.length });
-        return { members, achievementsByMember, classificationsByMember, currentClassificationsByMember };
+        logger.info?.("Golden Records club data fetched", { members: members.length, activeMembers: members.filter((row) => !row.memberArchived).length, handicaps: handicaps.length, achievements: achievements.length });
+        return { members, handicapsByMember, achievementsByMember, classificationsByMember, currentClassificationsByMember };
       } catch (error) {
         logger.error?.("Golden Records club API error", { error: error.message });
         throw error;

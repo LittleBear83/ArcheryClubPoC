@@ -22,6 +22,7 @@ import { Modal } from "../components/Modal";
 import { SectionPanel } from "../components/SectionPanel";
 import { StatusMessagePanel } from "../components/StatusMessagePanel";
 import { refreshGoldenRecordsReferenceData } from "./goldenRecordsReferenceRefresh";
+import { clubSyncTimeFormatter, formatGoldenRecordsSyncHeading } from "./goldenRecordsSyncHeading";
 
 type GoldenRecordsAdminPageProps = {
   currentUserProfile: unknown;
@@ -74,16 +75,6 @@ function formatLookupLabel(value: string) {
     .map((part) => (part ? `${part[0].toUpperCase()}${part.slice(1)}` : part))
     .join(" ");
 }
-
-const clubSyncTimeFormatter = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Europe/London",
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZoneName: "short",
-});
 
 export function GoldenRecordsAdminPage({
   currentUserProfile,
@@ -376,7 +367,7 @@ export function GoldenRecordsAdminPage({
           ) : null}
         </GoldenRecordsSlice>
 
-        <GoldenRecordsSlice title="Sync all members" description="Refresh member achievements across the club." status={jobQuery.isLoading ? "Checking..." : memberSyncJob?.state ?? "Not run"}>
+        <GoldenRecordsSlice title="Sync all members" description="Refresh member achievements across the club." status={jobQuery.isLoading ? "Checking..." : formatGoldenRecordsSyncHeading(memberSyncJob)}>
           <p>
             Use this for widespread missing results or when a club-wide update is needed sooner.
             It refreshes outdoor achievements and verified indoor results for matched members.

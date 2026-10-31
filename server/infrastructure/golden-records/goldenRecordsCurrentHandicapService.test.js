@@ -219,6 +219,7 @@ test("club pagination, safe matching, grouping and archived members", async () =
     const clubData = await service.fetchClubData();
     assert.equal(clubData.members.length, 1004);
     assert.equal(clubData.achievementsByMember.get("other").length, 1000);
+    assert.ok(clubData.handicapsByMember instanceof Map);
     assert.equal(calls.filter((url) => url.pathname === "/api/members").length, 2);
     assert.equal(calls.filter((url) => url.pathname === "/api/Achievements").length, 2);
     for (const [criteria, expected] of [
@@ -248,6 +249,132 @@ test("club pagination, safe matching, grouping and archived members", async () =
   }
 });
 
+test("club sync bulk-handicap pagination preserves member data and reduces request count", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  const calls = [];
+  let activeRequests = 0;
+  let peakRequests = 0;
+  const members = Array.from({ length: 12 }, (_, index) => ({ member_id: `member-${index}`, name: `Member ${index}` }));
+  const handicaps = members.flatMap((member, index) => [
+    { member_id: member.member_id, bow_class: "Recurve", type: "Outdoor", handicap: 30 + index },
+    { member_id: member.member_id, bow_class: "Compound", type: "Indoor", handicap: 40 + index },
+  ]);
+  try {
+    globalThis.setTimeout = (callback) => { callback(); return 0; };
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      calls.push(url);
+      activeRequests++;
+      peakRequests = Math.max(peakRequests, activeRequests);
+      await Promise.resolve();
+      activeRequests--;
+      const page = Number(url.searchParams.get("pageNumber"));
+      const rows = url.pathname === "/api/members" ? members
+        : url.pathname === "/api/currenthandicaps" ? page === 1
+          ? Array.from({ length: 1000 }, (_, index) => ({ member_id: "unmatched", bow_class: "Recurve", type: "Outdoor", handicap: index }))
+          : handicaps
+        : url.pathname === "/api/Achievements" ? members.map((member, index) => ({
+          member_id: member.member_id, achievement_id: `award-${index}`, achievement: `Award ${index}`,
+        }))
+        : [];
+      return { ok: true, status: 200, text: async () => JSON.stringify(rows) };
+    };
+    const service = createGoldenRecordsCurrentHandicapService({
+      apiKey: "test-key", baseUrl: "https://api2.archery-records.net", logger: { info() {} },
+    });
+    const clubData = await service.fetchClubData();
+    for (const [index, member] of members.entries()) {
+      const snapshot = await service.getSnapshotForMember({ goldenRecordsId: member.member_id, clubData });
+      assert.deepEqual(snapshot.handicaps.map((row) => [row.type, row.handicap]),
+        [["indoor", 40 + index], ["outdoor", 30 + index]]);
+      assert.deepEqual(snapshot.achievements.map((row) => row.achievementId), [`award-${index}`]);
+    }
+    assert.deepEqual(calls.filter((url) => url.pathname === "/api/currenthandicaps").map((url) => [
+      url.searchParams.get("pageNumber"), url.searchParams.get("id"),
+    ]), [["1", null], ["2", null]]);
+    assert.equal(calls.length, 6);
+    assert.equal(peakRequests, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
+test("bulk handicap 429 stops the club scan without individual-request fallback", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  try {
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      calls.push(url.pathname);
+      return url.pathname === "/api/currenthandicaps"
+        ? { ok: false, status: 429, statusText: "Too Many Requests", headers: { get: () => "600" }, text: async () => "rate limited" }
+        : { ok: true, status: 200, text: async () => JSON.stringify([{ member_id: "member-1" }]) };
+    };
+    const service = createGoldenRecordsCurrentHandicapService({
+      apiKey: "test-key", baseUrl: "https://api2.archery-records.net", logger: { error() {} },
+    });
+    await assert.rejects(service.fetchClubData(), /current handicaps API returned 429/);
+    assert.deepEqual(calls, ["/api/members", "/api/currenthandicaps"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("abort during the request gap stops bulk retrieval before another API call", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  try {
+    globalThis.fetch = async () => {
+      calls++;
+      return { ok: true, status: 200, text: async () => "[]" };
+    };
+    const service = createGoldenRecordsCurrentHandicapService({
+      apiKey: "test-key", baseUrl: "https://api2.archery-records.net", logger: { error() {} },
+    });
+    const controller = new AbortController();
+    const request = service.fetchClubData({ signal: controller.signal });
+    setTimeout(() => controller.abort(), 10);
+    await assert.rejects(request, { name: "AbortError" });
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("club pagination waits for the published 20 requests per minute quota", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  const waits = [];
+  let calls = 0;
+  try {
+    globalThis.setTimeout = (callback, delay) => {
+      waits.push(delay);
+      callback();
+      return 0;
+    };
+    globalThis.fetch = async (input) => {
+      calls++;
+      const url = new URL(String(input));
+      const page = Number(url.searchParams.get("pageNumber"));
+      const rows = url.pathname === "/api/currenthandicaps" && page <= 20
+        ? Array.from({ length: 1000 }, () => ({ member_id: "unmatched" }))
+        : [];
+      return { ok: true, status: 200, text: async () => JSON.stringify(rows) };
+    };
+    const service = createGoldenRecordsCurrentHandicapService({
+      apiKey: "test-key", baseUrl: "https://api2.archery-records.net", logger: { info() {} },
+    });
+    await service.fetchClubData();
+    assert.equal(calls, 25);
+    assert.ok(waits.some((delay) => delay > 30_000), "minute quota should pause after 20 requests");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
 test("stale Golden Records id falls back to a unique AGB match without linking ambiguous members", async () => {
   const originalFetch = globalThis.fetch;
   try {
@@ -260,6 +387,7 @@ test("stale Golden Records id falls back to a unique AGB match without linking a
         { memberId: "other-b", membershipId: "duplicate", memberArchived: false, name: "Other B", email: "" },
       ],
       achievementsByMember: new Map(),
+      handicapsByMember: new Map(),
     };
     const matched = await service.getSnapshotForMember({ goldenRecordsId: "stale-id", archeryGbMembershipNumber: "123456", username: "robin", clubData });
     assert.equal(matched.matchedMemberId, "new-id");
@@ -299,6 +427,7 @@ test("unique exact name fallback restores Cfleetham mapping without guessing amb
         {memberId: "gr-old", name: "Old Member", memberArchived: true},
       ],
       achievementsByMember: new Map(),
+      handicapsByMember: new Map(),
       portalMembers: [
         {username: "Cfleetham", first_name: "Craig", surname: "Fleetham"},
       ],

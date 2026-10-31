@@ -173,3 +173,28 @@ ordered rollout above is technically ready for approval. Scheduler reactivation
 remains NO-GO until every Pi migration and post-deployment check has passed.
 The remaining code risk is the pre-existing non-atomic sign-off audit write;
 it does not require a new sign-off design for this fix.
+
+## 31 October 2026: full-club API request reduction
+
+Golden Records [documents paginated, unfiltered `GET /api/currenthandicaps`](https://api2.archery-records.net/help)
+with at most 1000 rows per page. A read-only, one-row request using the locally
+configured credentials returned HTTP 200 and a row with `member_id`. Full-club
+sync now retrieves every current-handicap page before member writes, groups rows
+by member ID, and uses that snapshot for each matched member. A failed, malformed,
+or rate-limited bulk response stops the club fetch; it does not trigger a scan of
+individual member endpoints. Individual-member refresh retains its filtered
+request. The service serializes its page requests and paces them against the documented
+[1/second, 20/minute, and 200/hour limits](https://api2.archery-records.net/content/page/throttling). An abort cancels quota waits.
+
+In a 12-member isolated API fixture with two current-handicap pages, the
+previous commit made 16 HTTP requests (12 filtered handicap requests plus four
+bulk requests). The revised path made 6 (two bulk handicap pages plus the same
+four other bulk requests). The fixture verified indoor and outdoor handicaps,
+member association, unchanged achievement coverage, and one request in flight
+at a time. The collapsed Sync all members heading now shows the last attempt's
+queued or started time in London time, including failed and partial runs; the
+separate last-successful timestamp retains its existing meaning.
+
+These local checks do not verify production credentials, production page counts,
+or rate-limit use by other processes. The release decision and ordered rollout
+above remain unchanged.

@@ -38,6 +38,7 @@ await import("../src/presentation/pages/records/handicapLookup.test.js");
 await import("../src/presentation/pages/records/handicapMemberDefaults.test.js");
 await import("../src/presentation/pages/records/groupHandicapRounds.test.js");
 await import("../src/presentation/pages/goldenRecordsReferenceRefresh.test.js");
+await import("../src/presentation/pages/goldenRecordsSyncHeading.test.js");
 await import("../server/presentation/http/tournamentTemplateCapability.test.js");
 await import("../server/presentation/http/tournamentRegistration.test.js");
 await import("../server/presentation/http/registerTournamentRoutes.templateUpdate.test.js");

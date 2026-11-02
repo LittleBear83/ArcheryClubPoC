@@ -24,6 +24,7 @@ import { migration as coachingAssignmentNotificationsMigration } from "./022_coa
 import { migration as coachingParticipantNotesMigration } from "./023_coaching_participant_notes.js";
 import { migration as rememberedDevicesMigration } from "./024_remembered_devices.js";
 import { migration as externalDistanceSignersMigration } from "./025_external_distance_signers.js";
+import { migration as bowDisciplineNamesMigration } from "./026_bow_discipline_names.js";
 
 export const postgresMigrations = [
   syncFoundationMigration,
@@ -50,4 +51,5 @@ export const postgresMigrations = [
   coachingParticipantNotesMigration,
   rememberedDevicesMigration,
   externalDistanceSignersMigration,
+  bowDisciplineNamesMigration,
 ];

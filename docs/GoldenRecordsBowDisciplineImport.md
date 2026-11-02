@@ -24,7 +24,7 @@ live app's existing Golden Records credentials. The local Pi cannot run it.
 - Skip conflicting identifiers, duplicate matches, archived records, unknown
   bow classes, and members without a strong identifier match.
 - Map Recurve, Compound, Barebow, and Longbow to Recurve Bow, Compound Bow,
-  Bare Bow, and Long Bow respectively.
+  Barebow, and Longbow respectively.
 
 ## Preview and apply
 

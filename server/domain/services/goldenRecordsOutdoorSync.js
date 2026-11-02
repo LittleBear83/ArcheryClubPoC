@@ -83,9 +83,9 @@ export function createGoldenRecordsOutdoorSync({ outdoorTableGateway, getUtcTime
             return ["Rec"];
           case "Compound Bow":
             return ["Comp"];
-          case "Bare Bow":
+          case "Barebow":
             return ["B/bow"];
-          case "Long Bow":
+          case "Longbow":
             return ["L/bow"];
           default:
             return [];

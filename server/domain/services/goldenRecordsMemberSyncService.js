@@ -34,9 +34,9 @@ function mapGoldenRecordsBowClassToDiscipline(bowClass) {
     case "compound":
       return "Compound Bow";
     case "barebow":
-      return "Bare Bow";
+      return "Barebow";
     case "longbow":
-      return "Long Bow";
+      return "Longbow";
     default:
       return "";
   }
@@ -232,9 +232,9 @@ export function createGoldenRecordsMemberSyncService({
             return ["Rec"];
           case "Compound Bow":
             return ["Comp"];
-          case "Bare Bow":
+          case "Barebow":
             return ["B/bow"];
-          case "Long Bow":
+          case "Longbow":
             return ["L/bow"];
           default:
             return [];

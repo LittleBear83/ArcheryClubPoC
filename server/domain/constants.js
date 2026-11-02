@@ -235,8 +235,8 @@ export const PROGRAMME_TYPE_OPTIONS = [
 ];
 
 export const ALLOWED_DISCIPLINES = [
-  "Long Bow",
-  "Bare Bow",
+  "Longbow",
+  "Barebow",
   "Recurve Bow",
   "Compound Bow",
 ];

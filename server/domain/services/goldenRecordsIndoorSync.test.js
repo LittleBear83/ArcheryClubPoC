@@ -14,7 +14,7 @@ function harness(snapshot, storedSnapshots = []) {
     goldenRecordsSyncGateway: { upsertSnapshot: async () => {},
       listStoredSnapshots: async () => storedSnapshots },
     memberDirectoryGateway: { findDisciplinesByUsername: async () => [
-      { discipline: "Recurve Bow" }, { discipline: "Bare Bow" },
+      { discipline: "Recurve Bow" }, { discipline: "Barebow" },
     ], listAllUsers: async () => [user] },
     memberDistanceSignOffRepository: { replaceForDiscipline: async () => {} },
     indoorTableGateway: {

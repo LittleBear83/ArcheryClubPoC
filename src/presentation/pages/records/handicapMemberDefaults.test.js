@@ -3,7 +3,7 @@ import test from "node:test";
 import { findKnownHandicap, getMemberBowOptions, tableMatchesMemberBow } from "./handicapMemberDefaults.js";
 
 test("profile bows become the selectable disciplines", () => {
-  assert.deepEqual(getMemberBowOptions(["Long Bow", "Recurve Bow", "Unknown"]), [
+  assert.deepEqual(getMemberBowOptions(["Longbow", "Recurve Bow", "Unknown"]), [
     { value: "recurve", label: "Recurve" }, { value: "longbow", label: "Longbow" },
   ]);
 });

@@ -5,7 +5,7 @@ export const INDOOR_CLASSIFICATIONS = [
   "indoorMasterBowman", "indoorGrandMasterBowman",
 ];
 export const INDOOR_SCORES = [300, 325, 350, 375, 400, 425, 450, 475, 500, 525, 550, 575, 580, 585, 590, 595, 600];
-const BOW_DISCIPLINES = { Rec: "Recurve Bow", Comp: "Compound Bow", "B/bow": "Bare Bow", "L/bow": "Long Bow" };
+const BOW_DISCIPLINES = { Rec: "Recurve Bow", Comp: "Compound Bow", "B/bow": "Barebow", "L/bow": "Longbow" };
 
 function normalizeDates(value, keys) {
   if (value == null) return {};

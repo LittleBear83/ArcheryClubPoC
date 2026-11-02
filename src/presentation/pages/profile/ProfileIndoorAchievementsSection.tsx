@@ -10,8 +10,8 @@ import type { UserProfile } from "../../../types/app";
 const BOWS = [
   { discipline: "Recurve Bow", bowType: "Rec", label: "Recurve" },
   { discipline: "Compound Bow", bowType: "Comp", label: "Compound" },
-  { discipline: "Bare Bow", bowType: "B/bow", label: "Barebow" },
-  { discipline: "Long Bow", bowType: "L/bow", label: "Longbow" },
+  { discipline: "Barebow", bowType: "B/bow", label: "Barebow" },
+  { discipline: "Longbow", bowType: "L/bow", label: "Longbow" },
 ];
 
 export function ProfileIndoorAchievementsSection({ currentUserProfile, username, disciplines, canManage,

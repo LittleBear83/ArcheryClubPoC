@@ -3,8 +3,8 @@ import { createHash } from "node:crypto";
 const BOW_DISCIPLINES = new Map([
   ["recurve", "Recurve Bow"],
   ["compound", "Compound Bow"],
-  ["barebow", "Bare Bow"],
-  ["longbow", "Long Bow"],
+  ["barebow", "Barebow"],
+  ["longbow", "Longbow"],
 ]);
 
 const text = (value) => String(value ?? "").trim();

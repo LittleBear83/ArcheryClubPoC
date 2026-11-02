@@ -33,7 +33,7 @@ const seedUsers = [
     membershipFeesDue: "2026-12-31",
     coachingVolunteer: false,
     userType: "general",
-    disciplines: ["Bare Bow", "Recurve Bow"],
+    disciplines: ["Barebow", "Recurve Bow"],
   },
   {
     username: "DStevens",
@@ -58,9 +58,9 @@ const seedUsers = [
     coachingVolunteer: true,
     userType: "admin",
     disciplines: [
-      "Bare Bow",
+      "Barebow",
       "Compound Bow",
-      "Long Bow",
+      "Longbow",
       "Recurve Bow",
     ],
   },
@@ -74,7 +74,7 @@ const seedUsers = [
     membershipFeesDue: "2026-04-03",
     coachingVolunteer: false,
     userType: "general",
-    disciplines: ["Bare Bow"],
+    disciplines: ["Barebow"],
   },
   {
     username: "MMurdock",
@@ -86,7 +86,7 @@ const seedUsers = [
     membershipFeesDue: "2026-12-31",
     coachingVolunteer: false,
     userType: "general",
-    disciplines: ["Bare Bow"],
+    disciplines: ["Barebow"],
   },
   {
     username: "NOdinson",
@@ -98,7 +98,7 @@ const seedUsers = [
     membershipFeesDue: "2026-12-31",
     coachingVolunteer: false,
     userType: "general",
-    disciplines: ["Long Bow"],
+    disciplines: ["Longbow"],
   },
   {
     username: "PParker",
@@ -110,7 +110,7 @@ const seedUsers = [
     membershipFeesDue: "2026-05-08",
     coachingVolunteer: false,
     userType: "general",
-    disciplines: ["Bare Bow", "Recurve Bow"],
+    disciplines: ["Barebow", "Recurve Bow"],
   },
   {
     username: "RWilliams",
@@ -155,7 +155,7 @@ const seedUsers = [
     activeMember: true,
     membershipFeesDue: "2026-04-17",
     userType: "coach",
-    disciplines: ["Bare Bow", "Recurve Bow"],
+    disciplines: ["Barebow", "Recurve Bow"],
   },
 ];
 

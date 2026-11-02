@@ -1,8 +1,8 @@
 const MEMBER_BOWS = [
   { value: "recurve", label: "Recurve", profileDiscipline: "Recurve Bow", bowType: "Rec", bowClass: "Recurve" },
   { value: "compound", label: "Compound", profileDiscipline: "Compound Bow", bowType: "Comp", bowClass: "Compound" },
-  { value: "barebow", label: "Barebow", profileDiscipline: "Bare Bow", bowType: "B/bow", bowClass: "Barebow" },
-  { value: "longbow", label: "Longbow", profileDiscipline: "Long Bow", bowType: "L/bow", bowClass: "Longbow" },
+  { value: "barebow", label: "Barebow", profileDiscipline: "Barebow", bowType: "B/bow", bowClass: "Barebow" },
+  { value: "longbow", label: "Longbow", profileDiscipline: "Longbow", bowType: "L/bow", bowClass: "Longbow" },
 ];
 
 export function getMemberBowOptions(disciplines) {

@@ -22,6 +22,7 @@ import { getSeedUsers } from "../infrastructure/persistence/seedUsers.js";
 import { runPostgresMigrations } from "../infrastructure/persistence/runPostgresMigrations.js";
 import { enqueueLegacyFeedbackRows } from "../infrastructure/persistence/feedbackSyncLegacyOutbox.js";
 import { migrateSqliteExternalDistanceSigners } from "../infrastructure/persistence/migrateSqliteExternalDistanceSigners.js";
+import { migrateSqliteBowDisciplineNames } from "../infrastructure/persistence/migrateSqliteBowDisciplineNames.js";
 
 export async function bootstrapPersistence({
   committeeRoleSeed,
@@ -95,6 +96,7 @@ export async function bootstrapPersistence({
     tournamentScoresTableSql: TOURNAMENT_SCORES_TABLE_SQL,
   });
 
+  migrateSqliteBowDisciplineNames(db);
   migrateSqliteExternalDistanceSigners(db);
 
   return bootstrapSqliteUserData({

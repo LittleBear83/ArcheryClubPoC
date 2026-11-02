@@ -237,9 +237,9 @@ export function registerTournamentRoutes({
   };
 
   const TOURNAMENT_BOW_OPTIONS = [
-    { code: "BB", discipline: "Bare Bow" },
+    { code: "BB", discipline: "Barebow" },
     { code: "CB", discipline: "Compound Bow" },
-    { code: "LB", discipline: "Long Bow" },
+    { code: "LB", discipline: "Longbow" },
     { code: "RC", discipline: "Recurve Bow" },
   ];
   const bowOptionByCode = new Map(

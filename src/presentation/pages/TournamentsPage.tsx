@@ -40,9 +40,9 @@ const TOURNAMENT_SETUP_STEPS = [
 ];
 type TournamentCssVars = CSSProperties & Record<string, string>;
 const TOURNAMENT_BOW_OPTIONS = [
-  { code: "BB", discipline: "Bare Bow" },
+  { code: "BB", discipline: "Barebow" },
   { code: "CB", discipline: "Compound Bow" },
-  { code: "LB", discipline: "Long Bow" },
+  { code: "LB", discipline: "Longbow" },
   { code: "RC", discipline: "Recurve Bow" },
 ];
 type TournamentRegistrationCandidate = {

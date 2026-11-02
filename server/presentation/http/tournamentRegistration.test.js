@@ -31,7 +31,7 @@ async function fixture(t) {
     PERMISSIONS: { MANAGE_TOURNAMENTS: "manage_tournaments" },
     TOURNAMENT_TEMPLATE_OPTIONS: [template], TOURNAMENT_TYPE_OPTIONS: [{ value: "head-to-head" }],
     getUtcTimestampParts: () => ["2026-10-05", "12:00:00"], toUtcDateString: () => "2026-10-05",
-    memberDirectoryGateway: { async listAllUsers() { return users; }, async findUserByUsername(username) { return users.find((user) => user.username === username); }, async findDisciplinesByUsername() { return ["Recurve Bow", "Bare Bow"]; } },
+    memberDirectoryGateway: { async listAllUsers() { return users; }, async findUserByUsername(username) { return users.find((user) => user.username === username); }, async findDisciplinesByUsername() { return ["Recurve Bow", "Barebow"]; } },
     auditChangeLogger: { async recordEntityChange(event) { audits.push(event); } },
     serverEventBus: { broadcastToAll(...args) { notifications.push(args); } },
     buildTournament: (row, registrations) => {

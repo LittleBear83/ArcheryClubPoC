@@ -9,8 +9,8 @@ import {
 test("maps the supported Golden Records bow classes to portal disciplines", () => {
   assert.equal(mapGoldenRecordsBowClassToDiscipline(" Recurve "), "Recurve Bow");
   assert.equal(mapGoldenRecordsBowClassToDiscipline("Compound"), "Compound Bow");
-  assert.equal(mapGoldenRecordsBowClassToDiscipline("Barebow"), "Bare Bow");
-  assert.equal(mapGoldenRecordsBowClassToDiscipline("Longbow"), "Long Bow");
+  assert.equal(mapGoldenRecordsBowClassToDiscipline("Barebow"), "Barebow");
+  assert.equal(mapGoldenRecordsBowClassToDiscipline("Longbow"), "Longbow");
   assert.equal(mapGoldenRecordsBowClassToDiscipline("Other"), "");
 });
 

@@ -11,9 +11,9 @@ function mapGoldenRecordsBowClassToDiscipline(bowClass) {
     case "compound":
       return "Compound Bow";
     case "barebow":
-      return "Bare Bow";
+      return "Barebow";
     case "longbow":
-      return "Long Bow";
+      return "Longbow";
     default:
       return "";
   }

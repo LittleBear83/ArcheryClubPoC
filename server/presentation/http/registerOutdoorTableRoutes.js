@@ -49,8 +49,8 @@ const ACHIEVEMENT_DATE_FIELD_MAPPINGS = [
 const BOW_TYPE_TO_DISCIPLINE = {
   Rec: "Recurve Bow",
   Comp: "Compound Bow",
-  "B/bow": "Bare Bow",
-  "L/bow": "Long Bow",
+  "B/bow": "Barebow",
+  "L/bow": "Longbow",
 };
 const INVALID_HANDICAP = Symbol("invalid-handicap");
 

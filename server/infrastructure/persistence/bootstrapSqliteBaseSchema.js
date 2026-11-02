@@ -591,8 +591,8 @@ export function bootstrapSqliteBaseSchema({
       username TEXT NOT NULL,
       discipline TEXT NOT NULL CHECK (
         discipline IN (
-          'Long Bow',
-          'Bare Bow',
+          'Longbow',
+          'Barebow',
           'Recurve Bow',
           'Compound Bow'
         )
@@ -607,8 +607,8 @@ export function bootstrapSqliteBaseSchema({
       username TEXT NOT NULL,
       discipline TEXT NOT NULL CHECK (
         discipline IN (
-          'Long Bow',
-          'Bare Bow',
+          'Longbow',
+          'Barebow',
           'Recurve Bow',
           'Compound Bow'
         )

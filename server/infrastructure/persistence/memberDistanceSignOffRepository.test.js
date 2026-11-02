@@ -5,9 +5,9 @@ import { mapDistanceSignOffsByDiscipline } from "./memberDistanceSignOffReposito
 test("a higher outdoor distance implies lower distances in the same discipline", () => {
   const explicit20 = { discipline: "Recurve Bow", distanceYards: 20, source: "manual", signedOffAt: "2026-01-01" };
   const explicit50 = { discipline: "Recurve Bow", distanceYards: 50, source: "golden-records", signedOffAt: "2026-02-01" };
-  const otherBow = { discipline: "Bare Bow", distanceYards: 30, source: "manual", signedOffAt: "2026-03-01" };
+  const otherBow = { discipline: "Barebow", distanceYards: 30, source: "manual", signedOffAt: "2026-03-01" };
   const rows = [explicit20, explicit50, otherBow];
-  const result = mapDistanceSignOffsByDiscipline(rows, ["Recurve Bow", "Bare Bow"], ["Recurve Bow", "Bare Bow"], [20, 30, 40, 50, 60]);
+  const result = mapDistanceSignOffsByDiscipline(rows, ["Recurve Bow", "Barebow"], ["Recurve Bow", "Barebow"], [20, 30, 40, 50, 60]);
   const recurve = result[0].distances.map((distance) => distance.signOff);
   assert.equal(recurve[0], explicit20);
   assert.equal(recurve[1].source, "inferred");

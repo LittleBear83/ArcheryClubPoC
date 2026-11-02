@@ -60,8 +60,8 @@ export const EMPTY_SIGN_OFF_DATES = ["", "", ""];
 export const BOW_TYPE_DISCIPLINE_MAPPINGS = [
   { bowType: "Rec", discipline: "Recurve Bow", label: "Recurve" },
   { bowType: "Comp", discipline: "Compound Bow", label: "Compound" },
-  { bowType: "B/bow", discipline: "Bare Bow", label: "Barebow" },
-  { bowType: "L/bow", discipline: "Long Bow", label: "Longbow" },
+  { bowType: "B/bow", discipline: "Barebow", label: "Barebow" },
+  { bowType: "L/bow", discipline: "Longbow", label: "Longbow" },
 ] as const;
 export const OUTDOOR_ACHIEVEMENT_COLUMNS: Array<{
   key: OutdoorBooleanFieldKey;

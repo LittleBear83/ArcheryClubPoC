@@ -101,7 +101,7 @@ test("PostgreSQL manager HTTP additions rebuild atomically; failures preserve th
       memberDirectoryGateway: {
         async listAllUsers() { return (await pool.query("SELECT * FROM users")).rows; },
         async findUserByUsername(username) { return (await pool.query("SELECT * FROM users WHERE username = $1", [username])).rows[0]; },
-        async findDisciplinesByUsername() { return ["Bare Bow"]; },
+        async findDisciplinesByUsername() { return ["Barebow"]; },
       },
       auditChangeLogger: { async recordEntityChange(event) { audits.push(event); } },
       serverEventBus: { broadcastToAll(...args) { notifications.push(args); } },
